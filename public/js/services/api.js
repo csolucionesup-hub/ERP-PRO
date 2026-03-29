@@ -1,0 +1,156 @@
+/**
+ * API Front-End Service
+ * Conector real contra el Backend Node.js de la Empresa
+ */
+
+const API_BASE_URL = '/api';
+
+// Helper global para atrapar errores HTTP limpios
+async function fetchReal(endpoint) {
+  try {
+    const response = await fetch(`${API_BASE_URL}${endpoint}`);
+    if (!response.ok) {
+      if (response.status === 404) throw new Error(`Ruta no configurada: ${endpoint}`);
+      if (response.status >= 500) {
+         const errData = await response.json().catch(() => null);
+         throw new Error(errData?.error || 'Falló el servidor BD');
+      }
+      throw new Error(`Error HTTP: ${response.status}`);
+    }
+    return await response.json();
+  } catch (error) {
+    console.error(`[API FETCH ERROR] -> ${endpoint}:`, error);
+    throw error;
+  }
+}
+
+export const api = {
+  finances: {
+    async getResumenOperativo() {
+      return await fetchReal('/finanzas/operativo');
+    },
+    async getDashboard() {
+      return await fetchReal('/finanzas/dashboard');
+    },
+    async getCxC() {
+      return await fetchReal('/finanzas/cxc');
+    },
+    async getCxP() {
+      return await fetchReal('/finanzas/cxp');
+    },
+    async getGastos() {
+       return await fetchReal('/gastos');
+    },
+    async createGasto(data) {
+       const res = await fetch('/api/gastos', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data)
+       });
+       if (!res.ok) throw await res.json();
+       return await res.json();
+    },
+    async pagarGasto(idGasto, abono) {
+       const res = await fetch(`/api/gastos/${idGasto}/pago`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ abono })
+       });
+       if (!res.ok) throw await res.json();
+       return await res.json();
+    },
+    async anularGasto(idGasto) {
+       const res = await fetch(`/api/gastos/${idGasto}/anular`, { method: 'POST' });
+       if (!res.ok) throw await res.json();
+       return await res.json();
+    },
+    async getTransacciones() {
+      return await fetchReal('/finanzas');
+    }
+  },
+  services: {
+    async getServicios() {
+      return await fetchReal('/servicios');
+    },
+    async createServicio(data) {
+       const res = await fetch('/api/servicios', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data)
+       });
+       if (!res.ok) throw await res.json();
+       return await res.json();
+    },
+    async cobrarServicio(idServicio, monto_pagado_liquido) {
+       const res = await fetch(`/api/servicios/${idServicio}/pago`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ monto_pagado_liquido, descripcion: 'Abono Registrado por Operador' })
+       });
+       if (!res.ok) throw await res.json();
+       return await res.json();
+    },
+    async anularServicio(idServicio) {
+       const res = await fetch(`/api/servicios/${idServicio}/anular`, { method: 'POST' });
+       if (!res.ok) throw await res.json();
+       return await res.json();
+    }
+  },
+  purchases: {
+    async getCompras() {
+      return await fetchReal('/compras');
+    },
+    async getProveedores() {
+      return await fetchReal('/proveedores');
+    },
+    async createProveedor(data) {
+       const res = await fetch('/api/proveedores', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data)
+       });
+       if (!res.ok) throw await res.json();
+       return await res.json();
+    },
+    async createCompra(data) {
+       const res = await fetch('/api/compras', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data)
+       });
+       if (!res.ok) throw await res.json();
+       return await res.json();
+    },
+    async anularCompra(idCompra) {
+       const res = await fetch(`/api/compras/${idCompra}/anular`, { method: 'POST' });
+       if (!res.ok) throw await res.json();
+       return await res.json();
+    }
+  },
+  inventory: {
+    async getInventario() {
+      return await fetchReal('/inventario');
+    },
+    async getKardex(idItem) {
+      return await fetchReal(`/inventario/${idItem}/kardex`);
+    },
+    async createInventarioItem(data) {
+       const res = await fetch('/api/inventario', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data)
+       });
+       if (!res.ok) throw await res.json();
+       return await res.json();
+    },
+    async consumirInventario(data) {
+       const res = await fetch('/api/inventario/consumo', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data)
+       });
+       if (!res.ok) throw await res.json();
+       return await res.json();
+    }
+  }
+};
