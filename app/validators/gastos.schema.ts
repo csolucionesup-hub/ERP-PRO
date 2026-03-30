@@ -20,7 +20,10 @@ export const gastoCreateSchema = z.object({
     fecha: fechaField,
     nro_comprobante: z.string().optional(),
     monto_base: z.number().positive('El gasto debe tener un monto base lícito'),
-    aplica_igv: z.boolean().default(false)
+    aplica_igv: z.boolean().default(false),
+    tipo_gasto: z.enum(['OPERATIVO', 'SERVICIO']).default('OPERATIVO'),
+    id_servicio: z.number().nullable().optional(),
+    detraccion_porcentaje: z.number().min(0).max(100).default(0)
   })
 });
 

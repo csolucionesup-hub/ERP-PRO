@@ -9,7 +9,7 @@ class CatalogService {
       SELECT 
         s.id_servicio, s.codigo, s.nombre, s.cliente, s.fecha_servicio, s.moneda, 
         s.nro_cotizacion, s.monto_base as ingreso_neto, s.igv_base, s.total_base,
-        s.detraccion_porcentaje, s.monto_detraccion, s.retencion_porcentaje, s.monto_retencion, s.estado, s.fecha_vencimiento,
+        s.detraccion_porcentaje, s.monto_detraccion, s.retencion_porcentaje, s.monto_retencion, s.estado, s.estado_trabajo, s.fecha_vencimiento,
         DATEDIFF(s.fecha_vencimiento, CURDATE()) as dias_restantes,
         IFNULL((SELECT cliente_deposito FROM Detracciones WHERE id_servicio = s.id_servicio LIMIT 1), 'NA') as detraccion_depositada,
 

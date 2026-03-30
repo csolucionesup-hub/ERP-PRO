@@ -198,7 +198,17 @@ class FinanceService {
    * CRUD GASTOS FIJOS
    */
   async getGastos() {
-    const [rows] = await db.query("SELECT * FROM Gastos ORDER BY fecha DESC LIMIT 50");
+    const [rows] = await db.query(`
+      SELECT g.*,
+        s.codigo as servicio_codigo, s.cliente as servicio_cliente,
+        IFNULL((SELECT SUM(monto_base) FROM Transacciones
+          WHERE referencia_tipo='GASTO' AND referencia_id=g.id_gasto
+          AND tipo_movimiento='EGRESO' AND estado != 'ANULADO'), 0) as pagado
+      FROM Gastos g
+      LEFT JOIN Servicios s ON g.id_servicio = s.id_servicio
+      WHERE g.estado != 'ANULADO'
+      ORDER BY g.fecha DESC
+    `);
     return rows;
   }
 
@@ -207,11 +217,28 @@ class FinanceService {
     const monto_base = Number(data.monto_base);
     const igv_base = aplica_igv ? (monto_base * 0.18) : 0;
     const total_base = monto_base + igv_base;
+    const detraccion_pct = Number(data.detraccion_porcentaje || 0);
+    const monto_detraccion = detraccion_pct > 0 ? (monto_base * detraccion_pct / 100) : 0;
+    const detraccion_depositada = detraccion_pct > 0 ? 'NO' : 'NA';
 
     const [res] = await db.query(`
-      INSERT INTO Gastos (fecha, concepto, proveedor_nombre, nro_comprobante, monto_base, aplica_igv, igv_base, total_base, estado, estado_pago)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'CONFIRMADO', 'PENDIENTE')
-    `, [data.fecha, data.concepto, data.proveedor_nombre, data.nro_comprobante || 'S/N', monto_base, aplica_igv, igv_base, total_base]);
+      INSERT INTO Gastos (id_servicio, tipo_gasto, fecha, concepto, proveedor_nombre, nro_comprobante,
+        monto_base, aplica_igv, igv_base, total_base,
+        detraccion_porcentaje, monto_detraccion, detraccion_depositada,
+        estado, estado_pago)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'CONFIRMADO', 'PENDIENTE')
+    `, [data.id_servicio || null, data.tipo_gasto || 'OPERATIVO',
+        data.fecha, data.concepto, data.proveedor_nombre,
+        data.nro_comprobante || 'S/N', monto_base, aplica_igv, igv_base, total_base,
+        detraccion_pct, monto_detraccion, detraccion_depositada]);
+
+    if (data.id_servicio) {
+      await db.query(`
+        INSERT INTO CostosServicio (id_servicio, concepto, monto_original, monto_base, tipo_costo, fecha)
+        VALUES (?, ?, ?, ?, 'GASTO', ?)
+      `, [data.id_servicio, data.concepto, monto_base, monto_base, data.fecha]);
+    }
+
     return { success: true, id_gasto: (res as any).insertId };
   }
 

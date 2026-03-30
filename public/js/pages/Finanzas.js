@@ -1,14 +1,16 @@
 import { api } from '../services/api.js';
 
 export const Finanzas = async () => {
-  let gastos = [], cxp = [];
+  let gastos = [], cxp = [], serviciosActivos = [];
   try {
-    [gastos, cxp] = await Promise.all([
+    [gastos, cxp, serviciosActivos] = await Promise.all([
       api.finances.getGastos(),
-      api.finances.getCxP()
+      api.finances.getCxP(),
+      api.services.getServiciosActivos()
     ]);
     if (!Array.isArray(gastos)) gastos = [];
     if (!Array.isArray(cxp)) cxp = [];
+    if (!Array.isArray(serviciosActivos)) serviciosActivos = [];
   } catch(err) {
     console.error('[Finanzas] Error cargando datos:', err);
   }
@@ -35,15 +37,26 @@ export const Finanzas = async () => {
   setTimeout(() => {
      const formGasto = document.getElementById('form-gasto');
      if(formGasto) {
+       const selTipo = document.getElementById('select-tipo-gasto');
+       if (selTipo) {
+           selTipo.onchange = () => {
+               document.getElementById('div-servicio').style.display = selTipo.value === 'SERVICIO' ? 'block' : 'none';
+               document.getElementById('div-detraccion-gasto').style.display = selTipo.value === 'SERVICIO' ? 'block' : 'none';
+           };
+       }
+
        formGasto.onsubmit = async (e) => {
          e.preventDefault();
          const data = {
+             tipo_gasto: e.target.tipo_gasto.value,
+             id_servicio: e.target.id_servicio?.value ? parseInt(e.target.id_servicio.value) : null,
              concepto: e.target.concepto.value,
              proveedor_nombre: e.target.proveedor_nombre.value,
              fecha: e.target.fecha.value,
-             nro_comprobante: e.target.nro_comprobante.value,
+             nro_comprobante: e.target.nro_comprobante?.value || '',
              monto_base: Number(e.target.monto_base.value),
-             aplica_igv: e.target.aplica_igv.checked
+             aplica_igv: e.target.aplica_igv.checked,
+             detraccion_porcentaje: Number(e.target.detraccion?.value || 0)
          };
          try {
              await api.finances.createGasto(data);
@@ -95,12 +108,26 @@ export const Finanzas = async () => {
           <div class="card" style="border-top: 4px solid var(--danger)">
               <h3 style="margin-bottom:15px; font-weight:600; font-size:15px">Registrar Nuevo Gasto</h3>
               <form id="form-gasto" style="display:flex; flex-direction:column; gap:12px;">
+
+                 <select name="tipo_gasto" id="select-tipo-gasto" style="padding:10px; border-radius:var(--radius-sm); border:1px solid var(--border-light)">
+                    <option value="OPERATIVO">Gasto Operativo (general)</option>
+                    <option value="SERVICIO">Gasto de Servicio (proyecto)</option>
+                 </select>
+
+                 <div id="div-servicio" style="display:none">
+                    <label style="font-size:11px; color:var(--text-secondary)">Servicio activo</label>
+                    <select name="id_servicio" style="padding:10px; border-radius:var(--radius-sm); border:1px solid var(--border-light); width:100%">
+                       <option value="">-- Seleccionar servicio --</option>
+                       ${serviciosActivos.map(s => '<option value="' + s.id_servicio + '">' + (s.nro_cotizacion || s.codigo) + ' - ' + s.cliente + ' (' + s.nombre + ')</option>').join('')}
+                    </select>
+                 </div>
+
                  <input name="proveedor_nombre" placeholder="Proveedor / Entidad" required style="padding:10px; border-radius:var(--radius-sm); border:1px solid var(--border-light)">
-                 <input name="concepto" placeholder="Concepto (Ej: Alquiler, Luz)" required style="padding:10px; border-radius:var(--radius-sm); border:1px solid var(--border-light)">
-                 
+                 <input name="concepto" placeholder="Concepto (Ej: Alquiler, Soldadura)" required style="padding:10px; border-radius:var(--radius-sm); border:1px solid var(--border-light)">
+
                  <div style="display:flex; gap:10px;">
                     <div style="flex:1">
-                       <label style="font-size:11px; color:var(--text-secondary)">Fecha Punteo</label>
+                       <label style="font-size:11px; color:var(--text-secondary)">Fecha</label>
                        <input name="fecha" type="date" required style="width:100%; padding:10px; border-radius:var(--radius-sm); border:1px solid var(--border-light)">
                     </div>
                     <div style="flex:1">
@@ -109,15 +136,27 @@ export const Finanzas = async () => {
                     </div>
                  </div>
 
-                 <input name="nro_comprobante" placeholder="Nro Correlativo / Recibo" style="padding:10px; border-radius:var(--radius-sm); border:1px solid var(--border-light)">
+                 <input name="nro_comprobante" placeholder="Nro Factura / Recibo" style="padding:10px; border-radius:var(--radius-sm); border:1px solid var(--border-light)">
 
                  <div style="display:flex; gap:15px; align-items:center; background:var(--bg-app); padding:10px; border-radius:4px;">
                     <label style="font-size:12px; font-weight:bold; display:flex; gap:8px; align-items:center;">
-                       <input type="checkbox" name="aplica_igv"> + IGV Fiscalizable
+                       <input type="checkbox" name="aplica_igv"> + IGV 18%
                     </label>
                  </div>
 
-                 <button type="submit" style="padding:12px; border:none; background:var(--danger); color:white; border-radius:var(--radius-sm); cursor:pointer; font-weight:bold; margin-top:5px;">Registrar Pasivo</button>
+                 <div id="div-detraccion-gasto" style="display:none">
+                    <label style="font-size:11px; color:var(--text-secondary)">Detracción a retener al proveedor (%)</label>
+                    <select name="detraccion" style="padding:10px; border-radius:var(--radius-sm); border:1px solid var(--border-light); width:100%">
+                       <option value="0">0% - Sin Detracción</option>
+                       <option value="3">3%</option>
+                       <option value="4">4%</option>
+                       <option value="10">10%</option>
+                       <option value="12">12%</option>
+                    </select>
+                    <span style="font-size:10px; color:var(--danger)">Nosotros retenemos este % y debemos depositarlo en la cuenta BN del proveedor</span>
+                 </div>
+
+                 <button type="submit" style="padding:12px; border:none; background:var(--danger); color:white; border-radius:var(--radius-sm); cursor:pointer; font-weight:bold; margin-top:5px;">Registrar Gasto</button>
               </form>
           </div>
        </div>

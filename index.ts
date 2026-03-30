@@ -87,6 +87,10 @@ apiRouter.post('/gastos/:id/anular', async (req: Request, res: Response) => {
   res.json(await FinanceService.anularGasto(parseInt(req.params.id as string)));
 });
 
+apiRouter.get('/servicios/activos', async (req: Request, res: Response) => {
+  const [rows] = await db.query("SELECT id_servicio, codigo, nro_cotizacion, cliente, nombre FROM Servicios WHERE estado != 'ANULADO' AND estado_trabajo = 'ACTIVO' ORDER BY fecha_servicio DESC");
+  res.json(rows);
+});
 apiRouter.get('/servicios', async (req: Request, res: Response) => {
   res.json(await CatalogService.getServicios());
 });
@@ -104,6 +108,10 @@ apiRouter.post('/servicios/:id/pago', validateParams(servicePaymentSchema), asyn
 
 apiRouter.post('/servicios/:id/anular', async (req: Request, res: Response) => {
   res.json(await CatalogService.anularServicio(parseInt(req.params.id as string)));
+});
+apiRouter.post('/servicios/:id/terminar', async (req: Request, res: Response) => {
+  await db.query("UPDATE Servicios SET estado_trabajo = 'TERMINADO' WHERE id_servicio = ?", [parseInt(req.params.id as string)]);
+  res.json({ success: true });
 });
 apiRouter.post('/servicios/:id/detraccion-deposito', async (req: Request, res: Response) => {
   const id = parseInt(req.params.id as string);

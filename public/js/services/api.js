@@ -72,6 +72,9 @@ export const api = {
     async getServicios() {
       return await fetchReal('/servicios');
     },
+    async getServiciosActivos() {
+      return await fetchReal('/servicios/activos');
+    },
     async createServicio(data) {
        const res = await fetch('/api/servicios', {
           method: 'POST',
