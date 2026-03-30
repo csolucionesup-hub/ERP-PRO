@@ -6,7 +6,9 @@ import path from 'path';
 import morgan from 'morgan';
 
 // Node / TS Lógica de Negocio
+import { db } from './database/connection';
 import FinanceService from './app/modules/finance/FinanceService';
+import TributarioService from './app/modules/finance/TributarioService';
 import CatalogService from './app/modules/services/CatalogService';
 import PurchaseService from './app/modules/purchases/PurchaseService';
 import InventoryService from './app/modules/inventory/InventoryService';
@@ -103,6 +105,17 @@ apiRouter.post('/servicios/:id/pago', validateParams(servicePaymentSchema), asyn
 apiRouter.post('/servicios/:id/anular', async (req: Request, res: Response) => {
   res.json(await CatalogService.anularServicio(parseInt(req.params.id as string)));
 });
+apiRouter.post('/servicios/:id/detraccion-deposito', async (req: Request, res: Response) => {
+  const id = parseInt(req.params.id as string);
+  await db.query("UPDATE Detracciones SET cliente_deposito = 'SI', monto_depositado = monto, fecha_deposito = CURDATE() WHERE id_servicio = ?", [id]);
+  res.json({ success: true });
+});
+apiRouter.put('/servicios/:id', async (req: Request, res: Response) => {
+  res.json(await CatalogService.updateServicio(parseInt(req.params.id as string), req.body));
+});
+apiRouter.delete('/servicios/:id', async (req: Request, res: Response) => {
+  res.json(await CatalogService.deleteServicio(parseInt(req.params.id as string)));
+});
 
 apiRouter.get('/compras', async (req: Request, res: Response) => {
   res.json(await PurchaseService.getCompras());
@@ -143,6 +156,19 @@ apiRouter.post('/inventario/consumo', validateParams(inventoryConsumeSchema), as
 apiRouter.get('/inventario/:id/kardex', async (req: Request, res: Response) => {
   const idItem = parseInt(req.params.id as string);
   res.json(await InventoryService.getKardex(idItem));
+});
+
+apiRouter.get('/tributario/cuenta-bn', async (req: Request, res: Response) => {
+  res.json(await TributarioService.getCuentaBN());
+});
+apiRouter.get('/tributario/igv', async (req: Request, res: Response) => {
+  res.json(await TributarioService.getControlIGV());
+});
+apiRouter.post('/tributario/detraccion/:id/deposito', async (req: Request, res: Response) => {
+  res.json(await TributarioService.marcarDepositado(parseInt(req.params.id as string), req.body));
+});
+apiRouter.post('/tributario/pago-impuesto', async (req: Request, res: Response) => {
+  res.json(await TributarioService.registrarPagoImpuesto(req.body));
 });
 
 // Anidamos el API controlada bajo la rama estándar /api

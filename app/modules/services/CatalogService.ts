@@ -8,14 +8,16 @@ class CatalogService {
     const query = `
       SELECT 
         s.id_servicio, s.codigo, s.nombre, s.cliente, s.fecha_servicio, s.moneda, 
-        s.monto_base as ingreso_neto, s.igv_base, s.total_base, 
-        s.detraccion_porcentaje, s.monto_detraccion, s.estado, s.fecha_vencimiento,
+        s.nro_cotizacion, s.monto_base as ingreso_neto, s.igv_base, s.total_base,
+        s.detraccion_porcentaje, s.monto_detraccion, s.retencion_porcentaje, s.monto_retencion, s.estado, s.fecha_vencimiento,
         DATEDIFF(s.fecha_vencimiento, CURDATE()) as dias_restantes,
-        
+        IFNULL((SELECT cliente_deposito FROM Detracciones WHERE id_servicio = s.id_servicio LIMIT 1), 'NA') as detraccion_depositada,
+
         IFNULL((SELECT SUM(monto_base) FROM CostosServicio WHERE id_servicio = s.id_servicio), 0) AS costos_ejecutados,
         IFNULL((SELECT SUM(monto_base) FROM Transacciones WHERE referencia_tipo='SERVICIO' AND referencia_id = s.id_servicio AND tipo_movimiento='INGRESO'), 0) AS cobrado_liquido
-        
+
       FROM Servicios s
+      WHERE s.estado != 'ANULADO'
       ORDER BY s.fecha_servicio DESC, s.id_servicio DESC
     `;
     const [rows] = await db.query(query);
@@ -50,7 +52,9 @@ class CatalogService {
        const total_base = monto_base + igv_base;
        
        const detraccion_porcentaje = Number(data.detraccion_porcentaje || 0);
-       const monto_detraccion = detraccion_porcentaje > 0 ? (total_base * (detraccion_porcentaje / 100)) : 0;
+       const monto_detraccion = detraccion_porcentaje > 0 ? (monto_base * (detraccion_porcentaje / 100)) : 0;
+       const retencion_porcentaje = Number(data.retencion_porcentaje || 0);
+       const monto_retencion = retencion_porcentaje > 0 ? (monto_base * (retencion_porcentaje / 100)) : 0;
 
        let fecha_venc = data.fecha_vencimiento;
        if (!fecha_venc) {
@@ -64,14 +68,16 @@ class CatalogService {
 
        const queryInsert = `
          INSERT INTO Servicios (
-            codigo, nombre, cliente, descripcion, fecha_servicio, moneda, monto_base, 
-            aplica_igv, igv_base, total_base, detraccion_porcentaje, monto_detraccion, estado, fecha_vencimiento
-         ) VALUES (?, ?, ?, ?, ?, 'PEN', ?, ?, ?, ?, ?, ?, 'PENDIENTE', ?)
+            codigo, nro_cotizacion, nombre, cliente, descripcion, fecha_servicio, moneda, monto_base,
+            aplica_igv, igv_base, total_base, detraccion_porcentaje, monto_detraccion,
+            retencion_porcentaje, monto_retencion, estado, fecha_vencimiento
+         ) VALUES (?, ?, ?, ?, ?, ?, 'PEN', ?, ?, ?, ?, ?, ?, ?, ?, 'PENDIENTE', ?)
        `;
 
        const [res] = await conn.query(queryInsert, [
-          codigo, data.nombre, data.cliente, data.descripcion || '', data.fecha_servicio,
-          monto_base, aplica_igv, igv_base, total_base, detraccion_porcentaje, monto_detraccion, fecha_venc
+          codigo, data.nro_cotizacion || null, data.nombre, data.cliente, data.descripcion || '', data.fecha_servicio,
+          monto_base, aplica_igv, igv_base, total_base, detraccion_porcentaje, monto_detraccion,
+          retencion_porcentaje, monto_retencion, fecha_venc
        ]);
 
        const idServicio = (res as any).insertId;
@@ -79,9 +85,9 @@ class CatalogService {
        // Insertar Deuda Retenida (Solo si hay detracción)
        if (monto_detraccion > 0) {
            await conn.query(`
-               INSERT INTO Detracciones (id_servicio, porcentaje, monto, estado)
-               VALUES (?, ?, ?, 'PENDIENTE')
-           `, [idServicio, detraccion_porcentaje, monto_detraccion]);
+               INSERT INTO Detracciones (id_servicio, cliente, porcentaje, monto, estado, cliente_deposito)
+               VALUES (?, ?, ?, ?, 'PENDIENTE', 'NO')
+           `, [idServicio, data.cliente, detraccion_porcentaje, monto_detraccion]);
        }
 
        await conn.commit();
@@ -104,7 +110,7 @@ class CatalogService {
 
     try {
         // Bloqueo Optimista
-        const [rows] = await conn.query("SELECT total_base, monto_detraccion, estado FROM Servicios WHERE id_servicio = ? FOR UPDATE", [id_servicio]);
+        const [rows] = await conn.query("SELECT total_base, monto_detraccion, monto_retencion, estado FROM Servicios WHERE id_servicio = ? FOR UPDATE", [id_servicio]);
         const srv = (rows as any)[0];
         if (!srv) throw new Error('Servicio no encontrado');
         if (srv.estado === 'COBRADO') throw new Error('Factura ya se encuentra 100% Cobrada');
@@ -115,8 +121,9 @@ class CatalogService {
 
         const totalFactura = Number(srv.total_base);
         const detencionLegal = Number(srv.monto_detraccion);
-        
-        const cobrarMaximoLiquido = totalFactura - detencionLegal;
+        const retencionLegal = Number(srv.monto_retencion || 0);
+
+        const cobrarMaximoLiquido = totalFactura - detencionLegal - retencionLegal;
         const cobroProyectado = historialCobrado + monto_pagado_liquido;
 
         // Regla: No se puede cobrar líquido más del remanente (Evasión de dinero fantasma)
@@ -183,9 +190,94 @@ class CatalogService {
       // 3. Anular Cabecera y Transacciones Financieras
       await conn.query("UPDATE Servicios SET estado = 'ANULADO', tipo_ultima_accion = 'ANULACION' WHERE id_servicio = ?", [idServicio]);
       await conn.query("UPDATE Transacciones SET estado = 'ANULADO' WHERE referencia_tipo = 'SERVICIO' AND referencia_id = ?", [idServicio]);
+      await conn.query("UPDATE Detracciones SET estado = 'ANULADO' WHERE id_servicio = ?", [idServicio]);
 
       await conn.commit();
       return { success: true, msg: 'Servicio anulado y consumos revertidos correctamente.' };
+    } catch (e) {
+      await conn.rollback();
+      throw e;
+    } finally {
+      conn.release();
+    }
+  }
+
+  async updateServicio(idServicio: number, data: any) {
+    const conn = await db.getConnection();
+    await conn.beginTransaction();
+    try {
+      const [rows] = await conn.query('SELECT estado FROM Servicios WHERE id_servicio = ? FOR UPDATE', [idServicio]);
+      const srv = (rows as any)[0];
+      if (!srv) throw new Error('Servicio no encontrado.');
+      if (srv.estado === 'ANULADO') throw new Error('No se puede editar un servicio anulado.');
+      if (srv.estado === 'COBRADO') throw new Error('No se puede editar un servicio ya cobrado al 100%.');
+
+      const monto_base = Number(data.monto_base);
+      const aplica_igv = !!data.aplica_igv;
+      const igv_base = aplica_igv ? (monto_base * 0.18) : 0;
+      const total_base = monto_base + igv_base;
+      const detraccion_porcentaje = Number(data.detraccion_porcentaje || 0);
+      const monto_detraccion = detraccion_porcentaje > 0 ? (monto_base * (detraccion_porcentaje / 100)) : 0;
+      const retencion_porcentaje = Number(data.retencion_porcentaje || 0);
+      const monto_retencion = retencion_porcentaje > 0 ? (monto_base * (retencion_porcentaje / 100)) : 0;
+
+      await conn.query(`
+        UPDATE Servicios SET
+          nro_cotizacion = ?, nombre = ?, cliente = ?, descripcion = ?,
+          fecha_servicio = ?, fecha_vencimiento = ?,
+          monto_base = ?, aplica_igv = ?, igv_base = ?, total_base = ?,
+          detraccion_porcentaje = ?, monto_detraccion = ?,
+          retencion_porcentaje = ?, monto_retencion = ?,
+          tipo_ultima_accion = 'EDICION'
+        WHERE id_servicio = ?
+      `, [
+        data.nro_cotizacion || null, data.nombre, data.cliente, data.descripcion || '',
+        data.fecha_servicio, data.fecha_vencimiento || null,
+        monto_base, aplica_igv, igv_base, total_base,
+        detraccion_porcentaje, monto_detraccion,
+        retencion_porcentaje, monto_retencion,
+        idServicio
+      ]);
+
+      if (monto_detraccion > 0) {
+        const [detRows] = await conn.query('SELECT id_detraccion FROM Detracciones WHERE id_servicio = ?', [idServicio]);
+        if ((detRows as any).length > 0) {
+          await conn.query('UPDATE Detracciones SET porcentaje = ?, monto = ?, cliente = ? WHERE id_servicio = ?',
+            [detraccion_porcentaje, monto_detraccion, data.cliente, idServicio]);
+        } else {
+          await conn.query(`INSERT INTO Detracciones (id_servicio, cliente, porcentaje, monto, estado, cliente_deposito)
+            VALUES (?, ?, ?, ?, 'PENDIENTE', 'NO')`, [idServicio, data.cliente, detraccion_porcentaje, monto_detraccion]);
+        }
+      }
+
+      await conn.commit();
+      return { success: true, msg: 'Servicio actualizado.' };
+    } catch (e) {
+      await conn.rollback();
+      throw e;
+    } finally {
+      conn.release();
+    }
+  }
+
+  async deleteServicio(idServicio: number) {
+    const conn = await db.getConnection();
+    await conn.beginTransaction();
+    try {
+      const [rows] = await conn.query('SELECT estado FROM Servicios WHERE id_servicio = ? FOR UPDATE', [idServicio]);
+      const srv = (rows as any)[0];
+      if (!srv) throw new Error('Servicio no encontrado.');
+      if (srv.estado !== 'PENDIENTE') throw new Error('Solo se pueden eliminar servicios PENDIENTES sin cobros.');
+
+      const [txRows] = await conn.query("SELECT COUNT(*) as cnt FROM Transacciones WHERE referencia_tipo='SERVICIO' AND referencia_id = ? AND estado != 'ANULADO'", [idServicio]);
+      if ((txRows as any)[0].cnt > 0) throw new Error('Tiene transacciones. Use Anular.');
+
+      await conn.query("DELETE FROM Detracciones WHERE id_servicio = ?", [idServicio]);
+      await conn.query("DELETE FROM CostosServicio WHERE id_servicio = ?", [idServicio]);
+      await conn.query("DELETE FROM Servicios WHERE id_servicio = ?", [idServicio]);
+
+      await conn.commit();
+      return { success: true, msg: 'Servicio eliminado.' };
     } catch (e) {
       await conn.rollback();
       throw e;

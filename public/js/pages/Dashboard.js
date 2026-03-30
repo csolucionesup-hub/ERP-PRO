@@ -2,9 +2,11 @@ import { api } from '../services/api.js';
 
 export const Dashboard = async () => {
   try {
-    const [dataMaster, dataOperativa] = await Promise.all([
+    const [dataMaster, dataOperativa, dataBN, dataIGV] = await Promise.all([
       api.finances.getDashboard(),
-      api.finances.getResumenOperativo()
+      api.finances.getResumenOperativo(),
+      api.tributario.getCuentaBN(),
+      api.tributario.getControlIGV()
     ]);
 
     const formatCurrency = (val) => new Intl.NumberFormat('es-PE', { style: 'currency', currency: 'PEN' }).format(val);
@@ -105,6 +107,20 @@ export const Dashboard = async () => {
 
     const alertHTML = [...criticos.map(c => renderAlert(c, true)), ...advertencias.map(a => renderAlert(a, false))].join('');
 
+    setTimeout(() => {
+      window.marcarDeposito = async (idDetraccion, montoSugerido) => {
+        const monto = prompt('Monto depositado por el cliente en BN:', montoSugerido.toFixed(2));
+        if (!monto || isNaN(monto) || Number(monto) <= 0) return;
+        const fecha = prompt('Fecha de depósito (YYYY-MM-DD):', new Date().toISOString().split('T')[0]);
+        if (!fecha) return;
+        try {
+          await api.tributario.marcarDeposito(idDetraccion, { monto_depositado: Number(monto), fecha_deposito: fecha });
+          alert('Depósito registrado correctamente');
+          window.location.reload();
+        } catch (e) { alert('Error: ' + JSON.stringify(e.error || e)); }
+      };
+    }, 100);
+
     return `
       <header class="header" style="margin-bottom:20px;">
         <div>
@@ -200,9 +216,80 @@ export const Dashboard = async () => {
           </div>
         </div>
       </div>
+
+      <h2 style="font-size:16px; margin: 35px 0 15px; color:var(--text-primary); text-transform:uppercase; letter-spacing:1px;">E. Control Tributario</h2>
+      <div style="display:grid; grid-template-columns: repeat(3,1fr); gap:20px; margin-bottom:20px;">
+        <div class="card" style="border-left:4px solid #3b82f6">
+          <h3 class="card-title">Saldo Cuenta BN</h3>
+          <h2 class="card-value" style="color:#3b82f6">${formatCurrency(dataBN.saldo_bn)}</h2>
+          <p style="font-size:12px; color:var(--text-secondary)">Depositado: ${formatCurrency(dataBN.total_depositado)} — Pagado: ${formatCurrency(dataBN.total_pagado_impuestos)}</p>
+        </div>
+        <div class="card" style="border-left:4px solid #e67e22">
+          <h3 class="card-title">Detracciones Pendientes Depósito</h3>
+          <h2 class="card-value" style="color:#e67e22">${formatCurrency(dataBN.pendiente_deposito)}</h2>
+          <p style="font-size:12px; color:var(--text-secondary)">${dataBN.detracciones_pendientes.length} cliente(s) aún no depositaron</p>
+        </div>
+        <div class="card" style="border-left:4px solid ${dataIGV.reduce((s,m)=>s+m.igv_neto,0)>=0?'var(--success)':'var(--danger)'}">
+          <h3 class="card-title">IGV Neto Acumulado del Año</h3>
+          <h2 class="card-value" style="color:${dataIGV.reduce((s,m)=>s+m.igv_neto,0)>=0?'var(--danger)':'var(--success)'}">
+            ${formatCurrency(dataIGV.reduce((s,m)=>s+m.igv_neto,0))}
+          </h2>
+          <p style="font-size:12px; color:var(--text-secondary)">Positivo = debes pagar al fisco</p>
+        </div>
+      </div>
+
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:20px;">
+        <div>
+          <h3 style="font-size:13px; font-weight:600; margin-bottom:10px; text-transform:uppercase; color:var(--text-secondary)">Detracciones Pendientes de Depósito</h3>
+          <div class="table-container">
+            <table>
+              <thead><tr><th>Ticket</th><th>Cliente</th><th style="text-align:right">Monto</th><th>Fecha</th><th></th></tr></thead>
+              <tbody>
+                ${dataBN.detracciones_pendientes.length === 0
+                  ? '<tr><td colspan="5" style="text-align:center; color:var(--text-secondary)">Sin pendientes</td></tr>'
+                  : dataBN.detracciones_pendientes.map(d => `
+                    <tr>
+                      <td>${d.codigo}</td>
+                      <td>${d.cliente || '---'}</td>
+                      <td style="text-align:right; color:#e67e22"><strong>${formatCurrency(d.monto)}</strong></td>
+                      <td style="font-size:11px">${d.fecha_servicio?.split('T')[0] || '---'}</td>
+                      <td><button class="action-btn" onclick="window.marcarDeposito(${d.id_detraccion}, ${d.monto})">Depositar</button></td>
+                    </tr>`).join('')
+                }
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div>
+          <h3 style="font-size:13px; font-weight:600; margin-bottom:10px; text-transform:uppercase; color:var(--text-secondary)">IGV Mensual</h3>
+          <div class="table-container">
+            <table>
+              <thead><tr><th>Mes</th><th style="text-align:right">IGV Ventas</th><th style="text-align:right">IGV Compras</th><th style="text-align:right">Neto</th><th>Estado</th></tr></thead>
+              <tbody>
+                ${dataIGV.length === 0
+                  ? '<tr><td colspan="5" style="text-align:center; color:var(--text-secondary)">Sin datos</td></tr>'
+                  : dataIGV.map(m => {
+                      const meses = ['','Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+                      const color = m.igv_neto > 0 ? 'var(--danger)' : 'var(--success)';
+                      return `<tr>
+                        <td><strong>${meses[m.mes]}</strong></td>
+                        <td style="text-align:right; color:var(--danger)">${formatCurrency(m.igv_ventas)}</td>
+                        <td style="text-align:right; color:var(--success)">${formatCurrency(m.igv_compras)}</td>
+                        <td style="text-align:right; color:${color}"><strong>${formatCurrency(m.igv_neto)}</strong></td>
+                        <td style="font-size:11px; color:${color}">${m.igv_neto > 0 ? 'Por pagar' : 'A favor'}</td>
+                      </tr>`;
+                    }).join('')
+                }
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
     `;
   } catch (error) {
     console.error("Dashboard Render Error:", error);
     return `<div style="padding:50px; color:red;">Error de Renderizado: ${error.message}</div>`;
   }
+
 };

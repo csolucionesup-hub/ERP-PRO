@@ -22,7 +22,8 @@ export const serviceCreateSchema = z.object({
     fecha_vencimiento: fechaField.optional(),
     monto_base: z.number().positive('El servicio debe tener un monto base lícito'),
     aplica_igv: z.boolean().default(false),
-    detraccion_porcentaje: z.number().min(0).max(100).default(0)
+    detraccion_porcentaje: z.number().min(0).max(100).default(0),
+    retencion_porcentaje: z.number().min(0).max(100).default(0)
   })
 });
 

@@ -94,6 +94,19 @@ export const api = {
        const res = await fetch(`/api/servicios/${idServicio}/anular`, { method: 'POST' });
        if (!res.ok) throw await res.json();
        return await res.json();
+    },
+    async updateServicio(id, data) {
+       const res = await fetch(`/api/servicios/${id}`, {
+          method: 'PUT', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data)
+       });
+       if (!res.ok) throw await res.json();
+       return await res.json();
+    },
+    async deleteServicio(id) {
+       const res = await fetch(`/api/servicios/${id}`, { method: 'DELETE' });
+       if (!res.ok) throw await res.json();
+       return await res.json();
     }
   },
   purchases: {
@@ -125,6 +138,26 @@ export const api = {
        const res = await fetch(`/api/compras/${idCompra}/anular`, { method: 'POST' });
        if (!res.ok) throw await res.json();
        return await res.json();
+    }
+  },
+  tributario: {
+    getCuentaBN: () => fetchReal('/tributario/cuenta-bn'),
+    getControlIGV: () => fetchReal('/tributario/igv'),
+    async marcarDeposito(id, data) {
+      const res = await fetch(`/api/tributario/detraccion/${id}/deposito`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+      });
+      if (!res.ok) throw await res.json();
+      return await res.json();
+    },
+    async pagarImpuesto(data) {
+      const res = await fetch('/api/tributario/pago-impuesto', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+      });
+      if (!res.ok) throw await res.json();
+      return await res.json();
     }
   },
   inventory: {
