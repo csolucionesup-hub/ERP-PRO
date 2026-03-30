@@ -78,6 +78,28 @@ apiRouter.post('/gastos', validateParams(gastoCreateSchema), async (req: Request
   res.status(201).json(result);
 });
 
+apiRouter.put('/gastos/:id', async (req: Request, res: Response) => {
+  const id = parseInt(req.params.id as string);
+  const d = req.body;
+  const monto = Number(d.monto_base);
+  const igv = d.aplica_igv ? monto * 0.18 : 0;
+  const total = monto + igv;
+  await db.query(`UPDATE Gastos SET nro_oc=?, codigo_contador=?, proveedor_nombre=?,
+      concepto=?, fecha=?, monto_base=?, aplica_igv=?, igv_base=?, total_base=?
+      WHERE id_gasto=? AND estado_pago='PENDIENTE'`,
+      [d.nro_oc || null, d.codigo_contador || null, d.proveedor_nombre, d.concepto, d.fecha,
+       monto, d.aplica_igv, igv, total, id]);
+  res.json({ success: true });
+});
+apiRouter.delete('/gastos/:id', async (req: Request, res: Response) => {
+  const id = parseInt(req.params.id as string);
+  const [rows] = await db.query('SELECT estado_pago FROM Gastos WHERE id_gasto = ?', [id]);
+  const g = (rows as any)[0];
+  if (!g) throw new Error('No encontrado');
+  if (g.estado_pago !== 'PENDIENTE') throw new Error('Solo se pueden eliminar gastos PENDIENTES');
+  await db.query('DELETE FROM Gastos WHERE id_gasto = ?', [id]);
+  res.json({ success: true });
+});
 apiRouter.post('/gastos/:id/pago', validateParams(gastoPaymentSchema), async (req: Request, res: Response) => {
   const result = await FinanceService.registrarPagoGasto(parseInt(req.params.id as string), req.body.abono);
   res.json(result);

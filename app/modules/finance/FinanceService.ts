@@ -222,12 +222,13 @@ class FinanceService {
     const detraccion_depositada = detraccion_pct > 0 ? 'NO' : 'NA';
 
     const [res] = await db.query(`
-      INSERT INTO Gastos (id_servicio, tipo_gasto, fecha, concepto, proveedor_nombre, nro_comprobante,
+      INSERT INTO Gastos (nro_oc, codigo_contador, id_servicio, tipo_gasto, fecha, concepto, proveedor_nombre, nro_comprobante,
         monto_base, aplica_igv, igv_base, total_base,
         detraccion_porcentaje, monto_detraccion, detraccion_depositada,
         estado, estado_pago)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'CONFIRMADO', 'PENDIENTE')
-    `, [data.id_servicio || null, data.tipo_gasto || 'OPERATIVO',
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'CONFIRMADO', 'PENDIENTE')
+    `, [data.nro_oc || null, data.codigo_contador || null,
+        data.id_servicio || null, data.tipo_gasto || 'OPERATIVO',
         data.fecha, data.concepto, data.proveedor_nombre,
         data.nro_comprobante || 'S/N', monto_base, aplica_igv, igv_base, total_base,
         detraccion_pct, monto_detraccion, detraccion_depositada]);

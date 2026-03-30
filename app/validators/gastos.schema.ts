@@ -15,6 +15,8 @@ const fechaField = z.preprocess((arg) => {
 
 export const gastoCreateSchema = z.object({
   body: z.object({
+    nro_oc: z.string().optional(),
+    codigo_contador: z.string().optional(),
     concepto: z.string().min(3, 'Concepto Obligatorio'),
     proveedor_nombre: z.string().min(2, 'Acreedor Obligatorio'),
     fecha: fechaField,

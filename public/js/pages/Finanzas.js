@@ -17,6 +17,28 @@ export const Finanzas = async () => {
 
   const formatCurrency = (val) => new Intl.NumberFormat('es-PE', { style: 'currency', currency: 'PEN' }).format(val);
 
+  const gastosRows = gastos.map(g => {
+    const pendiente = Number(g.total_base) - Number(g.pagado || 0);
+    return `
+    <tr>
+      <td>${g.nro_oc || '---'}<br><span style="font-size:10px;color:var(--text-secondary)">${g.codigo_contador || ''}</span></td>
+      <td>${g.fecha ? g.fecha.split('T')[0] : '---'}</td>
+      <td><strong>${g.concepto}</strong><br><span style="font-size:11px;color:var(--text-secondary)">${g.proveedor_nombre || '---'}</span></td>
+      <td>${g.servicio_codigo ? '<span style="background:var(--primary-color);color:white;padding:2px 8px;border-radius:10px;font-size:11px">' + g.servicio_codigo + '</span>' : '<span style="color:var(--text-secondary)">Operativo</span>'}</td>
+      <td style="text-align:right">${formatCurrency(Number(g.total_base))}</td>
+      <td style="text-align:right;color:var(--success)">${formatCurrency(Number(g.pagado || 0))}</td>
+      <td style="text-align:center"><span class="status-badge status-${(g.estado_pago||'pendiente').toLowerCase()}">${g.estado_pago}</span></td>
+      <td>
+        <div style="display:flex;flex-direction:column;gap:4px">
+          ${g.estado_pago !== 'PAGADO' && g.estado !== 'ANULADO' ? '<button class="action-btn" onclick="window.modalPagarGasto(' + g.id_gasto + ',\'' + g.concepto + '\',' + pendiente + ')">Pagar</button>' : ''}
+          ${g.estado_pago === 'PENDIENTE' ? '<button class="action-btn" style="background:var(--info);color:white" onclick="window.editarGasto(' + g.id_gasto + ')">Editar</button>' : ''}
+          ${g.estado_pago === 'PENDIENTE' ? '<button class="action-btn" style="background:#ef4444;color:white" onclick="window.eliminarGasto(' + g.id_gasto + ')">Eliminar</button>' : ''}
+          ${g.estado !== 'ANULADO' && g.estado_pago !== 'PENDIENTE' ? '<button class="action-btn action-btn-anular" onclick="window.anularGasto(' + g.id_gasto + ',\'' + g.concepto + '\')">Anular</button>' : ''}
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+
   const cxpRows = cxp.map(c => `
     <tr class="${c.estado === 'ANULADO' ? 'row-anulada' : ''}">
       <td>${c.tipo || '---'}</td>
@@ -48,6 +70,8 @@ export const Finanzas = async () => {
        formGasto.onsubmit = async (e) => {
          e.preventDefault();
          const data = {
+             nro_oc: e.target.nro_oc.value || '',
+             codigo_contador: e.target.codigo_contador.value || '',
              tipo_gasto: e.target.tipo_gasto.value,
              id_servicio: e.target.id_servicio?.value ? parseInt(e.target.id_servicio.value) : null,
              concepto: e.target.concepto.value,
@@ -80,6 +104,72 @@ export const Finanzas = async () => {
              }
          }
      }
+
+     window.editarGasto = (id) => {
+         const g = gastos.find(x => x.id_gasto === id);
+         if (!g) return alert('No encontrado');
+         const overlay = document.createElement('div');
+         overlay.id = 'modal-editar-gasto';
+         overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:1000;display:flex;align-items:center;justify-content:center';
+         overlay.innerHTML = `
+           <div style="background:white;border-radius:12px;padding:30px;width:480px;max-height:90vh;overflow-y:auto">
+             <h3 style="margin:0 0 20px">Editar Gasto</h3>
+             <form id="form-editar-gasto" style="display:flex;flex-direction:column;gap:12px">
+               <div style="display:flex;gap:10px">
+                 <div style="flex:1"><label style="font-size:11px">N° OC</label>
+                   <input name="nro_oc" value="${g.nro_oc||''}" style="width:100%;padding:10px;border:1px solid #ddd;border-radius:6px"></div>
+                 <div style="flex:1"><label style="font-size:11px">Cód. Contador</label>
+                   <input name="codigo_contador" value="${g.codigo_contador||''}" style="width:100%;padding:10px;border:1px solid #ddd;border-radius:6px"></div>
+               </div>
+               <label style="font-size:11px">Proveedor</label>
+               <input name="proveedor_nombre" value="${g.proveedor_nombre||''}" required style="padding:10px;border:1px solid #ddd;border-radius:6px">
+               <label style="font-size:11px">Concepto</label>
+               <input name="concepto" value="${g.concepto||''}" required style="padding:10px;border:1px solid #ddd;border-radius:6px">
+               <div style="display:flex;gap:10px">
+                 <div style="flex:1"><label style="font-size:11px">Fecha</label>
+                   <input name="fecha" type="date" value="${g.fecha?g.fecha.split('T')[0]:''}" required style="width:100%;padding:10px;border:1px solid #ddd;border-radius:6px"></div>
+                 <div style="flex:1"><label style="font-size:11px">Monto Base</label>
+                   <input name="monto_base" type="number" step="0.01" value="${g.monto_base||0}" required style="width:100%;padding:10px;border:1px solid #ddd;border-radius:6px"></div>
+               </div>
+               <label style="display:flex;gap:8px;align-items:center;font-size:12px"><input type="checkbox" name="aplica_igv" ${g.aplica_igv?'checked':''}> + IGV 18%</label>
+               <div style="display:flex;gap:10px;margin-top:10px">
+                 <button type="submit" style="flex:1;padding:12px;border:none;background:var(--primary-color);color:white;border-radius:6px;cursor:pointer;font-weight:bold">Guardar</button>
+                 <button type="button" onclick="document.getElementById('modal-editar-gasto').remove()" style="flex:1;padding:12px;border:1px solid #ddd;background:white;border-radius:6px;cursor:pointer">Cancelar</button>
+               </div>
+             </form>
+           </div>`;
+         document.body.appendChild(overlay);
+         overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+         document.getElementById('form-editar-gasto').onsubmit = async (e) => {
+             e.preventDefault();
+             const f = e.target;
+             try {
+                 const res = await fetch('/api/gastos/' + id, {
+                     method: 'PUT', headers: {'Content-Type': 'application/json'},
+                     body: JSON.stringify({
+                         nro_oc: f.nro_oc.value, codigo_contador: f.codigo_contador.value,
+                         proveedor_nombre: f.proveedor_nombre.value, concepto: f.concepto.value,
+                         fecha: f.fecha.value, monto_base: Number(f.monto_base.value),
+                         aplica_igv: f.aplica_igv.checked
+                     })
+                 });
+                 if (!res.ok) throw await res.json();
+                 alert('Gasto actualizado');
+                 window.location.reload();
+             } catch(err) { alert('Error: ' + JSON.stringify(err)); }
+         };
+     };
+
+     window.eliminarGasto = async (id) => {
+         if (confirm('¿Eliminar este gasto permanentemente?')) {
+             try {
+                 const res = await fetch('/api/gastos/' + id, { method: 'DELETE' });
+                 if (!res.ok) throw await res.json();
+                 alert('Eliminado');
+                 window.location.reload();
+             } catch(e) { alert('Error: ' + JSON.stringify(e.detalles||e.error||e)); }
+         }
+     };
 
      window.anularGasto = async (id, nombre) => {
         if(confirm(`¡ADVERTENCIA!\\n¿Seguro que deseas ANULAR el gasto: ${nombre}?\\n\\nEsta acción reversará la obligación y anulará cualquier pago financiero asociado.`)) {
@@ -122,6 +212,16 @@ export const Finanzas = async () => {
                     </select>
                  </div>
 
+                 <div style="display:flex; gap:10px">
+                    <div style="flex:1">
+                       <label style="font-size:11px; color:var(--text-secondary)">N° Orden de Compra</label>
+                       <input name="nro_oc" placeholder="Ej: OC 159" style="width:100%; padding:10px; border-radius:var(--radius-sm); border:1px solid var(--border-light)">
+                    </div>
+                    <div style="flex:1">
+                       <label style="font-size:11px; color:var(--text-secondary)">Código Contador</label>
+                       <input name="codigo_contador" placeholder="Código asignado" style="width:100%; padding:10px; border-radius:var(--radius-sm); border:1px solid var(--border-light)">
+                    </div>
+                 </div>
                  <input name="proveedor_nombre" placeholder="Proveedor / Entidad" required style="padding:10px; border-radius:var(--radius-sm); border:1px solid var(--border-light)">
                  <input name="concepto" placeholder="Concepto (Ej: Alquiler, Soldadura)" required style="padding:10px; border-radius:var(--radius-sm); border:1px solid var(--border-light)">
 
@@ -178,6 +278,18 @@ export const Finanzas = async () => {
            </tbody>
          </table>
        </div>
+    </div>
+
+    <h2 style="font-size:16px; margin:35px 0 15px; text-transform:uppercase; letter-spacing:1px; color:var(--text-primary)">Historial de Gastos</h2>
+    <div class="table-container" style="overflow-x:auto">
+      <table>
+        <thead><tr>
+          <th>OC / Cód</th><th>Fecha</th><th>Concepto / Proveedor</th><th>Servicio</th>
+          <th style="text-align:right">Total</th><th style="text-align:right">Pagado</th>
+          <th>Estado</th><th>Acciones</th>
+        </tr></thead>
+        <tbody>${gastosRows || '<tr><td colspan="8" style="text-align:center">Sin gastos</td></tr>'}</tbody>
+      </table>
     </div>
   `;
 };
