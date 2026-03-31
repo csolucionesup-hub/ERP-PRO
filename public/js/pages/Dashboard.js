@@ -2,11 +2,14 @@ import { api } from '../services/api.js';
 
 export const Dashboard = async () => {
   try {
-    const [dataMaster, dataOperativa, dataBN, dataIGV] = await Promise.all([
+    const [dataMaster, dataOperativa, dataBN, dataIGV, prestamosTotales, prestamosTomados, prestamosOtorgados] = await Promise.all([
       api.finances.getDashboard(),
       api.finances.getResumenOperativo(),
       api.tributario.getCuentaBN(),
-      api.tributario.getControlIGV()
+      api.tributario.getControlIGV(),
+      api.prestamos.getTotales(),
+      api.prestamos.getTomados(),
+      api.prestamos.getOtorgados()
     ]);
 
     const formatCurrency = (val) => new Intl.NumberFormat('es-PE', { style: 'currency', currency: 'PEN' }).format(val);
@@ -87,6 +90,44 @@ export const Dashboard = async () => {
            title: 'STOCK',
            text: `${i.nombre} al límite: <strong>${i.stock_actual} unid</strong>`
         });
+      });
+    }
+
+    // Alertas préstamos tomados vencidos
+    if (prestamosTomados && prestamosTomados.length > 0) {
+      prestamosTomados.forEach(p => {
+        if (p.estado === 'PENDIENTE' || p.estado === 'PARCIAL') {
+          const dias = Number(p.dias_transcurridos) || 0;
+          if (p.fecha_vencimiento && new Date(p.fecha_vencimiento) < new Date()) {
+            criticos.push({
+              icon: '[$]',
+              title: 'PRÉSTAMO VENCIDO',
+              text: 'Debo a <strong>' + p.acreedor + '</strong>: ' + formatCurrency(Number(p.saldo)) + ' (' + dias + ' días)'
+            });
+          } else if (dias > 60) {
+            advertencias.push({
+              icon: '[$]',
+              title: 'DEUDA ANTIGUA',
+              text: 'Debo a <strong>' + p.acreedor + '</strong>: ' + formatCurrency(Number(p.saldo)) + ' (' + dias + ' días)'
+            });
+          }
+        }
+      });
+    }
+
+    // Alertas préstamos otorgados sin cobrar
+    if (prestamosOtorgados && prestamosOtorgados.length > 0) {
+      prestamosOtorgados.forEach(p => {
+        if (p.estado === 'PENDIENTE' || p.estado === 'PARCIAL') {
+          const dias = Number(p.dias_transcurridos) || 0;
+          if (dias > 30) {
+            advertencias.push({
+              icon: '[!]',
+              title: 'DEUDOR MOROSO',
+              text: '<strong>' + p.deudor + '</strong> me debe ' + formatCurrency(Number(p.saldo)) + ' (' + dias + ' días)'
+            });
+          }
+        }
       });
     }
 
@@ -210,8 +251,9 @@ export const Dashboard = async () => {
                <p style="font-size:13px; color:var(--text-secondary); margin-top:5px;">Obligaciones y pasivos activos pendientes de liquidar.</p>
             </div>
             <div class="card" style="background-color: var(--bg-sidebar); border:none; margin-top: 5px;">
-               <h3 class="card-title" style="color:rgba(255,255,255,0.7)">Liquidez Proyectada (Caja Real + CxC - CxP)</h3>
-               <h2 class="card-value" style="color:var(--success)">${formatCurrency(dataMaster.indicadores.liquidez_proyectada)}</h2>
+               <h3 class="card-title" style="color:rgba(255,255,255,0.7)">Liquidez Proyectada (Caja + CxC + Me Deben − CxP − Debo)</h3>
+               <h2 class="card-value" style="color:${dataMaster.indicadores.liquidez_proyectada >= 0 ? 'var(--success)' : 'var(--danger)'}">${formatCurrency(dataMaster.indicadores.liquidez_proyectada)}</h2>
+               <p style="font-size:11px; color:rgba(255,255,255,0.5); margin-top:4px">Incluye préstamos tomados (−${formatCurrency(dataMaster.indicadores.prestamos_debo)}) y otorgados (+${formatCurrency(dataMaster.indicadores.prestamos_me_deben)})</p>
             </div>
           </div>
         </div>
@@ -235,6 +277,20 @@ export const Dashboard = async () => {
             ${formatCurrency(dataIGV.reduce((s,m)=>s+m.igv_neto,0))}
           </h2>
           <p style="font-size:12px; color:var(--text-secondary)">Positivo = debes pagar al fisco</p>
+        </div>
+      </div>
+
+      <h2 style="font-size:16px; margin: 35px 0 15px; color:var(--text-primary); text-transform:uppercase; letter-spacing:1px;">F. Préstamos y Obligaciones</h2>
+      <div style="display:grid; grid-template-columns: repeat(2, 1fr); gap:20px; margin-bottom:20px">
+        <div class="card" style="border-left:4px solid var(--danger)">
+          <h3 class="card-title">Total que DEBO (Préstamos Tomados)</h3>
+          <h2 class="card-value" style="color:var(--danger)">${formatCurrency(prestamosTotales.total_debo)}</h2>
+          <span style="font-size:12px; color:var(--text-secondary)">${prestamosTomados.filter(p => p.estado !== 'PAGADO' && p.estado !== 'ANULADO').length} préstamo(s) activos</span>
+        </div>
+        <div class="card" style="border-left:4px solid var(--primary-color)">
+          <h3 class="card-title">Total que ME DEBEN (Préstamos Otorgados)</h3>
+          <h2 class="card-value" style="color:var(--primary-color)">${formatCurrency(prestamosTotales.total_me_deben)}</h2>
+          <span style="font-size:12px; color:var(--text-secondary)">${prestamosOtorgados.filter(p => p.estado !== 'COBRADO' && p.estado !== 'ANULADO').length} deudor(es) activos</span>
         </div>
       </div>
 

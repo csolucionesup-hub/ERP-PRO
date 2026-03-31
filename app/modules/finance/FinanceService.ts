@@ -112,6 +112,12 @@ class FinanceService {
     `);
     const cxpGlobal = Number((rowsCxP_Compras as any)[0]?.deuda_prov || 0) + Number((rowsCxP_Gastos as any)[0]?.deuda_gastos || 0);
 
+    // 3. Préstamos
+    const [ptRows] = await db.query("SELECT IFNULL(SUM(saldo),0) as total FROM PrestamosTomados WHERE estado IN ('PENDIENTE','PARCIAL')");
+    const [poRows] = await db.query("SELECT IFNULL(SUM(saldo),0) as total FROM PrestamosOtorgados WHERE estado IN ('PENDIENTE','PARCIAL')");
+    const prestamos_debo = Number((ptRows as any)[0].total);
+    const prestamos_me_deben = Number((poRows as any)[0].total);
+
     return {
       caja: {
         ingresos: Number(caja.ingresos_caja || 0),
@@ -123,7 +129,9 @@ class FinanceService {
       indicadores: {
         por_cobrar: cxcGlobal,
         por_pagar: cxpGlobal,
-        liquidez_proyectada: saldo_actual + cxcGlobal - cxpGlobal
+        prestamos_debo,
+        prestamos_me_deben,
+        liquidez_proyectada: saldo_actual + cxcGlobal + prestamos_me_deben - cxpGlobal - prestamos_debo
       }
     };
   }
