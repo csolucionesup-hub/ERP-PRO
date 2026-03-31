@@ -6,8 +6,8 @@ class InventoryService {
    */
   async getInventario() {
     const query = `
-      SELECT 
-        id_item, sku, nombre, unidad, stock_actual, stock_minimo,
+      SELECT
+        id_item, sku, categoria, nombre, unidad, stock_actual, stock_minimo,
         costo_promedio_unitario AS costo_promedio,
         (stock_actual * costo_promedio_unitario) as valorizado
       FROM Inventario
@@ -18,13 +18,33 @@ class InventoryService {
   }
 
   /**
-   * Crea un producto/insumo logístico
+   * Crea un producto/insumo logístico con SKU autogenerado por categoría
    */
-  async createItem(data: { sku: string; nombre: string; unidad: string; stock_minimo?: number }) {
+  async createItem(data: { nombre: string; categoria: string; unidad: string; stock_minimo?: number }) {
+     const prefijos: Record<string, string> = {
+       Material: 'MAT', Consumible: 'CON', Herramienta: 'HER', Equipo: 'EQU', EPP: 'EPP'
+     };
+     const prefijo = prefijos[data.categoria] || 'MAT';
+
+     // Obtener el último SKU de esa categoría
+     const [rows] = await db.query(
+       `SELECT sku FROM Inventario WHERE sku LIKE ? ORDER BY id_item DESC LIMIT 1`,
+       [prefijo + '-%']
+     );
+     const ultimo = (rows as any[])[0];
+     let siguiente = 1;
+     if (ultimo) {
+       const partes = ultimo.sku.split('-');
+       siguiente = (parseInt(partes[1], 10) || 0) + 1;
+     }
+     const sku = `${prefijo}-${String(siguiente).padStart(3, '0')}`;
+
      const min_stock = data.stock_minimo !== undefined ? data.stock_minimo : 10.00;
-     const query = 'INSERT INTO Inventario (sku, nombre, unidad, stock_minimo) VALUES (?, ?, ?, ?)';
-     const [result] = await db.query(query, [data.sku, data.nombre, data.unidad || 'UNIDAD', min_stock]);
-     return { id_item: (result as any).insertId, ...data, stock_actual: 0, stock_minimo: min_stock };
+     const [result] = await db.query(
+       'INSERT INTO Inventario (sku, categoria, nombre, unidad, stock_minimo) VALUES (?, ?, ?, ?, ?)',
+       [sku, data.categoria, data.nombre, data.unidad || 'UND', min_stock]
+     );
+     return { id_item: (result as any).insertId, sku, categoria: data.categoria, nombre: data.nombre, unidad: data.unidad, stock_actual: 0, stock_minimo: min_stock };
   }
 
   /**

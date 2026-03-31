@@ -56,6 +56,7 @@ CREATE TABLE CostosServicio (
 CREATE TABLE Inventario (
     id_item INT PRIMARY KEY AUTO_INCREMENT,
     sku VARCHAR(50) UNIQUE NOT NULL,
+    categoria ENUM('Material','Consumible','Herramienta','Equipo','EPP') DEFAULT 'Material',
     nombre VARCHAR(150) NOT NULL,
     unidad VARCHAR(50) DEFAULT 'UNIDAD',
     stock_actual DECIMAL(10,2) DEFAULT 0.00,
@@ -79,16 +80,18 @@ CREATE TABLE Proveedores (
 
 CREATE TABLE Compras (
     id_compra INT PRIMARY KEY AUTO_INCREMENT,
+    nro_oc VARCHAR(50) NOT NULL DEFAULT '',
     id_proveedor INT NOT NULL,
     fecha DATE NOT NULL,
     nro_comprobante VARCHAR(50) NOT NULL,
-    
+
     moneda VARCHAR(3) DEFAULT 'PEN',
     tipo_cambio DECIMAL(10,4) DEFAULT 1.0000,
     monto_base DECIMAL(12,2) NOT NULL,
     igv_base DECIMAL(12,2) NOT NULL,
     total_base DECIMAL(12,2) NOT NULL,
-    
+    aplica_igv BOOLEAN DEFAULT TRUE,
+
     estado ENUM('BORRADOR', 'CONFIRMADA', 'ANULADA') DEFAULT 'CONFIRMADA',
     estado_pago ENUM('PENDIENTE', 'PARCIAL', 'PAGADO', 'ANULADO') DEFAULT 'PENDIENTE',
     tipo_ultima_accion VARCHAR(50) DEFAULT 'CREACION',

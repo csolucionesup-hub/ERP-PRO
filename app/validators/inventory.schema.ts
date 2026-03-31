@@ -2,10 +2,10 @@ import { z } from 'zod';
 
 export const inventoryCreateSchema = z.object({
   body: z.object({
-    sku: z.string().min(2, 'SKU muy corto'),
     nombre: z.string().min(3, 'Nombre Obligatorio'),
-    unidad: z.string().default('UNIDAD'),
-    stock_minimo: z.number().min(1, 'El Stock de Alerta no puede ser Cero/Negativo').optional()
+    categoria: z.enum(['Material', 'Consumible', 'Herramienta', 'Equipo', 'EPP']).default('Material'),
+    unidad: z.string().default('UND'),
+    stock_minimo: z.number().min(0).optional()
   })
 });
 

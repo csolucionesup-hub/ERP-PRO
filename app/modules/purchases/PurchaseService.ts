@@ -6,12 +6,14 @@ class PurchaseService {
    */
   async getCompras() {
     const query = `
-      SELECT 
+      SELECT
         c.id_compra,
+        c.nro_oc,
         c.fecha,
         p.razon_social AS proveedor_nombre,
         c.nro_comprobante,
         c.estado_pago,
+        c.aplica_igv,
         c.total_base
       FROM Compras c
       INNER JOIN Proveedores p ON p.id_proveedor = c.id_proveedor
@@ -30,13 +32,18 @@ class PurchaseService {
     await conn.beginTransaction();
 
     try {
+      // Calcular IGV según aplica_igv
+      const aplicaIgv = data.aplica_igv !== false;
+      const igvBase = aplicaIgv ? data.igv_base : 0;
+      const totalBase = data.monto_base + igvBase;
+
       // 1. Cabecera Compras
       const [compraRes] = await conn.query(`
-        INSERT INTO Compras (id_proveedor, fecha, nro_comprobante, moneda, tipo_cambio, monto_base, igv_base, total_base, estado_pago)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO Compras (nro_oc, id_proveedor, fecha, nro_comprobante, moneda, tipo_cambio, monto_base, igv_base, total_base, aplica_igv, estado_pago)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `, [
-        data.id_proveedor, data.fecha, data.nro_comprobante, data.moneda, 
-        data.tipo_cambio, data.monto_base, data.igv_base, data.total_base, data.estado_pago
+        data.nro_oc, data.id_proveedor, data.fecha, data.nro_comprobante, data.moneda,
+        data.tipo_cambio, data.monto_base, igvBase, totalBase, aplicaIgv, data.estado_pago
       ]);
       const idCompra = (compraRes as any).insertId;
 
@@ -53,14 +60,14 @@ class PurchaseService {
       // Asumiendo la cuenta ID = 1 por defecto logístico
       await conn.query(`
         INSERT INTO Transacciones (
-          id_cuenta, referencia_tipo, referencia_id, tipo_movimiento, 
-          moneda, tipo_cambio, aplica_igv, monto_original, igv_original, total_original, 
+          id_cuenta, referencia_tipo, referencia_id, tipo_movimiento,
+          moneda, tipo_cambio, aplica_igv, monto_original, igv_original, total_original,
           monto_base, igv_base, total_base, fecha, descripcion
         ) VALUES (?, 'COMPRA', ?, 'EGRESO', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `, [
-        1, idCompra, data.moneda, data.tipo_cambio, data.igv_base > 0,
-        data.monto_base, data.igv_base, data.total_base, // Original
-        data.monto_base * data.tipo_cambio, data.igv_base * data.tipo_cambio, data.total_base * data.tipo_cambio, // Conversión PEN (Asumiendo monto base * tc = PEN base)
+        1, idCompra, data.moneda, data.tipo_cambio, aplicaIgv,
+        data.monto_base, igvBase, totalBase,
+        data.monto_base * data.tipo_cambio, igvBase * data.tipo_cambio, totalBase * data.tipo_cambio,
         data.fecha, 'Pago por Factura Compra ' + data.nro_comprobante
       ]);
 

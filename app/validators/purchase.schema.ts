@@ -15,11 +15,13 @@ const fechaField = z.preprocess((arg) => {
 
 export const purchaseCreateSchema = z.object({
   body: z.object({
+    nro_oc: z.string().min(1, 'N° OC obligatorio'),
     id_proveedor: z.number().int().positive(),
     fecha: fechaField,
     nro_comprobante: z.string().min(3, 'Comprobante requerido'),
     moneda: z.enum(['PEN', 'USD']),
     tipo_cambio: z.number().positive().default(1),
+    aplica_igv: z.boolean().default(true),
     monto_base: z.number().positive(),
     igv_base: z.number().nonnegative(),
     total_base: z.number().positive(),
