@@ -4,7 +4,18 @@ export const inventoryCreateSchema = z.object({
   body: z.object({
     nombre: z.string().min(3, 'Nombre Obligatorio'),
     categoria: z.enum(['Material', 'Consumible', 'Herramienta', 'Equipo', 'EPP']).default('Material'),
+    tipo_item: z.enum(['MATERIAL', 'CONSUMIBLE', 'HERRAMIENTA', 'EQUIPO']).default('MATERIAL'),
     unidad: z.string().default('UND'),
+    stock_minimo: z.number().min(0).optional()
+  })
+});
+
+export const inventoryUpdateSchema = z.object({
+  body: z.object({
+    nombre: z.string().min(3).optional(),
+    categoria: z.enum(['Material', 'Consumible', 'Herramienta', 'Equipo', 'EPP']).optional(),
+    tipo_item: z.enum(['MATERIAL', 'CONSUMIBLE', 'HERRAMIENTA', 'EQUIPO']).optional(),
+    unidad: z.string().optional(),
     stock_minimo: z.number().min(0).optional()
   })
 });

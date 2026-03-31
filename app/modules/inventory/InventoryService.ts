@@ -7,7 +7,7 @@ class InventoryService {
   async getInventario() {
     const query = `
       SELECT
-        id_item, sku, categoria, nombre, unidad, stock_actual, stock_minimo,
+        id_item, sku, categoria, tipo_item, nombre, unidad, stock_actual, stock_minimo,
         costo_promedio_unitario AS costo_promedio,
         (stock_actual * costo_promedio_unitario) as valorizado
       FROM Inventario
@@ -20,7 +20,7 @@ class InventoryService {
   /**
    * Crea un producto/insumo logístico con SKU autogenerado por categoría
    */
-  async createItem(data: { nombre: string; categoria: string; unidad: string; stock_minimo?: number }) {
+  async createItem(data: { nombre: string; categoria: string; tipo_item?: string; unidad: string; stock_minimo?: number }) {
      const prefijos: Record<string, string> = {
        Material: 'MAT', Consumible: 'CON', Herramienta: 'HER', Equipo: 'EQU', EPP: 'EPP'
      };
@@ -40,11 +40,28 @@ class InventoryService {
      const sku = `${prefijo}-${String(siguiente).padStart(3, '0')}`;
 
      const min_stock = data.stock_minimo !== undefined ? data.stock_minimo : 10.00;
+     const tipo_item = data.tipo_item || 'MATERIAL';
      const [result] = await db.query(
-       'INSERT INTO Inventario (sku, categoria, nombre, unidad, stock_minimo) VALUES (?, ?, ?, ?, ?)',
-       [sku, data.categoria, data.nombre, data.unidad || 'UND', min_stock]
+       'INSERT INTO Inventario (sku, categoria, tipo_item, nombre, unidad, stock_minimo) VALUES (?, ?, ?, ?, ?, ?)',
+       [sku, data.categoria, tipo_item, data.nombre, data.unidad || 'UND', min_stock]
      );
-     return { id_item: (result as any).insertId, sku, categoria: data.categoria, nombre: data.nombre, unidad: data.unidad, stock_actual: 0, stock_minimo: min_stock };
+     return { id_item: (result as any).insertId, sku, categoria: data.categoria, tipo_item, nombre: data.nombre, unidad: data.unidad, stock_actual: 0, stock_minimo: min_stock };
+  }
+
+  async updateItem(id: number, data: { nombre?: string; categoria?: string; tipo_item?: string; unidad?: string; stock_minimo?: number }) {
+    const fields: string[] = [];
+    const values: any[] = [];
+
+    if (data.nombre !== undefined)      { fields.push('nombre = ?');      values.push(data.nombre); }
+    if (data.categoria !== undefined)   { fields.push('categoria = ?');   values.push(data.categoria); }
+    if (data.tipo_item !== undefined)   { fields.push('tipo_item = ?');   values.push(data.tipo_item); }
+    if (data.unidad !== undefined)      { fields.push('unidad = ?');      values.push(data.unidad); }
+    if (data.stock_minimo !== undefined){ fields.push('stock_minimo = ?'); values.push(data.stock_minimo); }
+
+    if (fields.length === 0) throw new Error('Sin campos para actualizar');
+    values.push(id);
+    await db.query(`UPDATE Inventario SET ${fields.join(', ')} WHERE id_item = ?`, values);
+    return { success: true };
   }
 
   /**

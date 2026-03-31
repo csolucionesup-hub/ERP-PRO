@@ -8,6 +8,13 @@ const CATEGORIA_BADGE = {
   EPP:         'background:#22c55e;color:white',
 };
 
+const TIPO_BADGE = {
+  MATERIAL:    'background:#1d4ed8;color:white',
+  CONSUMIBLE:  'background:#ea580c;color:white',
+  HERRAMIENTA: 'background:#4b5563;color:white',
+  EQUIPO:      'background:#7c3aed;color:white',
+};
+
 export const Inventario = async () => {
   let inventario = [], servicios = [];
   try {
@@ -25,18 +32,24 @@ export const Inventario = async () => {
 
   const buildRows = (lista) => lista.map(i => {
     const badgeStyle = CATEGORIA_BADGE[i.categoria] || 'background:#6b7280;color:white';
+    const tipoStyle  = TIPO_BADGE[i.tipo_item] || 'background:#4b5563;color:white';
     return `
     <tr data-cat="${i.categoria || ''}">
       <td style="font-size:11px; color:var(--text-secondary)">${i.sku}</td>
-      <td><strong>${i.nombre}</strong><br><span style="font-size:10px;padding:2px 6px;border-radius:10px;${badgeStyle}">${i.categoria || 'Material'}</span></td>
+      <td>
+        <strong>${i.nombre}</strong><br>
+        <span style="font-size:10px;padding:2px 6px;border-radius:10px;${badgeStyle};margin-right:4px">${i.categoria || 'Material'}</span>
+        <span style="font-size:10px;padding:2px 6px;border-radius:10px;${tipoStyle}">${i.tipo_item || 'MATERIAL'}</span>
+      </td>
       <td><span class="status-badge status-pendiente">${i.unidad}</span></td>
-      <td style="text-align:right" class="${i.stock_actual <= i.stock_minimo ? 'color-error' : ''}">
+      <td style="text-align:right" class="${Number(i.stock_actual) <= Number(i.stock_minimo) ? 'color-error' : ''}">
         <strong>${i.stock_actual}</strong>
         <br><span style="font-size:10px; color:var(--text-secondary)">Mín: ${i.stock_minimo}</span>
       </td>
       <td style="text-align:right">${formatCurrency(i.costo_promedio || 0)}</td>
       <td style="text-align:right">${formatCurrency(i.valorizado || 0)}</td>
-      <td>
+      <td style="display:flex;gap:4px;flex-wrap:wrap">
+         <button class="action-btn" onclick="window.editarItem(${i.id_item})">Editar</button>
          <button class="action-btn" onclick="window.verKardex(${i.id_item}, '${i.nombre}')">Kárdex</button>
       </td>
     </tr>
@@ -45,7 +58,54 @@ export const Inventario = async () => {
   const rows = buildRows(inventario);
 
   const servicesOptions = servicios.filter(s => s.estado !== 'COBRADO').map(s => `<option value="${s.id_servicio}">${s.codigo} - ${s.nombre}</option>`).join('');
-  const itemOptions = inventario.filter(i => i.stock_actual > 0).map(i => `<option value="${i.id_item}">${i.nombre} (${i.stock_actual} disp)</option>`).join('');
+  const itemOptions = inventario.filter(i => Number(i.stock_actual) > 0).map(i => `<option value="${i.id_item}">${i.nombre} (${i.stock_actual} disp)</option>`).join('');
+
+  // Modal de edición (inline, oculto por defecto)
+  const editModal = `
+    <div id="modal-editar" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:1000; align-items:center; justify-content:center;">
+      <div class="card" style="width:380px; max-width:95vw; position:relative">
+        <button onclick="document.getElementById('modal-editar').style.display='none'"
+          style="position:absolute;top:10px;right:12px;border:none;background:none;font-size:18px;cursor:pointer;color:var(--text-secondary)">✕</button>
+        <h3 style="margin-bottom:15px; font-weight:600; font-size:15px">Editar Producto</h3>
+        <form id="form-editar" style="display:flex; flex-direction:column; gap:10px;">
+          <input type="hidden" name="id_item">
+          <label style="font-size:12px;color:var(--text-secondary)">Nombre</label>
+          <input name="nombre" placeholder="Nombre Comercial" required style="padding:10px; border-radius:var(--radius-sm); border:1px solid var(--border-light)">
+          <label style="font-size:12px;color:var(--text-secondary)">Categoría</label>
+          <select name="categoria" required style="padding:10px; border-radius:var(--radius-sm); border:1px solid var(--border-light)">
+            <option value="Material">Material</option>
+            <option value="Consumible">Consumible</option>
+            <option value="Herramienta">Herramienta</option>
+            <option value="Equipo">Equipo</option>
+            <option value="EPP">EPP</option>
+          </select>
+          <label style="font-size:12px;color:var(--text-secondary)">Tipo de Ítem</label>
+          <select name="tipo_item" required style="padding:10px; border-radius:var(--radius-sm); border:1px solid var(--border-light)">
+            <option value="MATERIAL">MATERIAL</option>
+            <option value="CONSUMIBLE">CONSUMIBLE</option>
+            <option value="HERRAMIENTA">HERRAMIENTA</option>
+            <option value="EQUIPO">EQUIPO</option>
+          </select>
+          <label style="font-size:12px;color:var(--text-secondary)">Unidad</label>
+          <select name="unidad" required style="padding:10px; border-radius:var(--radius-sm); border:1px solid var(--border-light)">
+            <option value="UND">UND</option>
+            <option value="KG">KG</option>
+            <option value="M">M</option>
+            <option value="M2">M2</option>
+            <option value="M3">M3</option>
+            <option value="PAR">PAR</option>
+            <option value="LOTE">LOTE</option>
+            <option value="HRA">HRA</option>
+            <option value="DIA">DIA</option>
+            <option value="SERV">SERV</option>
+          </select>
+          <label style="font-size:12px;color:var(--text-secondary)">Stock Mínimo</label>
+          <input name="stock_minimo" type="number" step="0.01" placeholder="Stock Mínimo" required style="padding:10px; border-radius:var(--radius-sm); border:1px solid var(--border-light)">
+          <button type="submit" style="padding:10px; border:none; background:var(--bg-sidebar); border-radius:var(--radius-sm); cursor:pointer; font-weight:bold; color:black">Guardar Cambios</button>
+        </form>
+      </div>
+    </div>
+  `;
 
   setTimeout(() => {
      // Filtro por categoría
@@ -69,6 +129,7 @@ export const Inventario = async () => {
          const data = {
              nombre: e.target.nombre.value,
              categoria: e.target.categoria.value,
+             tipo_item: e.target.tipo_item.value,
              unidad: e.target.unidad.value,
              stock_minimo: Number(e.target.stock_minimo.value) || 10
          };
@@ -104,6 +165,43 @@ export const Inventario = async () => {
        };
      }
 
+     // Form Editar
+     const formEditar = document.getElementById('form-editar');
+     if(formEditar) {
+       formEditar.onsubmit = async (e) => {
+         e.preventDefault();
+         const id = Number(e.target.id_item.value);
+         const data = {
+           nombre: e.target.nombre.value,
+           categoria: e.target.categoria.value,
+           tipo_item: e.target.tipo_item.value,
+           unidad: e.target.unidad.value,
+           stock_minimo: Number(e.target.stock_minimo.value)
+         };
+         try {
+           await api.inventory.updateInventarioItem(id, data);
+           document.getElementById('modal-editar').style.display = 'none';
+           window.location.reload();
+         } catch(err) {
+           alert('Error al guardar: ' + JSON.stringify(err.detalles || err.error || err));
+         }
+       };
+     }
+
+     window.editarItem = (id) => {
+       const inv = window.__inventarioData__ || [];
+       const it = inv.find(x => x.id_item == id);
+       if (!it) { alert('Item no encontrado'); return; }
+       const form = document.getElementById('form-editar');
+       form.id_item.value = it.id_item;
+       form.nombre.value = it.nombre;
+       form.categoria.value = it.categoria;
+       form.tipo_item.value = it.tipo_item || 'MATERIAL';
+       form.unidad.value = it.unidad;
+       form.stock_minimo.value = it.stock_minimo;
+       document.getElementById('modal-editar').style.display = 'flex';
+     };
+
      window.verKardex = async (id, name) => {
          try {
             const logs = await api.inventory.getKardex(id);
@@ -119,9 +217,13 @@ export const Inventario = async () => {
      }
   }, 100);
 
+  // Exponer datos de inventario para el modal de edición
+  window.__inventarioData__ = inventario;
+
   const btnStyle = 'padding:6px 12px; border:1px solid var(--border-light); border-radius:4px; cursor:pointer; font-size:12px; background:var(--bg-app)';
 
   return `
+    ${editModal}
     <header class="header">
       <div>
          <h1>Control de Almacén (Valorizado Ponderado)</h1>
@@ -146,12 +248,12 @@ export const Inventario = async () => {
            <thead>
              <tr>
                <th>SKU</th>
-               <th>Insumo / Categoría</th>
+               <th>Insumo / Tipo</th>
                <th>Unidad</th>
                <th style="text-align:right">Stock Vigente</th>
                <th style="text-align:right">Costo Und (Promedio)</th>
                <th style="text-align:right">Valoración Patrimonio</th>
-               <th>Tracking</th>
+               <th>Acciones</th>
              </tr>
            </thead>
            <tbody id="tbody-inv">
@@ -171,6 +273,12 @@ export const Inventario = async () => {
                     <option value="Herramienta">Herramienta</option>
                     <option value="Equipo">Equipo</option>
                     <option value="EPP">EPP</option>
+                 </select>
+                 <select name="tipo_item" required style="padding:10px; border-radius:var(--radius-sm); border:1px solid var(--border-light)">
+                    <option value="MATERIAL">MATERIAL</option>
+                    <option value="CONSUMIBLE">CONSUMIBLE</option>
+                    <option value="HERRAMIENTA">HERRAMIENTA</option>
+                    <option value="EQUIPO">EQUIPO</option>
                  </select>
                  <input name="nombre" placeholder="Nombre Comercial" required style="padding:10px; border-radius:var(--radius-sm); border:1px solid var(--border-light)">
                  <select name="unidad" required style="padding:10px; border-radius:var(--radius-sm); border:1px solid var(--border-light)">
@@ -202,7 +310,7 @@ export const Inventario = async () => {
                  </select>
                  <select name="id_item" required style="padding:10px; border-radius:var(--radius-sm); border:1px solid var(--border-light)">
                     <option value="">-- Material Utilizado --</option>
-                    ${itemOptions}
+                    ${itemOptions || '<option disabled>Sin stock disponible</option>'}
                  </select>
                  <input name="cantidad" type="number" step="0.01" placeholder="Volumen Retirado" required style="padding:10px; border-radius:var(--radius-sm); border:1px solid var(--border-light)">
                  <button type="submit" style="padding:12px; border:none; background:var(--danger); color:white; border-radius:var(--radius-sm); cursor:pointer; font-weight:bold; font-size:14px;">Mermar Material</button>

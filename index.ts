@@ -22,7 +22,7 @@ import { validateParams } from './app/validators/validateRequest';
 import { dashboardQuerySchema } from './app/validators/dashboard.schema';
 import { providerCreateSchema } from './app/validators/provider.schema';
 import { purchaseCreateSchema } from './app/validators/purchase.schema';
-import { inventoryCreateSchema, inventoryConsumeSchema } from './app/validators/inventory.schema';
+import { inventoryCreateSchema, inventoryConsumeSchema, inventoryUpdateSchema } from './app/validators/inventory.schema';
 import { serviceCreateSchema, servicePaymentSchema } from './app/validators/service.schema';
 import { gastoCreateSchema, gastoPaymentSchema } from './app/validators/gastos.schema';
 
@@ -177,6 +177,11 @@ apiRouter.get('/inventario', async (req: Request, res: Response) => {
 apiRouter.post('/inventario', validateParams(inventoryCreateSchema), async (req: Request, res: Response) => {
   const result = await InventoryService.createItem(req.body);
   res.status(201).json(result);
+});
+
+apiRouter.put('/inventario/:id', validateParams(inventoryUpdateSchema), async (req: Request, res: Response) => {
+  const result = await InventoryService.updateItem(parseInt(req.params.id as string), req.body);
+  res.json(result);
 });
 
 apiRouter.post('/inventario/consumo', validateParams(inventoryConsumeSchema), async (req: Request, res: Response) => {

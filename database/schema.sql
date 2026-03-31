@@ -57,6 +57,7 @@ CREATE TABLE Inventario (
     id_item INT PRIMARY KEY AUTO_INCREMENT,
     sku VARCHAR(50) UNIQUE NOT NULL,
     categoria ENUM('Material','Consumible','Herramienta','Equipo','EPP') DEFAULT 'Material',
+    tipo_item ENUM('MATERIAL','CONSUMIBLE','HERRAMIENTA','EQUIPO') DEFAULT 'MATERIAL',
     nombre VARCHAR(150) NOT NULL,
     unidad VARCHAR(50) DEFAULT 'UNIDAD',
     stock_actual DECIMAL(10,2) DEFAULT 0.00,

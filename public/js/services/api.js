@@ -224,6 +224,15 @@ export const api = {
        if (!res.ok) throw await res.json();
        return await res.json();
     },
+    async updateInventarioItem(id, data) {
+       const res = await fetch('/api/inventario/' + id, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data)
+       });
+       if (!res.ok) throw await res.json();
+       return await res.json();
+    },
     async consumirInventario(data) {
        const res = await fetch('/api/inventario/consumo', {
           method: 'POST',
