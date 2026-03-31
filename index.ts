@@ -13,6 +13,7 @@ import CatalogService from './app/modules/services/CatalogService';
 import PurchaseService from './app/modules/purchases/PurchaseService';
 import InventoryService from './app/modules/inventory/InventoryService';
 import ProvidersService from './app/modules/purchases/ProvidersService';
+import PrestamosService from './app/modules/finance/PrestamosService';
 
 // Middlewares de Producción (Securización & Validación)
 import { requireAuth } from './app/middlewares/auth';
@@ -186,6 +187,51 @@ apiRouter.post('/inventario/consumo', validateParams(inventoryConsumeSchema), as
 apiRouter.get('/inventario/:id/kardex', async (req: Request, res: Response) => {
   const idItem = parseInt(req.params.id as string);
   res.json(await InventoryService.getKardex(idItem));
+});
+
+// ===== PRÉSTAMOS =====
+apiRouter.get('/prestamos/totales', async (req: Request, res: Response) => {
+  res.json(await PrestamosService.getTotales());
+});
+
+// Tomados
+apiRouter.get('/prestamos/tomados', async (req: Request, res: Response) => {
+  res.json(await PrestamosService.getTomados());
+});
+apiRouter.post('/prestamos/tomados', async (req: Request, res: Response) => {
+  res.status(201).json(await PrestamosService.createTomado(req.body));
+});
+apiRouter.put('/prestamos/tomados/:id', async (req: Request, res: Response) => {
+  res.json(await PrestamosService.updateTomado(parseInt(req.params.id as string), req.body));
+});
+apiRouter.delete('/prestamos/tomados/:id', async (req: Request, res: Response) => {
+  res.json(await PrestamosService.deleteTomado(parseInt(req.params.id as string)));
+});
+apiRouter.post('/prestamos/tomados/:id/pago', async (req: Request, res: Response) => {
+  res.json(await PrestamosService.pagarTomado(parseInt(req.params.id as string), req.body));
+});
+apiRouter.post('/prestamos/tomados/:id/anular', async (req: Request, res: Response) => {
+  res.json(await PrestamosService.anularTomado(parseInt(req.params.id as string)));
+});
+
+// Otorgados
+apiRouter.get('/prestamos/otorgados', async (req: Request, res: Response) => {
+  res.json(await PrestamosService.getOtorgados());
+});
+apiRouter.post('/prestamos/otorgados', async (req: Request, res: Response) => {
+  res.status(201).json(await PrestamosService.createOtorgado(req.body));
+});
+apiRouter.put('/prestamos/otorgados/:id', async (req: Request, res: Response) => {
+  res.json(await PrestamosService.updateOtorgado(parseInt(req.params.id as string), req.body));
+});
+apiRouter.delete('/prestamos/otorgados/:id', async (req: Request, res: Response) => {
+  res.json(await PrestamosService.deleteOtorgado(parseInt(req.params.id as string)));
+});
+apiRouter.post('/prestamos/otorgados/:id/cobro', async (req: Request, res: Response) => {
+  res.json(await PrestamosService.cobrarOtorgado(parseInt(req.params.id as string), req.body));
+});
+apiRouter.post('/prestamos/otorgados/:id/anular', async (req: Request, res: Response) => {
+  res.json(await PrestamosService.anularOtorgado(parseInt(req.params.id as string)));
 });
 
 apiRouter.get('/tributario/cuenta-bn', async (req: Request, res: Response) => {

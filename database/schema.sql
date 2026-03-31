@@ -166,15 +166,40 @@ CREATE TABLE MovimientosInventario (
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );
 
-CREATE TABLE Prestamos (
+CREATE TABLE PrestamosTomados (
     id_prestamo INT PRIMARY KEY AUTO_INCREMENT,
-    id_cuenta INT NOT NULL,
-    entidad VARCHAR(100) NOT NULL,
-    moneda VARCHAR(3) DEFAULT 'PEN',
-    monto_capital DECIMAL(12,2) NOT NULL,
-    tasa_interes DECIMAL(5,2) NOT NULL,
-    saldo_pendiente DECIMAL(12,2) NOT NULL,
+    nro_oc VARCHAR(50),
+    acreedor VARCHAR(150) NOT NULL,
+    descripcion VARCHAR(255),
+    comentario TEXT,
+    fecha_emision DATE NOT NULL,
     fecha_vencimiento DATE,
+    monto_capital DECIMAL(12,2) NOT NULL,
+    tasa_interes DECIMAL(5,2) DEFAULT 0.00,
+    monto_interes DECIMAL(12,2) DEFAULT 0.00,
+    monto_total DECIMAL(12,2) NOT NULL,
+    monto_pagado DECIMAL(12,2) DEFAULT 0.00,
+    saldo DECIMAL(12,2) NOT NULL,
+    estado ENUM('PENDIENTE','PARCIAL','PAGADO','ANULADO') DEFAULT 'PENDIENTE',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
+CREATE TABLE PrestamosOtorgados (
+    id_prestamo INT PRIMARY KEY AUTO_INCREMENT,
+    nro_oc VARCHAR(50),
+    deudor VARCHAR(150) NOT NULL,
+    descripcion VARCHAR(255),
+    comentario TEXT,
+    fecha_emision DATE NOT NULL,
+    fecha_vencimiento DATE,
+    monto_capital DECIMAL(12,2) NOT NULL,
+    tasa_interes DECIMAL(5,2) DEFAULT 0.00,
+    monto_interes DECIMAL(12,2) DEFAULT 0.00,
+    monto_total DECIMAL(12,2) NOT NULL,
+    monto_pagado DECIMAL(12,2) DEFAULT 0.00,
+    saldo DECIMAL(12,2) NOT NULL,
+    estado ENUM('PENDIENTE','PARCIAL','COBRADO','ANULADO') DEFAULT 'PENDIENTE',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );

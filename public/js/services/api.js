@@ -163,6 +163,51 @@ export const api = {
       return await res.json();
     }
   },
+  prestamos: {
+    getTomados: () => fetchReal('/prestamos/tomados'),
+    getOtorgados: () => fetchReal('/prestamos/otorgados'),
+    getTotales: () => fetchReal('/prestamos/totales'),
+    createTomado: async (data) => {
+      const res = await fetch('/api/prestamos/tomados', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
+      if (!res.ok) throw await res.json(); return await res.json();
+    },
+    createOtorgado: async (data) => {
+      const res = await fetch('/api/prestamos/otorgados', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
+      if (!res.ok) throw await res.json(); return await res.json();
+    },
+    pagarTomado: async (id, monto) => {
+      const res = await fetch('/api/prestamos/tomados/' + id + '/pago', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ monto }) });
+      if (!res.ok) throw await res.json(); return await res.json();
+    },
+    cobrarOtorgado: async (id, monto) => {
+      const res = await fetch('/api/prestamos/otorgados/' + id + '/cobro', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ monto }) });
+      if (!res.ok) throw await res.json(); return await res.json();
+    },
+    updateTomado: async (id, data) => {
+      const res = await fetch('/api/prestamos/tomados/' + id, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
+      if (!res.ok) throw await res.json(); return await res.json();
+    },
+    updateOtorgado: async (id, data) => {
+      const res = await fetch('/api/prestamos/otorgados/' + id, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
+      if (!res.ok) throw await res.json(); return await res.json();
+    },
+    deleteTomado: async (id) => {
+      const res = await fetch('/api/prestamos/tomados/' + id, { method: 'DELETE' });
+      if (!res.ok) throw await res.json(); return await res.json();
+    },
+    deleteOtorgado: async (id) => {
+      const res = await fetch('/api/prestamos/otorgados/' + id, { method: 'DELETE' });
+      if (!res.ok) throw await res.json(); return await res.json();
+    },
+    anularTomado: async (id) => {
+      const res = await fetch('/api/prestamos/tomados/' + id + '/anular', { method: 'POST' });
+      if (!res.ok) throw await res.json(); return await res.json();
+    },
+    anularOtorgado: async (id) => {
+      const res = await fetch('/api/prestamos/otorgados/' + id + '/anular', { method: 'POST' });
+      if (!res.ok) throw await res.json(); return await res.json();
+    }
+  },
   inventory: {
     async getInventario() {
       return await fetchReal('/inventario');
