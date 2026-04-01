@@ -170,7 +170,7 @@ const buildTabla = (lista, tipo) => {
     return `
     <tr>
       <td style="font-size:11px;color:var(--text-secondary)">${p.nro_oc || '---'}
-        ${esUSD ? `<br><span style="background:#16a34a;color:white;padding:1px 6px;border-radius:3px;font-size:10px">💵 PerfoTools</span>` : ''}
+        <br><span style="background:${esUSD?'#16a34a':'#6b7280'};color:white;padding:1px 6px;border-radius:3px;font-size:10px">${esUSD?'💵 PerfoTools':'⚙️ Metal Engineers'}</span>
       </td>
       <td>
         <strong>${esTomado ? p.acreedor : p.deudor}</strong>

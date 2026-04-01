@@ -28,7 +28,7 @@ export const Finanzas = async () => {
     return `
     <tr>
       <td>${g.nro_oc || '---'}
-      ${esUSD ? `<br><span style="font-size:10px;background:#16a34a;color:white;padding:1px 6px;border-radius:3px">💵 PerfoTools</span>` : ''}
+      <br><span style="font-size:10px;background:${esUSD?'#16a34a':'#6b7280'};color:white;padding:1px 6px;border-radius:3px">${esUSD?'💵 PerfoTools':'⚙️ Metal Engineers'}</span>
       <br><span style="font-size:10px;color:var(--text-secondary)">${g.codigo_contador || ''}</span></td>
       <td>${g.fecha ? g.fecha.split('T')[0] : '---'}</td>
       <td><strong>${g.concepto}</strong><br><span style="font-size:11px;color:var(--text-secondary)">${g.proveedor_nombre || '---'}</span></td>

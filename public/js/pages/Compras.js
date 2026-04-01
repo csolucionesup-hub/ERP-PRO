@@ -209,7 +209,7 @@ export const Compras = async () => {
     return `
     <tr class="${c.estado_pago === 'ANULADO' ? 'row-anulada' : ''}">
       <td style="font-size:11px; color:var(--text-secondary)">${c.nro_oc || '---'}
-        ${esUSD ? `<br><span style="background:#16a34a;color:white;padding:1px 6px;border-radius:3px;font-size:10px">💵 PerfoTools</span>` : ''}
+        <br><span style="background:${esUSD?'#16a34a':'#6b7280'};color:white;padding:1px 6px;border-radius:3px;font-size:10px">${esUSD?'💵 PerfoTools':'⚙️ Metal Engineers'}</span>
       </td>
       <td>${c.fecha ? c.fecha.split('T')[0] : '---'}</td>
       <td><strong>${c.proveedor_nombre || 'N/A'}</strong></td>

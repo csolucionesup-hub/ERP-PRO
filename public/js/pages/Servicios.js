@@ -37,7 +37,7 @@ export const Servicios = async () => {
     return `
     <tr class="${s.estado === 'ANULADO' ? 'row-anulada' : ''}">
       <td>${s.codigo || '---'}${s.nro_cotizacion ? `<br><span style="font-size:11px; color:var(--text-secondary)">${s.nro_cotizacion}</span>` : ''}
-        ${esUSD ? `<br><span style="font-size:10px;background:#16a34a;color:white;padding:1px 6px;border-radius:3px">💵 PerfoTools</span>` : ''}
+        <br><span style="font-size:10px;background:${esUSD?'#16a34a':'#6b7280'};color:white;padding:1px 6px;border-radius:3px">${esUSD?'💵 PerfoTools':'⚙️ Metal Engineers'}</span>
       </td>
       <td><strong>${s.cliente || '---'}</strong><br><span style="font-size:11px; color:var(--text-secondary)">${s.fecha_servicio ? s.fecha_servicio.split('T')[0] : '---'}</span></td>
       <td style="text-align:right">
