@@ -22,8 +22,20 @@ export const Compras = async () => {
 
   setTimeout(() => {
      const btnNewItemLine = document.getElementById('btn-new-item-line');
-     const formProv = document.getElementById('form-proveedor');
      const formCompra = document.getElementById('form-compra');
+
+     // Autocomplete proveedor al seleccionar del dropdown
+     const selProv = document.getElementById('sel-proveedor');
+     if (selProv) {
+       selProv.onchange = () => {
+         const id = Number(selProv.value);
+         const p = proveedores.find(x => x.id_proveedor === id);
+         const info = document.getElementById('prov-info');
+         if (info) info.innerHTML = p
+           ? `<span style="font-size:11px;color:var(--text-secondary)">RUC: <strong>${p.ruc}</strong>${p.telefono ? ' · Tel: ' + p.telefono : ''}${p.email ? ' · ' + p.email : ''}</span>`
+           : '';
+       };
+     }
 
      let lineas = [];
 
@@ -121,24 +133,6 @@ export const Compras = async () => {
            formNuevoItem.reset();
          } catch(err) {
            alert('Error: ' + JSON.stringify(err.detalles || err.error || err));
-         }
-       };
-     }
-
-     if(formProv) {
-       formProv.onsubmit = async (e) => {
-         e.preventDefault();
-         const data = {
-             ruc: e.target.ruc.value,
-             razon_social: e.target.razon_social.value,
-             contacto: e.target.contacto.value || undefined,
-         };
-         try {
-             await api.purchases.createProveedor(data);
-             alert('Proveedor Registrado Correctamente');
-             window.location.reload();
-         } catch(err) {
-             alert('Error: ' + JSON.stringify(err.detalles || err.error));
          }
        };
      }
@@ -299,26 +293,17 @@ export const Compras = async () => {
        <div style="flex:1; display:flex; flex-direction:column; gap: 20px;">
 
           <div class="card">
-              <h3 style="margin-bottom:15px; font-weight:600; font-size:15px">Alta Proveedor Maestro</h3>
-              <form id="form-proveedor" style="display:flex; flex-direction:column; gap:10px;">
-                 <input name="ruc" placeholder="RUC (11 dígitos)" required pattern="[0-9]{11}" style="${inputStyle}">
-                 <input name="razon_social" placeholder="Razón Social Completa" required style="${inputStyle}">
-                 <input name="contacto" placeholder="Contacto (Opcional)" style="${inputStyle}">
-                 <button type="submit" style="padding:10px; border:none; background:var(--primary-color); color:white; border-radius:var(--radius-sm); cursor:pointer; font-weight:bold;">Guardar</button>
-              </form>
-          </div>
-
-          <div class="card">
               <h3 style="margin-bottom:15px; font-weight:600; font-size:15px">Registrar Factura/Compra</h3>
               <form id="form-compra" style="display:flex; flex-direction:column; gap:10px;">
                  <div id="banner-usd-compra" style="display:none; background:#16a34a; color:white; padding:10px 14px; border-radius:6px; font-size:13px; font-weight:600;">💵 Transacción PerfoTools — Dólares americanos</div>
 
                  <input name="nro_oc" placeholder="N° OC (Ej: OC-001)" required style="${inputStyle}">
 
-                 <select name="id_proveedor" required style="${inputStyle}">
+                 <select name="id_proveedor" id="sel-proveedor" required style="${inputStyle}">
                     <option value="">-- Seleccionar Proveedor --</option>
                     ${provOptions}
                  </select>
+                 <div id="prov-info"></div>
                  <div style="display:flex; gap:10px;">
                     <input name="nro_comprobante" placeholder="F001-XXXXXX" required style="flex:1; padding:10px; border-radius:var(--radius-sm); border:1px solid var(--border-light)">
                     <input name="fecha" type="date" required style="flex:1; padding:10px; border-radius:var(--radius-sm); border:1px solid var(--border-light)">
