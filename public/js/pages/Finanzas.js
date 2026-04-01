@@ -1,12 +1,13 @@
 import { api } from '../services/api.js';
 
 export const Finanzas = async () => {
-  let gastos = [], cxp = [], serviciosActivos = [];
+  let gastos = [], cxp = [], serviciosActivos = [], tcHoy = { valor_venta: 1, es_hoy: false, fecha: '' };
   try {
-    [gastos, cxp, serviciosActivos] = await Promise.all([
+    [gastos, cxp, serviciosActivos, tcHoy] = await Promise.all([
       api.finances.getGastos(),
       api.finances.getCxP(),
-      api.services.getServiciosActivos()
+      api.services.getServiciosActivos(),
+      api.tipoCambio.getHoy('USD').catch(() => ({ valor_venta: 1, es_hoy: false, fecha: '' }))
     ]);
     if (!Array.isArray(gastos)) gastos = [];
     if (!Array.isArray(cxp)) cxp = [];
@@ -16,16 +17,23 @@ export const Finanzas = async () => {
   }
 
   const formatCurrency = (val) => new Intl.NumberFormat('es-PE', { style: 'currency', currency: 'PEN' }).format(val);
+  const formatUSD = (val) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(Number(val) || 0);
 
   const gastosRows = gastos.map(g => {
     const pendiente = Number(g.total_base) - Number(g.pagado || 0);
+    const esUSD = g.moneda === 'USD';
+    const tc = Number(g.tipo_cambio) || 1;
+    const totalOriginal = Number(g.total_base);
+    const totalPEN = esUSD ? totalOriginal * tc : totalOriginal;
     return `
     <tr>
       <td>${g.nro_oc || '---'}<br><span style="font-size:10px;color:var(--text-secondary)">${g.codigo_contador || ''}</span></td>
       <td>${g.fecha ? g.fecha.split('T')[0] : '---'}</td>
       <td><strong>${g.concepto}</strong><br><span style="font-size:11px;color:var(--text-secondary)">${g.proveedor_nombre || '---'}</span></td>
       <td>${g.servicio_codigo ? '<span style="background:var(--primary-color);color:white;padding:2px 8px;border-radius:10px;font-size:11px">' + g.servicio_codigo + '</span>' : '<span style="color:var(--text-secondary)">Operativo</span>'}</td>
-      <td style="text-align:right">${formatCurrency(Number(g.total_base))}</td>
+      <td style="text-align:right">
+        ${esUSD ? `<strong>${formatUSD(totalOriginal)}</strong><br><span style="font-size:10px;color:var(--text-secondary)">${formatCurrency(totalPEN)} (TC ${tc})</span>` : formatCurrency(totalOriginal)}
+      </td>
       <td style="text-align:right;color:var(--success)">${formatCurrency(Number(g.pagado || 0))}</td>
       <td style="text-align:center"><span class="status-badge status-${(g.estado_pago||'pendiente').toLowerCase()}">${g.estado_pago}</span></td>
       <td>
@@ -67,8 +75,18 @@ export const Finanzas = async () => {
            };
        }
 
+       // Mostrar/ocultar tipo cambio
+       const gastoMonedaSel = document.getElementById('gasto-moneda');
+       const divTCGasto = document.getElementById('div-tc-gasto');
+       if (gastoMonedaSel && divTCGasto) {
+         gastoMonedaSel.onchange = () => {
+           divTCGasto.style.display = gastoMonedaSel.value === 'USD' ? 'block' : 'none';
+         };
+       }
+
        formGasto.onsubmit = async (e) => {
          e.preventDefault();
+         const moneda = e.target.moneda.value || 'PEN';
          const data = {
              nro_oc: e.target.nro_oc.value || '',
              codigo_contador: e.target.codigo_contador.value || '',
@@ -78,6 +96,8 @@ export const Finanzas = async () => {
              proveedor_nombre: e.target.proveedor_nombre.value,
              fecha: e.target.fecha.value,
              nro_comprobante: e.target.nro_comprobante?.value || '',
+             moneda,
+             tipo_cambio: moneda === 'USD' ? Number(e.target.tipo_cambio?.value) || 1 : 1,
              monto_base: Number(e.target.monto_base.value),
              aplica_igv: e.target.aplica_igv.checked,
              detraccion_porcentaje: Number(e.target.detraccion?.value || 0)
@@ -233,6 +253,21 @@ export const Finanzas = async () => {
                     <div style="flex:1">
                        <label style="font-size:11px; color:var(--text-secondary)">Importe SIN IGV</label>
                        <input name="monto_base" type="number" step="0.01" required style="width:100%; padding:10px; border-radius:var(--radius-sm); border:1px solid var(--border-light)">
+                    </div>
+                 </div>
+
+                 <div style="display:flex; gap:10px;">
+                    <div style="flex:1">
+                       <label style="font-size:11px; color:var(--text-secondary)">Moneda</label>
+                       <select name="moneda" id="gasto-moneda" style="width:100%; padding:10px; border-radius:var(--radius-sm); border:1px solid var(--border-light)">
+                          <option value="PEN">S/. Soles (PEN)</option>
+                          <option value="USD">$ Dólares (USD)</option>
+                       </select>
+                    </div>
+                    <div style="flex:1" id="div-tc-gasto" style="display:none">
+                       <label style="font-size:11px; color:var(--text-secondary)">Tipo de Cambio (venta)</label>
+                       <input name="tipo_cambio" id="gasto-tipo-cambio" type="number" step="0.0001" value="${tcHoy.valor_venta || 1}" style="width:100%; padding:10px; border-radius:var(--radius-sm); border:1px solid var(--border-light)">
+                       <span style="font-size:10px;color:var(--text-secondary)">SBS ${tcHoy.es_hoy ? 'hoy' : (tcHoy.fecha || 'sin datos')}: ${tcHoy.valor_venta}</span>
                     </div>
                  </div>
 

@@ -229,16 +229,21 @@ class FinanceService {
     const monto_detraccion = detraccion_pct > 0 ? (monto_base * detraccion_pct / 100) : 0;
     const detraccion_depositada = detraccion_pct > 0 ? 'NO' : 'NA';
 
+    const moneda = (data.moneda || 'PEN').toUpperCase();
+    const tipo_cambio = moneda === 'USD' ? Number(data.tipo_cambio) || 1 : 1;
+
     const [res] = await db.query(`
       INSERT INTO Gastos (nro_oc, codigo_contador, id_servicio, tipo_gasto, fecha, concepto, proveedor_nombre, nro_comprobante,
+        moneda, tipo_cambio,
         monto_base, aplica_igv, igv_base, total_base,
         detraccion_porcentaje, monto_detraccion, detraccion_depositada,
         estado, estado_pago)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'CONFIRMADO', 'PENDIENTE')
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'CONFIRMADO', 'PENDIENTE')
     `, [data.nro_oc || null, data.codigo_contador || null,
         data.id_servicio || null, data.tipo_gasto || 'OPERATIVO',
         data.fecha, data.concepto, data.proveedor_nombre,
-        data.nro_comprobante || 'S/N', monto_base, aplica_igv, igv_base, total_base,
+        data.nro_comprobante || 'S/N', moneda, tipo_cambio,
+        monto_base, aplica_igv, igv_base, total_base,
         detraccion_pct, monto_detraccion, detraccion_depositada]);
 
     if (data.id_servicio) {

@@ -208,6 +208,26 @@ export const api = {
       if (!res.ok) throw await res.json(); return await res.json();
     }
   },
+  tipoCambio: {
+    getHoy: (moneda = 'USD') => fetchReal(`/tipo-cambio/hoy?moneda=${moneda}`),
+    getHistorial: (moneda = 'USD', limit = 30) => fetchReal(`/tipo-cambio?moneda=${moneda}&limit=${limit}`),
+    async sincronizar(moneda = 'USD') {
+      const res = await fetch('/api/tipo-cambio/sincronizar', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ moneda })
+      });
+      if (!res.ok) throw await res.json();
+      return await res.json();
+    },
+    async setManual(fecha, moneda, valor_compra, valor_venta) {
+      const res = await fetch('/api/tipo-cambio/manual', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fecha, moneda, valor_compra, valor_venta })
+      });
+      if (!res.ok) throw await res.json();
+      return await res.json();
+    }
+  },
   inventory: {
     async getInventario() {
       return await fetchReal('/inventario');

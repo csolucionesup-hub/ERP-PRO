@@ -2,9 +2,12 @@ CREATE TABLE TipoCambio (
     id_tipo_cambio INT PRIMARY KEY AUTO_INCREMENT,
     fecha DATE NOT NULL,
     moneda VARCHAR(3) NOT NULL,
-    valor DECIMAL(10,4) NOT NULL,
+    valor_compra DECIMAL(10,4) NOT NULL,
+    valor_venta DECIMAL(10,4) NOT NULL,
+    fuente VARCHAR(50) DEFAULT 'SBS',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_tipocambio_fecha_moneda (fecha, moneda)
 );
 
 CREATE TABLE Cuentas (
@@ -28,6 +31,7 @@ CREATE TABLE Servicios (
     fecha_servicio DATE NOT NULL,
     fecha_vencimiento DATE,
     moneda VARCHAR(3) DEFAULT 'PEN',
+    tipo_cambio DECIMAL(10,4) DEFAULT 1.0000,
     monto_base DECIMAL(12,2) NOT NULL DEFAULT 0.00,
     aplica_igv BOOLEAN DEFAULT FALSE,
     igv_base DECIMAL(12,2) DEFAULT 0.00,
@@ -118,6 +122,8 @@ CREATE TABLE Gastos (
     concepto VARCHAR(150) NOT NULL,
     proveedor_nombre VARCHAR(150),
     nro_comprobante VARCHAR(50),
+    moneda VARCHAR(3) DEFAULT 'PEN',
+    tipo_cambio DECIMAL(10,4) DEFAULT 1.0000,
     monto_base DECIMAL(12,2) NOT NULL DEFAULT 0.00,
     aplica_igv BOOLEAN DEFAULT FALSE,
     igv_base DECIMAL(12,2) DEFAULT 0.00,
@@ -178,6 +184,8 @@ CREATE TABLE PrestamosTomados (
     comentario TEXT,
     fecha_emision DATE NOT NULL,
     fecha_vencimiento DATE,
+    moneda VARCHAR(3) DEFAULT 'PEN',
+    tipo_cambio DECIMAL(10,4) DEFAULT 1.0000,
     monto_capital DECIMAL(12,2) NOT NULL,
     tasa_interes DECIMAL(5,2) DEFAULT 0.00,
     monto_interes DECIMAL(12,2) DEFAULT 0.00,
@@ -197,6 +205,8 @@ CREATE TABLE PrestamosOtorgados (
     comentario TEXT,
     fecha_emision DATE NOT NULL,
     fecha_vencimiento DATE,
+    moneda VARCHAR(3) DEFAULT 'PEN',
+    tipo_cambio DECIMAL(10,4) DEFAULT 1.0000,
     monto_capital DECIMAL(12,2) NOT NULL,
     tasa_interes DECIMAL(5,2) DEFAULT 0.00,
     monto_interes DECIMAL(12,2) DEFAULT 0.00,
@@ -244,6 +254,7 @@ CREATE INDEX idx_compras_fecha ON Compras(fecha);
 CREATE INDEX idx_gastos_fecha ON Gastos(fecha);
 CREATE INDEX idx_servicios_estado ON Servicios(estado);
 CREATE INDEX idx_costos_fecha ON CostosServicio(fecha);
+CREATE INDEX idx_tipocambio_fecha ON TipoCambio(fecha);
 
 -- FUNCIONES / TRIGGERS DE VALIDACION POLIMORFICA
 

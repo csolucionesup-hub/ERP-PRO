@@ -1,6 +1,7 @@
 import { api } from '../services/api.js';
 
 const formatCurrency = (val) => new Intl.NumberFormat('es-PE', { style: 'currency', currency: 'PEN' }).format(Number(val) || 0);
+const formatUSD = (val) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(Number(val) || 0);
 const formatDate = (d) => d ? String(d).split('T')[0] : '---';
 
 const ESTADO_STYLE = {
@@ -74,7 +75,7 @@ const modalEditar = () => `
 </div>`;
 
 // ─── FORMULARIO DE CREACIÓN ────────────────────────────────────────────────────
-const formCrear = (tipo) => {
+const formCrear = (tipo, tcVenta = 1, tcFecha = '') => {
   const esTomado = tipo === 'tomado';
   const labelContraparte = esTomado ? 'Acreedor (quién me presta)' : 'Deudor (a quién le presto)';
   const idForm = `form-crear-${tipo}`;
@@ -110,13 +111,27 @@ const formCrear = (tipo) => {
           <input name="fecha_vencimiento" type="date" style="${inputStyle}">
         </div>
       </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+        <div>
+          <label style="font-size:11px;color:var(--text-secondary)">Moneda</label>
+          <select name="moneda" id="prest-moneda-${tipo}" style="${inputStyle}" onchange="document.getElementById('div-tc-${tipo}').style.display=this.value==='USD'?'block':'none'">
+            <option value="PEN">S/. Soles (PEN)</option>
+            <option value="USD">$ Dólares (USD)</option>
+          </select>
+        </div>
+        <div id="div-tc-${tipo}" style="display:none">
+          <label style="font-size:11px;color:var(--text-secondary)">Tipo de Cambio</label>
+          <input name="tipo_cambio" type="number" step="0.0001" value="${tcVenta}" style="${inputStyle}">
+          <span style="font-size:10px;color:var(--text-secondary)">SBS ${tcFecha || 'sin datos'}: ${tcVenta}</span>
+        </div>
+      </div>
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">
         <div>
-          <label style="font-size:11px;color:var(--text-secondary)">Capital (S/.)</label>
+          <label style="font-size:11px;color:var(--text-secondary)">Capital</label>
           <input name="monto_capital" type="number" step="0.01" min="0.01" required placeholder="0.00" style="${inputStyle}" oninput="window.calcTotal_${tipo}(this.form)">
         </div>
         <div>
-          <label style="font-size:11px;color:var(--text-secondary)">Interés (S/.)</label>
+          <label style="font-size:11px;color:var(--text-secondary)">Interés</label>
           <input name="monto_interes" type="number" step="0.01" value="0" style="${inputStyle}" oninput="window.calcTotal_${tipo}(this.form)">
         </div>
         <div>
@@ -144,20 +159,35 @@ const buildTabla = (lista, tipo) => {
     const dias = Number(p.dias_transcurridos) || 0;
     const diasStyle = dias > 30 ? 'color:var(--danger);font-weight:bold' : '';
     const saldoStyle = Number(p.saldo) > 0 ? 'color:var(--danger);font-weight:bold' : 'color:var(--success)';
+    const esUSD = p.moneda === 'USD';
+    const tc = Number(p.tipo_cambio) || 1;
+    const fmtCapital = esUSD ? formatUSD(p.monto_capital) : formatCurrency(p.monto_capital);
+    const fmtTotal = esUSD ? formatUSD(p.monto_total) : formatCurrency(p.monto_total);
+    const fmtSaldo = esUSD ? formatUSD(p.saldo) : formatCurrency(p.saldo);
+    const totalPEN = esUSD ? Number(p.monto_total) * tc : null;
+    const saldoPEN = esUSD ? Number(p.saldo) * tc : null;
     return `
     <tr>
-      <td style="font-size:11px;color:var(--text-secondary)">${p.nro_oc || '---'}</td>
+      <td style="font-size:11px;color:var(--text-secondary)">${p.nro_oc || '---'}
+        ${esUSD ? `<br><span style="background:#1d4ed8;color:white;padding:1px 5px;border-radius:3px;font-size:10px">USD</span>` : ''}
+      </td>
       <td>
         <strong>${esTomado ? p.acreedor : p.deudor}</strong>
         ${p.descripcion ? `<br><span style="font-size:10px;color:var(--text-secondary)">${p.descripcion}</span>` : ''}
       </td>
       <td style="font-size:11px">${formatDate(p.fecha_emision)}<br><span style="color:var(--text-secondary)">${p.fecha_vencimiento ? 'Vence: '+formatDate(p.fecha_vencimiento) : ''}</span></td>
       <td style="text-align:center;${diasStyle}">${dias}d</td>
-      <td style="text-align:right">${formatCurrency(p.monto_capital)}</td>
-      <td style="text-align:right">${formatCurrency(p.monto_interes)}</td>
-      <td style="text-align:right;font-weight:bold">${formatCurrency(p.monto_total)}</td>
-      <td style="text-align:right">${formatCurrency(p.monto_pagado)}</td>
-      <td style="text-align:right;${saldoStyle}">${formatCurrency(p.saldo)}</td>
+      <td style="text-align:right">${fmtCapital}</td>
+      <td style="text-align:right">${esUSD ? formatUSD(p.monto_interes) : formatCurrency(p.monto_interes)}</td>
+      <td style="text-align:right;font-weight:bold">
+        ${fmtTotal}
+        ${totalPEN ? `<br><span style="font-size:10px;color:var(--text-secondary)">${formatCurrency(totalPEN)}</span>` : ''}
+      </td>
+      <td style="text-align:right">${esUSD ? formatUSD(p.monto_pagado) : formatCurrency(p.monto_pagado)}</td>
+      <td style="text-align:right;${saldoStyle}">
+        ${fmtSaldo}
+        ${saldoPEN ? `<br><span style="font-size:10px">${formatCurrency(saldoPEN)}</span>` : ''}
+      </td>
       <td>${badge(p.estado)}</td>
       <td>
         <div style="display:flex;gap:4px;flex-wrap:wrap">
@@ -189,11 +219,13 @@ const buildTabla = (lista, tipo) => {
 // ─── COMPONENTE PRINCIPAL ──────────────────────────────────────────────────────
 export const Prestamos = async () => {
   let tomados = [], otorgados = [], totales = { total_debo: 0, total_me_deben: 0 };
+  let tcHoy = { valor_venta: 1, es_hoy: false, fecha: '' };
   try {
-    [tomados, otorgados, totales] = await Promise.all([
+    [tomados, otorgados, totales, tcHoy] = await Promise.all([
       api.prestamos.getTomados(),
       api.prestamos.getOtorgados(),
-      api.prestamos.getTotales()
+      api.prestamos.getTotales(),
+      api.tipoCambio.getHoy('USD').catch(() => ({ valor_venta: 1, es_hoy: false, fecha: '' }))
     ]);
     if (!Array.isArray(tomados)) tomados = [];
     if (!Array.isArray(otorgados)) otorgados = [];
@@ -238,6 +270,7 @@ export const Prestamos = async () => {
     if (formT) formT.onsubmit = async (e) => {
       e.preventDefault();
       const f = e.target;
+      const moneda = f.moneda.value || 'PEN';
       try {
         await api.prestamos.createTomado({
           nro_oc: f.nro_oc.value || null,
@@ -246,6 +279,8 @@ export const Prestamos = async () => {
           comentario: f.comentario.value,
           fecha_emision: f.fecha_emision.value,
           fecha_vencimiento: f.fecha_vencimiento.value || null,
+          moneda,
+          tipo_cambio: moneda === 'USD' ? Number(f.tipo_cambio?.value) || 1 : 1,
           monto_capital: f.monto_capital.value,
           monto_interes: f.monto_interes.value || 0,
           tasa_interes: 0
@@ -260,6 +295,7 @@ export const Prestamos = async () => {
     if (formO) formO.onsubmit = async (e) => {
       e.preventDefault();
       const f = e.target;
+      const moneda = f.moneda.value || 'PEN';
       try {
         await api.prestamos.createOtorgado({
           nro_oc: f.nro_oc.value || null,
@@ -268,6 +304,8 @@ export const Prestamos = async () => {
           comentario: f.comentario.value,
           fecha_emision: f.fecha_emision.value,
           fecha_vencimiento: f.fecha_vencimiento.value || null,
+          moneda,
+          tipo_cambio: moneda === 'USD' ? Number(f.tipo_cambio?.value) || 1 : 1,
           monto_capital: f.monto_capital.value,
           monto_interes: f.monto_interes.value || 0,
           tasa_interes: 0
@@ -398,7 +436,7 @@ export const Prestamos = async () => {
           ${buildTabla(tomados, 'tomado')}
         </div>
         <div style="flex:1;min-width:300px">
-          ${formCrear('tomado')}
+          ${formCrear('tomado', tcHoy.valor_venta, tcHoy.es_hoy ? 'hoy' : tcHoy.fecha)}
         </div>
       </div>
     </div>
@@ -410,7 +448,7 @@ export const Prestamos = async () => {
           ${buildTabla(otorgados, 'otorgado')}
         </div>
         <div style="flex:1;min-width:300px">
-          ${formCrear('otorgado')}
+          ${formCrear('otorgado', tcHoy.valor_venta, tcHoy.es_hoy ? 'hoy' : tcHoy.fecha)}
         </div>
       </div>
     </div>

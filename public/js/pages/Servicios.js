@@ -1,14 +1,18 @@
 import { api } from '../services/api.js';
 
 export const Servicios = async () => {
-  let servicios = [];
+  let servicios = [], tcHoy = { valor_venta: 1, es_hoy: false, fecha: '' };
   try {
-    servicios = await api.services.getServicios();
+    [servicios, tcHoy] = await Promise.all([
+      api.services.getServicios(),
+      api.tipoCambio.getHoy('USD').catch(() => ({ valor_venta: 1, es_hoy: false, fecha: '' }))
+    ]);
     if (!Array.isArray(servicios)) servicios = [];
   } catch(err) {
     console.error('[Servicios] Error cargando datos:', err);
   }
   const formatCurrency = (val) => new Intl.NumberFormat('es-PE', { style: 'currency', currency: 'PEN' }).format(val);
+  const formatUSD = (val) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val);
 
   const getStatusBadge = (estado) => {
     return `<span class="status-badge status-${estado?.toLowerCase()}">${estado}</span>`;
@@ -25,12 +29,21 @@ export const Servicios = async () => {
   const rows = servicios.map(s => {
     const netoACobrar = Number(s.total_base) - Number(s.monto_detraccion) - Number(s.monto_retencion || 0);
     const deudaNetaReal = netoACobrar - Number(s.cobrado_liquido);
-    
+    const esUSD = s.moneda === 'USD';
+    const tc = Number(s.tipo_cambio) || 1;
+    const montoBaseOriginal = Number(s.ingreso_neto) || 0;
+    const montoBasePEN = esUSD ? montoBaseOriginal * tc : montoBaseOriginal;
+
     return `
     <tr class="${s.estado === 'ANULADO' ? 'row-anulada' : ''}">
-      <td>${s.codigo || '---'}${s.nro_cotizacion ? `<br><span style="font-size:11px; color:var(--text-secondary)">${s.nro_cotizacion}</span>` : ''}</td>
+      <td>${s.codigo || '---'}${s.nro_cotizacion ? `<br><span style="font-size:11px; color:var(--text-secondary)">${s.nro_cotizacion}</span>` : ''}
+        ${esUSD ? `<br><span style="font-size:10px;background:#1d4ed8;color:white;padding:1px 5px;border-radius:3px">USD</span>` : ''}
+      </td>
       <td><strong>${s.cliente || '---'}</strong><br><span style="font-size:11px; color:var(--text-secondary)">${s.fecha_servicio ? s.fecha_servicio.split('T')[0] : '---'}</span></td>
-      <td style="text-align:right"><strong>${formatCurrency(Number(s.ingreso_neto) || 0)}</strong><br><span style="font-size:10px">(Monto Base)</span></td>
+      <td style="text-align:right">
+        <strong>${esUSD ? formatUSD(montoBaseOriginal) : formatCurrency(montoBaseOriginal)}</strong>
+        ${esUSD ? `<br><span style="font-size:10px;color:var(--text-secondary)">${formatCurrency(montoBasePEN)} (TC ${tc})</span>` : '<br><span style="font-size:10px">(Monto Base)</span>'}
+      </td>
       <td style="text-align:right; color:var(--danger)">${formatCurrency(Number(s.costos_ejecutados) || 0)}</td>
       <td style="text-align:right; font-weight:bold; color:var(--primary-color)">${formatCurrency(Number(s.utilidad_neta) || 0)}</td>
       <td style="text-align:center">${getMarginBadge(Number(s.margen_porcentual) || 0)}</td>
@@ -62,8 +75,18 @@ export const Servicios = async () => {
   setTimeout(() => {
      const formServicio = document.getElementById('form-servicio');
      if(formServicio) {
+       // Mostrar/ocultar campo tipo cambio según moneda
+       const srvMonedaSel = document.getElementById('srv-moneda');
+       const divTCSrv = document.getElementById('div-tc-srv');
+       if (srvMonedaSel && divTCSrv) {
+         srvMonedaSel.onchange = () => {
+           divTCSrv.style.display = srvMonedaSel.value === 'USD' ? 'block' : 'none';
+         };
+       }
+
        formServicio.onsubmit = async (e) => {
          e.preventDefault();
+         const moneda = e.target.moneda.value || 'PEN';
          const data = {
              nro_cotizacion: e.target.nro_cotizacion.value || '',
              nombre: e.target.nombre.value,
@@ -71,6 +94,8 @@ export const Servicios = async () => {
              descripcion: e.target.descripcion.value,
              fecha_servicio: e.target.fecha.value,
              fecha_vencimiento: e.target.fecha_vencimiento?.value || undefined,
+             moneda,
+             tipo_cambio: moneda === 'USD' ? Number(e.target.tipo_cambio.value) || 1 : 1,
              monto_base: Number(e.target.monto_base.value),
              aplica_igv: e.target.aplica_igv.checked,
              detraccion_porcentaje: Number(e.target.detraccion.value) || 0,
@@ -260,6 +285,21 @@ export const Servicios = async () => {
                     <div style="flex:1">
                        <label style="font-size:11px; color:var(--text-secondary)">Monto Neto (Base)</label>
                        <input name="monto_base" type="number" step="0.01" required style="width:100%; padding:10px; border-radius:var(--radius-sm); border:1px solid var(--border-light)">
+                    </div>
+                 </div>
+
+                 <div style="display:flex; gap:10px;">
+                    <div style="flex:1">
+                       <label style="font-size:11px; color:var(--text-secondary)">Moneda</label>
+                       <select name="moneda" id="srv-moneda" style="width:100%; padding:10px; border-radius:var(--radius-sm); border:1px solid var(--border-light)">
+                          <option value="PEN">S/. Soles (PEN)</option>
+                          <option value="USD">$ Dólares (USD)</option>
+                       </select>
+                    </div>
+                    <div style="flex:1" id="div-tc-srv" style="display:none">
+                       <label style="font-size:11px; color:var(--text-secondary)">Tipo de Cambio (venta)</label>
+                       <input name="tipo_cambio" id="srv-tipo-cambio" type="number" step="0.0001" value="${tcHoy.valor_venta || 1}" style="width:100%; padding:10px; border-radius:var(--radius-sm); border:1px solid var(--border-light)">
+                       <span style="font-size:10px;color:var(--text-secondary)">SBS ${tcHoy.es_hoy ? 'hoy' : (tcHoy.fecha || 'sin datos')}: ${tcHoy.valor_venta}</span>
                     </div>
                  </div>
 

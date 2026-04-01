@@ -17,14 +17,16 @@ class PrestamosService {
     const capital = Number(data.monto_capital);
     const interes = Number(data.monto_interes || 0);
     const total = capital + interes;
+    const moneda = (data.moneda || 'PEN').toUpperCase();
+    const tipo_cambio = moneda === 'USD' ? Number(data.tipo_cambio) || 1 : 1;
     const [res] = await db.query(`
       INSERT INTO PrestamosTomados (nro_oc, acreedor, descripcion, comentario,
-        fecha_emision, fecha_vencimiento, monto_capital, tasa_interes,
-        monto_interes, monto_total, monto_pagado, saldo, estado)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, 'PENDIENTE')
+        fecha_emision, fecha_vencimiento, moneda, tipo_cambio,
+        monto_capital, tasa_interes, monto_interes, monto_total, monto_pagado, saldo, estado)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, 'PENDIENTE')
     `, [data.nro_oc || null, data.acreedor, data.descripcion || '', data.comentario || '',
-        data.fecha_emision, data.fecha_vencimiento || null, capital,
-        Number(data.tasa_interes || 0), interes, total, total]);
+        data.fecha_emision, data.fecha_vencimiento || null, moneda, tipo_cambio,
+        capital, Number(data.tasa_interes || 0), interes, total, total]);
     return { success: true, id: (res as any).insertId };
   }
 
@@ -87,14 +89,16 @@ class PrestamosService {
     const capital = Number(data.monto_capital);
     const interes = Number(data.monto_interes || 0);
     const total = capital + interes;
+    const moneda = (data.moneda || 'PEN').toUpperCase();
+    const tipo_cambio = moneda === 'USD' ? Number(data.tipo_cambio) || 1 : 1;
     const [res] = await db.query(`
       INSERT INTO PrestamosOtorgados (nro_oc, deudor, descripcion, comentario,
-        fecha_emision, fecha_vencimiento, monto_capital, tasa_interes,
-        monto_interes, monto_total, monto_pagado, saldo, estado)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, 'PENDIENTE')
+        fecha_emision, fecha_vencimiento, moneda, tipo_cambio,
+        monto_capital, tasa_interes, monto_interes, monto_total, monto_pagado, saldo, estado)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, 'PENDIENTE')
     `, [data.nro_oc || null, data.deudor, data.descripcion || '', data.comentario || '',
-        data.fecha_emision, data.fecha_vencimiento || null, capital,
-        Number(data.tasa_interes || 0), interes, total, total]);
+        data.fecha_emision, data.fecha_vencimiento || null, moneda, tipo_cambio,
+        capital, Number(data.tasa_interes || 0), interes, total, total]);
     return { success: true, id: (res as any).insertId };
   }
 

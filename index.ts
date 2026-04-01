@@ -14,6 +14,7 @@ import PurchaseService from './app/modules/purchases/PurchaseService';
 import InventoryService from './app/modules/inventory/InventoryService';
 import ProvidersService from './app/modules/purchases/ProvidersService';
 import PrestamosService from './app/modules/finance/PrestamosService';
+import TipoCambioService from './app/modules/finance/TipoCambioService';
 
 // Middlewares de Producción (Securización & Validación)
 import { requireAuth } from './app/middlewares/auth';
@@ -232,6 +233,32 @@ apiRouter.post('/prestamos/otorgados/:id/cobro', async (req: Request, res: Respo
 });
 apiRouter.post('/prestamos/otorgados/:id/anular', async (req: Request, res: Response) => {
   res.json(await PrestamosService.anularOtorgado(parseInt(req.params.id as string)));
+});
+
+// ===== TIPO DE CAMBIO =====
+apiRouter.get('/tipo-cambio/hoy', async (req: Request, res: Response) => {
+  const moneda = (req.query.moneda as string) || 'USD';
+  res.json(await TipoCambioService.getTipoCambioHoy(moneda));
+});
+
+apiRouter.get('/tipo-cambio', async (req: Request, res: Response) => {
+  const moneda = (req.query.moneda as string) || 'USD';
+  const limit = parseInt(req.query.limit as string) || 30;
+  res.json(await TipoCambioService.getTiposCambio(moneda, limit));
+});
+
+apiRouter.post('/tipo-cambio/sincronizar', async (req: Request, res: Response) => {
+  const moneda = (req.body.moneda as string) || 'USD';
+  res.json(await TipoCambioService.sincronizarDesdeSBS(moneda));
+});
+
+apiRouter.post('/tipo-cambio/manual', async (req: Request, res: Response) => {
+  const { fecha, moneda, valor_compra, valor_venta } = req.body;
+  if (!fecha || !moneda || !valor_compra || !valor_venta) {
+    res.status(400).json({ error: 'Faltan campos: fecha, moneda, valor_compra, valor_venta' });
+    return;
+  }
+  res.json(await TipoCambioService.setTipoCambioManual(fecha, moneda, Number(valor_compra), Number(valor_venta)));
 });
 
 apiRouter.get('/tributario/cuenta-bn', async (req: Request, res: Response) => {
