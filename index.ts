@@ -111,7 +111,7 @@ apiRouter.post('/gastos/:id/anular', async (req: Request, res: Response) => {
 });
 
 apiRouter.get('/servicios/activos', async (req: Request, res: Response) => {
-  const [rows] = await db.query("SELECT id_servicio, codigo, nro_cotizacion, cliente, nombre FROM Servicios WHERE estado != 'ANULADO' AND estado_trabajo = 'ACTIVO' ORDER BY fecha_servicio DESC");
+  const [rows] = await db.query("SELECT id_servicio, codigo, nro_cotizacion, cliente, nombre FROM Servicios WHERE estado != 'ANULADO' AND estado_trabajo != 'TERMINADO' ORDER BY fecha_servicio DESC");
   res.json(rows);
 });
 apiRouter.get('/servicios', async (req: Request, res: Response) => {
