@@ -31,8 +31,8 @@ export const Servicios = async () => {
     const deudaNetaReal = netoACobrar - Number(s.cobrado_liquido);
     const esUSD = s.moneda === 'USD';
     const tc = Number(s.tipo_cambio) || 1;
-    const montoBaseOriginal = Number(s.ingreso_neto) || 0;
-    const montoBasePEN = esUSD ? montoBaseOriginal * tc : montoBaseOriginal;
+    const montoBasePEN = Number(s.ingreso_neto) || 0;             // siempre en PEN en BD
+    const montoBaseOriginal = esUSD ? montoBasePEN / tc : montoBasePEN; // USD original
 
     return `
     <tr class="${s.estado === 'ANULADO' ? 'row-anulada' : ''}">

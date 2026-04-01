@@ -45,12 +45,16 @@ class CatalogService {
     await conn.beginTransaction();
 
     try {
-       // Calcular Matemática
+       // Moneda y tipo de cambio — siempre primero para que todos los montos queden en PEN
+       const moneda = (data.moneda || 'PEN').toUpperCase();
+       const tipo_cambio = moneda === 'USD' ? Number(data.tipo_cambio) || 1 : 1;
+
+       // Calcular Matemática — monto_base siempre en PEN (USD × TC)
        const aplica_igv = !!data.aplica_igv;
-       const monto_base = Number(data.monto_base);
+       const monto_base = Number(data.monto_base) * tipo_cambio;
        const igv_base = aplica_igv ? (monto_base * 0.18) : 0;
        const total_base = monto_base + igv_base;
-       
+
        const detraccion_porcentaje = Number(data.detraccion_porcentaje || 0);
        const monto_detraccion = detraccion_porcentaje > 0 ? (monto_base * (detraccion_porcentaje / 100)) : 0;
        const retencion_porcentaje = Number(data.retencion_porcentaje || 0);
@@ -63,11 +67,8 @@ class CatalogService {
           fecha_venc = d.toISOString().split('T')[0];
        }
 
-       // Generar Código Único 
+       // Generar Código Único
        const codigo = 'SRV-' + new Date().getTime().toString().slice(-6);
-
-       const moneda = (data.moneda || 'PEN').toUpperCase();
-       const tipo_cambio = moneda === 'USD' ? Number(data.tipo_cambio) || 1 : 1;
 
        const queryInsert = `
          INSERT INTO Servicios (
