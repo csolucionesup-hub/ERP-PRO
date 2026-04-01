@@ -209,10 +209,23 @@ CREATE TABLE Detracciones (
     id_servicio INT NOT NULL,
     porcentaje DECIMAL(5,2) NOT NULL,
     monto DECIMAL(12,2) NOT NULL,
+    cliente_deposito ENUM('SI','NO','PARCIAL') DEFAULT 'NO',
+    monto_depositado DECIMAL(12,2) DEFAULT 0.00,
+    fecha_deposito DATE,
     fecha_pago DATE,
-    estado ENUM('PENDIENTE', 'PAGADO') DEFAULT 'PENDIENTE',
+    estado ENUM('PENDIENTE', 'PAGADO', 'ANULADO') DEFAULT 'PENDIENTE',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
+CREATE TABLE PagosImpuestos (
+    id_pago INT PRIMARY KEY AUTO_INCREMENT,
+    fecha DATE NOT NULL,
+    tipo_impuesto VARCHAR(50) NOT NULL,
+    periodo VARCHAR(20),
+    monto DECIMAL(12,2) NOT NULL,
+    descripcion TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
 -- INDICES PARA OPTIMIZAR CONSULTAS Y TRAZABILIDAD
@@ -246,11 +259,6 @@ BEGIN
         IF record_exists = 0 THEN
             SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Error Validacion: La Compra referenciada no existe.';
         END IF;
-    ELSEIF NEW.referencia_tipo = 'PRESTAMO' THEN
-        SELECT COUNT(*) INTO record_exists FROM Prestamos WHERE id_prestamo = NEW.referencia_id;
-        IF record_exists = 0 THEN
-            SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Error Validacion: El Prestamo referenciado no existe.';
-        END IF;
     ELSEIF NEW.referencia_tipo = 'GASTO' THEN
         SELECT COUNT(*) INTO record_exists FROM Gastos WHERE id_gasto = NEW.referencia_id;
         IF record_exists = 0 THEN
@@ -273,11 +281,6 @@ BEGIN
         SELECT COUNT(*) INTO record_exists FROM Compras WHERE id_compra = NEW.referencia_id;
         IF record_exists = 0 THEN
             SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Error Validacion: La Compra referenciada no existe.';
-        END IF;
-    ELSEIF NEW.referencia_tipo = 'PRESTAMO' THEN
-        SELECT COUNT(*) INTO record_exists FROM Prestamos WHERE id_prestamo = NEW.referencia_id;
-        IF record_exists = 0 THEN
-            SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Error Validacion: El Prestamo referenciado no existe.';
         END IF;
     ELSEIF NEW.referencia_tipo = 'GASTO' THEN
         SELECT COUNT(*) INTO record_exists FROM Gastos WHERE id_gasto = NEW.referencia_id;
