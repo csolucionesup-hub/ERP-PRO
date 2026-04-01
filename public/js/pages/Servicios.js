@@ -37,12 +37,13 @@ export const Servicios = async () => {
     return `
     <tr class="${s.estado === 'ANULADO' ? 'row-anulada' : ''}">
       <td>${s.codigo || '---'}${s.nro_cotizacion ? `<br><span style="font-size:11px; color:var(--text-secondary)">${s.nro_cotizacion}</span>` : ''}
-        ${esUSD ? `<br><span style="font-size:10px;background:#1d4ed8;color:white;padding:1px 5px;border-radius:3px">USD</span>` : ''}
+        ${esUSD ? `<br><span style="font-size:10px;background:#16a34a;color:white;padding:1px 6px;border-radius:3px">💵 PerfoTools</span>` : ''}
       </td>
       <td><strong>${s.cliente || '---'}</strong><br><span style="font-size:11px; color:var(--text-secondary)">${s.fecha_servicio ? s.fecha_servicio.split('T')[0] : '---'}</span></td>
       <td style="text-align:right">
-        <strong>${esUSD ? formatUSD(montoBaseOriginal) : formatCurrency(montoBaseOriginal)}</strong>
-        ${esUSD ? `<br><span style="font-size:10px;color:var(--text-secondary)">${formatCurrency(montoBasePEN)} (TC ${tc})</span>` : '<br><span style="font-size:10px">(Monto Base)</span>'}
+        ${esUSD
+          ? `<strong style="color:#16a34a">${formatUSD(montoBaseOriginal)}</strong><br><span style="font-size:10px;color:var(--text-secondary)">≈ ${formatCurrency(montoBasePEN)}</span>`
+          : `<strong>${formatCurrency(montoBaseOriginal)}</strong><br><span style="font-size:10px">(Monto Base)</span>`}
       </td>
       <td style="text-align:right; color:var(--danger)">${formatCurrency(Number(s.costos_ejecutados) || 0)}</td>
       <td style="text-align:right; font-weight:bold; color:var(--primary-color)">${formatCurrency(Number(s.utilidad_neta) || 0)}</td>
@@ -80,7 +81,12 @@ export const Servicios = async () => {
        const divTCSrv = document.getElementById('div-tc-srv');
        if (srvMonedaSel && divTCSrv) {
          srvMonedaSel.onchange = () => {
-           divTCSrv.style.display = srvMonedaSel.value === 'USD' ? 'block' : 'none';
+           const isUSD = srvMonedaSel.value === 'USD';
+           divTCSrv.style.display = isUSD ? 'block' : 'none';
+           const banner = document.getElementById('banner-usd-srv');
+           const form = document.getElementById('form-servicio');
+           if (banner) banner.style.display = isUSD ? 'block' : 'none';
+           if (form) form.style.border = isUSD ? '2px solid #16a34a' : '';
          };
        }
 
@@ -272,6 +278,7 @@ export const Servicios = async () => {
           <div class="card" style="border-top: 4px solid var(--primary-color)">
               <h3 style="margin-bottom:15px; font-weight:600; font-size:15px">Emitir Venta de Servicio</h3>
               <form id="form-servicio" style="display:flex; flex-direction:column; gap:12px;">
+                 <div id="banner-usd-srv" style="display:none; background:#16a34a; color:white; padding:10px 14px; border-radius:6px; font-size:13px; font-weight:600;">💵 Transacción PerfoTools — Dólares americanos</div>
                  <input name="nro_cotizacion" placeholder="N° Cotización (Ej: COT 101)" style="padding:10px; border-radius:var(--radius-sm); border:1px solid var(--border-light)">
                  <input name="cliente" placeholder="Razón Social Cliente" required style="padding:10px; border-radius:var(--radius-sm); border:1px solid var(--border-light)">
                  <input name="nombre" placeholder="Concepto del Servicio" required style="padding:10px; border-radius:var(--radius-sm); border:1px solid var(--border-light)">

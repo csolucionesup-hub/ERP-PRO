@@ -27,12 +27,16 @@ export const Finanzas = async () => {
     const totalPEN = esUSD ? totalOriginal * tc : totalOriginal;
     return `
     <tr>
-      <td>${g.nro_oc || '---'}<br><span style="font-size:10px;color:var(--text-secondary)">${g.codigo_contador || ''}</span></td>
+      <td>${g.nro_oc || '---'}
+      ${esUSD ? `<br><span style="font-size:10px;background:#16a34a;color:white;padding:1px 6px;border-radius:3px">💵 PerfoTools</span>` : ''}
+      <br><span style="font-size:10px;color:var(--text-secondary)">${g.codigo_contador || ''}</span></td>
       <td>${g.fecha ? g.fecha.split('T')[0] : '---'}</td>
       <td><strong>${g.concepto}</strong><br><span style="font-size:11px;color:var(--text-secondary)">${g.proveedor_nombre || '---'}</span></td>
       <td>${g.servicio_codigo ? '<span style="background:var(--primary-color);color:white;padding:2px 8px;border-radius:10px;font-size:11px">' + g.servicio_codigo + '</span>' : '<span style="color:var(--text-secondary)">Operativo</span>'}</td>
       <td style="text-align:right">
-        ${esUSD ? `<strong>${formatUSD(totalOriginal)}</strong><br><span style="font-size:10px;color:var(--text-secondary)">${formatCurrency(totalPEN)} (TC ${tc})</span>` : formatCurrency(totalOriginal)}
+        ${esUSD
+          ? `<strong style="color:#16a34a">${formatUSD(totalOriginal)}</strong><br><span style="font-size:10px;color:var(--text-secondary)">≈ ${formatCurrency(totalPEN)}</span>`
+          : formatCurrency(totalOriginal)}
       </td>
       <td style="text-align:right;color:var(--success)">${formatCurrency(Number(g.pagado || 0))}</td>
       <td style="text-align:center"><span class="status-badge status-${(g.estado_pago||'pendiente').toLowerCase()}">${g.estado_pago}</span></td>
@@ -80,7 +84,12 @@ export const Finanzas = async () => {
        const divTCGasto = document.getElementById('div-tc-gasto');
        if (gastoMonedaSel && divTCGasto) {
          gastoMonedaSel.onchange = () => {
-           divTCGasto.style.display = gastoMonedaSel.value === 'USD' ? 'block' : 'none';
+           const isUSD = gastoMonedaSel.value === 'USD';
+           divTCGasto.style.display = isUSD ? 'block' : 'none';
+           const banner = document.getElementById('banner-usd-gasto');
+           const form = document.getElementById('form-gasto');
+           if (banner) banner.style.display = isUSD ? 'block' : 'none';
+           if (form) form.style.border = isUSD ? '2px solid #16a34a' : '';
          };
        }
 
@@ -218,6 +227,7 @@ export const Finanzas = async () => {
           <div class="card" style="border-top: 4px solid var(--danger)">
               <h3 style="margin-bottom:15px; font-weight:600; font-size:15px">Registrar Nuevo Gasto</h3>
               <form id="form-gasto" style="display:flex; flex-direction:column; gap:12px;">
+                 <div id="banner-usd-gasto" style="display:none; background:#16a34a; color:white; padding:10px 14px; border-radius:6px; font-size:13px; font-weight:600;">💵 Transacción PerfoTools — Dólares americanos</div>
 
                  <select name="tipo_gasto" id="select-tipo-gasto" style="padding:10px; border-radius:var(--radius-sm); border:1px solid var(--border-light)">
                     <option value="OPERATIVO">Gasto Operativo (general)</option>

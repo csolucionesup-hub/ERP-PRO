@@ -59,6 +59,20 @@ export const Compras = async () => {
      const chkIgv = document.getElementById('chk-igv');
      if (chkIgv) chkIgv.addEventListener('change', recalcular);
 
+     // Banner PerfoTools USD en compras
+     const compraMonedaSel = document.getElementById('compra-moneda');
+     if (compraMonedaSel) {
+       compraMonedaSel.onchange = () => {
+         const isUSD = compraMonedaSel.value === 'USD';
+         const divTC = document.getElementById('div-tc-compra');
+         if (divTC) divTC.style.display = isUSD ? 'flex' : 'none';
+         const banner = document.getElementById('banner-usd-compra');
+         const form = document.getElementById('form-compra');
+         if (banner) banner.style.display = isUSD ? 'block' : 'none';
+         if (form) form.style.border = isUSD ? '2px solid #16a34a' : '';
+       };
+     }
+
      if(btnNewItemLine) {
         btnNewItemLine.onclick = () => {
            const sel = document.getElementById('item-select');
@@ -195,13 +209,15 @@ export const Compras = async () => {
     return `
     <tr class="${c.estado_pago === 'ANULADO' ? 'row-anulada' : ''}">
       <td style="font-size:11px; color:var(--text-secondary)">${c.nro_oc || '---'}
-        ${esUSD ? `<br><span style="background:#1d4ed8;color:white;padding:1px 5px;border-radius:3px;font-size:10px">USD</span>` : ''}
+        ${esUSD ? `<br><span style="background:#16a34a;color:white;padding:1px 6px;border-radius:3px;font-size:10px">💵 PerfoTools</span>` : ''}
       </td>
       <td>${c.fecha ? c.fecha.split('T')[0] : '---'}</td>
       <td><strong>${c.proveedor_nombre || 'N/A'}</strong></td>
       <td>${c.nro_comprobante}</td>
       <td style="text-align:right">
-        ${esUSD ? `<strong>${formatUSD(total)}</strong><br><span style="font-size:10px;color:var(--text-secondary)">${formatCurrency(totalPEN)} (TC ${tc})</span>` : formatCurrency(total)}
+        ${esUSD
+          ? `<strong style="color:#16a34a">${formatUSD(total)}</strong><br><span style="font-size:10px;color:var(--text-secondary)">≈ ${formatCurrency(totalPEN)}</span>`
+          : formatCurrency(total)}
       </td>
       <td>${getStatusBadge(c.estado_pago)}</td>
       <td style="display:flex;gap:4px;flex-wrap:wrap">
@@ -295,6 +311,7 @@ export const Compras = async () => {
           <div class="card">
               <h3 style="margin-bottom:15px; font-weight:600; font-size:15px">Registrar Factura/Compra</h3>
               <form id="form-compra" style="display:flex; flex-direction:column; gap:10px;">
+                 <div id="banner-usd-compra" style="display:none; background:#16a34a; color:white; padding:10px 14px; border-radius:6px; font-size:13px; font-weight:600;">💵 Transacción PerfoTools — Dólares americanos</div>
 
                  <input name="nro_oc" placeholder="N° OC (Ej: OC-001)" required style="${inputStyle}">
 
@@ -310,8 +327,7 @@ export const Compras = async () => {
                  <div style="display:flex; gap:10px;">
                     <div style="flex:1">
                        <label style="font-size:11px; color:var(--text-secondary)">Moneda</label>
-                       <select name="moneda" id="compra-moneda" style="${inputStyle}; width:100%"
-                         onchange="document.getElementById('div-tc-compra').style.display=this.value==='USD'?'flex':'none'">
+                       <select name="moneda" id="compra-moneda" style="${inputStyle}; width:100%">
                           <option value="PEN">S/. Soles (PEN)</option>
                           <option value="USD">$ Dólares (USD)</option>
                        </select>

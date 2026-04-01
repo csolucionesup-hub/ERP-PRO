@@ -83,6 +83,7 @@ const formCrear = (tipo, tcVenta = 1, tcFecha = '') => {
   <div class="card" style="margin-top:0">
     <h3 style="margin-bottom:15px;font-weight:600;font-size:14px">Registrar Préstamo ${esTomado ? 'Tomado' : 'Otorgado'}</h3>
     <form id="${idForm}" style="display:flex;flex-direction:column;gap:10px;">
+      <div id="banner-usd-${tipo}" style="display:none; background:#16a34a; color:white; padding:10px 14px; border-radius:6px; font-size:13px; font-weight:600;">💵 Transacción PerfoTools — Dólares americanos</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
         <div>
           <label style="font-size:11px;color:var(--text-secondary)">N° OC (opcional)</label>
@@ -114,7 +115,7 @@ const formCrear = (tipo, tcVenta = 1, tcFecha = '') => {
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
         <div>
           <label style="font-size:11px;color:var(--text-secondary)">Moneda</label>
-          <select name="moneda" id="prest-moneda-${tipo}" style="${inputStyle}" onchange="document.getElementById('div-tc-${tipo}').style.display=this.value==='USD'?'block':'none'">
+          <select name="moneda" id="prest-moneda-${tipo}" style="${inputStyle}" onchange="window.toggleMonedaPrestamo(this,'${tipo}')">
             <option value="PEN">S/. Soles (PEN)</option>
             <option value="USD">$ Dólares (USD)</option>
           </select>
@@ -169,7 +170,7 @@ const buildTabla = (lista, tipo) => {
     return `
     <tr>
       <td style="font-size:11px;color:var(--text-secondary)">${p.nro_oc || '---'}
-        ${esUSD ? `<br><span style="background:#1d4ed8;color:white;padding:1px 5px;border-radius:3px;font-size:10px">USD</span>` : ''}
+        ${esUSD ? `<br><span style="background:#16a34a;color:white;padding:1px 6px;border-radius:3px;font-size:10px">💵 PerfoTools</span>` : ''}
       </td>
       <td>
         <strong>${esTomado ? p.acreedor : p.deudor}</strong>
@@ -180,13 +181,13 @@ const buildTabla = (lista, tipo) => {
       <td style="text-align:right">${fmtCapital}</td>
       <td style="text-align:right">${esUSD ? formatUSD(p.monto_interes) : formatCurrency(p.monto_interes)}</td>
       <td style="text-align:right;font-weight:bold">
-        ${fmtTotal}
-        ${totalPEN ? `<br><span style="font-size:10px;color:var(--text-secondary)">${formatCurrency(totalPEN)}</span>` : ''}
+        ${esUSD ? `<span style="color:#16a34a">${fmtTotal}</span>` : fmtTotal}
+        ${totalPEN ? `<br><span style="font-size:10px;color:var(--text-secondary)">≈ ${formatCurrency(totalPEN)}</span>` : ''}
       </td>
       <td style="text-align:right">${esUSD ? formatUSD(p.monto_pagado) : formatCurrency(p.monto_pagado)}</td>
       <td style="text-align:right;${saldoStyle}">
-        ${fmtSaldo}
-        ${saldoPEN ? `<br><span style="font-size:10px">${formatCurrency(saldoPEN)}</span>` : ''}
+        ${esUSD ? `<span style="color:#16a34a">${fmtSaldo}</span>` : fmtSaldo}
+        ${saldoPEN ? `<br><span style="font-size:10px;color:var(--text-secondary)">≈ ${formatCurrency(saldoPEN)}</span>` : ''}
       </td>
       <td>${badge(p.estado)}</td>
       <td>
@@ -391,6 +392,17 @@ export const Prestamos = async () => {
         alert('Actualizado correctamente');
         window.location.reload();
       } catch(err) { alert('Error: ' + JSON.stringify(err.error || err)); }
+    };
+
+    // Banner PerfoTools USD en préstamos
+    window.toggleMonedaPrestamo = (sel, tipo) => {
+      const isUSD = sel.value === 'USD';
+      const divTC = document.getElementById('div-tc-' + tipo);
+      if (divTC) divTC.style.display = isUSD ? 'block' : 'none';
+      const banner = document.getElementById('banner-usd-' + tipo);
+      const form = document.getElementById('form-crear-' + tipo);
+      if (banner) banner.style.display = isUSD ? 'block' : 'none';
+      if (form) form.style.border = isUSD ? '2px solid #16a34a' : '';
     };
 
     // Init tab activo
