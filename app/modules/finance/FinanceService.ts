@@ -51,7 +51,7 @@ class FinanceService {
       SELECT codigo, cliente, fecha_vencimiento,
       (total_base - monto_detraccion - IFNULL((SELECT SUM(monto_base) FROM Transacciones WHERE referencia_tipo='SERVICIO' AND referencia_id = id_servicio AND tipo_movimiento='INGRESO'), 0)) as deuda
       FROM Servicios
-      WHERE estado IN ('PENDIENTE', 'PARCIAL') AND fecha_vencimiento < CURDATE()
+      WHERE estado IN ('PENDIENTE', 'PARCIAL') AND (fecha_vencimiento < CURDATE() OR fecha_vencimiento IS NULL)
     `);
 
     // 4b. Alerta: Clientes Por Vencer (<= 5 días) (ADVERTENCIA)
