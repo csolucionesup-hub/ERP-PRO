@@ -119,7 +119,7 @@ const formCrear = (tipo, tcVenta = 1, tcFecha = '') => {
             <option value="USD">$ Dólares (USD)</option>
           </select>
         </div>
-        <div id="div-tc-${tipo}" style="display:none">
+        <div id="div-tc-${tipo}" style="display:none; flex:1;">
           <label style="font-size:11px;color:var(--text-secondary)">Tipo de Cambio</label>
           <input name="tipo_cambio" type="number" step="0.0001" value="${tcVenta}" style="${inputStyle}">
           <span style="font-size:10px;color:var(--text-secondary)">SBS ${tcFecha || 'sin datos'}: ${tcVenta}</span>

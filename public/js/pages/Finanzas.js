@@ -250,10 +250,6 @@ export const Finanzas = async () => {
                        <label style="font-size:11px; color:var(--text-secondary)">Fecha</label>
                        <input name="fecha" type="date" required style="width:100%; padding:10px; border-radius:var(--radius-sm); border:1px solid var(--border-light)">
                     </div>
-                    <div style="flex:1">
-                       <label style="font-size:11px; color:var(--text-secondary)">Importe SIN IGV</label>
-                       <input name="monto_base" type="number" step="0.01" required style="width:100%; padding:10px; border-radius:var(--radius-sm); border:1px solid var(--border-light)">
-                    </div>
                  </div>
 
                  <div style="display:flex; gap:10px;">
@@ -264,10 +260,17 @@ export const Finanzas = async () => {
                           <option value="USD">$ Dólares (USD)</option>
                        </select>
                     </div>
-                    <div style="flex:1" id="div-tc-gasto" style="display:none">
+                    <div id="div-tc-gasto" style="flex:1; display:none;">
                        <label style="font-size:11px; color:var(--text-secondary)">Tipo de Cambio (venta)</label>
                        <input name="tipo_cambio" id="gasto-tipo-cambio" type="number" step="0.0001" value="${tcHoy.valor_venta || 1}" style="width:100%; padding:10px; border-radius:var(--radius-sm); border:1px solid var(--border-light)">
                        <span style="font-size:10px;color:var(--text-secondary)">SBS ${tcHoy.es_hoy ? 'hoy' : (tcHoy.fecha || 'sin datos')}: ${tcHoy.valor_venta}</span>
+                    </div>
+                 </div>
+
+                 <div style="display:flex; gap:10px;">
+                    <div style="flex:1">
+                       <label style="font-size:11px; color:var(--text-secondary)">Importe SIN IGV</label>
+                       <input name="monto_base" type="number" step="0.01" required style="width:100%; padding:10px; border-radius:var(--radius-sm); border:1px solid var(--border-light)">
                     </div>
                  </div>
 

@@ -1,12 +1,13 @@
 import { api } from '../services/api.js';
 
 export const Compras = async () => {
-  let compras = [], proveedores = [], inventario = [];
+  let compras = [], proveedores = [], inventario = [], tcHoy = { valor_venta: 1, es_hoy: false, fecha: '' };
   try {
-    [compras, proveedores, inventario] = await Promise.all([
+    [compras, proveedores, inventario, tcHoy] = await Promise.all([
       api.purchases.getCompras(),
       api.purchases.getProveedores(),
-      api.inventory.getInventario()
+      api.inventory.getInventario(),
+      api.tipoCambio.getHoy('USD').catch(() => ({ valor_venta: 1, es_hoy: false, fecha: '' }))
     ]);
     if (!Array.isArray(compras)) compras = [];
     if (!Array.isArray(proveedores)) proveedores = [];
@@ -16,6 +17,7 @@ export const Compras = async () => {
   }
 
   const formatCurrency = (val) => new Intl.NumberFormat('es-PE', { style: 'currency', currency: 'PEN' }).format(val);
+  const formatUSD = (val) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(Number(val) || 0);
   const getStatusBadge = (estado) => `<span class="status-badge status-${estado?.toLowerCase()}">${estado}</span>`;
 
   setTimeout(() => {
@@ -132,13 +134,15 @@ export const Compras = async () => {
          e.preventDefault();
          if(lineas.length === 0) return alert('Debes agregar al menos un ítem al detalle.');
          const aplicaIgv = document.getElementById('chk-igv').checked;
+         const moneda = e.target.moneda.value || 'PEN';
+         const tipo_cambio = moneda === 'USD' ? Number(e.target.tipo_cambio?.value) || 1 : 1;
          const data = {
              nro_oc: e.target.nro_oc.value,
              id_proveedor: Number(e.target.id_proveedor.value),
              fecha: e.target.fecha.value,
              nro_comprobante: e.target.nro_comprobante.value,
-             moneda: 'PEN',
-             tipo_cambio: 1,
+             moneda,
+             tipo_cambio,
              aplica_igv: aplicaIgv,
              monto_base: Number(document.getElementById('monto_base').value),
              igv_base: Number(document.getElementById('igv_base').value),
@@ -175,19 +179,29 @@ export const Compras = async () => {
 
   }, 100);
 
-  const compraRows = compras.map(c => `
+  const compraRows = compras.map(c => {
+    const esUSD = c.moneda === 'USD';
+    const tc = Number(c.tipo_cambio) || 1;
+    const total = Number(c.total_base) || 0;
+    const totalPEN = esUSD ? total * tc : total;
+    return `
     <tr class="${c.estado_pago === 'ANULADO' ? 'row-anulada' : ''}">
-      <td style="font-size:11px; color:var(--text-secondary)">${c.nro_oc || '---'}</td>
+      <td style="font-size:11px; color:var(--text-secondary)">${c.nro_oc || '---'}
+        ${esUSD ? `<br><span style="background:#1d4ed8;color:white;padding:1px 5px;border-radius:3px;font-size:10px">USD</span>` : ''}
+      </td>
       <td>${c.fecha ? c.fecha.split('T')[0] : '---'}</td>
       <td><strong>${c.proveedor_nombre || 'N/A'}</strong></td>
       <td>${c.nro_comprobante}</td>
-      <td>${formatCurrency(c.total_base || 0)}</td>
+      <td style="text-align:right">
+        ${esUSD ? `<strong>${formatUSD(total)}</strong><br><span style="font-size:10px;color:var(--text-secondary)">${formatCurrency(totalPEN)} (TC ${tc})</span>` : formatCurrency(total)}
+      </td>
       <td>${getStatusBadge(c.estado_pago)}</td>
       <td>
         ${c.estado_pago !== 'ANULADO' ? `<button class="action-btn action-btn-anular" onclick="window.anularCompra(${c.id_compra}, '${c.nro_comprobante}')">Anular</button>` : ''}
       </td>
     </tr>
-  `).join('');
+  `;
+  }).join('');
 
   const provOptions = proveedores.map(p => `<option value="${p.id_proveedor}">${p.razon_social} (RUC: ${p.ruc})</option>`).join('');
   const itemOptions = inventario.map(i => `<option value="${i.id_item}">${i.nombre} [${i.sku}]</option>`).join('');
@@ -282,6 +296,22 @@ export const Compras = async () => {
                  <div style="display:flex; gap:10px;">
                     <input name="nro_comprobante" placeholder="F001-XXXXXX" required style="flex:1; padding:10px; border-radius:var(--radius-sm); border:1px solid var(--border-light)">
                     <input name="fecha" type="date" required style="flex:1; padding:10px; border-radius:var(--radius-sm); border:1px solid var(--border-light)">
+                 </div>
+
+                 <div style="display:flex; gap:10px;">
+                    <div style="flex:1">
+                       <label style="font-size:11px; color:var(--text-secondary)">Moneda</label>
+                       <select name="moneda" id="compra-moneda" style="${inputStyle}; width:100%"
+                         onchange="document.getElementById('div-tc-compra').style.display=this.value==='USD'?'flex':'none'">
+                          <option value="PEN">S/. Soles (PEN)</option>
+                          <option value="USD">$ Dólares (USD)</option>
+                       </select>
+                    </div>
+                    <div id="div-tc-compra" style="flex:1; display:none;">
+                       <label style="font-size:11px; color:var(--text-secondary)">Tipo de Cambio (venta)</label>
+                       <input name="tipo_cambio" type="number" step="0.0001" value="${tcHoy.valor_venta || 1}" style="${inputStyle}; width:100%">
+                       <span style="font-size:10px;color:var(--text-secondary)">SBS ${tcHoy.es_hoy ? 'hoy' : (tcHoy.fecha || 'sin datos')}: ${tcHoy.valor_venta}</span>
+                    </div>
                  </div>
 
                  <div style="display:flex; gap:10px; align-items:center; background:#f8f9fa; padding:10px; border-radius:4px">
