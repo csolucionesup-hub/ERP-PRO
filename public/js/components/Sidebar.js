@@ -6,6 +6,7 @@ export const Sidebar = (activePath) => `
       <div class="nav-item ${activePath === '/servicios' ? 'active' : ''}" data-path="/servicios">Ventas y Servicios</div>
       <div class="nav-item ${activePath === '/finanzas' ? 'active' : ''}" data-path="/finanzas">Finanzas y Flujo</div>
       <div class="nav-item ${activePath === '/compras' ? 'active' : ''}" data-path="/compras">Compras</div>
+      <div class="nav-item ${activePath === '/proveedores' ? 'active' : ''}" data-path="/proveedores">Proveedores</div>
       <div class="nav-item ${activePath === '/inventario' ? 'active' : ''}" data-path="/inventario">Inventario</div>
       <div class="nav-item ${activePath === '/prestamos' ? 'active' : ''}" data-path="/prestamos">Préstamos</div>
     </nav>

@@ -5,6 +5,7 @@ import { Servicios } from './pages/Servicios.js';
 import { Finanzas } from './pages/Finanzas.js';
 import { Inventario } from './pages/Inventario.js';
 import { Prestamos } from './pages/Prestamos.js';
+import { Proveedores } from './pages/Proveedores.js';
 
 const routes = {
   '/': Dashboard,
@@ -13,7 +14,8 @@ const routes = {
   '/servicios': Servicios,
   '/finanzas': Finanzas,
   '/inventario': Inventario,
-  '/prestamos': Prestamos
+  '/prestamos': Prestamos,
+  '/proveedores': Proveedores
 };
 
 class Router {

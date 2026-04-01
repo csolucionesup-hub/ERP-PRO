@@ -82,6 +82,7 @@ CREATE TABLE Proveedores (
     contacto VARCHAR(150),
     telefono VARCHAR(50),
     email VARCHAR(100),
+    direccion VARCHAR(200),
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );

@@ -128,6 +128,20 @@ export const api = {
        if (!res.ok) throw await res.json();
        return await res.json();
     },
+    async updateProveedor(id, data) {
+       const res = await fetch(`/api/proveedores/${id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data)
+       });
+       if (!res.ok) throw await res.json();
+       return await res.json();
+    },
+    async deleteProveedor(id) {
+       const res = await fetch(`/api/proveedores/${id}`, { method: 'DELETE' });
+       if (!res.ok) throw await res.json();
+       return await res.json();
+    },
     async createCompra(data) {
        const res = await fetch('/api/compras', {
           method: 'POST',

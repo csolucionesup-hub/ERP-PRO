@@ -174,6 +174,14 @@ apiRouter.post('/proveedores', validateParams(providerCreateSchema), async (req:
   res.status(201).json(result);
 });
 
+apiRouter.put('/proveedores/:id', async (req: Request, res: Response) => {
+  res.json(await ProvidersService.updateProveedor(parseInt(req.params.id as string), req.body));
+});
+
+apiRouter.delete('/proveedores/:id', async (req: Request, res: Response) => {
+  res.json(await ProvidersService.deleteProveedor(parseInt(req.params.id as string)));
+});
+
 apiRouter.get('/inventario', async (req: Request, res: Response) => {
   res.json(await InventoryService.getInventario());
 });
