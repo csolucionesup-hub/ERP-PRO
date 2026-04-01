@@ -6,7 +6,9 @@
   "scripts": {
     "build": "tsc",
     "start": "node dist/index.js",
-    "dev": "ts-node index.ts"
+    "dev": "ts-node index.ts",
+    "db:setup": "ts-node database/setup_db.ts",
+    "db:clean": "ts-node database/clean_db.ts"
   },
   "dependencies": {
     "cors": "^2.8.6",

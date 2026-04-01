@@ -259,7 +259,13 @@ app.use(errorHandler);
 
 
 // Levantar Máquina
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
   console.log(`[SYS] ERP API Backend SECURE_LAYER Operativo y escuchando en puerto ${PORT}`);
   console.log(`[SYS] Entrar: http://localhost:${PORT}`);
+  // Garantizar cuenta base id=1 siempre existe (requerida por Transacciones)
+  const [rows] = await db.query('SELECT id_cuenta FROM Cuentas WHERE id_cuenta = 1');
+  if ((rows as any[]).length === 0) {
+    await db.query("INSERT INTO Cuentas (nombre, tipo, saldo_actual) VALUES ('Caja General Soles', 'EFECTIVO', 0.00)");
+    console.log('[SYS] Cuenta base recreada automáticamente.');
+  }
 });

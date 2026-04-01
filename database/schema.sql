@@ -21,6 +21,7 @@ CREATE TABLE Cuentas (
 CREATE TABLE Servicios (
     id_servicio INT PRIMARY KEY AUTO_INCREMENT,
     codigo VARCHAR(50) UNIQUE,
+    nro_cotizacion VARCHAR(50),
     nombre VARCHAR(150) NOT NULL,
     cliente VARCHAR(150),
     descripcion TEXT,
@@ -33,7 +34,10 @@ CREATE TABLE Servicios (
     total_base DECIMAL(12,2) NOT NULL DEFAULT 0.00,
     detraccion_porcentaje DECIMAL(5,2) DEFAULT 0.00,
     monto_detraccion DECIMAL(12,2) DEFAULT 0.00,
+    retencion_porcentaje DECIMAL(5,2) DEFAULT 0.00,
+    monto_retencion DECIMAL(12,2) DEFAULT 0.00,
     estado ENUM('PENDIENTE', 'PARCIAL', 'COBRADO', 'ANULADO') DEFAULT 'PENDIENTE',
+    estado_trabajo VARCHAR(50) DEFAULT 'EN_PROCESO',
     tipo_ultima_accion VARCHAR(50) DEFAULT 'CREACION',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
@@ -207,6 +211,7 @@ CREATE TABLE PrestamosOtorgados (
 CREATE TABLE Detracciones (
     id_detraccion INT PRIMARY KEY AUTO_INCREMENT,
     id_servicio INT NOT NULL,
+    cliente VARCHAR(150),
     porcentaje DECIMAL(5,2) NOT NULL,
     monto DECIMAL(12,2) NOT NULL,
     cliente_deposito ENUM('SI','NO','PARCIAL') DEFAULT 'NO',
