@@ -6,8 +6,8 @@ class CatalogService {
    */
   async getServicios() {
     const query = `
-      SELECT 
-        s.id_servicio, s.codigo, s.nombre, s.cliente, s.fecha_servicio, s.moneda, 
+      SELECT
+        s.id_servicio, s.codigo, s.nombre, s.cliente, s.fecha_servicio, s.moneda, s.tipo_cambio,
         s.nro_cotizacion, s.monto_base as ingreso_neto, s.igv_base, s.total_base,
         s.detraccion_porcentaje, s.monto_detraccion, s.retencion_porcentaje, s.monto_retencion, s.estado, s.estado_trabajo, s.fecha_vencimiento,
         DATEDIFF(s.fecha_vencimiento, CURDATE()) as dias_restantes,
@@ -66,16 +66,20 @@ class CatalogService {
        // Generar Código Único 
        const codigo = 'SRV-' + new Date().getTime().toString().slice(-6);
 
+       const moneda = (data.moneda || 'PEN').toUpperCase();
+       const tipo_cambio = moneda === 'USD' ? Number(data.tipo_cambio) || 1 : 1;
+
        const queryInsert = `
          INSERT INTO Servicios (
-            codigo, nro_cotizacion, nombre, cliente, descripcion, fecha_servicio, moneda, monto_base,
+            codigo, nro_cotizacion, nombre, cliente, descripcion, fecha_servicio, moneda, tipo_cambio, monto_base,
             aplica_igv, igv_base, total_base, detraccion_porcentaje, monto_detraccion,
             retencion_porcentaje, monto_retencion, estado, fecha_vencimiento
-         ) VALUES (?, ?, ?, ?, ?, ?, 'PEN', ?, ?, ?, ?, ?, ?, ?, ?, 'PENDIENTE', ?)
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'PENDIENTE', ?)
        `;
 
        const [res] = await conn.query(queryInsert, [
           codigo, data.nro_cotizacion || null, data.nombre, data.cliente, data.descripcion || '', data.fecha_servicio,
+          moneda, tipo_cambio,
           monto_base, aplica_igv, igv_base, total_base, detraccion_porcentaje, monto_detraccion,
           retencion_porcentaje, monto_retencion, fecha_venc
        ]);
