@@ -119,6 +119,25 @@ class PurchaseService {
   /**
    * ANULACIÓN PROFESIONAL: Revierte el impacto en Inventario y Finanzas.
    */
+  async deleteCompra(idCompra: number) {
+    const conn = await db.getConnection();
+    await conn.beginTransaction();
+    try {
+      const [rows] = await conn.query('SELECT id_compra FROM Compras WHERE id_compra = ? FOR UPDATE', [idCompra]);
+      if (!(rows as any)[0]) throw new Error('Compra no encontrada.');
+      await conn.query('DELETE FROM DetalleCompra WHERE id_compra = ?', [idCompra]);
+      await conn.query("DELETE FROM Transacciones WHERE referencia_tipo='COMPRA' AND referencia_id = ?", [idCompra]);
+      await conn.query('DELETE FROM Compras WHERE id_compra = ?', [idCompra]);
+      await conn.commit();
+      return { success: true };
+    } catch (e) {
+      await conn.rollback();
+      throw e;
+    } finally {
+      conn.release();
+    }
+  }
+
   async anularCompra(idCompra: number) {
     const conn = await db.getConnection();
     await conn.beginTransaction();

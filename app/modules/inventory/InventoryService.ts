@@ -116,6 +116,13 @@ class InventoryService {
        conn.release();
     }
   }
+  async deleteItem(idItem: number) {
+    const [rows] = await db.query('SELECT id_item FROM Inventario WHERE id_item = ?', [idItem]);
+    if (!(rows as any)[0]) throw new Error('Ítem no encontrado.');
+    await db.query('DELETE FROM MovimientosInventario WHERE id_item = ?', [idItem]);
+    await db.query('DELETE FROM Inventario WHERE id_item = ?', [idItem]);
+    return { success: true };
+  }
 }
 
 export default new InventoryService();

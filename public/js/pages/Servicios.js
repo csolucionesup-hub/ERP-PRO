@@ -64,7 +64,7 @@ export const Servicios = async () => {
          <div style="display:flex; flex-direction:column; gap:4px; margin-top:8px;">
             ${s.estado !== 'COBRADO' && s.estado !== 'ANULADO' ? `<button class="action-btn" onclick="window.modalCobrar(${s.id_servicio}, '${s.codigo}', ${deudaNetaReal})">Abonar</button>` : ''}
             ${s.estado !== 'ANULADO' && s.estado !== 'COBRADO' ? `<button class="action-btn" style="background:var(--info);color:white" onclick="window.editarServicio(${s.id_servicio})">Editar</button>` : ''}
-            ${s.estado === 'PENDIENTE' ? `<button class="action-btn" style="background:#ef4444;color:white" onclick="window.eliminarServicio(${s.id_servicio}, '${s.codigo}')">Eliminar</button>` : ''}
+            <button class="action-btn" style="background:#ef4444;color:white" onclick="window.eliminarServicio(${s.id_servicio}, '${s.codigo}')">Eliminar</button>
             ${s.estado_trabajo === 'ACTIVO' ? `<button class="action-btn" style="background:#22c55e;color:white;font-size:11px" onclick="window.terminarServicio(${s.id_servicio})">Terminado</button>` : `<span style="font-size:11px;color:var(--text-secondary)">Terminado ✓</span>`}
             ${s.estado !== 'ANULADO' ? `<button class="action-btn action-btn-anular" onclick="window.anularServicio(${s.id_servicio}, '${s.codigo}')">Anular</button>` : ''}
          </div>

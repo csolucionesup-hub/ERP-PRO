@@ -177,6 +177,14 @@ export const Compras = async () => {
         }
      };
 
+     window.eliminarCompra = async (id, doc) => {
+       if (!confirm(`¿Eliminar permanentemente la compra ${doc}?\nEsta acción no se puede deshacer.`)) return;
+       try {
+         await api.purchases.deleteCompra(id);
+         window.location.reload();
+       } catch(e) { alert('Error: ' + (e.error || e.message || JSON.stringify(e))); }
+     };
+
   }, 100);
 
   const compraRows = compras.map(c => {
@@ -196,8 +204,9 @@ export const Compras = async () => {
         ${esUSD ? `<strong>${formatUSD(total)}</strong><br><span style="font-size:10px;color:var(--text-secondary)">${formatCurrency(totalPEN)} (TC ${tc})</span>` : formatCurrency(total)}
       </td>
       <td>${getStatusBadge(c.estado_pago)}</td>
-      <td>
+      <td style="display:flex;gap:4px;flex-wrap:wrap">
         ${c.estado_pago !== 'ANULADO' ? `<button class="action-btn action-btn-anular" onclick="window.anularCompra(${c.id_compra}, '${c.nro_comprobante}')">Anular</button>` : ''}
+        <button class="action-btn" style="background:#ef4444;color:white" onclick="window.eliminarCompra(${c.id_compra}, '${c.nro_comprobante}')">Eliminar</button>
       </td>
     </tr>
   `;

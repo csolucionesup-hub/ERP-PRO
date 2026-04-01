@@ -141,6 +141,11 @@ export const api = {
        const res = await fetch(`/api/compras/${idCompra}/anular`, { method: 'POST' });
        if (!res.ok) throw await res.json();
        return await res.json();
+    },
+    async deleteCompra(idCompra) {
+       const res = await fetch(`/api/compras/${idCompra}`, { method: 'DELETE' });
+       if (!res.ok) throw await res.json();
+       return await res.json();
     }
   },
   tributario: {
@@ -250,6 +255,11 @@ export const api = {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(data)
        });
+       if (!res.ok) throw await res.json();
+       return await res.json();
+    },
+    async deleteInventarioItem(idItem) {
+       const res = await fetch(`/api/inventario/${idItem}`, { method: 'DELETE' });
        if (!res.ok) throw await res.json();
        return await res.json();
     }

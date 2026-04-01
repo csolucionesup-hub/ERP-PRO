@@ -61,10 +61,8 @@ class PrestamosService {
   }
 
   async deleteTomado(id: number) {
-    const [rows] = await db.query('SELECT monto_pagado FROM PrestamosTomados WHERE id_prestamo = ?', [id]);
-    const p = (rows as any)[0];
-    if (!p) throw new Error('No encontrado');
-    if (Number(p.monto_pagado) > 0) throw new Error('Tiene pagos registrados. Use anular en su lugar.');
+    const [rows] = await db.query('SELECT id_prestamo FROM PrestamosTomados WHERE id_prestamo = ?', [id]);
+    if (!(rows as any)[0]) throw new Error('No encontrado');
     await db.query('DELETE FROM PrestamosTomados WHERE id_prestamo = ?', [id]);
     return { success: true };
   }
@@ -133,10 +131,8 @@ class PrestamosService {
   }
 
   async deleteOtorgado(id: number) {
-    const [rows] = await db.query('SELECT monto_pagado FROM PrestamosOtorgados WHERE id_prestamo = ?', [id]);
-    const p = (rows as any)[0];
-    if (!p) throw new Error('No encontrado');
-    if (Number(p.monto_pagado) > 0) throw new Error('Tiene pagos registrados. Use anular en su lugar.');
+    const [rows] = await db.query('SELECT id_prestamo FROM PrestamosOtorgados WHERE id_prestamo = ?', [id]);
+    if (!(rows as any)[0]) throw new Error('No encontrado');
     await db.query('DELETE FROM PrestamosOtorgados WHERE id_prestamo = ?', [id]);
     return { success: true };
   }

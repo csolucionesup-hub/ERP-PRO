@@ -267,10 +267,6 @@ class CatalogService {
       const [rows] = await conn.query('SELECT estado FROM Servicios WHERE id_servicio = ? FOR UPDATE', [idServicio]);
       const srv = (rows as any)[0];
       if (!srv) throw new Error('Servicio no encontrado.');
-      if (srv.estado !== 'PENDIENTE') throw new Error('Solo se pueden eliminar servicios PENDIENTES sin cobros.');
-
-      const [txRows] = await conn.query("SELECT COUNT(*) as cnt FROM Transacciones WHERE referencia_tipo='SERVICIO' AND referencia_id = ? AND estado != 'ANULADO'", [idServicio]);
-      if ((txRows as any)[0].cnt > 0) throw new Error('Tiene transacciones. Use Anular.');
 
       await conn.query("DELETE FROM Detracciones WHERE id_servicio = ?", [idServicio]);
       await conn.query("DELETE FROM CostosServicio WHERE id_servicio = ?", [idServicio]);

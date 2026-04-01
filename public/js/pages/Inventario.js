@@ -36,8 +36,9 @@ export const Inventario = async () => {
       </td>
       <td style="text-align:right">${formatCurrency(i.costo_promedio || 0)}</td>
       <td style="text-align:right">${formatCurrency(i.valorizado || 0)}</td>
-      <td>
+      <td style="display:flex;gap:4px">
          <button class="action-btn" onclick="window.verKardex(${i.id_item}, '${i.nombre}')">Kárdex</button>
+         <button class="action-btn" style="background:#ef4444;color:white" onclick="window.eliminarItem(${i.id_item}, '${i.nombre}')">Eliminar</button>
       </td>
     </tr>
   `}).join('');
@@ -116,7 +117,17 @@ export const Inventario = async () => {
          } catch(e) {
             alert("No se pudo extraer Kárdex");
          }
-     }
+     };
+
+     window.eliminarItem = async (id, nombre) => {
+         if (!confirm(`¿Eliminar permanentemente "${nombre}"?\nEsta acción no se puede deshacer.`)) return;
+         try {
+            await api.inventory.deleteInventarioItem(id);
+            window.location.reload();
+         } catch(e) {
+            alert('Error: ' + (e.error || e.message || JSON.stringify(e)));
+         }
+     };
   }, 100);
 
   const btnStyle = 'padding:6px 12px; border:1px solid var(--border-light); border-radius:4px; cursor:pointer; font-size:12px; background:var(--bg-app)';

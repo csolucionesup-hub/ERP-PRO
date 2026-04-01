@@ -95,10 +95,9 @@ apiRouter.put('/gastos/:id', async (req: Request, res: Response) => {
 });
 apiRouter.delete('/gastos/:id', async (req: Request, res: Response) => {
   const id = parseInt(req.params.id as string);
-  const [rows] = await db.query('SELECT estado_pago FROM Gastos WHERE id_gasto = ?', [id]);
-  const g = (rows as any)[0];
-  if (!g) throw new Error('No encontrado');
-  if (g.estado_pago !== 'PENDIENTE') throw new Error('Solo se pueden eliminar gastos PENDIENTES');
+  const [rows] = await db.query('SELECT id_gasto FROM Gastos WHERE id_gasto = ?', [id]);
+  if (!(rows as any)[0]) throw new Error('No encontrado');
+  await db.query("DELETE FROM Transacciones WHERE referencia_tipo='GASTO' AND referencia_id = ?", [id]);
   await db.query('DELETE FROM Gastos WHERE id_gasto = ?', [id]);
   res.json({ success: true });
 });
@@ -162,6 +161,10 @@ apiRouter.post('/compras/:id/anular', async (req: Request, res: Response) => {
   res.json(await PurchaseService.anularCompra(parseInt(req.params.id as string)));
 });
 
+apiRouter.delete('/compras/:id', async (req: Request, res: Response) => {
+  res.json(await PurchaseService.deleteCompra(parseInt(req.params.id as string)));
+});
+
 apiRouter.get('/proveedores', async (req: Request, res: Response) => {
   res.json(await ProvidersService.getProveedores());
 });
@@ -188,6 +191,10 @@ apiRouter.post('/inventario/consumo', validateParams(inventoryConsumeSchema), as
 apiRouter.get('/inventario/:id/kardex', async (req: Request, res: Response) => {
   const idItem = parseInt(req.params.id as string);
   res.json(await InventoryService.getKardex(idItem));
+});
+
+apiRouter.delete('/inventario/:id', async (req: Request, res: Response) => {
+  res.json(await InventoryService.deleteItem(parseInt(req.params.id as string)));
 });
 
 // ===== PRÉSTAMOS =====

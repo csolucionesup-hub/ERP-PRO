@@ -40,7 +40,7 @@ export const Finanzas = async () => {
         <div style="display:flex;flex-direction:column;gap:4px">
           ${g.estado_pago !== 'PAGADO' && g.estado !== 'ANULADO' ? '<button class="action-btn" onclick="window.modalPagarGasto(' + g.id_gasto + ',\'' + g.concepto + '\',' + pendiente + ')">Pagar</button>' : ''}
           ${g.estado_pago === 'PENDIENTE' ? '<button class="action-btn" style="background:var(--info);color:white" onclick="window.editarGasto(' + g.id_gasto + ')">Editar</button>' : ''}
-          ${g.estado_pago === 'PENDIENTE' ? '<button class="action-btn" style="background:#ef4444;color:white" onclick="window.eliminarGasto(' + g.id_gasto + ')">Eliminar</button>' : ''}
+          ${g.estado !== 'ANULADO' ? '<button class="action-btn" style="background:#ef4444;color:white" onclick="window.eliminarGasto(' + g.id_gasto + ')">Eliminar</button>' : ''}
           ${g.estado !== 'ANULADO' && g.estado_pago !== 'PENDIENTE' ? '<button class="action-btn action-btn-anular" onclick="window.anularGasto(' + g.id_gasto + ',\'' + g.concepto + '\')">Anular</button>' : ''}
         </div>
       </td>
