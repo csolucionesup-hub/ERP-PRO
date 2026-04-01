@@ -25,7 +25,9 @@ export const gastoCreateSchema = z.object({
     aplica_igv: z.boolean().default(false),
     tipo_gasto: z.enum(['OPERATIVO', 'SERVICIO']).default('OPERATIVO'),
     id_servicio: z.number().nullable().optional(),
-    detraccion_porcentaje: z.number().min(0).max(100).default(0)
+    detraccion_porcentaje: z.number().min(0).max(100).default(0),
+    moneda: z.enum(['PEN', 'USD']).default('PEN'),
+    tipo_cambio: z.number().positive().default(1)
   })
 });
 
