@@ -149,6 +149,20 @@ export const Dashboard = async () => {
     const alertHTML = [...criticos.map(c => renderAlert(c, true)), ...advertencias.map(a => renderAlert(a, false))].join('');
 
     setTimeout(() => {
+      window.resetearBD = async () => {
+        const confirmado = confirm('¿Estás seguro? Esta acción borrará TODOS los datos del sistema. Esta acción no se puede deshacer.');
+        if (!confirmado) return;
+        try {
+          const res = await fetch('/api/admin/reset-db', { method: 'POST' });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || 'Error desconocido');
+          alert('✅ Base de datos reseteada correctamente.');
+          window.location.reload();
+        } catch (e) {
+          alert('Error al resetear: ' + e.message);
+        }
+      };
+
       window.marcarDeposito = async (idDetraccion, montoSugerido) => {
         const monto = prompt('Monto depositado por el cliente en BN:', montoSugerido.toFixed(2));
         if (!monto || isNaN(monto) || Number(monto) <= 0) return;
@@ -340,6 +354,15 @@ export const Dashboard = async () => {
               </tbody>
             </table>
           </div>
+        </div>
+      </div>
+
+      <div style="margin-top:50px; padding-top:20px; border-top:1px solid var(--border-light); display:flex; justify-content:flex-end;">
+        <div style="text-align:right;">
+          <p style="font-size:11px; color:var(--text-secondary); margin-bottom:8px; text-transform:uppercase; letter-spacing:1px;">Zona de Administración</p>
+          <button onclick="window.resetearBD()" style="padding:8px 16px; background:#ef4444; color:white; border:none; border-radius:var(--radius-sm); cursor:pointer; font-size:13px; font-weight:600; display:inline-flex; align-items:center; gap:6px;">
+            ⚠️ Resetear BD
+          </button>
         </div>
       </div>
     `;

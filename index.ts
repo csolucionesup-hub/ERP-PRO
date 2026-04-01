@@ -281,6 +281,37 @@ apiRouter.post('/tributario/pago-impuesto', async (req: Request, res: Response) 
   res.json(await TributarioService.registrarPagoImpuesto(req.body));
 });
 
+// ===== ADMIN: RESET BASE DE DATOS =====
+apiRouter.post('/admin/reset-db', async (req: Request, res: Response) => {
+  const conn = await (db as any).getConnection();
+  try {
+    await conn.query('SET FOREIGN_KEY_CHECKS=0');
+    const tables = [
+      'Transacciones', 'CostosServicio', 'MovimientosInventario',
+      'DetalleCompra', 'Detracciones', 'PagosImpuestos',
+      'Servicios', 'Compras', 'Gastos', 'Inventario',
+      'Proveedores', 'PrestamosTomados', 'PrestamosOtorgados', 'TipoCambio'
+    ];
+    for (const t of tables) {
+      await conn.query(`TRUNCATE TABLE \`${t}\``);
+    }
+    await conn.query('DELETE FROM Cuentas WHERE id_cuenta != 1');
+    const [rows] = await conn.query('SELECT id_cuenta FROM Cuentas WHERE id_cuenta = 1');
+    if ((rows as any[]).length === 0) {
+      await conn.query("INSERT INTO Cuentas (nombre, tipo, saldo_actual) VALUES ('Caja General Soles', 'EFECTIVO', 0.00)");
+    }
+    await conn.query('SET FOREIGN_KEY_CHECKS=1');
+    console.log('[ADMIN] Base de datos reseteada exitosamente');
+    res.json({ success: true, mensaje: 'Base de datos reseteada correctamente' });
+  } catch (err: any) {
+    await conn.query('SET FOREIGN_KEY_CHECKS=1').catch(() => {});
+    console.error('[ADMIN] Error en reset-db:', err);
+    res.status(500).json({ error: err.message || 'Error al resetear BD' });
+  } finally {
+    conn.release();
+  }
+});
+
 // Anidamos el API controlada bajo la rama estándar /api
 app.use('/api', apiRouter);
 
