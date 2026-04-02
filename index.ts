@@ -42,7 +42,7 @@ app.use(express.json());
 app.use(morgan('dev'));
 
 // Servicio estático (Frontend JS Vanilla)
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.static(path.join(__dirname, '..', 'public')));
 
 
 // ==========================================
