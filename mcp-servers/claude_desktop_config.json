@@ -1,0 +1,39 @@
+{
+  "mcpServers": {
+    "erp-backend-agent": {
+      "command": "node",
+      "args": ["C:\\Users\\Asus\\ERP-PRO\\mcp-servers\\backend-agent\\index.js"],
+      "env": {
+        "ERP_ROOT": "C:\\Users\\Asus\\ERP-PRO"
+      }
+    },
+    "erp-database-agent": {
+      "command": "node",
+      "args": ["C:\\Users\\Asus\\ERP-PRO\\mcp-servers\\database-agent\\index.js"],
+      "env": {
+        "ERP_ROOT": "C:\\Users\\Asus\\ERP-PRO"
+      }
+    },
+    "erp-frontend-agent": {
+      "command": "node",
+      "args": ["C:\\Users\\Asus\\ERP-PRO\\mcp-servers\\frontend-agent\\index.js"],
+      "env": {
+        "ERP_ROOT": "C:\\Users\\Asus\\ERP-PRO"
+      }
+    },
+    "erp-tax-business-agent": {
+      "command": "node",
+      "args": ["C:\\Users\\Asus\\ERP-PRO\\mcp-servers\\tax-business-agent\\index.js"],
+      "env": {
+        "ERP_ROOT": "C:\\Users\\Asus\\ERP-PRO"
+      }
+    },
+    "erp-testing-agent": {
+      "command": "node",
+      "args": ["C:\\Users\\Asus\\ERP-PRO\\mcp-servers\\testing-agent\\index.js"],
+      "env": {
+        "ERP_ROOT": "C:\\Users\\Asus\\ERP-PRO"
+      }
+    }
+  }
+}

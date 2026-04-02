@@ -1,0 +1,16 @@
+{
+  "name": "erp-backend-agent",
+  "version": "1.0.0",
+  "description": "Agente especializado en backend Express + TypeScript para ERP-PRO",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.4"
+  },
+  "keywords": ["mcp", "erp", "backend", "express", "typescript"],
+  "author": "CREER Soluciones Group",
+  "license": "MIT"
+}

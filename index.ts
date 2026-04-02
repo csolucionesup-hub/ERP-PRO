@@ -157,6 +157,14 @@ apiRouter.post('/compras', validateParams(purchaseCreateSchema), async (req: Req
   res.json(result);
 });
 
+apiRouter.get('/compras/:id', async (req: Request, res: Response) => {
+  res.json(await PurchaseService.getCompraDetalle(parseInt(req.params.id as string)));
+});
+
+apiRouter.put('/compras/:id', async (req: Request, res: Response) => {
+  res.json(await PurchaseService.updateCompra(parseInt(req.params.id as string), req.body));
+});
+
 apiRouter.post('/compras/:id/anular', async (req: Request, res: Response) => {
   res.json(await PurchaseService.anularCompra(parseInt(req.params.id as string)));
 });

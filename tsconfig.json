@@ -9,5 +9,5 @@
     "strict": true,
     "skipLibCheck": true
   },
-  "include": ["app/**/*", "functions/**/*"]
+  "include": ["index.ts", "database/**/*", "app/**/*"]
 }

@@ -142,6 +142,18 @@ export const api = {
        if (!res.ok) throw await res.json();
        return await res.json();
     },
+    async getCompraDetalle(id) {
+      return await fetchReal(`/compras/${id}`);
+    },
+    async updateCompra(id, data) {
+       const res = await fetch(`/api/compras/${id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data)
+       });
+       if (!res.ok) throw await res.json();
+       return await res.json();
+    },
     async createCompra(data) {
        const res = await fetch('/api/compras', {
           method: 'POST',

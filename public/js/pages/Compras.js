@@ -173,6 +173,179 @@ export const Compras = async () => {
        };
      }
 
+     window.editarCompra = async (id) => {
+       let detalle;
+       try {
+         detalle = await api.purchases.getCompraDetalle(id);
+       } catch(e) {
+         alert('Error cargando detalle: ' + (e.message || JSON.stringify(e)));
+         return;
+       }
+
+       const iStyle = 'padding:9px; border-radius:4px; border:1px solid var(--border-light); width:100%; box-sizing:border-box';
+       const provOpts = proveedores.map(p => `<option value="${p.id_proveedor}" ${p.id_proveedor === detalle.id_proveedor ? 'selected' : ''}>${p.razon_social} (${p.ruc})</option>`).join('');
+       const itemOpts = inventario.map(i => `<option value="${i.id_item}">${i.nombre} [${i.sku}]</option>`).join('');
+
+       const overlay = document.createElement('div');
+       overlay.id = 'modal-editar-compra';
+       overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:1000;display:flex;align-items:flex-start;justify-content:center;overflow-y:auto;padding:30px 0';
+       overlay.innerHTML = `
+         <div style="background:white;border-radius:10px;padding:28px;width:660px;box-shadow:0 12px 40px rgba(0,0,0,0.25)">
+           <h3 style="margin:0 0 18px;font-size:16px;font-weight:700">Editar Compra — ${detalle.nro_comprobante}</h3>
+           <form id="form-editar-compra" style="display:flex;flex-direction:column;gap:12px">
+             <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+               <div>
+                 <label style="font-size:11px;color:var(--text-secondary)">Proveedor</label>
+                 <select name="id_proveedor" style="${iStyle}" required>${provOpts}</select>
+               </div>
+               <div>
+                 <label style="font-size:11px;color:var(--text-secondary)">Fecha</label>
+                 <input name="fecha" type="date" value="${detalle.fecha ? detalle.fecha.split('T')[0] : ''}" required style="${iStyle}">
+               </div>
+             </div>
+             <div>
+               <label style="font-size:11px;color:var(--text-secondary)">N° Comprobante</label>
+               <input name="nro_comprobante" value="${detalle.nro_comprobante || ''}" required style="${iStyle}">
+             </div>
+             <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+               <div>
+                 <label style="font-size:11px;color:var(--text-secondary)">Moneda</label>
+                 <select name="moneda" id="edit-compra-moneda" style="${iStyle}">
+                   <option value="PEN" ${detalle.moneda !== 'USD' ? 'selected' : ''}>S/. Soles (PEN)</option>
+                   <option value="USD" ${detalle.moneda === 'USD' ? 'selected' : ''}>$ Dólares (USD)</option>
+                 </select>
+               </div>
+               <div id="edit-div-tc" style="${detalle.moneda === 'USD' ? '' : 'display:none'}">
+                 <label style="font-size:11px;color:var(--text-secondary)">Tipo de Cambio</label>
+                 <input name="tipo_cambio" type="number" step="0.0001" value="${detalle.tipo_cambio || 1}" style="${iStyle}">
+               </div>
+             </div>
+             <label style="font-size:12px;display:flex;gap:8px;align-items:center;cursor:pointer;background:#f8f9fa;padding:10px;border-radius:4px">
+               <input type="checkbox" id="edit-chk-igv" ${detalle.aplica_igv ? 'checked' : ''}> Afecto IGV 18%
+             </label>
+             <div style="background:#f8f9fa;padding:12px;border-radius:6px">
+               <h4 style="margin:0 0 8px;font-size:12px;color:var(--text-secondary)">Ítems de la Compra</h4>
+               <table style="width:100%;font-size:11px;border-collapse:collapse">
+                 <thead><tr style="background:#e5e7eb"><th style="padding:4px;text-align:left">Ítem</th><th>Cant</th><th>P.Unit</th><th>Subtotal</th><th></th></tr></thead>
+                 <tbody id="edit-tbody-detalles"></tbody>
+               </table>
+               <div style="display:flex;gap:8px;margin-top:8px;align-items:center">
+                 <select id="edit-item-select" style="flex:3;padding:7px;border:1px solid var(--border-light);border-radius:4px;font-size:12px">${itemOpts}</select>
+                 <input id="edit-item-qty" type="number" step="0.01" placeholder="Cant." style="flex:1;padding:7px;border:1px solid var(--border-light);border-radius:4px;font-size:12px">
+                 <input id="edit-item-price" type="number" step="0.01" placeholder="P.Unit" style="flex:1.5;padding:7px;border:1px solid var(--border-light);border-radius:4px;font-size:12px">
+                 <button type="button" id="edit-btn-add-item" style="background:var(--primary-color);color:white;border:none;padding:7px 12px;border-radius:4px;cursor:pointer;font-weight:bold">+</button>
+               </div>
+             </div>
+             <div style="display:flex;flex-direction:column;gap:4px;font-size:12px">
+               <div style="display:flex;justify-content:space-between"><span>Base:</span><input id="edit-monto_base" readonly style="width:90px;text-align:right;padding:4px;border:1px solid var(--border-light);border-radius:4px" value="0.00"></div>
+               <div style="display:flex;justify-content:space-between"><span>IGV:</span><input id="edit-igv_base" readonly style="width:90px;text-align:right;padding:4px;border:1px solid var(--border-light);border-radius:4px" value="0.00"></div>
+               <div style="display:flex;justify-content:space-between;font-weight:bold"><span>Total:</span><input id="edit-total_base" readonly style="width:90px;text-align:right;padding:4px;border:1px solid var(--border-light);border-radius:4px" value="0.00"></div>
+             </div>
+             <div>
+               <label style="font-size:11px;color:var(--text-secondary)">Estado de Pago</label>
+               <select name="estado_pago" style="${iStyle}" required>
+                 <option value="PENDIENTE" ${detalle.estado_pago === 'PENDIENTE' ? 'selected' : ''}>PENDIENTE</option>
+                 <option value="PAGADO" ${detalle.estado_pago === 'PAGADO' ? 'selected' : ''}>PAGADO</option>
+               </select>
+             </div>
+             <div style="display:flex;gap:10px;margin-top:4px">
+               <button type="submit" style="flex:1;padding:11px;border:none;background:var(--primary-color);color:white;border-radius:4px;cursor:pointer;font-weight:bold">Guardar Cambios</button>
+               <button type="button" onclick="document.getElementById('modal-editar-compra').remove()" style="flex:1;padding:11px;border:1px solid var(--border-light);background:white;border-radius:4px;cursor:pointer">Cancelar</button>
+             </div>
+           </form>
+         </div>`;
+
+       document.body.appendChild(overlay);
+       overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+
+       document.getElementById('edit-compra-moneda').onchange = (e) => {
+         document.getElementById('edit-div-tc').style.display = e.target.value === 'USD' ? '' : 'none';
+       };
+
+       let editLineas = detalle.detalles.map(d => ({
+         id_item: d.id_item,
+         nombre: d.item_nombre + ' [' + d.sku + ']',
+         cantidad: Number(d.cantidad),
+         precio: Number(d.precio_unitario)
+       }));
+
+       const editRecalcular = () => {
+         const aplicaIgv = document.getElementById('edit-chk-igv').checked;
+         const tbody = document.getElementById('edit-tbody-detalles');
+         if (!tbody) return;
+         let html = '', sub = 0;
+         editLineas.forEach((l, i) => {
+           const rowSub = l.cantidad * l.precio;
+           sub += rowSub;
+           html += `<tr>
+             <td style="padding:3px">${l.nombre}</td>
+             <td style="text-align:center">${l.cantidad}</td>
+             <td style="text-align:right">${formatCurrency(l.precio)}</td>
+             <td style="text-align:right">${formatCurrency(rowSub)}</td>
+             <td><button type="button" style="background:none;border:none;color:red;cursor:pointer;font-size:12px;padding:2px 6px" onclick="window.editRemoveLinea(${i})">✕</button></td>
+           </tr>`;
+         });
+         tbody.innerHTML = html;
+         const igv = aplicaIgv ? sub * 0.18 : 0;
+         const total = sub + igv;
+         document.getElementById('edit-monto_base').value = sub.toFixed(2);
+         document.getElementById('edit-igv_base').value = igv.toFixed(2);
+         document.getElementById('edit-total_base').value = total.toFixed(2);
+       };
+
+       window.editRemoveLinea = (idx) => { editLineas.splice(idx, 1); editRecalcular(); };
+       document.getElementById('edit-chk-igv').addEventListener('change', editRecalcular);
+
+       document.getElementById('edit-btn-add-item').onclick = () => {
+         const sel = document.getElementById('edit-item-select');
+         const id_item = Number(sel.value);
+         const nombre = sel.selectedOptions[0] ? sel.selectedOptions[0].text : '';
+         const qty = Number(document.getElementById('edit-item-qty').value);
+         const precio = Number(document.getElementById('edit-item-price').value);
+         if (id_item && qty > 0 && precio >= 0) {
+           editLineas.push({ id_item, nombre, cantidad: qty, precio });
+           editRecalcular();
+         }
+       };
+
+       editRecalcular();
+
+       document.getElementById('form-editar-compra').onsubmit = async (e) => {
+         e.preventDefault();
+         if (editLineas.length === 0) return alert('Debes agregar al menos un ítem.');
+         const f = e.target;
+         const moneda = f.moneda.value;
+         const tipo_cambio = moneda === 'USD' ? Number(f.tipo_cambio?.value) || 1 : 1;
+         const aplicaIgv = document.getElementById('edit-chk-igv').checked;
+         const data = {
+           id_proveedor: Number(f.id_proveedor.value),
+           fecha: f.fecha.value,
+           nro_comprobante: f.nro_comprobante.value,
+           moneda,
+           tipo_cambio,
+           aplica_igv: aplicaIgv,
+           monto_base: Number(document.getElementById('edit-monto_base').value),
+           igv_base: Number(document.getElementById('edit-igv_base').value),
+           total_base: Number(document.getElementById('edit-total_base').value),
+           estado_pago: f.estado_pago.value,
+           detalles: editLineas.map(l => ({
+             id_item: l.id_item,
+             cantidad: l.cantidad,
+             precio_unitario: l.precio,
+             subtotal: +(l.cantidad * l.precio).toFixed(2)
+           }))
+         };
+         try {
+           await api.purchases.updateCompra(id, data);
+           alert('Compra actualizada correctamente.');
+           overlay.remove();
+           window.location.reload();
+         } catch(err) {
+           alert('Error: ' + JSON.stringify(err.detalles || err.error || err));
+         }
+       };
+     };
+
      window.anularCompra = async (id, doc) => {
         if(confirm(`¡ALERTA DE SEGURIDAD!\n\n¿Deseas ANULAR la compra ${doc}?\n\nEsta acción revertirá el stock y anulará el egreso financiero.`)) {
             try {
@@ -215,6 +388,7 @@ export const Compras = async () => {
       </td>
       <td>${getStatusBadge(c.estado_pago)}</td>
       <td style="display:flex;gap:4px;flex-wrap:wrap">
+        ${c.estado_pago !== 'ANULADO' ? `<button class="action-btn" style="background:var(--info);color:white" onclick="window.editarCompra(${c.id_compra})">Editar</button>` : ''}
         ${c.estado_pago !== 'ANULADO' ? `<button class="action-btn action-btn-anular" onclick="window.anularCompra(${c.id_compra}, '${c.nro_comprobante}')">Anular</button>` : ''}
         <button class="action-btn" style="background:#ef4444;color:white" onclick="window.eliminarCompra(${c.id_compra}, '${c.nro_comprobante}')">Eliminar</button>
       </td>
