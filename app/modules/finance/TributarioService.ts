@@ -46,11 +46,12 @@ class TributarioService {
   async marcarDepositado(idDetraccion: number, data: any) {
     const monto = Number(data.monto_depositado);
     const [rows] = await db.query(
-      'SELECT monto FROM Detracciones WHERE id_detraccion = ?',
+      'SELECT monto, estado FROM Detracciones WHERE id_detraccion = ?',
       [idDetraccion]
     );
     const det = (rows as any)[0];
     if (!det) throw new Error('Detracción no encontrada');
+    if (det.estado === 'ANULADO') throw new Error('No se puede depositar una detracción anulada');
     const estado = monto >= Number(det.monto) ? 'SI' : 'PARCIAL';
     await db.query(`
       UPDATE Detracciones SET cliente_deposito = ?, monto_depositado = ?,
@@ -58,6 +59,16 @@ class TributarioService {
       WHERE id_detraccion = ?
     `, [estado, monto, data.fecha_deposito || new Date(), idDetraccion]);
     return { success: true, estado_deposito: estado };
+  }
+
+  async marcarDetraccionPorServicio(idServicio: number, data: any) {
+    const [rows] = await db.query(
+      'SELECT id_detraccion FROM Detracciones WHERE id_servicio = ?',
+      [idServicio]
+    );
+    const det = (rows as any)[0];
+    if (!det) throw new Error('No existe detracción registrada para este servicio');
+    return this.marcarDepositado(det.id_detraccion, data);
   }
 
   async registrarPagoImpuesto(data: any) {
@@ -68,28 +79,32 @@ class TributarioService {
     return { success: true, id: (r as any).insertId };
   }
 
-  async getControlIGV() {
+  async getControlIGV(anio?: number) {
+    const ejercicio = anio || new Date().getFullYear();
     const [ventas] = await db.query(`
       SELECT MONTH(fecha_servicio) as mes, SUM(igv_base) as igv_ventas
       FROM Servicios WHERE estado!='ANULADO' AND aplica_igv=1
-      GROUP BY MONTH(fecha_servicio)
-    `);
+      AND YEAR(fecha_servicio) = ?
+      GROUP BY YEAR(fecha_servicio), MONTH(fecha_servicio)
+    `, [ejercicio]);
     const [compras] = await db.query(`
       SELECT MONTH(fecha) as mes, SUM(igv_base) as igv_compras
-      FROM Compras WHERE estado!='ANULADA'
-      GROUP BY MONTH(fecha)
-    `);
+      FROM Compras WHERE estado!='ANULADO'
+      AND YEAR(fecha) = ?
+      GROUP BY YEAR(fecha), MONTH(fecha)
+    `, [ejercicio]);
     const [gastos] = await db.query(`
       SELECT MONTH(fecha) as mes, SUM(igv_base) as igv_gastos
       FROM Gastos WHERE estado!='ANULADO' AND aplica_igv=1
-      GROUP BY MONTH(fecha)
-    `);
+      AND YEAR(fecha) = ?
+      GROUP BY YEAR(fecha), MONTH(fecha)
+    `, [ejercicio]);
     const meses = [];
     for (let m = 1; m <= 12; m++) {
       const v = Number((ventas as any[]).find(r => r.mes === m)?.igv_ventas || 0);
       const c = Number((compras as any[]).find(r => r.mes === m)?.igv_compras || 0)
               + Number((gastos as any[]).find(r => r.mes === m)?.igv_gastos || 0);
-      if (v > 0 || c > 0) meses.push({ mes: m, igv_ventas: v, igv_compras: c, igv_neto: v - c });
+      if (v > 0 || c > 0) meses.push({ anio: ejercicio, mes: m, igv_ventas: v, igv_compras: c, igv_neto: v - c });
     }
     return meses;
   }

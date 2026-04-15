@@ -1,5 +1,6 @@
 import { db } from '../../../database/connection';
 import * as https from 'https';
+import { todaySQL } from '../../lib/dateUtils';
 
 // Fuente: API pública basada en datos oficiales SBS/SUNAT (Perú)
 // Endpoint alternativo si falla: se usa el último tipo de cambio registrado en BD
@@ -37,7 +38,7 @@ class TipoCambioService {
        ORDER BY fecha DESC LIMIT 1`,
       [moneda.toUpperCase()]
     );
-    const today = new Date().toISOString().split('T')[0];
+    const today = todaySQL();
     const last = (rows as any[])[0];
     if (!last) {
       // Sin datos en BD, intentar sincronizar
@@ -76,7 +77,7 @@ class TipoCambioService {
       const [d, m, y] = rawFecha.split('/');
       fechaISO = `${y}-${m}-${d}`;
     } else {
-      fechaISO = rawFecha || new Date().toISOString().split('T')[0];
+      fechaISO = rawFecha || todaySQL();
     }
 
     // Upsert: si ya existe para esa fecha/moneda, actualizar

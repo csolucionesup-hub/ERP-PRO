@@ -1,4 +1,5 @@
 import { api } from '../services/api.js';
+import { showSuccess, showError } from '../services/ui.js';
 
 export const Finanzas = async () => {
   let gastos = [], cxp = [], serviciosActivos = [], tcHoy = { valor_venta: 1, es_hoy: false, fecha: '' };
@@ -113,10 +114,10 @@ export const Finanzas = async () => {
          };
          try {
              await api.finances.createGasto(data);
-             alert('Gasto Registrado con Éxito');
+             showSuccess('Gasto registrado con éxito');
              window.location.reload();
          } catch(err) {
-             alert('Error: ' + JSON.stringify(err.detalles || err.error || err));
+             showError(err.detalles?.[0] || err.error || 'Error al registrar gasto');
          }
        };
      }
@@ -126,17 +127,17 @@ export const Finanzas = async () => {
          if(monto && !isNaN(monto) && Number(monto) > 0) {
              try {
                 const res = await api.finances.pagarGasto(id, Number(monto));
-                alert('Libro de Caja Actualizado. Estado: ' + res.nwStatus);
+                showSuccess('Libro de caja actualizado. Estado: ' + res.nwStatus);
                 window.location.reload();
              } catch (e) {
-                alert('Error al liquidar: ' + JSON.stringify(e.detalles || e.error || e));
+                showError(e.detalles?.[0] || e.error || 'Error al liquidar');
              }
          }
      }
 
      window.editarGasto = (id) => {
          const g = gastos.find(x => x.id_gasto === id);
-         if (!g) return alert('No encontrado');
+         if (!g) return showError('Gasto no encontrado');
          const overlay = document.createElement('div');
          overlay.id = 'modal-editar-gasto';
          overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:1000;display:flex;align-items:center;justify-content:center';
@@ -173,30 +174,25 @@ export const Finanzas = async () => {
              e.preventDefault();
              const f = e.target;
              try {
-                 const res = await fetch('/api/gastos/' + id, {
-                     method: 'PUT', headers: {'Content-Type': 'application/json'},
-                     body: JSON.stringify({
-                         nro_oc: f.nro_oc.value, codigo_contador: f.codigo_contador.value,
-                         proveedor_nombre: f.proveedor_nombre.value, concepto: f.concepto.value,
-                         fecha: f.fecha.value, monto_base: Number(f.monto_base.value),
-                         aplica_igv: f.aplica_igv.checked
-                     })
+                 await api.finances.updateGasto(id, {
+                     nro_oc: f.nro_oc.value, codigo_contador: f.codigo_contador.value,
+                     proveedor_nombre: f.proveedor_nombre.value, concepto: f.concepto.value,
+                     fecha: f.fecha.value, monto_base: Number(f.monto_base.value),
+                     aplica_igv: f.aplica_igv.checked
                  });
-                 if (!res.ok) throw await res.json();
-                 alert('Gasto actualizado');
+                 showSuccess('Gasto actualizado');
                  window.location.reload();
-             } catch(err) { alert('Error: ' + JSON.stringify(err)); }
+             } catch(err) { showError(err.detalles?.[0] || err.error || 'Error al actualizar'); }
          };
      };
 
      window.eliminarGasto = async (id) => {
          if (confirm('¿Eliminar este gasto permanentemente?')) {
              try {
-                 const res = await fetch('/api/gastos/' + id, { method: 'DELETE' });
-                 if (!res.ok) throw await res.json();
-                 alert('Eliminado');
+                 await api.finances.deleteGasto(id);
+                 showSuccess('Gasto eliminado');
                  window.location.reload();
-             } catch(e) { alert('Error: ' + JSON.stringify(e.detalles||e.error||e)); }
+             } catch(e) { showError(e.detalles?.[0] || e.error || 'Error al eliminar'); }
          }
      };
 
@@ -204,13 +200,20 @@ export const Finanzas = async () => {
         if(confirm(`¡ADVERTENCIA!\\n¿Seguro que deseas ANULAR el gasto: ${nombre}?\\n\\nEsta acción reversará la obligación y anulará cualquier pago financiero asociado.`)) {
             try {
                await api.finances.anularGasto(id);
-               alert('Gasto Anulado Correctamente');
+               showSuccess('Gasto anulado correctamente');
                window.location.reload();
             } catch (e) {
-               alert('Error al anular: ' + (e.message || JSON.stringify(e)));
+               showError(e.error || e.message || 'Error al anular');
             }
         }
      }
+     // Namespace por módulo
+     window.Finanzas = {
+       modalPagarGasto: window.modalPagarGasto,
+       editarGasto:     window.editarGasto,
+       eliminarGasto:   window.eliminarGasto,
+       anularGasto:     window.anularGasto,
+     };
   }, 100);
 
   return `

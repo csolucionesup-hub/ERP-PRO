@@ -1,15 +1,18 @@
 import { api } from '../services/api.js';
 
 export const Dashboard = async () => {
+  const erpUser = JSON.parse(localStorage.getItem('erp_user') || '{}');
+  const esGerente = erpUser.rol === 'GERENTE';
   try {
-    const [dataMaster, dataOperativa, dataBN, dataIGV, prestamosTotales, prestamosTomados, prestamosOtorgados] = await Promise.all([
+    const [dataMaster, dataOperativa, dataBN, dataIGV, prestamosTotales, prestamosTomados, prestamosOtorgados, tcHoy] = await Promise.all([
       api.finances.getDashboard(),
       api.finances.getResumenOperativo(),
       api.tributario.getCuentaBN(),
       api.tributario.getControlIGV(),
       api.prestamos.getTotales(),
       api.prestamos.getTomados(),
-      api.prestamos.getOtorgados()
+      api.prestamos.getOtorgados(),
+      api.tipoCambio.getHoy('USD').catch(() => ({ valor_venta: 1, es_hoy: false, fecha: '' }))
     ]);
 
     const formatCurrency = (val) => new Intl.NumberFormat('es-PE', { style: 'currency', currency: 'PEN' }).format(val);
@@ -163,6 +166,72 @@ export const Dashboard = async () => {
         }
       };
 
+      // Toggle panel saldo inicial
+      window.toggleSaldoPanel = () => {
+        const panel = document.getElementById('panel-saldo-inicial');
+        if (!panel) return;
+        const visible = panel.style.display !== 'none';
+        panel.style.display = visible ? 'none' : 'block';
+      };
+
+      // Cargar saldos actuales de BD y mostrarlos (panel + botón resumen)
+      const cargarSaldosActuales = async () => {
+        try {
+          const res = await fetch('/api/admin/cuentas-saldo');
+          const cuentas = await res.json();
+          const pen = cuentas.find(c => c.id_cuenta === 1);
+          const usd = cuentas.find(c => c.id_cuenta === 2);
+          const penVal = pen ? Number(pen.saldo_actual) : 0;
+          const usdVal = usd ? Number(usd.saldo_actual) : 0;
+          const fmt = (v) => new Intl.NumberFormat('es-PE', { minimumFractionDigits: 2 }).format(v);
+
+          // Dentro del panel expandible
+          const elPen = document.getElementById('saldo-actual-pen');
+          const elUsd = document.getElementById('saldo-actual-usd');
+          if (elPen) elPen.textContent = `Actual: S/ ${fmt(penVal)}`;
+          if (elUsd) elUsd.textContent = usd ? `Actual: $ ${fmt(usdVal)}` : 'No configurada';
+
+          // Resumen junto al botón (visible cuando el panel está cerrado)
+          const elResumenPen = document.getElementById('resumen-saldo-pen');
+          const elResumenUsd = document.getElementById('resumen-saldo-usd');
+          if (elResumenPen) elResumenPen.textContent = `S/ ${fmt(penVal)}`;
+          if (elResumenUsd) elResumenUsd.textContent = `$ ${fmt(usdVal)}`;
+        } catch(e) { /* silencioso */ }
+      };
+      cargarSaldosActuales();
+
+      window.aplicarSaldoInicial = async () => {
+        const saldo_pen = Number(document.getElementById('saldo-inicial-pen')?.value) || 0;
+        const saldo_usd = Number(document.getElementById('saldo-inicial-usd')?.value) || 0;
+        const tipo_cambio = Number(document.getElementById('saldo-inicial-tc')?.value) || 1;
+        if (!confirm(`¿Sobrescribir saldo de cuentas?\n\nCaja Soles → S/ ${saldo_pen.toFixed(2)}\nCaja Dólares → $ ${saldo_usd.toFixed(2)} (≈ S/ ${(saldo_usd * tipo_cambio).toFixed(2)})\n\nSin registrar transacciones.`)) return;
+        const btn = document.getElementById('btn-aplicar-saldo');
+        try {
+          if (btn) { btn.textContent = 'Aplicando...'; btn.disabled = true; }
+          const res = await fetch('/api/admin/saldo-inicial', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ saldo_pen, saldo_usd, tipo_cambio })
+          });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || 'Error desconocido');
+          window.location.reload();
+        } catch (e) {
+          if (btn) { btn.textContent = 'Aplicar'; btn.disabled = false; }
+          alert('Error: ' + e.message);
+        }
+      };
+
+      // Conversión en tiempo real USD → PEN
+      const actualizarConversion = () => {
+        const usd = Number(document.getElementById('saldo-inicial-usd')?.value) || 0;
+        const tc  = Number(document.getElementById('saldo-inicial-tc')?.value) || 1;
+        const el  = document.getElementById('saldo-usd-conversion');
+        if (el) el.textContent = `≈ S/ ${(usd * tc).toFixed(2)}`;
+      };
+      document.getElementById('saldo-inicial-usd')?.addEventListener('input', actualizarConversion);
+      document.getElementById('saldo-inicial-tc')?.addEventListener('input', actualizarConversion);
+
       window.marcarDeposito = async (idDetraccion, montoSugerido) => {
         const monto = prompt('Monto depositado por el cliente en BN:', montoSugerido.toFixed(2));
         if (!monto || isNaN(monto) || Number(monto) <= 0) return;
@@ -182,6 +251,15 @@ export const Dashboard = async () => {
            <h1>Dashboard Gerencial</h1>
            <span style="color:var(--text-secondary)">Panel de control unificado: Liquidez, rentabilidad y alertas operativas.</span>
         </div>
+        ${esGerente ? `
+        <button onclick="window.location.hash='/usuarios'" style="
+          padding: 10px 20px; background: #676767; color: #fff; border: none;
+          border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer;
+          white-space: nowrap; transition: background 0.2s;"
+          onmouseover="this.style.background='#000'"
+          onmouseout="this.style.background='#676767'">
+          ⚙ Gestionar Usuarios
+        </button>` : ''}
       </header>
       
       <h2 style="font-size:16px; margin: 25px 0 15px; color:var(--text-primary); text-transform:uppercase; letter-spacing:1px;">A. Tesorería Diaria</h2>
@@ -357,12 +435,51 @@ export const Dashboard = async () => {
         </div>
       </div>
 
-      <div style="margin-top:50px; padding-top:20px; border-top:1px solid var(--border-light); display:flex; justify-content:flex-end;">
-        <div style="text-align:right;">
-          <p style="font-size:11px; color:var(--text-secondary); margin-bottom:8px; text-transform:uppercase; letter-spacing:1px;">Zona de Administración</p>
-          <button onclick="window.resetearBD()" style="padding:8px 16px; background:#ef4444; color:white; border:none; border-radius:var(--radius-sm); cursor:pointer; font-size:13px; font-weight:600; display:inline-flex; align-items:center; gap:6px;">
-            ⚠️ Resetear BD
-          </button>
+      <div style="margin-top:50px; padding-top:20px; border-top:1px solid var(--border-light);">
+        <div style="display:flex; align-items:center; gap:12px; margin-bottom:10px;">
+          <p style="font-size:11px; color:var(--text-secondary); text-transform:uppercase; letter-spacing:1px; margin:0;">Zona de Administración</p>
+          <button onclick="window.toggleSaldoPanel()" style="padding:4px 10px; background:none; border:1px solid #16a34a; color:#16a34a; border-radius:4px; cursor:pointer; font-size:11px; font-weight:600;">⚙ Configurar Saldos Iniciales</button>
+          <span style="font-size:11px; color:var(--text-secondary); display:flex; gap:8px; align-items:center;">
+            <span id="resumen-saldo-pen" style="font-weight:600; color:#15803d;">S/ 0.00</span>
+            <span style="color:var(--border-light)">|</span>
+            <span id="resumen-saldo-usd" style="font-weight:600; color:#1d4ed8;">$ 0.00</span>
+          </span>
+          <button onclick="window.resetearBD()" style="padding:4px 10px; background:none; border:1px solid #ef4444; color:#ef4444; border-radius:4px; cursor:pointer; font-size:11px; font-weight:600;">⚠️ Resetear BD</button>
+        </div>
+
+        <div id="panel-saldo-inicial" style="display:none; background:#f8fdf9; border:1px solid #bbf7d0; border-radius:8px; padding:16px; margin-top:4px;">
+          <p style="font-size:11px; color:#15803d; margin:0 0 12px; font-weight:600;">Sobrescribe el saldo actual de cada cuenta (sin registrar transacciones). Úsalo para correcciones o carga inicial.</p>
+          <div style="display:flex; gap:12px; align-items:flex-end; flex-wrap:wrap;">
+
+            <div style="flex:1; min-width:140px;">
+              <label style="font-size:10px; color:var(--text-secondary); display:block; margin-bottom:3px; text-transform:uppercase; letter-spacing:0.5px;">Caja Soles (PEN)</label>
+              <input id="saldo-inicial-pen" type="number" step="0.01" min="0" placeholder="0.00"
+                style="width:100%; padding:7px 9px; border:1px solid #86efac; border-radius:4px; box-sizing:border-box; font-size:13px;">
+              <span id="saldo-actual-pen" style="font-size:10px; color:var(--text-secondary); margin-top:2px; display:block;">Cargando...</span>
+            </div>
+
+            <div style="flex:1; min-width:140px;">
+              <label style="font-size:10px; color:var(--text-secondary); display:block; margin-bottom:3px; text-transform:uppercase; letter-spacing:0.5px;">Caja Dólares (USD)</label>
+              <input id="saldo-inicial-usd" type="number" step="0.01" min="0" placeholder="0.00"
+                style="width:100%; padding:7px 9px; border:1px solid #86efac; border-radius:4px; box-sizing:border-box; font-size:13px;">
+              <span id="saldo-actual-usd" style="font-size:10px; color:var(--text-secondary); margin-top:2px; display:block;">Cargando...</span>
+            </div>
+
+            <div style="flex:0; min-width:110px;">
+              <label style="font-size:10px; color:var(--text-secondary); display:block; margin-bottom:3px; text-transform:uppercase; letter-spacing:0.5px;">T/C (S/ x USD)</label>
+              <input id="saldo-inicial-tc" type="number" step="0.0001" min="0.01" value="${tcHoy?.valor_venta || 1}"
+                style="width:100%; padding:7px 9px; border:1px solid #86efac; border-radius:4px; box-sizing:border-box; font-size:13px;">
+              <span id="saldo-usd-conversion" style="font-size:10px; color:#16a34a; margin-top:2px; display:block;">≈ S/ 0.00</span>
+            </div>
+
+            <div style="flex:0; padding-bottom:18px;">
+              <button id="btn-aplicar-saldo" onclick="window.aplicarSaldoInicial()"
+                style="padding:7px 14px; background:#16a34a; color:white; border:none; border-radius:4px; cursor:pointer; font-size:12px; font-weight:600; white-space:nowrap;">
+                Aplicar
+              </button>
+            </div>
+
+          </div>
         </div>
       </div>
     `;

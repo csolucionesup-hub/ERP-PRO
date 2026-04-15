@@ -31,3 +31,22 @@ desktop.ini
 
 # TypeScript compilado (si aplica)
 *.tsbuildinfo
+
+# Google Drive service account credentials
+google-drive-credentials.json
+
+# Claude worktrees y config local
+.claude/
+
+# Archivos temporales de sesiones de trabajo
+*_temp.txt
+contexto_fase1.txt
+auditoria_v2_contexto.txt
+
+# PDFs generados (demos, pruebas, auditorías)
+COT-*.pdf
+auditoria_erp_pro.pdf
+
+# Directorios accidentales
+/cd/
+

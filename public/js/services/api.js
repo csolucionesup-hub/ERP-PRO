@@ -5,289 +5,157 @@
 
 const API_BASE_URL = '/api';
 
-// Helper global para atrapar errores HTTP limpios
-async function fetchReal(endpoint) {
+// ── Base fetch con JWT automático ───────────────────────────
+async function fetchAPI(url, options = {}) {
+  const token = localStorage.getItem('erp_token');
+  const headers = {
+    'Content-Type': 'application/json',
+    ...options.headers,
+    ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+  };
+
   try {
-    const response = await fetch(`${API_BASE_URL}${endpoint}`);
+    const response = await fetch(url, { ...options, headers });
+
+    if (response.status === 401) {
+      localStorage.removeItem('erp_token');
+      localStorage.removeItem('erp_user');
+      window.location.replace('/login.html');
+      return;
+    }
     if (!response.ok) {
-      if (response.status === 404) throw new Error(`Ruta no configurada: ${endpoint}`);
-      if (response.status >= 500) {
-         const errData = await response.json().catch(() => null);
-         throw new Error(errData?.error || 'Falló el servidor BD');
-      }
-      throw new Error(`Error HTTP: ${response.status}`);
+      const errData = await response.json().catch(() => null);
+      throw new Error(errData?.error || `Error HTTP: ${response.status}`);
+    }
+
+    const contentType = response.headers.get('content-type') || '';
+    if (!contentType.includes('application/json')) {
+      throw new Error(`Error del servidor: ${response.status} ${response.statusText}`);
     }
     return await response.json();
   } catch (error) {
-    console.error(`[API FETCH ERROR] -> ${endpoint}:`, error);
+    console.error(`[API ERROR] -> ${url}:`, error);
     throw error;
   }
 }
 
+const get  = (endpoint)       => fetchAPI(`${API_BASE_URL}${endpoint}`);
+const post = (endpoint, data) => fetchAPI(`${API_BASE_URL}${endpoint}`, { method: 'POST', body: data !== undefined ? JSON.stringify(data) : undefined });
+const put  = (endpoint, data) => fetchAPI(`${API_BASE_URL}${endpoint}`, { method: 'PUT',  body: JSON.stringify(data) });
+const del  = (endpoint)       => fetchAPI(`${API_BASE_URL}${endpoint}`, { method: 'DELETE' });
+
 export const api = {
   finances: {
-    async getResumenOperativo() {
-      return await fetchReal('/finanzas/operativo');
-    },
-    async getDashboard() {
-      return await fetchReal('/finanzas/dashboard');
-    },
-    async getCxC() {
-      return await fetchReal('/finanzas/cxc');
-    },
-    async getCxP() {
-      return await fetchReal('/finanzas/cxp');
-    },
-    async getGastos() {
-       return await fetchReal('/gastos');
-    },
-    async createGasto(data) {
-       const res = await fetch('/api/gastos', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(data)
-       });
-       if (!res.ok) throw await res.json();
-       return await res.json();
-    },
-    async pagarGasto(idGasto, abono) {
-       const res = await fetch(`/api/gastos/${idGasto}/pago`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ abono })
-       });
-       if (!res.ok) throw await res.json();
-       return await res.json();
-    },
-    async anularGasto(idGasto) {
-       const res = await fetch(`/api/gastos/${idGasto}/anular`, { method: 'POST' });
-       if (!res.ok) throw await res.json();
-       return await res.json();
-    },
-    async getTransacciones() {
-      return await fetchReal('/finanzas');
-    }
+    getResumenOperativo:  () => get('/finanzas/operativo'),
+    getDashboard:         () => get('/finanzas/dashboard'),
+    getCxC:               () => get('/finanzas/cxc'),
+    getCxP:               () => get('/finanzas/cxp'),
+    getGastos:            () => get('/gastos'),
+    createGasto:    (data)    => post('/gastos', data),
+    updateGasto:    (id, d)   => put(`/gastos/${id}`, d),
+    pagarGasto:     (id, ab)  => post(`/gastos/${id}/pago`, { abono: ab }),
+    anularGasto:    (id)      => post(`/gastos/${id}/anular`),
+    deleteGasto:    (id)      => del(`/gastos/${id}`),
   },
   services: {
-    async getServicios() {
-      return await fetchReal('/servicios');
-    },
-    async getServiciosActivos() {
-      return await fetchReal('/servicios/activos');
-    },
-    async createServicio(data) {
-       const res = await fetch('/api/servicios', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(data)
-       });
-       if (!res.ok) throw await res.json();
-       return await res.json();
-    },
-    async cobrarServicio(idServicio, monto_pagado_liquido) {
-       const res = await fetch(`/api/servicios/${idServicio}/pago`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ monto_pagado_liquido, descripcion: 'Abono Registrado por Operador' })
-       });
-       if (!res.ok) throw await res.json();
-       return await res.json();
-    },
-    async anularServicio(idServicio) {
-       const res = await fetch(`/api/servicios/${idServicio}/anular`, { method: 'POST' });
-       if (!res.ok) throw await res.json();
-       return await res.json();
-    },
-    async updateServicio(id, data) {
-       const res = await fetch(`/api/servicios/${id}`, {
-          method: 'PUT', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(data)
-       });
-       if (!res.ok) throw await res.json();
-       return await res.json();
-    },
-    async deleteServicio(id) {
-       const res = await fetch(`/api/servicios/${id}`, { method: 'DELETE' });
-       if (!res.ok) throw await res.json();
-       return await res.json();
-    }
+    getServicios:         () => get('/servicios'),
+    getServiciosActivos:  () => get('/servicios/activos'),
+    createServicio: (data)    => post('/servicios', data),
+    cobrarServicio: (id, m)   => post(`/servicios/${id}/pago`, { monto_pagado_liquido: m, descripcion: 'Abono Registrado por Operador' }),
+    anularServicio: (id)      => post(`/servicios/${id}/anular`),
+    terminarServicio:     (id)    => post(`/servicios/${id}/terminar`),
+    depositarDetraccion:  (id, d) => post(`/servicios/${id}/detraccion-deposito`, d),
+    updateServicio: (id, d)       => put(`/servicios/${id}`, d),
+    deleteServicio: (id)          => del(`/servicios/${id}`),
   },
   purchases: {
-    async getCompras() {
-      return await fetchReal('/compras');
-    },
-    async getProveedores() {
-      return await fetchReal('/proveedores');
-    },
-    async createProveedor(data) {
-       const res = await fetch('/api/proveedores', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(data)
-       });
-       if (!res.ok) throw await res.json();
-       return await res.json();
-    },
-    async updateProveedor(id, data) {
-       const res = await fetch(`/api/proveedores/${id}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(data)
-       });
-       if (!res.ok) throw await res.json();
-       return await res.json();
-    },
-    async deleteProveedor(id) {
-       const res = await fetch(`/api/proveedores/${id}`, { method: 'DELETE' });
-       if (!res.ok) throw await res.json();
-       return await res.json();
-    },
-    async getCompraDetalle(id) {
-      return await fetchReal(`/compras/${id}`);
-    },
-    async updateCompra(id, data) {
-       const res = await fetch(`/api/compras/${id}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(data)
-       });
-       if (!res.ok) throw await res.json();
-       return await res.json();
-    },
-    async createCompra(data) {
-       const res = await fetch('/api/compras', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(data)
-       });
-       if (!res.ok) throw await res.json();
-       return await res.json();
-    },
-    async anularCompra(idCompra) {
-       const res = await fetch(`/api/compras/${idCompra}/anular`, { method: 'POST' });
-       if (!res.ok) throw await res.json();
-       return await res.json();
-    },
-    async deleteCompra(idCompra) {
-       const res = await fetch(`/api/compras/${idCompra}`, { method: 'DELETE' });
-       if (!res.ok) throw await res.json();
-       return await res.json();
-    }
+    getCompras:           () => get('/compras'),
+    getCompraDetalle: (id)    => get(`/compras/${id}`),
+    createCompra:   (data)    => post('/compras', data),
+    updateCompra:   (id, d)   => put(`/compras/${id}`, d),
+    anularCompra:   (id)      => post(`/compras/${id}/anular`),
+    deleteCompra:   (id)      => del(`/compras/${id}`),
+    getProveedores:       () => get('/proveedores'),
+    createProveedor:(data)    => post('/proveedores', data),
+    updateProveedor:(id, d)   => put(`/proveedores/${id}`, d),
+    deleteProveedor:(id)      => del(`/proveedores/${id}`),
   },
   tributario: {
-    getCuentaBN: () => fetchReal('/tributario/cuenta-bn'),
-    getControlIGV: () => fetchReal('/tributario/igv'),
-    async marcarDeposito(id, data) {
-      const res = await fetch(`/api/tributario/detraccion/${id}/deposito`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data)
-      });
-      if (!res.ok) throw await res.json();
-      return await res.json();
-    },
-    async pagarImpuesto(data) {
-      const res = await fetch('/api/tributario/pago-impuesto', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data)
-      });
-      if (!res.ok) throw await res.json();
-      return await res.json();
-    }
+    getCuentaBN:          () => get('/tributario/cuenta-bn'),
+    getControlIGV:        () => get('/tributario/igv'),
+    marcarDeposito: (id, d)   => post(`/tributario/detraccion/${id}/deposito`, d),
+    pagarImpuesto:  (data)    => post('/tributario/pago-impuesto', data),
   },
   prestamos: {
-    getTomados: () => fetchReal('/prestamos/tomados'),
-    getOtorgados: () => fetchReal('/prestamos/otorgados'),
-    getTotales: () => fetchReal('/prestamos/totales'),
-    createTomado: async (data) => {
-      const res = await fetch('/api/prestamos/tomados', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
-      if (!res.ok) throw await res.json(); return await res.json();
-    },
-    createOtorgado: async (data) => {
-      const res = await fetch('/api/prestamos/otorgados', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
-      if (!res.ok) throw await res.json(); return await res.json();
-    },
-    pagarTomado: async (id, monto) => {
-      const res = await fetch('/api/prestamos/tomados/' + id + '/pago', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ monto }) });
-      if (!res.ok) throw await res.json(); return await res.json();
-    },
-    cobrarOtorgado: async (id, monto) => {
-      const res = await fetch('/api/prestamos/otorgados/' + id + '/cobro', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ monto }) });
-      if (!res.ok) throw await res.json(); return await res.json();
-    },
-    updateTomado: async (id, data) => {
-      const res = await fetch('/api/prestamos/tomados/' + id, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
-      if (!res.ok) throw await res.json(); return await res.json();
-    },
-    updateOtorgado: async (id, data) => {
-      const res = await fetch('/api/prestamos/otorgados/' + id, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
-      if (!res.ok) throw await res.json(); return await res.json();
-    },
-    deleteTomado: async (id) => {
-      const res = await fetch('/api/prestamos/tomados/' + id, { method: 'DELETE' });
-      if (!res.ok) throw await res.json(); return await res.json();
-    },
-    deleteOtorgado: async (id) => {
-      const res = await fetch('/api/prestamos/otorgados/' + id, { method: 'DELETE' });
-      if (!res.ok) throw await res.json(); return await res.json();
-    },
-    anularTomado: async (id) => {
-      const res = await fetch('/api/prestamos/tomados/' + id + '/anular', { method: 'POST' });
-      if (!res.ok) throw await res.json(); return await res.json();
-    },
-    anularOtorgado: async (id) => {
-      const res = await fetch('/api/prestamos/otorgados/' + id + '/anular', { method: 'POST' });
-      if (!res.ok) throw await res.json(); return await res.json();
-    }
+    getTomados:           () => get('/prestamos/tomados'),
+    getOtorgados:         () => get('/prestamos/otorgados'),
+    getTotales:           () => get('/prestamos/totales'),
+    createTomado:   (data)    => post('/prestamos/tomados', data),
+    createOtorgado: (data)    => post('/prestamos/otorgados', data),
+    updateTomado:   (id, d)   => put(`/prestamos/tomados/${id}`, d),
+    updateOtorgado: (id, d)   => put(`/prestamos/otorgados/${id}`, d),
+    pagarTomado:    (id, m)   => post(`/prestamos/tomados/${id}/pago`, { monto: m }),
+    cobrarOtorgado: (id, m)   => post(`/prestamos/otorgados/${id}/cobro`, { monto: m }),
+    anularTomado:   (id)      => post(`/prestamos/tomados/${id}/anular`),
+    anularOtorgado: (id)      => post(`/prestamos/otorgados/${id}/anular`),
+    deleteTomado:   (id)      => del(`/prestamos/tomados/${id}`),
+    deleteOtorgado: (id)      => del(`/prestamos/otorgados/${id}`),
   },
   tipoCambio: {
-    getHoy: (moneda = 'USD') => fetchReal(`/tipo-cambio/hoy?moneda=${moneda}`),
-    getHistorial: (moneda = 'USD', limit = 30) => fetchReal(`/tipo-cambio?moneda=${moneda}&limit=${limit}`),
-    async sincronizar(moneda = 'USD') {
-      const res = await fetch('/api/tipo-cambio/sincronizar', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ moneda })
-      });
-      if (!res.ok) throw await res.json();
-      return await res.json();
-    },
-    async setManual(fecha, moneda, valor_compra, valor_venta) {
-      const res = await fetch('/api/tipo-cambio/manual', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fecha, moneda, valor_compra, valor_venta })
-      });
-      if (!res.ok) throw await res.json();
-      return await res.json();
-    }
+    getHoy:       (m = 'USD')           => get(`/tipo-cambio/hoy?moneda=${m}`),
+    getHistorial: (m = 'USD', l = 30)   => get(`/tipo-cambio?moneda=${m}&limit=${l}`),
+    sincronizar:  (m = 'USD')           => post('/tipo-cambio/sincronizar', { moneda: m }),
+    setManual: (fecha, moneda, vc, vv)  => post('/tipo-cambio/manual', { fecha, moneda, valor_compra: vc, valor_venta: vv }),
   },
   inventory: {
-    async getInventario() {
-      return await fetchReal('/inventario');
+    getInventario:        () => get('/inventario'),
+    getKardex:       (id)    => get(`/inventario/${id}/kardex`),
+    createInventarioItem: (data) => post('/inventario', data),
+    consumirInventario:   (data) => post('/inventario/consumo', data),
+    deleteInventarioItem: (id)   => del(`/inventario/${id}`),
+  },
+  cotizaciones: {
+    getDashboard:     ()          => get('/cotizaciones/dashboard'),
+    getAnuladas:      ()          => get('/cotizaciones/anuladas'),
+    getCotizaciones: (marca) => get(marca ? `/cotizaciones?marca=${marca}` : '/cotizaciones'),
+    getCotizacion:    (id)     => get(`/cotizaciones/${id}`),
+    createCotizacion: (data)   => post('/cotizaciones', data),
+    updateCotizacion: (id, d)  => put(`/cotizaciones/${id}`, d),
+    updateEstado:     (id, e)  => put(`/cotizaciones/${id}/estado`, { estado: e }),
+    anularCotizacion: (id)     => post(`/cotizaciones/${id}/anular`),
+    resetTodo:        ()       => del('/cotizaciones/reset'),
+    uploadFoto: async (file) => {
+      const token = localStorage.getItem('erp_token');
+      const fd = new FormData();
+      fd.append('foto', file);
+      const r = await fetch(`${API_BASE_URL}/cotizaciones/upload-foto`, {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: fd,
+      });
+      if (!r.ok) {
+        const err = await r.json().catch(() => ({}));
+        throw new Error(err.error || `Error HTTP ${r.status}`);
+      }
+      return r.json(); // { url, public_id }
     },
-    async getKardex(idItem) {
-      return await fetchReal(`/inventario/${idItem}/kardex`);
+  },
+  configuracionMarca: {
+    getAll:        ()              => get('/configuracion-marca'),
+    getByMarca:    (marca)         => get(`/configuracion-marca/${marca}`),
+    update:        (marca, data)   => put(`/configuracion-marca/${marca}`, data),
+  },
+  administracion: {
+    getGastoPersonal: (anio, mes) => {
+      const params = new URLSearchParams({ anio });
+      if (mes) params.append('mes', mes);
+      return get(`/admin/gasto-personal?${params}`);
     },
-    async createInventarioItem(data) {
-       const res = await fetch('/api/inventario', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(data)
-       });
-       if (!res.ok) throw await res.json();
-       return await res.json();
-    },
-    async consumirInventario(data) {
-       const res = await fetch('/api/inventario/consumo', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(data)
-       });
-       if (!res.ok) throw await res.json();
-       return await res.json();
-    },
-    async deleteInventarioItem(idItem) {
-       const res = await fetch(`/api/inventario/${idItem}`, { method: 'DELETE' });
-       if (!res.ok) throw await res.json();
-       return await res.json();
-    }
+  },
+  usuarios: {
+    getUsuarios:          () => fetchAPI('/api/usuarios'),
+    createUsuario:  (data)    => fetchAPI('/api/usuarios', { method: 'POST', body: JSON.stringify(data) }),
+    asignarModulos: (id, m)   => fetchAPI(`/api/usuarios/${id}/modulos`, { method: 'PUT', body: JSON.stringify({ modulos: m }) }),
+    toggleActivo:   (id)      => fetchAPI(`/api/usuarios/${id}/toggle`, { method: 'PUT' }),
   }
 };

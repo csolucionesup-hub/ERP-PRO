@@ -1,4 +1,5 @@
 import { api } from '../services/api.js';
+import { showSuccess, showError } from '../services/ui.js';
 
 export const Compras = async () => {
   let compras = [], proveedores = [], inventario = [], tcHoy = { valor_venta: 1, es_hoy: false, fecha: '' };
@@ -128,11 +129,11 @@ export const Compras = async () => {
            opt.text = res.nombre + ' [' + res.sku + ']';
            sel.appendChild(opt);
            sel.value = res.id_item;
-           alert('Ítem creado con SKU: ' + res.sku);
+           showSuccess('Ítem creado con SKU: ' + res.sku);
            window.cerrarModalItem();
            formNuevoItem.reset();
          } catch(err) {
-           alert('Error: ' + JSON.stringify(err.detalles || err.error || err));
+           showError(err.detalles?.[0] || err.error || 'Error al crear ítem');
          }
        };
      }
@@ -140,7 +141,7 @@ export const Compras = async () => {
      if(formCompra) {
        formCompra.onsubmit = async (e) => {
          e.preventDefault();
-         if(lineas.length === 0) return alert('Debes agregar al menos un ítem al detalle.');
+         if(lineas.length === 0) return showError('Debes agregar al menos un ítem al detalle.');
          const aplicaIgv = document.getElementById('chk-igv').checked;
          const moneda = e.target.moneda.value || 'PEN';
          const tipo_cambio = moneda === 'USD' ? Number(e.target.tipo_cambio?.value) || 1 : 1;
@@ -165,10 +166,10 @@ export const Compras = async () => {
          };
          try {
              await api.purchases.createCompra(data);
-             alert('Compra Procesada y Stock Actualizado');
+             showSuccess('Compra procesada y stock actualizado');
              window.location.reload();
          } catch(err) {
-             alert('Error: ' + JSON.stringify(err.detalles || err.error));
+             showError(err.detalles?.[0] || err.error || 'Error al registrar compra');
          }
        };
      }
@@ -178,7 +179,7 @@ export const Compras = async () => {
        try {
          detalle = await api.purchases.getCompraDetalle(id);
        } catch(e) {
-         alert('Error cargando detalle: ' + (e.message || JSON.stringify(e)));
+         showError(e.error || e.message || 'Error cargando detalle');
          return;
        }
 
@@ -312,7 +313,7 @@ export const Compras = async () => {
 
        document.getElementById('form-editar-compra').onsubmit = async (e) => {
          e.preventDefault();
-         if (editLineas.length === 0) return alert('Debes agregar al menos un ítem.');
+         if (editLineas.length === 0) return showError('Debes agregar al menos un ítem.');
          const f = e.target;
          const moneda = f.moneda.value;
          const tipo_cambio = moneda === 'USD' ? Number(f.tipo_cambio?.value) || 1 : 1;
@@ -337,11 +338,11 @@ export const Compras = async () => {
          };
          try {
            await api.purchases.updateCompra(id, data);
-           alert('Compra actualizada correctamente.');
+           showSuccess('Compra actualizada correctamente');
            overlay.remove();
            window.location.reload();
          } catch(err) {
-           alert('Error: ' + JSON.stringify(err.detalles || err.error || err));
+           showError(err.detalles?.[0] || err.error || 'Error al actualizar');
          }
        };
      };
@@ -350,10 +351,10 @@ export const Compras = async () => {
         if(confirm(`¡ALERTA DE SEGURIDAD!\n\n¿Deseas ANULAR la compra ${doc}?\n\nEsta acción revertirá el stock y anulará el egreso financiero.`)) {
             try {
                await api.purchases.anularCompra(id);
-               alert('Operación Revertida con Éxito');
+               showSuccess('Compra anulada y stock revertido');
                window.location.reload();
             } catch (e) {
-               alert('No se pudo anular: ' + (e.message || JSON.stringify(e)));
+               showError(e.error || e.message || 'No se pudo anular');
             }
         }
      };
@@ -363,7 +364,16 @@ export const Compras = async () => {
        try {
          await api.purchases.deleteCompra(id);
          window.location.reload();
-       } catch(e) { alert('Error: ' + (e.error || e.message || JSON.stringify(e))); }
+       } catch(e) { showError(e.error || e.message || 'Error al eliminar'); }
+     };
+     // Namespace por módulo
+     window.Compras = {
+       removeLinea:    window.removeLinea,
+       crearItemAlVuelo: window.crearItemAlVuelo,
+       cerrarModalItem: window.cerrarModalItem,
+       editarCompra:   window.editarCompra,
+       anularCompra:   window.anularCompra,
+       eliminarCompra: window.eliminarCompra,
      };
 
   }, 100);

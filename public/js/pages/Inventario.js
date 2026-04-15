@@ -1,4 +1,5 @@
 import { api } from '../services/api.js';
+import { showSuccess, showError, showToast } from '../services/ui.js';
 
 const CATEGORIA_BADGE = {
   Material:    'background:#3b82f6;color:white',
@@ -75,10 +76,10 @@ export const Inventario = async () => {
          };
          try {
              const res = await api.inventory.createInventarioItem(data);
-             alert('Insumo Registrado con SKU: ' + res.sku);
+             showSuccess('Insumo registrado con SKU: ' + res.sku);
              window.location.reload();
          } catch(err) {
-             alert('Error: ' + JSON.stringify(err.detalles || err.error || err));
+             showError(err.detalles?.[0] || err.error || 'Error al registrar insumo');
          }
        };
      }
@@ -97,10 +98,10 @@ export const Inventario = async () => {
          };
          try {
              await api.inventory.consumirInventario(data);
-             alert('Almacén Rebajado y Costo Transferido al Servicio Correctamente');
+             showSuccess('Almacén rebajado y costo transferido al servicio');
              window.location.reload();
          } catch(err) {
-             alert('Error: ' + JSON.stringify(err.detalles || err.error || err));
+             showError(err.detalles?.[0] || err.error || 'Error al registrar consumo');
          }
        };
      }
@@ -113,9 +114,9 @@ export const Inventario = async () => {
                logInfo += `[${l.fecha_movimiento.split('T')[0]}] ${l.tipo_movimiento} | Ref: ${l.referencia_tipo}#${l.referencia_id} | Cant: ${l.cantidad} | Saldo: ${l.saldo_posterior}\n`;
             });
             if(logs.length === 0) logInfo += "Sin movimientos aún.";
-            alert(logInfo);
+            showToast(logInfo, 'info', 8000);
          } catch(e) {
-            alert("No se pudo extraer Kárdex");
+            showError('No se pudo extraer Kárdex');
          }
      };
 
@@ -125,8 +126,13 @@ export const Inventario = async () => {
             await api.inventory.deleteInventarioItem(id);
             window.location.reload();
          } catch(e) {
-            alert('Error: ' + (e.error || e.message || JSON.stringify(e)));
+            showError(e.error || e.message || 'Error al eliminar');
          }
+     };
+     // Namespace por módulo
+     window.Inventario = {
+       verKardex:    window.verKardex,
+       eliminarItem: window.eliminarItem,
      };
   }, 100);
 

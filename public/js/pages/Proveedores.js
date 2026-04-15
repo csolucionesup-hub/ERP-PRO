@@ -1,4 +1,5 @@
 import { api } from '../services/api.js';
+import { showSuccess, showError } from '../services/ui.js';
 
 export const Proveedores = async () => {
   let proveedores = [];
@@ -42,10 +43,10 @@ export const Proveedores = async () => {
             email: f.email.value || undefined,
             direccion: f.direccion.value || undefined
           });
-          alert('Proveedor registrado correctamente');
+          showSuccess('Proveedor registrado correctamente');
           window.location.reload();
         } catch(err) {
-          alert('Error: ' + JSON.stringify(err.detalles || err.error || err));
+          showError(err.detalles?.[0] || err.error || 'Error al registrar proveedor');
         }
       };
     }
@@ -109,9 +110,9 @@ export const Proveedores = async () => {
             email: f.email.value || undefined,
             direccion: f.direccion.value || undefined
           });
-          alert('Proveedor actualizado');
+          showSuccess('Proveedor actualizado');
           window.location.reload();
-        } catch(err) { alert('Error: ' + JSON.stringify(err.detalles || err.error || err)); }
+        } catch(err) { showError(err.detalles?.[0] || err.error || 'Error al actualizar'); }
       };
     };
 
@@ -119,9 +120,14 @@ export const Proveedores = async () => {
       if (!confirm(`¿Eliminar al proveedor "${nombre}"?\nSolo es posible si no tiene compras registradas.`)) return;
       try {
         await api.purchases.deleteProveedor(id);
-        alert('Proveedor eliminado');
+        showSuccess('Proveedor eliminado');
         window.location.reload();
-      } catch(err) { alert('Error: ' + (err.error || err.message || JSON.stringify(err))); }
+      } catch(err) { showError(err.error || err.message || 'Error al eliminar'); }
+    };
+    // Namespace por módulo
+    window.Proveedores = {
+      editarProveedor:   window.editarProveedor,
+      eliminarProveedor: window.eliminarProveedor,
     };
   }, 100);
 

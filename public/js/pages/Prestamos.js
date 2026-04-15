@@ -1,4 +1,5 @@
 import { api } from '../services/api.js';
+import { showSuccess, showError } from '../services/ui.js';
 
 const formatCurrency = (val) => new Intl.NumberFormat('es-PE', { style: 'currency', currency: 'PEN' }).format(Number(val) || 0);
 const formatUSD = (val) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(Number(val) || 0);
@@ -286,9 +287,9 @@ export const Prestamos = async () => {
           monto_interes: f.monto_interes.value || 0,
           tasa_interes: 0
         });
-        alert('Préstamo tomado registrado');
+        showSuccess('Préstamo tomado registrado');
         window.location.reload();
-      } catch(err) { alert('Error: ' + JSON.stringify(err.error || err)); }
+      } catch(err) { showError(err.error || 'Error al registrar préstamo'); }
     };
 
     // Form crear otorgado
@@ -311,9 +312,9 @@ export const Prestamos = async () => {
           monto_interes: f.monto_interes.value || 0,
           tasa_interes: 0
         });
-        alert('Préstamo otorgado registrado');
+        showSuccess('Préstamo otorgado registrado');
         window.location.reload();
-      } catch(err) { alert('Error: ' + JSON.stringify(err.error || err)); }
+      } catch(err) { showError(err.error || 'Error al registrar préstamo'); }
     };
 
     // Pagar / Cobrar
@@ -324,9 +325,9 @@ export const Prestamos = async () => {
         const res = tipo === 'tomado'
           ? await api.prestamos.pagarTomado(id, Number(monto))
           : await api.prestamos.cobrarOtorgado(id, Number(monto));
-        alert('Registrado. Estado: ' + res.estado);
+        showSuccess('Registrado. Estado: ' + res.estado);
         window.location.reload();
-      } catch(err) { alert('Error: ' + JSON.stringify(err.error || err)); }
+      } catch(err) { showError(err.error || 'Error al registrar pago'); }
     };
 
     // Eliminar
@@ -335,7 +336,7 @@ export const Prestamos = async () => {
       try {
         tipo === 'tomado' ? await api.prestamos.deleteTomado(id) : await api.prestamos.deleteOtorgado(id);
         window.location.reload();
-      } catch(err) { alert('Error: ' + JSON.stringify(err.error || err.message || err)); }
+      } catch(err) { showError(err.error || err.message || 'Error al eliminar préstamo'); }
     };
 
     // Anular
@@ -344,7 +345,7 @@ export const Prestamos = async () => {
       try {
         tipo === 'tomado' ? await api.prestamos.anularTomado(id) : await api.prestamos.anularOtorgado(id);
         window.location.reload();
-      } catch(err) { alert('Error: ' + JSON.stringify(err.error || err)); }
+      } catch(err) { showError(err.error || 'Error al anular'); }
     };
 
     // Modal editar — abrir
@@ -389,9 +390,9 @@ export const Prestamos = async () => {
       };
       try {
         tipo === 'tomado' ? await api.prestamos.updateTomado(id, data) : await api.prestamos.updateOtorgado(id, data);
-        alert('Actualizado correctamente');
+        showSuccess('Actualizado correctamente');
         window.location.reload();
-      } catch(err) { alert('Error: ' + JSON.stringify(err.error || err)); }
+      } catch(err) { showError(err.error || 'Error al actualizar'); }
     };
 
     // Banner PerfoTools USD en préstamos
@@ -403,6 +404,20 @@ export const Prestamos = async () => {
       const form = document.getElementById('form-crear-' + tipo);
       if (banner) banner.style.display = isUSD ? 'block' : 'none';
       if (form) form.style.border = isUSD ? '2px solid #16a34a' : '';
+    };
+
+    // Namespace por módulo
+    window.Prestamos = {
+      calcTotal_tomado:    window.calcTotal_tomado,
+      calcTotal_otorgado:  window.calcTotal_otorgado,
+      calcEditTotal:       window.calcEditTotal,
+      showTab:             window.showTab,
+      registrarPago:       window.registrarPago,
+      eliminarPrestamo:    window.eliminarPrestamo,
+      anularPrestamo:      window.anularPrestamo,
+      abrirEditar:         window.abrirEditar,
+      cerrarModalEditar:   window.cerrarModalEditar,
+      toggleMonedaPrestamo: window.toggleMonedaPrestamo,
     };
 
     // Init tab activo

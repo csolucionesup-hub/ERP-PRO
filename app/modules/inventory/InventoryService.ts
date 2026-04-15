@@ -1,4 +1,5 @@
 import { db } from '../../../database/connection';
+import { nowSQL } from '../../lib/dateUtils';
 
 class InventoryService {
   /**
@@ -26,25 +27,35 @@ class InventoryService {
      };
      const prefijo = prefijos[data.categoria] || 'MAT';
 
-     // Obtener el último SKU de esa categoría
-     const [rows] = await db.query(
-       `SELECT sku FROM Inventario WHERE sku LIKE ? ORDER BY id_item DESC LIMIT 1`,
-       [prefijo + '-%']
-     );
-     const ultimo = (rows as any[])[0];
-     let siguiente = 1;
-     if (ultimo) {
-       const partes = ultimo.sku.split('-');
-       siguiente = (parseInt(partes[1], 10) || 0) + 1;
-     }
-     const sku = `${prefijo}-${String(siguiente).padStart(3, '0')}`;
+     const conn = await db.getConnection();
+     await conn.beginTransaction();
+     try {
+       // FOR UPDATE: lock pesimista — previene colisión de SKU en concurrencia
+       const [rows] = await conn.query(
+         `SELECT sku FROM Inventario WHERE sku LIKE ? ORDER BY id_item DESC LIMIT 1 FOR UPDATE`,
+         [prefijo + '-%']
+       );
+       const ultimo = (rows as any[])[0];
+       let siguiente = 1;
+       if (ultimo) {
+         const partes = ultimo.sku.split('-');
+         siguiente = (parseInt(partes[1], 10) || 0) + 1;
+       }
+       const sku = `${prefijo}-${String(siguiente).padStart(3, '0')}`;
 
-     const min_stock = data.stock_minimo !== undefined ? data.stock_minimo : 10.00;
-     const [result] = await db.query(
-       'INSERT INTO Inventario (sku, categoria, nombre, unidad, stock_minimo) VALUES (?, ?, ?, ?, ?)',
-       [sku, data.categoria, data.nombre, data.unidad || 'UND', min_stock]
-     );
-     return { id_item: (result as any).insertId, sku, categoria: data.categoria, nombre: data.nombre, unidad: data.unidad, stock_actual: 0, stock_minimo: min_stock };
+       const min_stock = data.stock_minimo !== undefined ? data.stock_minimo : 10.00;
+       const [result] = await conn.query(
+         'INSERT INTO Inventario (sku, categoria, nombre, unidad, stock_minimo) VALUES (?, ?, ?, ?, ?)',
+         [sku, data.categoria, data.nombre, data.unidad || 'UND', min_stock]
+       );
+       await conn.commit();
+       return { id_item: (result as any).insertId, sku, categoria: data.categoria, nombre: data.nombre, unidad: data.unidad, stock_actual: 0, stock_minimo: min_stock };
+     } catch (e) {
+       await conn.rollback();
+       throw e;
+     } finally {
+       conn.release();
+     }
   }
 
   /**
@@ -66,7 +77,12 @@ class InventoryService {
     await conn.beginTransaction();
 
     try {
-      const fechaConsumo = new Date().toISOString().slice(0, 19).replace('T', ' '); // YYYY-MM-DD HH:MM:SS local db
+      const [srvRows] = await conn.query('SELECT id_servicio, estado FROM Servicios WHERE id_servicio = ?', [data.id_servicio]);
+      const srv = (srvRows as any)[0];
+      if (!srv) throw new Error('Servicio no encontrado');
+      if (['COBRADO', 'ANULADO'].includes(srv.estado)) throw new Error('No se puede registrar consumo en un servicio ' + srv.estado);
+
+      const fechaConsumo = nowSQL();
 
       for (const item of data.detalles) {
          // Bloquear lectura por Concurrencia FOR UPDATE
@@ -117,8 +133,34 @@ class InventoryService {
     }
   }
   async deleteItem(idItem: number) {
-    const [rows] = await db.query('SELECT id_item FROM Inventario WHERE id_item = ?', [idItem]);
-    if (!(rows as any)[0]) throw new Error('Ítem no encontrado.');
+    const [rows] = await db.query(
+      'SELECT id_item, stock_actual, nombre FROM Inventario WHERE id_item = ?',
+      [idItem]
+    );
+    const item = (rows as any)[0];
+    if (!item) throw new Error('Ítem no encontrado.');
+    if (Number(item.stock_actual) > 0) {
+      throw new Error(`No se puede eliminar "${item.nombre}" porque tiene ${item.stock_actual} unidades en stock. Consuma o ajuste el stock primero.`);
+    }
+
+    // Verificar que no tenga compras activas referenciando este ítem
+    const [comprasRows] = await db.query(`
+      SELECT COUNT(*) as total FROM DetalleCompra dc
+      JOIN Compras c ON c.id_compra = dc.id_compra
+      WHERE dc.id_item = ? AND c.estado != 'ANULADO'
+    `, [idItem]);
+    const comprasActivas = Number((comprasRows as any)[0].total);
+    if (comprasActivas > 0) {
+      throw new Error(`No se puede eliminar "${item.nombre}" porque tiene ${comprasActivas} compra(s) activa(s) asociada(s).`);
+    }
+
+    const [costos] = await db.query(
+      'SELECT COUNT(*) as n FROM CostosServicio WHERE id_item = ?', [idItem]
+    );
+    if ((costos as any)[0].n > 0) {
+      throw new Error('No se puede eliminar el ítem porque tiene costos registrados en servicios activos.');
+    }
+
     await db.query('DELETE FROM MovimientosInventario WHERE id_item = ?', [idItem]);
     await db.query('DELETE FROM Inventario WHERE id_item = ?', [idItem]);
     return { success: true };

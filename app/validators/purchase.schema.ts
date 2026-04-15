@@ -19,6 +19,7 @@ export const purchaseCreateSchema = z.object({
     id_proveedor: z.number().int().positive(),
     fecha: fechaField,
     nro_comprobante: z.string().min(3, 'Comprobante requerido'),
+    centro_costo: z.string().min(2, 'Centro de costo obligatorio'),
     moneda: z.enum(['PEN', 'USD']),
     tipo_cambio: z.number().positive().default(1),
     aplica_igv: z.boolean().default(true),
@@ -32,5 +33,26 @@ export const purchaseCreateSchema = z.object({
       precio_unitario: z.number().positive(),
       subtotal: z.number().positive()
     })).min(1, 'La compra debe tener al menos 1 ítem asociado')
+  })
+});
+
+export const purchaseUpdateSchema = z.object({
+  body: z.object({
+    nro_oc:          z.string().optional(),
+    id_proveedor:    z.number().int().positive().optional(),
+    fecha:           fechaField.optional(),
+    nro_comprobante: z.string().optional(),
+    centro_costo:    z.string().min(2).optional(),
+    moneda:          z.enum(['PEN', 'USD']).optional(),
+    tipo_cambio:     z.number().positive().optional(),
+    aplica_igv:      z.boolean().optional(),
+    monto_base:      z.number().positive().optional(),
+    estado_pago:     z.enum(['PENDIENTE', 'PARCIAL', 'PAGADO']).optional(),
+    detalles: z.array(z.object({
+      id_item:         z.number().int().positive(),
+      cantidad:        z.number().positive(),
+      precio_unitario: z.number().positive(),
+      subtotal:        z.number().positive()
+    })).min(1).optional(),
   })
 });

@@ -1,4 +1,5 @@
-import { db } from '../../../database/connection';
+import { db, DEFAULT_ACCOUNT_ID } from '../../../database/connection';
+import { nowSQL } from '../../lib/dateUtils';
 
 class CatalogService {
   /**
@@ -26,12 +27,12 @@ class CatalogService {
     return (rows as any[]).map(r => {
        const ingresoNeto = Number(r.ingreso_neto);
        const costo = Number(r.costos_ejecutados);
-       const utilidadReala = ingresoNeto - costo;
-       const margenReal = ingresoNeto > 0 ? (utilidadReala / ingresoNeto) : 0;
-       
+       const utilidadReal = ingresoNeto - costo;
+       const margenReal = ingresoNeto > 0 ? (utilidadReal / ingresoNeto) : 0;
+
        return {
            ...r,
-           utilidad_neta: utilidadReala,
+           utilidad_neta: utilidadReal,
            margen_porcentual: margenReal
        };
     });
@@ -112,6 +113,7 @@ class CatalogService {
   async registrarCobro(id_servicio: number, monto_pagado_liquido: number, descripcion: string = 'Pago de Cliente') {
     const conn = await db.getConnection();
     await conn.beginTransaction();
+    const TOLERANCIA_REDONDEO = 0.10;
 
     try {
         // Bloqueo Optimista
@@ -132,18 +134,19 @@ class CatalogService {
         const cobroProyectado = historialCobrado + monto_pagado_liquido;
 
         // Regla: No se puede cobrar líquido más del remanente (Evasión de dinero fantasma)
-        if (cobroProyectado > cobrarMaximoLiquido + 0.1) {
+        if (cobroProyectado > cobrarMaximoLiquido + TOLERANCIA_REDONDEO) {
             throw new Error('Monto excede el neto a cobrar permitido excluyendo detención legal (' + cobrarMaximoLiquido + ')');
         }
 
         // Inyectar Ingreso Líquido a Flujo Real
-        const fechaCobro = new Date().toISOString().slice(0, 19).replace('T', ' ');
+        const fechaCobro = nowSQL();
         // Nota: Asumimos 'id_cuenta=1' como Banco Principal Temporalmente
         await conn.query(`
            INSERT INTO Transacciones (id_cuenta, referencia_tipo, referencia_id, tipo_movimiento, monto_original, igv_original, total_original, monto_base, igv_base, total_base, fecha, descripcion)
-           VALUES (1, 'SERVICIO', ?, 'INGRESO', ?, 0, ?, ?, 0, ?, ?, ?)
+           VALUES (?, 'SERVICIO', ?, 'INGRESO', ?, 0, ?, ?, 0, ?, ?, ?)
         `, [
-           id_servicio, 
+           DEFAULT_ACCOUNT_ID,
+           id_servicio,
            monto_pagado_liquido, monto_pagado_liquido, monto_pagado_liquido, monto_pagado_liquido,  // original = base asumiendo PEN 1:1, IGV 0 para flujo neto efectivo.
            fechaCobro, descripcion
         ]);
@@ -151,7 +154,7 @@ class CatalogService {
         // Decidir Nuevo Status
         let nuevoEstado = 'PARCIAL';
         // Checkeo con ligero umbral de céntimos para redondeos
-        if (Math.abs(cobrarMaximoLiquido - cobroProyectado) < 0.1) {
+        if (Math.abs(cobrarMaximoLiquido - cobroProyectado) < TOLERANCIA_REDONDEO) {
             nuevoEstado = 'COBRADO';
         }
 
@@ -265,6 +268,29 @@ class CatalogService {
     }
   }
 
+  async terminarServicio(idServicio: number) {
+    const [rows] = await db.query(
+      'SELECT estado, estado_trabajo FROM Servicios WHERE id_servicio = ?',
+      [idServicio]
+    );
+    const srv = (rows as any)[0];
+    if (!srv) throw new Error('Servicio no encontrado.');
+    if (srv.estado === 'ANULADO') throw new Error('No se puede terminar un servicio anulado.');
+    if (srv.estado_trabajo === 'TERMINADO') throw new Error('El servicio ya está marcado como TERMINADO.');
+    await db.query("UPDATE Servicios SET estado_trabajo = 'TERMINADO' WHERE id_servicio = ?", [idServicio]);
+    return { success: true };
+  }
+
+  async getServiciosActivos() {
+    const [rows] = await db.query(
+      `SELECT id_servicio, codigo, nro_cotizacion, cliente, nombre
+       FROM Servicios
+       WHERE estado != 'ANULADO' AND estado_trabajo != 'TERMINADO'
+       ORDER BY fecha_servicio DESC`
+    );
+    return rows;
+  }
+
   async deleteServicio(idServicio: number) {
     const conn = await db.getConnection();
     await conn.beginTransaction();
@@ -273,6 +299,12 @@ class CatalogService {
       const srv = (rows as any)[0];
       if (!srv) throw new Error('Servicio no encontrado.');
 
+      if (['COBRADO', 'PARCIAL'].includes(srv.estado)) {
+        throw new Error('No se puede eliminar un servicio con cobros registrados. Use anular.');
+      }
+
+      // Limpiar transacciones antes de eliminar el servicio para no dejar saldo de caja corrupto
+      await conn.query("DELETE FROM Transacciones WHERE referencia_tipo='SERVICIO' AND referencia_id = ?", [idServicio]);
       await conn.query("DELETE FROM Detracciones WHERE id_servicio = ?", [idServicio]);
       await conn.query("DELETE FROM CostosServicio WHERE id_servicio = ?", [idServicio]);
       await conn.query("DELETE FROM Servicios WHERE id_servicio = ?", [idServicio]);

@@ -1,22 +1,55 @@
-export const Sidebar = (activePath) => `
-  <aside class="sidebar">
-    <div class="sidebar-logo">ERP <span>PRO</span></div>
-    <nav class="sidebar-nav">
-      <div class="nav-item ${activePath === '/' ? 'active' : ''}" data-path="/">Dashboard</div>
-      <div class="nav-item ${activePath === '/servicios' ? 'active' : ''}" data-path="/servicios">Ventas y Servicios</div>
-      <div class="nav-item ${activePath === '/finanzas' ? 'active' : ''}" data-path="/finanzas">Finanzas y Flujo</div>
-      <div class="nav-item ${activePath === '/compras' ? 'active' : ''}" data-path="/compras">Compras</div>
-      <div class="nav-item ${activePath === '/proveedores' ? 'active' : ''}" data-path="/proveedores">Proveedores</div>
-      <div class="nav-item ${activePath === '/inventario' ? 'active' : ''}" data-path="/inventario">Inventario</div>
-      <div class="nav-item ${activePath === '/prestamos' ? 'active' : ''}" data-path="/prestamos">Préstamos</div>
-    </nav>
-    <div class="sidebar-footer" style="padding: 20px; border-top: 1px solid var(--border-light); margin-top: auto;">
-      <p style="font-size: 11px; color: var(--text-secondary); margin-bottom: 10px; text-transform: uppercase; letter-spacing: 1px; font-weight: bold;">Acciones Rápidas</p>
-      <div style="display: flex; flex-direction: column; gap: 8px;">
-        <button class="action-btn" data-path="/compras" style="width: 100%; text-align: left; padding: 8px 12px; font-size: 12px; background: var(--success); color: white; border: none; border-radius: 4px; cursor: pointer;">+ Nueva Compra</button>
-        <button class="action-btn" data-path="/inventario" style="width: 100%; text-align: left; padding: 8px 12px; font-size: 12px; background: var(--danger); color: white; border: none; border-radius: 4px; cursor: pointer;">- Registrar Consumo</button>
-        <button class="action-btn" data-path="/servicios" style="width: 100%; text-align: left; padding: 8px 12px; font-size: 12px; background: var(--primary-color); color: white; border: none; border-radius: 4px; cursor: pointer;">$ Cobrar Servicio</button>
+const MODULE_NAV = [
+  { modulo: 'GERENCIA',       label: 'Dashboard',          page: 'dashboard'    },
+  { modulo: 'COMERCIAL',      label: 'Comercial',          page: 'comercial'    },
+  { modulo: 'FINANZAS',       label: 'Finanzas y Flujo',   page: 'finanzas'     },
+  { modulo: 'LOGISTICA',      label: 'Logística',          page: 'logistica'    },
+  { modulo: 'ALMACEN',        label: 'Inventario',         page: 'inventario'   },
+  { modulo: 'ADMINISTRACION', label: 'Administración',     page: 'administracion' },
+];
+
+function getUser() {
+  try { return JSON.parse(localStorage.getItem('erp_user') || '{}'); }
+  catch { return {}; }
+}
+
+export function renderSidebar(activePage) {
+  const user = getUser();
+  const esGerente = user.rol === 'GERENTE';
+  const modulos = user.modulos || [];
+
+  const navItems = MODULE_NAV
+    .filter(item => esGerente || modulos.includes(item.modulo))
+    .map(item => `
+      <div class="nav-item ${activePage === item.page ? 'active' : ''}"
+           data-page="${item.page}">
+        ${item.label}
       </div>
+    `).join('');
+
+  const usuariosItem = esGerente ? `
+    <div class="nav-item ${activePage === 'usuarios' ? 'active' : ''}"
+         data-page="usuarios">
+      Usuarios
     </div>
-  </aside>
-`;
+  ` : '';
+
+  const rolLabel = esGerente ? 'Gerente' : (user.rol || 'Usuario');
+
+  document.getElementById('sidebar').innerHTML = `
+    <div class="sidebar-logo">
+      <img src="/img/logo-metal.png" alt="Metal Engineers"
+           style="max-width: 180px; height: auto;" />
+    </div>
+    <nav class="sidebar-nav">
+      ${navItems}
+      ${usuariosItem}
+    </nav>
+    <div class="sidebar-footer">
+      <div class="user-info">
+        <span class="user-name">${user.nombre || 'Usuario'}</span>
+        <span class="user-role">${rolLabel}</span>
+      </div>
+      <button class="btn-logout" onclick="logout()">Cerrar sesión</button>
+    </div>
+  `;
+}

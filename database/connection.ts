@@ -18,6 +18,8 @@ const pool = mysql.createPool({
   keepAliveInitialDelay: 0
 });
 
+export const DEFAULT_ACCOUNT_ID = parseInt(process.env.DEFAULT_ACCOUNT_ID || '1');
+
 // Wrapper para inyectar logs o manejo de errores general
 export const db = {
   async query(sql: string, values?: any[]) {
@@ -29,8 +31,10 @@ export const db = {
       const diff = process.hrtime(start);
       const time = (diff[0] * 1e3 + diff[1] * 1e-6).toFixed(2);
       
-      // Logger Gerencial (Puede deshabilitarse o canalizarse a Winston en producción intensiva)
-      console.log(`[DB Query | ${time}ms] ${sql.replace(/[\n\s]+/g, ' ').trim().slice(0, 150)}...`);
+      // Logger Gerencial (silenciado en producción)
+      if (process.env.NODE_ENV !== 'production') {
+        console.log(`[DB Query | ${time}ms] ${sql.replace(/[\n\s]+/g, ' ').trim().slice(0, 150)}...`);
+      }
       
       return result; // Devuelve [rows, fields] para compatibilidad con desestructuración [rows]
     } catch (error: any) {

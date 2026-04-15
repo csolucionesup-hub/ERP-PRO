@@ -1,4 +1,5 @@
 import { api } from '../services/api.js';
+import { showSuccess, showError } from '../services/ui.js';
 
 export const Servicios = async () => {
   let servicios = [], tcHoy = { valor_venta: 1, es_hoy: false, fecha: '' };
@@ -109,10 +110,10 @@ export const Servicios = async () => {
          };
          try {
              await api.services.createServicio(data);
-             alert('Servicio Creado Exitosamente');
+             showSuccess('Servicio creado exitosamente');
              window.location.reload();
          } catch(err) {
-             alert('Error: ' + JSON.stringify(err.detalles || err.error || err));
+             showError(err.detalles?.[0] || err.error || 'Error al crear servicio');
          }
        };
      }
@@ -126,15 +127,15 @@ export const Servicios = async () => {
          if (monto && !isNaN(monto) && Number(monto) > 0) {
              try {
                  const res = await api.services.cobrarServicio(id, Number(monto));
-                 alert(res.estado_actualizado === 'COBRADO' ? '¡Factura 100% cobrada!' : 'Adelanto registrado (PARCIAL)');
+                 showSuccess(res.estado_actualizado === 'COBRADO' ? '¡Factura 100% cobrada!' : 'Adelanto registrado (PARCIAL)');
                  window.location.reload();
-             } catch (e) { alert('Error: ' + JSON.stringify(e.detalles||e.error||e)); }
+             } catch (e) { showError(e.detalles?.[0] || e.error || 'Error al registrar cobro'); }
          }
      };
 
      window.editarServicio = (id) => {
          const srv = servicios.find(s => s.id_servicio === id);
-         if (!srv) return alert('No encontrado');
+         if (!srv) return showError('Servicio no encontrado');
 
          const overlay = document.createElement('div');
          overlay.id = 'modal-editar-overlay';
@@ -212,32 +213,29 @@ export const Servicios = async () => {
                      detraccion_porcentaje: Number(f.detraccion_porcentaje.value),
                      retencion_porcentaje: Number(f.retencion_porcentaje.value)
                  });
-                 alert('Servicio actualizado');
+                 showSuccess('Servicio actualizado');
                  window.location.reload();
-             } catch(err) { alert('Error: ' + JSON.stringify(err.detalles||err.error||err)); }
+             } catch(err) { showError(err.detalles?.[0] || err.error || 'Error al actualizar'); }
          };
      };
 
      window.terminarServicio = async (id) => {
          if (confirm('¿Marcar servicio como TERMINADO? Ya no aparecerá en la lista de gastos.')) {
              try {
-                 await fetch('/api/servicios/' + id + '/terminar', { method: 'POST' });
-                 alert('Servicio marcado como terminado');
+                 await api.services.terminarServicio(id);
+                 showSuccess('Servicio marcado como terminado');
                  window.location.reload();
-             } catch(e) { alert('Error: ' + JSON.stringify(e)); }
+             } catch(e) { showError(e.error || e.message || 'Error al terminar'); }
          }
      };
 
      window.toggleDetraccion = async (idServicio) => {
          if (confirm('¿El cliente ya depositó la detracción en la cuenta del Banco de la Nación?')) {
              try {
-                 const res = await fetch('/api/servicios/' + idServicio + '/detraccion-deposito', {
-                     method: 'POST', headers: {'Content-Type': 'application/json'}
-                 });
-                 if (!res.ok) throw await res.json();
-                 alert('Detracción marcada como depositada');
+                 await api.services.depositarDetraccion(idServicio, {});
+                 showSuccess('Detracción marcada como depositada');
                  window.location.reload();
-             } catch(e) { alert('Error: ' + JSON.stringify(e)); }
+             } catch(e) { showError(e.error || e.message || 'Error al registrar depósito'); }
          }
      };
 
@@ -245,9 +243,9 @@ export const Servicios = async () => {
          if (confirm('¿Eliminar ' + codigo + ' permanentemente?\nSolo funciona si está PENDIENTE y sin cobros.')) {
              try {
                  await api.services.deleteServicio(id);
-                 alert('Eliminado');
+                 showSuccess('Servicio eliminado');
                  window.location.reload();
-             } catch(e) { alert('Error: ' + JSON.stringify(e.detalles||e.error||e)); }
+             } catch(e) { showError(e.detalles?.[0] || e.error || e.message || 'Error al eliminar'); }
          }
      };
 
@@ -255,13 +253,22 @@ export const Servicios = async () => {
         if(confirm(`¡CRÍTICO!\\n¿Seguro que deseas ANULAR el servicio ${codigo}?\\n\\nSi existen suministros consumidos, estos VOLVERÁN al inventario automáticamente.`)) {
             try {
                await api.services.anularServicio(id);
-               alert('Servicio Anulado y Stock Reintegrado');
+               showSuccess('Servicio anulado y stock reintegrado');
                window.location.reload();
             } catch (e) {
-               alert('Error al anular: ' + (e.message || JSON.stringify(e)));
+               showError(e.error || e.message || 'Error al anular');
             }
         }
      }
+     // Namespace por módulo — evita colisiones entre páginas
+     window.Servicios = {
+       modalCobrar:      window.modalCobrar,
+       editarServicio:   window.editarServicio,
+       terminarServicio: window.terminarServicio,
+       toggleDetraccion: window.toggleDetraccion,
+       eliminarServicio: window.eliminarServicio,
+       anularServicio:   window.anularServicio,
+     };
   }, 100);
 
   return `

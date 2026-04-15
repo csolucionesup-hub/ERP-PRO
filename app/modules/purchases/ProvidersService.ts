@@ -3,23 +3,47 @@ import { db } from '../../../database/connection';
 class ProvidersService {
   async getProveedores() {
     const [rows] = await db.query(
-      'SELECT id_proveedor, ruc, razon_social, contacto, telefono, email, direccion FROM Proveedores ORDER BY razon_social ASC'
+      `SELECT id_proveedor, ruc, dni, tipo, razon_social, contacto, telefono, email, direccion,
+              banco_1_nombre, banco_1_numero, banco_1_cci,
+              banco_2_nombre, banco_2_numero, banco_2_cci
+       FROM Proveedores ORDER BY razon_social ASC`
     );
     return rows;
   }
 
-  async createProveedor(data: { ruc: string; razon_social: string; contacto?: string; telefono?: string; email?: string; direccion?: string }) {
+  async createProveedor(data: any) {
     const [result] = await db.query(
-      'INSERT INTO Proveedores (ruc, razon_social, contacto, telefono, email, direccion) VALUES (?, ?, ?, ?, ?, ?)',
-      [data.ruc, data.razon_social, data.contacto || null, data.telefono || null, data.email || null, data.direccion || null]
+      `INSERT INTO Proveedores
+        (ruc, dni, tipo, razon_social, contacto, telefono, email, direccion,
+         banco_1_nombre, banco_1_numero, banco_1_cci,
+         banco_2_nombre, banco_2_numero, banco_2_cci)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        data.ruc || null, data.dni || null, data.tipo || 'EMPRESA',
+        data.razon_social,
+        data.contacto || null, data.telefono || null, data.email || null, data.direccion || null,
+        data.banco_1_nombre || null, data.banco_1_numero || null, data.banco_1_cci || null,
+        data.banco_2_nombre || null, data.banco_2_numero || null, data.banco_2_cci || null,
+      ]
     );
     return { id_proveedor: (result as any).insertId, ...data };
   }
 
-  async updateProveedor(id: number, data: { ruc: string; razon_social: string; contacto?: string; telefono?: string; email?: string; direccion?: string }) {
+  async updateProveedor(id: number, data: any) {
     await db.query(
-      'UPDATE Proveedores SET ruc=?, razon_social=?, contacto=?, telefono=?, email=?, direccion=? WHERE id_proveedor=?',
-      [data.ruc, data.razon_social, data.contacto || null, data.telefono || null, data.email || null, data.direccion || null, id]
+      `UPDATE Proveedores SET
+        ruc=?, dni=?, tipo=?, razon_social=?, contacto=?, telefono=?, email=?, direccion=?,
+        banco_1_nombre=?, banco_1_numero=?, banco_1_cci=?,
+        banco_2_nombre=?, banco_2_numero=?, banco_2_cci=?
+       WHERE id_proveedor=?`,
+      [
+        data.ruc || null, data.dni || null, data.tipo || 'EMPRESA',
+        data.razon_social,
+        data.contacto || null, data.telefono || null, data.email || null, data.direccion || null,
+        data.banco_1_nombre || null, data.banco_1_numero || null, data.banco_1_cci || null,
+        data.banco_2_nombre || null, data.banco_2_numero || null, data.banco_2_cci || null,
+        id,
+      ]
     );
     return { success: true };
   }

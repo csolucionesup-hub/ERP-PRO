@@ -1,26 +1,26 @@
 /* CSS Variables - Premium Dashboard Style */
 :root {
   /* Colors */
-  --bg-app: #f4f7fe;
+  --bg-app: #f5f5f5;
   --bg-card: #ffffff;
-  --bg-sidebar: #0b1437;
-  --text-primary: #1b2559;
-  --text-secondary: #a3aed1;
-  --text-sidebar: #a3aed1;
+  --bg-sidebar: #000000;
+  --text-primary: #000000;
+  --text-secondary: #a5a5a6;
+  --text-sidebar: #d9dad9;
   --text-sidebar-hover: #ffffff;
-  
-  --primary-color: #4318ff;
-  --hover-primary: #3311db;
+
+  --primary-color: #676767;
+  --hover-primary: #000000;
   --success: #05cd99;
   --warning: #ffce20;
   --danger: #ee5d50;
-  --info: #3965ff;
+  --info: #676767;
 
-  --border-light: #e0e5f2;
+  --border-light: #d9dad9;
 
   /* Shadows */
-  --shadow-card: 0px 18px 40px rgba(112, 144, 176, 0.12);
-  --shadow-hover: 0px 20px 45px rgba(112, 144, 176, 0.2);
+  --shadow-card: 0px 18px 40px rgba(0, 0, 0, 0.08);
+  --shadow-hover: 0px 20px 45px rgba(0, 0, 0, 0.15);
 
   /* Radius */
   --radius-sm: 8px;
@@ -73,6 +73,10 @@ a {
 }
 
 .sidebar-logo {
+  padding: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   color: #fff;
   font-size: 24px;
   font-weight: 700;
@@ -108,9 +112,9 @@ a {
 }
 
 .nav-item.active {
-  background-color: var(--primary-color);
+  background-color: #676767;
   color: #fff;
-  box-shadow: 0 4px 15px rgba(67, 24, 255, 0.3);
+  box-shadow: 0 4px 15px rgba(103, 103, 103, 0.3);
 }
 
 .main-content {
@@ -298,3 +302,127 @@ tr:last-child td {
 .text-danger { color: var(--danger); font-weight: 600; }
 .text-success { color: var(--success); font-weight: 600; }
 .color-error { color: var(--danger); }
+
+/* =========================================
+   Sidebar Footer — Usuario logueado
+   ========================================= */
+.sidebar-footer {
+  margin-top: auto;
+  padding: 20px;
+  border-top: 1px solid rgba(217, 218, 217, 0.15);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.user-info {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.user-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-sidebar-hover);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.user-role {
+  font-size: 11px;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.btn-logout {
+  width: 100%;
+  padding: 8px 12px;
+  background: transparent;
+  border: 1px solid rgba(217, 218, 217, 0.25);
+  border-radius: 6px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+  text-align: center;
+  transition: all 0.2s;
+}
+
+.btn-logout:hover {
+  background: rgba(238, 93, 80, 0.15);
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+/* =========================================
+   Placeholder pages (sin acceso / sin módulos)
+   ========================================= */
+.placeholder-page {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 60vh;
+  text-align: center;
+  gap: 12px;
+  color: var(--text-secondary);
+  padding: 40px;
+}
+
+.placeholder-page h2 {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 8px;
+}
+
+/* =========================================
+   Toast Notifications (ui.js)
+   ========================================= */
+#erp-toast-container {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  pointer-events: none;
+}
+
+.erp-toast {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 18px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  color: #fff;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.18);
+  opacity: 0;
+  transform: translateY(12px);
+  transition: opacity 0.25s ease, transform 0.25s ease;
+  max-width: 360px;
+  word-break: break-word;
+  pointer-events: auto;
+}
+
+.erp-toast--show {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.erp-toast--success { background: #2d7a45; }
+.erp-toast--error   { background: #b5302a; }
+.erp-toast--info    { background: #676767; }
+
+.erp-toast__icon {
+  font-size: 16px;
+  flex-shrink: 0;
+  font-weight: 700;
+}
+
+.erp-toast__msg { line-height: 1.4; }

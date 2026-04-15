@@ -1,4 +1,4 @@
-import { db } from '../../../database/connection';
+import { db, DEFAULT_ACCOUNT_ID } from '../../../database/connection';
 
 class PurchaseService {
   /**
@@ -12,7 +12,7 @@ class PurchaseService {
         c.estado_pago, c.aplica_igv, c.monto_base, c.igv_base, c.total_base
       FROM Compras c
       INNER JOIN Proveedores p ON p.id_proveedor = c.id_proveedor
-      WHERE c.estado != 'ANULADA'
+      WHERE c.estado != 'ANULADO'
       ORDER BY c.fecha DESC
     `);
     return rows;
@@ -44,10 +44,28 @@ class PurchaseService {
       const [compraRows] = await conn.query('SELECT id_compra FROM Compras WHERE id_compra = ? FOR UPDATE', [idCompra]);
       if (!(compraRows as any)[0]) throw new Error('Compra no encontrada');
 
-      // 1. Revertir inventario de ítems anteriores
-      const [oldDetalles] = await conn.query('SELECT id_item, cantidad FROM DetalleCompra WHERE id_compra = ?', [idCompra]);
+      // 1. Revertir inventario de ítems anteriores con recálculo de CPP inverso
+      const [oldDetalles] = await conn.query('SELECT id_item, cantidad, precio_unitario FROM DetalleCompra WHERE id_compra = ?', [idCompra]);
       for (const item of (oldDetalles as any[])) {
-        await conn.query('UPDATE Inventario SET stock_actual = stock_actual - ? WHERE id_item = ?', [item.cantidad, item.id_item]);
+        const [invRows] = await conn.query('SELECT stock_actual, costo_promedio_unitario FROM Inventario WHERE id_item = ? FOR UPDATE', [item.id_item]);
+        const inv = (invRows as any)[0];
+        if (!inv) continue;
+        const stockActual    = Number(inv.stock_actual);
+        const cppActual      = Number(inv.costo_promedio_unitario);
+        const cantidadVieja  = Number(item.cantidad);
+        const precioViejo    = Number(item.precio_unitario);
+        const stockRevertido = stockActual - cantidadVieja;
+
+        let cppRevertido = cppActual;
+        if (stockRevertido > 0) {
+          const candidato = (stockActual * cppActual - cantidadVieja * precioViejo) / stockRevertido;
+          cppRevertido = candidato > 0 ? candidato : cppActual;
+        }
+
+        await conn.query(
+          'UPDATE Inventario SET stock_actual = ?, costo_promedio_unitario = ? WHERE id_item = ?',
+          [stockRevertido, cppRevertido.toFixed(4), item.id_item]
+        );
       }
 
       // 2. Calcular nuevos totales
@@ -61,12 +79,12 @@ class PurchaseService {
       // 3. Actualizar cabecera
       await conn.query(`
         UPDATE Compras SET
-          id_proveedor=?, fecha=?, nro_comprobante=?, moneda=?, tipo_cambio=?,
+          id_proveedor=?, fecha=?, nro_comprobante=?, centro_costo=?, moneda=?, tipo_cambio=?,
           aplica_igv=?, monto_base=?, igv_base=?, total_base=?, estado_pago=?,
           tipo_ultima_accion='EDICION'
         WHERE id_compra=?
-      `, [data.id_proveedor, data.fecha, data.nro_comprobante, moneda, tipo_cambio,
-          aplicaIgv, monto_base, igv_base, total_base, data.estado_pago, idCompra]);
+      `, [data.id_proveedor, data.fecha, data.nro_comprobante, data.centro_costo || null,
+          moneda, tipo_cambio, aplicaIgv, monto_base, igv_base, total_base, data.estado_pago, idCompra]);
 
       // 4. Reemplazar detalles y reaplicar inventario
       await conn.query('DELETE FROM DetalleCompra WHERE id_compra = ?', [idCompra]);
@@ -118,18 +136,18 @@ class PurchaseService {
     await conn.beginTransaction();
 
     try {
-      // Calcular IGV según aplica_igv
+      // Calcular IGV según aplica_igv — siempre calculado en servidor, nunca del cliente
       const aplicaIgv = data.aplica_igv !== false;
-      const igvBase = aplicaIgv ? data.igv_base : 0;
-      const totalBase = data.monto_base + igvBase;
+      const igvBase = aplicaIgv ? Number(data.monto_base) * 0.18 : 0;
+      const totalBase = Number(data.monto_base) + igvBase;
 
       // 1. Cabecera Compras
       const [compraRes] = await conn.query(`
-        INSERT INTO Compras (nro_oc, id_proveedor, fecha, nro_comprobante, moneda, tipo_cambio, monto_base, igv_base, total_base, aplica_igv, estado_pago)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO Compras (nro_oc, id_proveedor, fecha, nro_comprobante, centro_costo, moneda, tipo_cambio, monto_base, igv_base, total_base, aplica_igv, estado_pago)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `, [
-        data.nro_oc, data.id_proveedor, data.fecha, data.nro_comprobante, data.moneda,
-        data.tipo_cambio, data.monto_base, igvBase, totalBase, aplicaIgv, data.estado_pago
+        data.nro_oc, data.id_proveedor, data.fecha, data.nro_comprobante, data.centro_costo || null,
+        data.moneda, data.tipo_cambio, data.monto_base, igvBase, totalBase, aplicaIgv, data.estado_pago
       ]);
       const idCompra = (compraRes as any).insertId;
 
@@ -151,7 +169,7 @@ class PurchaseService {
           monto_base, igv_base, total_base, fecha, descripcion
         ) VALUES (?, 'COMPRA', ?, 'EGRESO', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `, [
-        1, idCompra, data.moneda, data.tipo_cambio, aplicaIgv,
+        DEFAULT_ACCOUNT_ID, idCompra, data.moneda, data.tipo_cambio, aplicaIgv,
         data.monto_base, igvBase, totalBase,
         data.monto_base * data.tipo_cambio, igvBase * data.tipo_cambio, totalBase * data.tipo_cambio,
         data.fecha, 'Pago por Factura Compra ' + data.nro_comprobante
@@ -209,8 +227,10 @@ class PurchaseService {
     const conn = await db.getConnection();
     await conn.beginTransaction();
     try {
-      const [rows] = await conn.query('SELECT id_compra FROM Compras WHERE id_compra = ? FOR UPDATE', [idCompra]);
-      if (!(rows as any)[0]) throw new Error('Compra no encontrada.');
+      const [rows] = await conn.query('SELECT id_compra, estado FROM Compras WHERE id_compra = ? FOR UPDATE', [idCompra]);
+      const compra = (rows as any)[0];
+      if (!compra) throw new Error('Compra no encontrada.');
+      if (compra.estado === 'CONFIRMADA') throw new Error('No se puede eliminar una compra confirmada. Use anularCompra() para revertir el inventario.');
       await conn.query('DELETE FROM DetalleCompra WHERE id_compra = ?', [idCompra]);
       await conn.query("DELETE FROM Transacciones WHERE referencia_tipo='COMPRA' AND referencia_id = ?", [idCompra]);
       await conn.query('DELETE FROM Compras WHERE id_compra = ?', [idCompra]);
@@ -232,7 +252,7 @@ class PurchaseService {
       const [rows] = await conn.query('SELECT estado, nro_comprobante FROM Compras WHERE id_compra = ? FOR UPDATE', [idCompra]);
       const compra = (rows as any)[0];
       if (!compra) throw new Error('Compra no encontrada.');
-      if (compra.estado === 'ANULADA') throw new Error('Esta compra ya se encuentra anulada.');
+      if (compra.estado === 'ANULADO') throw new Error('Esta compra ya se encuentra anulada.');
 
       const [detalles] = await conn.query('SELECT id_item, cantidad FROM DetalleCompra WHERE id_compra = ?', [idCompra]);
       
@@ -258,7 +278,7 @@ class PurchaseService {
       }
 
       // 3. Anular Cabecera y Transacciones
-      await conn.query("UPDATE Compras SET estado = 'ANULADA', estado_pago = 'ANULADO', tipo_ultima_accion = 'ANULACION' WHERE id_compra = ?", [idCompra]);
+      await conn.query("UPDATE Compras SET estado = 'ANULADO', estado_pago = 'ANULADO', tipo_ultima_accion = 'ANULACION' WHERE id_compra = ?", [idCompra]);
       await conn.query("UPDATE Transacciones SET estado = 'ANULADO' WHERE referencia_tipo = 'COMPRA' AND referencia_id = ?", [idCompra]);
 
       await conn.commit();

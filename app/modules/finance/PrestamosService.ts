@@ -32,15 +32,31 @@ class PrestamosService {
 
   async pagarTomado(id: number, data: any) {
     const abono = Number(data.monto);
-    const [rows] = await db.query('SELECT monto_total, monto_pagado FROM PrestamosTomados WHERE id_prestamo = ?', [id]);
-    const p = (rows as any)[0];
-    if (!p) throw new Error('Préstamo no encontrado');
-    const nuevoPagado = Number(p.monto_pagado) + abono;
-    const nuevoSaldo = Number(p.monto_total) - nuevoPagado;
-    const estado = nuevoSaldo <= 0.1 ? 'PAGADO' : 'PARCIAL';
-    await db.query('UPDATE PrestamosTomados SET monto_pagado=?, saldo=?, estado=? WHERE id_prestamo=?',
-      [nuevoPagado, Math.max(nuevoSaldo, 0), estado, id]);
-    return { success: true, estado };
+    const conn = await db.getConnection();
+    await conn.beginTransaction();
+    try {
+      const [rows] = await conn.query(
+        'SELECT monto_total, monto_pagado, estado FROM PrestamosTomados WHERE id_prestamo = ? FOR UPDATE',
+        [id]
+      );
+      const p = (rows as any)[0];
+      if (!p) throw new Error('Préstamo no encontrado');
+      if (['PAGADO', 'ANULADO'].includes(p.estado)) throw new Error('No se puede abonar a un préstamo con estado ' + p.estado);
+      const nuevoPagado = Number(p.monto_pagado) + abono;
+      const nuevoSaldo = Number(p.monto_total) - nuevoPagado;
+      const estado = nuevoSaldo <= 0.1 ? 'PAGADO' : 'PARCIAL';
+      await conn.query(
+        'UPDATE PrestamosTomados SET monto_pagado=?, saldo=?, estado=? WHERE id_prestamo=?',
+        [nuevoPagado, Math.max(nuevoSaldo, 0), estado, id]
+      );
+      await conn.commit();
+      return { success: true, estado };
+    } catch (e) {
+      await conn.rollback();
+      throw e;
+    } finally {
+      conn.release();
+    }
   }
 
   async updateTomado(id: number, data: any) {
@@ -61,13 +77,20 @@ class PrestamosService {
   }
 
   async deleteTomado(id: number) {
-    const [rows] = await db.query('SELECT id_prestamo FROM PrestamosTomados WHERE id_prestamo = ?', [id]);
-    if (!(rows as any)[0]) throw new Error('No encontrado');
+    const [rows] = await db.query('SELECT estado FROM PrestamosTomados WHERE id_prestamo = ?', [id]);
+    const p = (rows as any)[0];
+    if (!p) throw new Error('Préstamo no encontrado');
+    if (p.estado !== 'PENDIENTE') throw new Error('Solo se pueden eliminar préstamos sin abonos (estado PENDIENTE). Use anular para los demás.');
     await db.query('DELETE FROM PrestamosTomados WHERE id_prestamo = ?', [id]);
     return { success: true };
   }
 
   async anularTomado(id: number) {
+    const [rows] = await db.query('SELECT estado FROM PrestamosTomados WHERE id_prestamo = ?', [id]);
+    const p = (rows as any)[0];
+    if (!p) throw new Error('Préstamo no encontrado');
+    if (p.estado === 'ANULADO') throw new Error('Este préstamo ya se encuentra anulado');
+    if (p.estado === 'PAGADO') throw new Error('No se puede anular un préstamo ya pagado');
     await db.query("UPDATE PrestamosTomados SET estado='ANULADO' WHERE id_prestamo=?", [id]);
     return { success: true };
   }
@@ -102,15 +125,31 @@ class PrestamosService {
 
   async cobrarOtorgado(id: number, data: any) {
     const abono = Number(data.monto);
-    const [rows] = await db.query('SELECT monto_total, monto_pagado FROM PrestamosOtorgados WHERE id_prestamo = ?', [id]);
-    const p = (rows as any)[0];
-    if (!p) throw new Error('Préstamo no encontrado');
-    const nuevoPagado = Number(p.monto_pagado) + abono;
-    const nuevoSaldo = Number(p.monto_total) - nuevoPagado;
-    const estado = nuevoSaldo <= 0.1 ? 'COBRADO' : 'PARCIAL';
-    await db.query('UPDATE PrestamosOtorgados SET monto_pagado=?, saldo=?, estado=? WHERE id_prestamo=?',
-      [nuevoPagado, Math.max(nuevoSaldo, 0), estado, id]);
-    return { success: true, estado };
+    const conn = await db.getConnection();
+    await conn.beginTransaction();
+    try {
+      const [rows] = await conn.query(
+        'SELECT monto_total, monto_pagado, estado FROM PrestamosOtorgados WHERE id_prestamo = ? FOR UPDATE',
+        [id]
+      );
+      const p = (rows as any)[0];
+      if (!p) throw new Error('Préstamo no encontrado');
+      if (['COBRADO', 'ANULADO'].includes(p.estado)) throw new Error('No se puede cobrar un préstamo con estado ' + p.estado);
+      const nuevoPagado = Number(p.monto_pagado) + abono;
+      const nuevoSaldo = Number(p.monto_total) - nuevoPagado;
+      const estado = nuevoSaldo <= 0.1 ? 'COBRADO' : 'PARCIAL';
+      await conn.query(
+        'UPDATE PrestamosOtorgados SET monto_pagado=?, saldo=?, estado=? WHERE id_prestamo=?',
+        [nuevoPagado, Math.max(nuevoSaldo, 0), estado, id]
+      );
+      await conn.commit();
+      return { success: true, estado };
+    } catch (e) {
+      await conn.rollback();
+      throw e;
+    } finally {
+      conn.release();
+    }
   }
 
   async updateOtorgado(id: number, data: any) {
@@ -131,13 +170,20 @@ class PrestamosService {
   }
 
   async deleteOtorgado(id: number) {
-    const [rows] = await db.query('SELECT id_prestamo FROM PrestamosOtorgados WHERE id_prestamo = ?', [id]);
-    if (!(rows as any)[0]) throw new Error('No encontrado');
+    const [rows] = await db.query('SELECT estado FROM PrestamosOtorgados WHERE id_prestamo = ?', [id]);
+    const p = (rows as any)[0];
+    if (!p) throw new Error('Préstamo no encontrado');
+    if (p.estado !== 'PENDIENTE') throw new Error('Solo se pueden eliminar préstamos sin abonos (estado PENDIENTE). Use anular para los demás.');
     await db.query('DELETE FROM PrestamosOtorgados WHERE id_prestamo = ?', [id]);
     return { success: true };
   }
 
   async anularOtorgado(id: number) {
+    const [rows] = await db.query('SELECT estado FROM PrestamosOtorgados WHERE id_prestamo = ?', [id]);
+    const p = (rows as any)[0];
+    if (!p) throw new Error('Préstamo no encontrado');
+    if (p.estado === 'ANULADO') throw new Error('Este préstamo ya se encuentra anulado');
+    if (p.estado === 'COBRADO') throw new Error('No se puede anular un préstamo ya cobrado');
     await db.query("UPDATE PrestamosOtorgados SET estado='ANULADO' WHERE id_prestamo=?", [id]);
     return { success: true };
   }
