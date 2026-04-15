@@ -7,7 +7,8 @@ yarn-error.log*
 # Variables de entorno (NO subir credenciales)
 .env
 .env.local
-.env.*.local
+.env.*
+!.env.example
 
 # Build outputs
 dist/
