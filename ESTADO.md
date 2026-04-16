@@ -2,18 +2,18 @@
 
 > **LEER PRIMERO.** Este documento es la fuente de verdad sobre qué está hecho, qué falta y dónde estamos parados. Se actualiza al cierre de cada sesión de trabajo.
 
-**Última actualización:** 2026-04-15 (sesión Libro Bancos + modales)
+**Última actualización:** 2026-04-15 (sesión Libro Bancos + modales + deploy Railway)
 **Rama activa:** `main`
-**Último commit:** `933d8f7 fix: public path para produccion`
+**Último commit:** `122b0ea feat: Libro Bancos completo — extracto bancario, import EECC Interbank, auto-movimientos, conciliación inline`
 **Servidor dev:** `npx ts-node index.ts` en `D:\proyectos\ERP-PRO` → `http://localhost:3000`
+**Producción:** `erp-pro-production-e4c0.up.railway.app` — Railway (deploy automático desde main)
 
 ---
 
-## ⚠️ ALERTA CRÍTICA — Trabajo sin commitear
+## ✅ Estado del repositorio
 
-Hay **muchísimo** trabajo nuevo que vive solo en disco (no hay backup en git ni remoto). Si falla el disco `D:`, se pierde todo. Ver sección "Snapshot de `git status`" al final.
-
-**Prioridad inmediata:** hacer un commit consolidado (o varios por tema) y pushear a `origin/main`.
+Working tree **limpio**. Todo commiteado y pusheado a `origin/main`.
+Railway desplegado y operativo con 24 tablas (migraciones 001-019 aplicadas via bootstrap).
 
 ---
 
@@ -26,7 +26,7 @@ Hay **muchísimo** trabajo nuevo que vive solo en disco (no hay backup en git ni
 | **Servicios** | `app/modules/services/CatalogService.ts` | `Servicios.js` | `001_multimoneda.sql` | ✅ Operativo |
 | **Compras** | `app/modules/purchases/PurchaseService.ts` + `ProvidersService.ts` | `Compras.js` + `Proveedores.js` | `008, 009` | ✅ Operativo |
 | **Inventario** | `app/modules/inventory/InventoryService.ts` | `Inventario.js` | — | ✅ Operativo |
-| **Finanzas / Flujo** | `app/modules/finance/FinanceService.ts` + `TipoCambioService.ts` | `Finanzas.js` | — | ✅ Operativo |
+| **Finanzas / Flujo** | `app/modules/finance/FinanceService.ts` + `CobranzasService.ts` + `TipoCambioService.ts` | `Finanzas.js` | `013-019` | ✅ Operativo |
 | **Préstamos** | `app/modules/finance/PrestamosService.ts` | `Prestamos.js` | `003b_triggers_prestamo.sql` | ✅ Operativo |
 | **Tributario** | `app/modules/finance/TributarioService.ts` | (en Finanzas) | — | ✅ Operativo |
 | **Dashboard** | (agregados en varios services) | `Dashboard.js` | — | ✅ Operativo |
@@ -69,8 +69,8 @@ Hay **muchísimo** trabajo nuevo que vive solo en disco (no hay backup en git ni
 
 ## Próximos pasos acordados
 
-- [ ] **Hacer commit del trabajo sin commitear** (dividir en commits temáticos: finanzas/libro-bancos, comercial, auth, limpieza)
-- [ ] **Push a `origin/main`**
+- [x] ~~Hacer commit del trabajo sin commitear~~ → `122b0ea`
+- [x] ~~Push a `origin/main`~~ → pusheado + Railway desplegado
 - [ ] Investigar y limpiar los 2 registros `COT 0000-000-MN`
 - [ ] Resolver hallazgos de auditoría V3 (prioridad: F01, F06, A02, A06)
 - [ ] Eliminar worktrees basura en `.claude/worktrees/`
@@ -108,56 +108,9 @@ Hay **muchísimo** trabajo nuevo que vive solo en disco (no hay backup en git ni
 
 ## Snapshot de `git status` (al 2026-04-15)
 
-### Modificados (sin stagear)
-```
-app/middlewares/auth.ts
-app/modules/finance/FinanceService.ts
-app/modules/finance/PrestamosService.ts
-app/modules/finance/TipoCambioService.ts
-app/modules/finance/TributarioService.ts
-app/modules/inventory/InventoryService.ts
-app/modules/purchases/ProvidersService.ts
-app/modules/purchases/PurchaseService.ts
-app/modules/services/CatalogService.ts
-app/validators/gastos.schema.ts
-app/validators/provider.schema.ts
-app/validators/purchase.schema.ts
-app/validators/service.schema.ts
-database/connection.ts
-index.ts
-package.json, package-lock.json
-public/css/main.css
-public/js/app.js
-public/js/components/Sidebar.js
-public/js/pages/{Compras,Dashboard,Finanzas,Inventario,Prestamos,Proveedores,Servicios}.js
-public/js/services/api.js
-.env.example, .gitignore
-```
+**Working tree limpio.** Todo commiteado en `122b0ea` y pusheado a `origin/main`.
 
-### Nuevos (untracked)
-```
-CLAUDE.md
-app/lib/dateUtils.ts
-app/middlewares/validateId.ts
-app/modules/admin/
-app/modules/auth/
-app/modules/comercial/
-app/validators/{admin,cotizacion,prestamos,tributario}.schema.ts
-app/validators/shared.ts
-database/migrations/002 a 012 (11 migraciones)
-public/img/ (logos)
-public/js/pages/{Administracion,Comercial,ConfiguracionComercial,Logistica,Usuarios}.js
-public/js/services/ui.js
-public/login.html
-scripts/
-```
-
-### Eliminados
-```
-functions/calculations.ts (ya no se usa)
-```
-
-### Basura a limpiar antes del commit
+### Basura a limpiar (aún en disco, no commiteada)
 ```
 *_temp.txt (schema, inventory, main_css, connection, finance, prestamos_tributario, contexto_fase1)
 COT-2026-002-ME.pdf (PDF de prueba)
@@ -166,4 +119,4 @@ auditoria_v2_contexto.txt (contexto viejo)
 ```
 
 ### Dir `.claude/` — untracked
-Contiene worktrees y configuración local. **NO commitear.** Agregar `.claude/` a `.gitignore`.
+Contiene worktrees y configuración local. **NO commitear.** Ya en `.gitignore`.
