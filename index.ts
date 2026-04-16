@@ -9,6 +9,7 @@ import morgan from 'morgan';
 import { db, DEFAULT_ACCOUNT_ID } from './database/connection';
 import FinanceService from './app/modules/finance/FinanceService';
 import TributarioService from './app/modules/finance/TributarioService';
+import CobranzasService from './app/modules/finance/CobranzasService';
 import CatalogService from './app/modules/services/CatalogService';
 import PurchaseService from './app/modules/purchases/PurchaseService';
 import InventoryService from './app/modules/inventory/InventoryService';
@@ -306,6 +307,122 @@ apiRouter.post('/tributario/detraccion/:id/deposito', validateParams(depositoDet
 });
 apiRouter.post('/tributario/pago-impuesto', validateParams(pagoImpuestoSchema), async (req: Request, res: Response) => {
   res.json(await TributarioService.registrarPagoImpuesto(req.body));
+});
+
+// ===== FINANZAS v2: COBRANZAS =====
+apiRouter.use('/cobranzas', requireModulo('FINANZAS'));
+
+apiRouter.get('/cobranzas/bandejas', async (req: Request, res: Response) => {
+  const marca = req.query.marca as ('METAL' | 'PERFOTOOLS' | undefined);
+  res.json(await CobranzasService.getBandejas(marca));
+});
+
+apiRouter.get('/cobranzas/cuentas', async (_req: Request, res: Response) => {
+  res.json(await CobranzasService.getCuentas());
+});
+
+apiRouter.get('/cobranzas/dashboard', async (_req: Request, res: Response) => {
+  res.json(await CobranzasService.getDashboardFinanzas());
+});
+
+apiRouter.get('/cobranzas/:id/detalle', async (req: Request, res: Response) => {
+  res.json(await CobranzasService.getDetalle(parseInt(req.params.id as string)));
+});
+
+apiRouter.post('/cobranzas', async (req: Request, res: Response) => {
+  const user = (req as any).user;
+  res.json(await CobranzasService.registrarCobranza(req.body, user?.id));
+});
+
+apiRouter.delete('/cobranzas/:id', async (req: Request, res: Response) => {
+  res.json(await CobranzasService.eliminarCobranza(parseInt(req.params.id as string)));
+});
+
+apiRouter.put('/cobranzas/:id/tributario', async (req: Request, res: Response) => {
+  res.json(await CobranzasService.actualizarTributario(
+    parseInt(req.params.id as string),
+    req.body
+  ));
+});
+
+// CRUD de Cuentas bancarias
+apiRouter.post('/cobranzas/cuentas', async (req: Request, res: Response) => {
+  res.json(await CobranzasService.createCuenta(req.body));
+});
+apiRouter.put('/cobranzas/cuentas/:id', async (req: Request, res: Response) => {
+  res.json(await CobranzasService.updateCuenta(parseInt(req.params.id as string), req.body));
+});
+apiRouter.delete('/cobranzas/cuentas/:id', async (req: Request, res: Response) => {
+  res.json(await CobranzasService.deleteCuenta(parseInt(req.params.id as string)));
+});
+
+// Gastos bancarios (ITF, comisiones, portes)
+apiRouter.get('/cobranzas/gastos-bancarios', async (_req: Request, res: Response) => {
+  res.json(await CobranzasService.getGastosBancarios());
+});
+apiRouter.post('/cobranzas/gastos-bancarios', async (req: Request, res: Response) => {
+  const user = (req as any).user;
+  res.json(await CobranzasService.createGastoBancario(req.body, user?.id));
+});
+apiRouter.delete('/cobranzas/gastos-bancarios/:id', async (req: Request, res: Response) => {
+  res.json(await CobranzasService.deleteGastoBancario(parseInt(req.params.id as string)));
+});
+
+// Pagos de IGV a SUNAT
+apiRouter.get('/cobranzas/pagos-impuestos', async (_req: Request, res: Response) => {
+  res.json(await CobranzasService.getPagosImpuestos());
+});
+apiRouter.post('/cobranzas/pagos-impuestos', async (req: Request, res: Response) => {
+  res.json(await CobranzasService.registrarPagoIGV(req.body));
+});
+apiRouter.delete('/cobranzas/pagos-impuestos/:id', async (req: Request, res: Response) => {
+  res.json(await CobranzasService.deletePagoImpuesto(parseInt(req.params.id as string)));
+});
+
+// Conciliación bancaria
+apiRouter.get('/cobranzas/movimientos', async (req: Request, res: Response) => {
+  const idCuenta = req.query.id_cuenta ? Number(req.query.id_cuenta) : undefined;
+  const estado   = req.query.estado as string | undefined;
+  res.json(await CobranzasService.getMovimientosBancarios(idCuenta, estado));
+});
+apiRouter.post('/cobranzas/movimientos', async (req: Request, res: Response) => {
+  res.json(await CobranzasService.createMovimientoBancario(req.body));
+});
+apiRouter.get('/cobranzas/movimientos/:id/sugerencias', async (req: Request, res: Response) => {
+  res.json(await CobranzasService.sugerirConciliacion(parseInt(req.params.id as string)));
+});
+apiRouter.post('/cobranzas/movimientos/:id/conciliar', async (req: Request, res: Response) => {
+  const user = (req as any).user;
+  res.json(await CobranzasService.conciliarMovimiento(parseInt(req.params.id as string), req.body, user?.id));
+});
+apiRouter.post('/cobranzas/movimientos/:id/ignorar', async (req: Request, res: Response) => {
+  res.json(await CobranzasService.ignorarMovimiento(parseInt(req.params.id as string)));
+});
+apiRouter.delete('/cobranzas/movimientos/:id', async (req: Request, res: Response) => {
+  res.json(await CobranzasService.deleteMovimientoBancario(parseInt(req.params.id as string)));
+});
+
+// Facturación
+apiRouter.post('/cobranzas/:id/facturar', async (req: Request, res: Response) => {
+  res.json(await CobranzasService.marcarFacturada(parseInt(req.params.id as string), req.body));
+});
+apiRouter.post('/cobranzas/:id/cobrar', async (req: Request, res: Response) => {
+  res.json(await CobranzasService.marcarCobrada(parseInt(req.params.id as string)));
+});
+apiRouter.post('/cobranzas/:id/revertir-factura', async (req: Request, res: Response) => {
+  res.json(await CobranzasService.revertirFacturacion(parseInt(req.params.id as string)));
+});
+
+// Libro Bancos
+apiRouter.get('/cobranzas/libro-bancos', async (req: Request, res: Response) => {
+  const idCuenta = parseInt(req.query.id_cuenta as string);
+  const periodo  = req.query.periodo as string | undefined;
+  res.json(await CobranzasService.getLibroBancos(idCuenta, periodo));
+});
+apiRouter.post('/cobranzas/libro-bancos/importar-eecc', async (req: Request, res: Response) => {
+  const { id_cuenta, texto } = req.body;
+  const userId = (req as any).user?.id_usuario;
+  res.json(await CobranzasService.importarEECCInterbank(parseInt(id_cuenta), texto, userId));
 });
 
 // ===== COMERCIAL: COTIZACIONES =====

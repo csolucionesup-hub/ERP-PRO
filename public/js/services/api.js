@@ -140,6 +140,45 @@ export const api = {
       return r.json(); // { url, public_id }
     },
   },
+  cobranzas: {
+    getBandejas:   (marca)         => get(marca ? `/cobranzas/bandejas?marca=${marca}` : '/cobranzas/bandejas'),
+    getDashboard:  ()              => get('/cobranzas/dashboard'),
+    getCuentas:    ()              => get('/cobranzas/cuentas'),
+    getDetalle:    (id)            => get(`/cobranzas/${id}/detalle`),
+    registrar:     (data)          => post('/cobranzas', data),
+    eliminar:      (id)            => del(`/cobranzas/${id}`),
+    actualizarTributario: (id, d)  => put(`/cobranzas/${id}/tributario`, d),
+    createCuenta:  (data)          => post('/cobranzas/cuentas', data),
+    updateCuenta:  (id, data)      => put(`/cobranzas/cuentas/${id}`, data),
+    deleteCuenta:  (id)            => del(`/cobranzas/cuentas/${id}`),
+    getGastosBancarios: ()         => get('/cobranzas/gastos-bancarios'),
+    createGastoBancario: (data)    => post('/cobranzas/gastos-bancarios', data),
+    deleteGastoBancario: (id)      => del(`/cobranzas/gastos-bancarios/${id}`),
+    getPagosImpuestos:  ()         => get('/cobranzas/pagos-impuestos'),
+    registrarPagoIGV:   (data)     => post('/cobranzas/pagos-impuestos', data),
+    deletePagoImpuesto: (id)       => del(`/cobranzas/pagos-impuestos/${id}`),
+    getMovimientos: (idCuenta, estado) => {
+      const p = new URLSearchParams();
+      if (idCuenta) p.append('id_cuenta', idCuenta);
+      if (estado)   p.append('estado', estado);
+      const q = p.toString();
+      return get(`/cobranzas/movimientos${q ? '?' + q : ''}`);
+    },
+    createMovimiento:   (data)     => post('/cobranzas/movimientos', data),
+    sugerirConciliacion:(id)       => get(`/cobranzas/movimientos/${id}/sugerencias`),
+    conciliarMovimiento:(id, data) => post(`/cobranzas/movimientos/${id}/conciliar`, data),
+    ignorarMovimiento:  (id)       => post(`/cobranzas/movimientos/${id}/ignorar`),
+    deleteMovimiento:   (id)       => del(`/cobranzas/movimientos/${id}`),
+    facturar:           (id, data) => post(`/cobranzas/${id}/facturar`, data),
+    marcarCobrada:      (id)       => post(`/cobranzas/${id}/cobrar`),
+    revertirFactura:    (id)       => post(`/cobranzas/${id}/revertir-factura`),
+    getLibroBancos:  (idCuenta, periodo) => {
+      const p = new URLSearchParams({ id_cuenta: idCuenta });
+      if (periodo) p.append('periodo', periodo);
+      return get(`/cobranzas/libro-bancos?${p}`);
+    },
+    importarEECC: (idCuenta, texto) => post('/cobranzas/libro-bancos/importar-eecc', { id_cuenta: idCuenta, texto }),
+  },
   configuracionMarca: {
     getAll:        ()              => get('/configuracion-marca'),
     getByMarca:    (marca)         => get(`/configuracion-marca/${marca}`),

@@ -2,7 +2,7 @@
 
 > **LEER PRIMERO.** Este documento es la fuente de verdad sobre qué está hecho, qué falta y dónde estamos parados. Se actualiza al cierre de cada sesión de trabajo.
 
-**Última actualización:** 2026-04-15
+**Última actualización:** 2026-04-15 (sesión Libro Bancos + modales)
 **Rama activa:** `main`
 **Último commit:** `933d8f7 fix: public path para produccion`
 **Servidor dev:** `npx ts-node index.ts` en `D:\proyectos\ERP-PRO` → `http://localhost:3000`
@@ -60,18 +60,24 @@ Hay **muchísimo** trabajo nuevo que vive solo en disco (no hay backup en git ni
 2. **Race condition en correlativos** — `CotizacionService.ts:63` usa `COUNT(*)` fuera de transacción. Dos usuarios simultáneos pueden obtener el mismo número.
 3. **Archivos `*_temp.txt` en raíz** — basura de sesiones anteriores (`schema_temp.txt`, `inventory_temp.txt`, etc.). Borrar o agregar a `.gitignore`.
 4. **`COT-2026-002-ME.pdf` en raíz** — PDF de prueba. No debe commitearse (agregar patrón a `.gitignore`).
-5. **Worktrees basura en `.claude/worktrees/`** — copias viejas del código (`elated-banach`, `hopeful-kapitsa`, `naughty-boyd`, `vibrant-sanderson`, `wonderful-feynman`, `youthful-bose`). Sus `.git` estaban rotos apuntando a `C:/Users/Asus/ERP-PRO` (path que no existe). El único worktree válido es `optimistic-clarke`. Se pueden eliminar con seguridad.
-6. **Auditoría V3 pendiente** — ver `auditoria_v3_20260408.md` para 21 hallazgos, de los cuales muchos siguen sin resolverse (F01 fetch unificado, F06 response no-JSON, A02 validateIdParam, A06 requireModulo).
+5. **Worktrees basura en `.claude/worktrees/`** — copias viejas del código. Se pueden eliminar con seguridad.
+6. **Auditoría V3 pendiente** — ver `auditoria_v3_20260408.md` para 21 hallazgos.
+7. **Libro Bancos — nro_operacion duplicado en descripción** (cosmético): Algunas líneas importadas de EECC muestran "1845485 1845485". Parser tiene dedup parcial.
+8. **Libro Bancos — KPI Comisiones siempre S/ 0.00**: Líneas ITF/N/D importadas de EECC tienen ref_tipo=NULL, el cálculo solo suma ref_tipo='GASTO_BANCARIO'.
 
 ---
 
 ## Próximos pasos acordados
 
-- [ ] **Hacer commit del trabajo sin commitear** (dividir en 3-4 commits temáticos: login+auth, comercial, admin+logística, limpieza)
+- [ ] **Hacer commit del trabajo sin commitear** (dividir en commits temáticos: finanzas/libro-bancos, comercial, auth, limpieza)
 - [ ] **Push a `origin/main`**
 - [ ] Investigar y limpiar los 2 registros `COT 0000-000-MN`
 - [ ] Resolver hallazgos de auditoría V3 (prioridad: F01, F06, A02, A06)
 - [ ] Eliminar worktrees basura en `.claude/worktrees/`
+- [ ] Fix KPI comisiones en Libro Bancos (contar ITF/N/D importados)
+- [ ] Fix nro_operacion duplicado en descripción de EECC importados
+- [ ] Módulo Logística completo (UI con 3 tipos: GENERAL/SERVICIO/ALMACEN)
+- [ ] OC de servicios en Finanzas (tabla nueva en BD)
 
 ---
 

@@ -382,6 +382,19 @@ class CotizacionService {
         [estado, id]
       );
 
+      // Hook a Finanzas: al APROBAR, abrir seguimiento de cobranza
+      // (solo si todavía está en NA, para no pisar un avance posterior)
+      if (estado === 'APROBADA') {
+        await conn.query(
+          `UPDATE Cotizaciones
+              SET estado_financiero = 'PENDIENTE_DEPOSITO',
+                  fecha_aprobacion_comercial = COALESCE(fecha_aprobacion_comercial, NOW())
+            WHERE id_cotizacion = ?
+              AND estado_financiero = 'NA'`,
+          [id]
+        );
+      }
+
       await conn.commit();
     } catch (e) {
       await conn.rollback();

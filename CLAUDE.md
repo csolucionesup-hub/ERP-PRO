@@ -162,6 +162,41 @@ ADMINISTRACIÓN → consume gastos de personal de Logística
 
 ---
 
+## Módulo Finanzas — Libro Bancos (implementado 15/04/2026)
+
+### Concepto
+Extracto bancario interno por cuenta/periodo con auto-generación de movimientos desde el ERP (80%) e importación de EECC PDF de Interbank (20%). Alineado con SUNAT Libro 1.2.
+
+### Archivos clave
+- `app/modules/finance/CobranzasService.ts` — getLibroBancos, importarEECCInterbank, auto-generación en registrarCobranza/createGastoBancario/registrarPagoIGV
+- `public/js/pages/Finanzas.js` — modalLibroBancos, importarEECCDialog, nuevoMovManual
+- `public/js/services/api.js` — api.cobranzas.getLibroBancos, api.cobranzas.importarEECC
+- `public/lib/pdf.min.js` + `pdf.worker.min.js` — pdfjs-dist@3.11.174 local
+
+### Endpoints
+- `GET /cobranzas/libro-bancos?id_cuenta=N&periodo=YYYY-MM` → movimientos + KPIs + sugerencias
+- `POST /cobranzas/libro-bancos/importar-eecc` → { id_cuenta, texto } → parse + insert + dedup
+
+### Migraciones
+- `017_libro_bancos.sql` — extiende MovimientoBancario (fecha_proceso, nro_operacion, canal, tipo_movimiento_banco, saldo_contable, fuente)
+- `018_backfill_libro_bancos.sql` — back-fill desde CobranzasCotizacion, GastoBancario, PagosImpuestos
+- `019_fecha_aprobacion_comercial.sql` — fecha_aprobacion_comercial en Cotizaciones
+
+### Reglas importantes
+- **fuente ENUM:** 'MANUAL', 'AUTO', 'IMPORT_EECC'
+- **Auto-generación:** cada cobranza/gasto/pago crea su MovimientoBancario con fuente='AUTO' y estado='CONCILIADO'
+- **Eliminación cascada:** al borrar cobranza/gasto/pago, se borra el movimiento AUTO asociado
+- **PDF parser Interbank:** une todo el texto, segmenta por pares de fechas DD/MM/YYYY, extrae últimos 2 montos S/ como importe+saldo
+- **Sugerencias inline:** match top-1 por monto±5% y fecha±5 días desde CobranzasCotizacion, GastoBancario, PagosImpuestos
+- **Dedup en import:** por nro_operacion+fecha+monto O fecha+monto+tipo+tipo_movimiento_banco
+
+### UX
+- Modales NO se cierran por clic en backdrop — solo con botón "Cerrar" explícito
+- KPIs: saldo inicial, ingresos, egresos, comisiones, saldo final, saldo banco EECC
+- Filas pendientes en amarillo (#fffbeb) con sugerencia verde inline
+
+---
+
 ## Campos V2 — Estado BD (actualizado 09/04/2026)
 
 Todos los campos V2 prioritarios han sido aplicados en BD:
@@ -175,6 +210,18 @@ Todos los campos V2 prioritarios han sido aplicados en BD:
 **Pendiente BD:**
 - Reembolso a persona (observaciones) en Gastos
 - OC de servicios Finanzas (tabla nueva)
+
+**Migraciones 013-019 (aplicadas en BD):**
+
+| Migración | Descripción |
+|-----------|-------------|
+| 013 | Finanzas cobranzas — CobranzasCotizacion, GastoBancario, MovimientoBancario |
+| 014 | Cotizaciones detracción |
+| 015 | Pago impuestos finanzas — PagosImpuestos |
+| 016 | Cotizaciones facturación |
+| 017 | Libro Bancos — extiende MovimientoBancario |
+| 018 | Back-fill Libro Bancos — genera movimientos para registros pre-existentes |
+| 019 | fecha_aprobacion_comercial en Cotizaciones |
 
 ---
 
@@ -287,6 +334,11 @@ deuda_neta = total_base - monto_detraccion - monto_retencion - cobrado
     - `confirmarAccion({titulo, mensaje, tipo})` → Promise<boolean>. Tipos: `warning`, `danger`, `info`.
     - `confirmarTexto({titulo, mensaje, textoRequerido})` → Promise<boolean>. Requiere tipeo exacto para habilitar botón. Usar para acciones destructivas.
 27. **`updateCotizacion` en edit** hace DELETE + INSERT de detalles en transacción — debes mandar SIEMPRE el array `detalles` completo en el payload.
+28. **Modales NO se cierran por backdrop click.** Nunca agregar `ov.onclick = (e) => { if (e.target === ov) ov.remove(); }`. Solo cerrar con botón "Cerrar" explícito. Aplica a TODO el ERP.
+29. **pdf.js local** en `public/lib/pdf.min.js` (pdfjs-dist@3.11.174). NO usar CDN. Worker en `public/lib/pdf.worker.min.js`.
+30. **Auto-generación MovimientoBancario.** Cada `registrarCobranza`, `createGastoBancario`, `registrarPagoIGV` crea un movimiento con fuente='AUTO'. Al eliminar, se borra el movimiento asociado.
+31. **`api.cobranzas`** namespace agrupa: cobranzas, gastos bancarios, pagos impuestos, libro bancos, importar EECC, movimientos.
+32. **Password usuario gerente:** bcryptjs (NO bcrypt). Hash se genera con `bcryptjs.hashSync('Metal2026!', 10)`.
 
 ---
 
@@ -462,3 +514,35 @@ deuda_neta = total_base - monto_detraccion - monto_retencion - cobrado
 - OC de servicios Finanzas (tabla nueva).
 - **Deploy Railway:** subir `google-drive-credentials.json` como variable de entorno (contenido del JSON en base64 o escribirlo a disco en startup). NO subir el archivo al repo.
 - Considerar limpiar fotos Cloudinary huérfanas cuando se usa Reset Comercial (hoy no se borran).
+
+### Sesión 15/04/2026 — Libro Bancos + Conciliación + Modales
+
+**Libro Bancos (feature completo):**
+- `CobranzasService.ts`: `getLibroBancos()` con KPIs (saldo inicial/final, ingresos, egresos, comisiones, saldo EECC), sugerencias inline de conciliación (match monto±5%, fecha±5 días)
+- `CobranzasService.ts`: `importarEECCInterbank()` — parser robusto para EECC Interbank (PDF→texto→segmentos por fecha→extract montos/descripción). Auto-concilia ITF/N/D/COM. Dedup por nro_operacion+fecha+monto
+- Auto-generación de MovimientoBancario en `registrarCobranza()`, `createGastoBancario()`, `registrarPagoIGV()` con fuente='AUTO' y cascada al eliminar
+- Migraciones 017 (schema extendido), 018 (backfill), 019 (fecha_aprobacion_comercial)
+- Frontend: modal Libro Bancos con selector cuenta/periodo, 6 KPIs, tabla con sugerencias inline verdes, importar EECC (drag&drop PDF), movimiento manual
+- pdf.js v3.11.174 local en `public/lib/` (no CDN)
+
+**fecha_aprobacion_comercial:**
+- `CotizacionService.ts`: `updateEstado()` ahora setea `fecha_aprobacion_comercial = COALESCE(fecha_aprobacion_comercial, NOW())` al aprobar
+- Migración 019: back-fill desde updated_at para aprobadas existentes
+- Finanzas.js muestra la fecha bajo nro_cotizacion como "✓ DD/MM/YYYY" en verde
+
+**Fix modales — NO cerrar por backdrop:**
+- Eliminado `ov.onclick = (e) => { if (e.target === ov) ov.remove(); }` de TODOS los modales en Finanzas.js (6 instancias total: Conciliación, Gastos bancarios, Libro Bancos, Libro Bancos detalle, Sugerencias match, Pagos impuestos)
+- Todos los modales ahora solo se cierran con botón "Cerrar" explícito
+
+**Fix login:**
+- Regenerado hash bcryptjs para Metal2026! en tabla Usuarios
+
+**Endpoints nuevos:**
+- `GET /cobranzas/libro-bancos` → getLibroBancos(id_cuenta, periodo)
+- `POST /cobranzas/libro-bancos/importar-eecc` → importarEECCInterbank(id_cuenta, texto)
+
+**Pendientes:**
+- Fix KPI comisiones (contar ITF/N/D importados, no solo ref_tipo='GASTO_BANCARIO')
+- Fix nro_operacion duplicado en descripción de EECC importados (cosmético)
+- Módulo Logística completo (UI)
+- OC de servicios Finanzas (tabla nueva en BD)
