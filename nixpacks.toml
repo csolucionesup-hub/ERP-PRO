@@ -1,6 +1,5 @@
 # nixpacks.toml — configuración explícita de build para Railway
-# Soluciona el bug "tsc: not found" forzando la instalación completa
-# de dependencias (incluyendo devDeps si las hubiera) antes del build.
+# Fuerza regeneración completa de dist/ en cada build.
 
 [phases.setup]
 nixPkgs = ["nodejs_20", "npm-10_x"]
@@ -9,7 +8,12 @@ nixPkgs = ["nodejs_20", "npm-10_x"]
 cmds = ["npm ci --include=dev"]
 
 [phases.build]
-cmds = ["npm run build"]
+cmds = [
+  "rm -rf dist",
+  "npx tsc --listFiles --diagnostics",
+  "ls -la dist/ | head -20",
+  "test -f dist/index.js || (echo 'FATAL: dist/index.js missing after build' && exit 1)"
+]
 
 [start]
 cmd = "npm start"
