@@ -582,6 +582,14 @@ function archivoTable(cotizaciones, filtroMarca) {
           <div style="display:flex;flex-direction:column;gap:4px">
             <button class="action-btn" style="background:#dc2626;color:#fff"
               onclick="window.descargarPDFCotizacion(${c.id_cotizacion},'${c.nro_cotizacion.replace(/'/g, "\\'")}')">📄 PDF</button>
+            ${!anulada && (c.estado === 'APROBADA' || c.estado === 'TERMINADA') && !c.nro_factura ? `
+            <button class="action-btn" style="background:#16a34a;color:#fff;font-weight:600"
+              onclick="window.emitirFacturaDesdeCot(${c.id_cotizacion},'${c.nro_cotizacion.replace(/'/g, "\\'")}')">🧾 Emitir Factura</button>
+            ` : ''}
+            ${c.nro_factura ? `
+            <span style="background:#dcfce7;color:#166534;padding:3px 6px;border-radius:4px;font-size:11px;font-weight:600;border:1px solid #86efac">
+              ✅ ${c.nro_factura}
+            </span>` : ''}
             ${!anulada && ESTADOS_EDITABLES.includes(c.estado) ? `
             <button class="action-btn" style="background:#3b82f6;color:#fff"
               onclick="window.editarCotizacion(${c.id_cotizacion},'${c.nro_cotizacion.replace(/'/g, "\\'")}')">✎ Editar</button>
@@ -994,6 +1002,37 @@ export const Comercial = async () => {
         setTimeout(() => window.location.reload(), 1200);
       } catch (err) {
         window.showError?.('Error: ' + (err.message || JSON.stringify(err)));
+      }
+    };
+
+    window.emitirFacturaDesdeCot = async (id, nro) => {
+      // Chequear modo (STUB vs REAL) para darle la advertencia correcta al usuario
+      let diag = null;
+      try { diag = await api.facturacion.diagnostico(); } catch {}
+      const esReal = diag?.modo === 'REAL';
+      const mensaje = esReal
+        ? `Vas a emitir la factura electrónica para ${nro}. Se enviará a SUNAT vía ${diag.proveedor} y recibirás el CDR oficial. No se puede deshacer — si hay error, corrige con Nota de Crédito.\n\n¿Continuar?`
+        : `Vas a emitir la factura para ${nro} en modo SIMULADO (sin certificado digital configurado). Se generará un correlativo real en BD pero no se enviará a SUNAT.\n\nCuando configures el OSE + certificado, las siguientes facturas irán a SUNAT automáticamente.\n\n¿Continuar?`;
+      const ok = await confirmarAccion({
+        titulo: esReal ? '🧾 Emitir factura a SUNAT' : '🧾 Emitir factura (modo simulado)',
+        mensaje,
+        confirmLabel: esReal ? 'Emitir y enviar' : 'Emitir simulada',
+        cancelLabel: 'Cancelar',
+        tipo: esReal ? 'danger' : 'warning',
+      });
+      if (!ok) return;
+      try {
+        const r = await api.facturas.emitirDesdeCotizacion(id, { forma_pago: 'CONTADO' });
+        const label = r.simulado ? '🟡 Emisión simulada' : '🟢 Factura aceptada por SUNAT';
+        window.showSuccess?.(`${label}: ${r.numero_formateado}`);
+        if (r.pdf_url) {
+          // En modo REAL abrir el PDF SUNAT
+          setTimeout(() => window.open(r.pdf_url, '_blank'), 600);
+        }
+        setTimeout(() => window.location.reload(), 1500);
+      } catch (err) {
+        const msg = err?.debugging || err?.error || err?.message || JSON.stringify(err);
+        window.showError?.('Error al emitir: ' + msg);
       }
     };
 

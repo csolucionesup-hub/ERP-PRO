@@ -26,6 +26,16 @@ export function renderSidebar(activePage) {
       </div>
     `).join('');
 
+  const esContador = user.rol === 'CONTADOR';
+  const verContabilidad = esGerente || esContador;
+
+  const contabilidadItem = verContabilidad ? `
+    <div class="nav-item ${activePage === 'contabilidad' ? 'active' : ''}"
+         data-page="contabilidad">
+      📘 Contabilidad
+    </div>
+  ` : '';
+
   const usuariosItem = esGerente ? `
     <div class="nav-item ${activePage === 'usuarios' ? 'active' : ''}"
          data-page="usuarios">
@@ -46,6 +56,7 @@ export function renderSidebar(activePage) {
     </div>
     <nav class="sidebar-nav">
       ${navItems}
+      ${contabilidadItem}
       ${usuariosItem}
     </nav>
     <div class="sidebar-footer">
