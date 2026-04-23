@@ -24,6 +24,14 @@ import multer from 'multer';
 import ConfiguracionMarcaService from './app/modules/comercial/ConfiguracionMarcaService';
 import AdminService from './app/modules/admin/AdminService';
 
+// Fase A — Capas transversales
+import ConfiguracionService from './app/modules/configuracion/ConfiguracionService';
+import AuditoriaService from './app/modules/configuracion/AuditoriaService';
+import PeriodosService from './app/modules/configuracion/PeriodosService';
+import AdjuntosService from './app/modules/configuracion/AdjuntosService';
+import NubefactService from './app/modules/facturacion/NubefactService';
+import { auditLog } from './app/middlewares/auditLog';
+
 // Middlewares de Producción (Securización & Validación)
 import { requireAuth, requireModulo } from './app/middlewares/auth';
 import { validateIdParam } from './app/middlewares/validateId';
@@ -615,6 +623,124 @@ usuariosRouter.put('/:id/toggle', async (req: Request, res: Response) => {
 });
 
 app.use('/api/usuarios', usuariosRouter);
+
+// ==========================================
+// CONFIGURACIÓN, AUDITORÍA, PERIODOS, ADJUNTOS, FACTURACIÓN (Fase A)
+// ==========================================
+const configRouter = express.Router();
+configRouter.use(requireAuth);
+
+configRouter.get('/', async (_req, res) => {
+  res.json(await ConfiguracionService.getActual());
+});
+
+configRouter.put('/', auditLog('ConfiguracionEmpresa', 'CONFIG'), async (req: Request, res: Response) => {
+  if (req.user!.rol !== 'GERENTE') return res.status(403).json({ error: 'Solo el GERENTE puede modificar la configuración.' });
+  await ConfiguracionService.update(req.body);
+  res.json({ success: true });
+});
+
+configRouter.get('/libros-obligatorios', async (_req, res) => {
+  res.json({ libros: await ConfiguracionService.librosObligatorios() });
+});
+
+configRouter.post('/setup', auditLog('ConfiguracionEmpresa', 'CONFIG'), async (req: Request, res: Response) => {
+  if (req.user!.rol !== 'GERENTE') return res.status(403).json({ error: 'Solo el GERENTE puede ejecutar el setup inicial.' });
+  res.json(await ConfiguracionService.setupInicial(req.body));
+});
+
+configRouter.get('/existe', async (_req, res) => {
+  res.json({ existe: await ConfiguracionService.existeConfiguracion() });
+});
+
+app.use('/api/config', configRouter);
+
+// ===== AUDITORÍA =====
+const auditoriaRouter = express.Router();
+auditoriaRouter.use(requireAuth);
+
+auditoriaRouter.get('/', async (req: Request, res: Response) => {
+  if (req.user!.rol !== 'GERENTE') return res.status(403).json({ error: 'Solo GERENTE puede consultar auditoría.' });
+  const filtros = {
+    entidad: req.query.entidad as string | undefined,
+    entidad_id: req.query.entidad_id as string | undefined,
+    id_usuario: req.query.id_usuario ? Number(req.query.id_usuario) : undefined,
+    accion: req.query.accion as any,
+    desde: req.query.desde as string | undefined,
+    hasta: req.query.hasta as string | undefined,
+    limit: req.query.limit ? Number(req.query.limit) : 200,
+  };
+  res.json(await AuditoriaService.query(filtros));
+});
+
+app.use('/api/auditoria', auditoriaRouter);
+
+// ===== PERIODOS CONTABLES =====
+const periodosRouter = express.Router();
+periodosRouter.use(requireAuth);
+
+periodosRouter.get('/', async (req: Request, res: Response) => {
+  const anio = req.query.anio ? Number(req.query.anio) : undefined;
+  res.json(await PeriodosService.list(anio));
+});
+
+periodosRouter.post('/cerrar', auditLog('PeriodoContable', 'CONFIG'), async (req: Request, res: Response) => {
+  if (req.user!.rol !== 'GERENTE') return res.status(403).json({ error: 'Solo GERENTE puede cerrar periodos.' });
+  const { anio, mes, observaciones } = req.body;
+  if (!anio || !mes) return res.status(400).json({ error: 'anio y mes requeridos' });
+  res.json(await PeriodosService.cerrar(Number(anio), Number(mes), req.user!.id_usuario, observaciones));
+});
+
+periodosRouter.post('/reabrir', auditLog('PeriodoContable', 'CONFIG'), async (req: Request, res: Response) => {
+  if (req.user!.rol !== 'GERENTE') return res.status(403).json({ error: 'Solo GERENTE puede reabrir periodos.' });
+  const { anio, mes } = req.body;
+  if (!anio || !mes) return res.status(400).json({ error: 'anio y mes requeridos' });
+  res.json(await PeriodosService.reabrir(Number(anio), Number(mes), req.user!.id_usuario));
+});
+
+app.use('/api/periodos', periodosRouter);
+
+// ===== ADJUNTOS (PDFs/imágenes genéricas vinculadas a cualquier entidad) =====
+const uploadAdjunto = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
+});
+
+const adjuntosRouter = express.Router();
+adjuntosRouter.use(requireAuth);
+
+adjuntosRouter.post('/:ref_tipo/:ref_id', uploadAdjunto.single('file'), async (req: Request, res: Response) => {
+  if (!req.file) return res.status(400).json({ error: 'Archivo requerido (campo "file")' });
+  const r = await AdjuntosService.subir({
+    ref_tipo: req.params.ref_tipo as string,
+    ref_id: Number(req.params.ref_id),
+    buffer: req.file.buffer,
+    nombre: req.file.originalname,
+    mimetype: req.file.mimetype,
+    id_usuario: req.user!.id_usuario,
+  });
+  res.json(r);
+});
+
+adjuntosRouter.get('/:ref_tipo/:ref_id', async (req: Request, res: Response) => {
+  res.json(await AdjuntosService.listar(req.params.ref_tipo as string, Number(req.params.ref_id)));
+});
+
+adjuntosRouter.delete('/:id', validateIdParam, auditLog('Adjunto', 'DELETE'), async (req: Request, res: Response) => {
+  res.json(await AdjuntosService.eliminar(Number(req.params.id)));
+});
+
+app.use('/api/adjuntos', adjuntosRouter);
+
+// ===== FACTURACIÓN ELECTRÓNICA — diagnóstico (real emisión llega en Fase B) =====
+const facturacionRouter = express.Router();
+facturacionRouter.use(requireAuth);
+
+facturacionRouter.get('/diagnostico', async (_req, res) => {
+  res.json(await NubefactService.diagnostico());
+});
+
+app.use('/api/facturacion', facturacionRouter);
 
 // Anidamos el API controlada bajo la rama estándar /api
 app.use('/api', apiRouter);

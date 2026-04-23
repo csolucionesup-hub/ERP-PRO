@@ -196,5 +196,48 @@ export const api = {
     createUsuario:  (data)    => fetchAPI('/api/usuarios', { method: 'POST', body: JSON.stringify(data) }),
     asignarModulos: (id, m)   => fetchAPI(`/api/usuarios/${id}/modulos`, { method: 'PUT', body: JSON.stringify({ modulos: m }) }),
     toggleActivo:   (id)      => fetchAPI(`/api/usuarios/${id}/toggle`, { method: 'PUT' }),
-  }
+  },
+
+  // Fase A — Capas transversales
+  config: {
+    get:                ()          => get('/config'),
+    update:             (patch)     => put('/config', patch),
+    librosObligatorios: ()          => get('/config/libros-obligatorios'),
+    setup:              (data)      => post('/config/setup', data),
+    existe:             ()          => get('/config/existe'),
+  },
+  auditoria: {
+    list: (filtros = {}) => {
+      const p = new URLSearchParams();
+      Object.entries(filtros).forEach(([k, v]) => { if (v != null && v !== '') p.append(k, v); });
+      return get(`/auditoria${p.toString() ? '?' + p : ''}`);
+    },
+  },
+  periodos: {
+    list:    (anio)                    => get(`/periodos${anio ? '?anio=' + anio : ''}`),
+    cerrar:  (anio, mes, observaciones) => post('/periodos/cerrar',  { anio, mes, observaciones }),
+    reabrir: (anio, mes)               => post('/periodos/reabrir', { anio, mes }),
+  },
+  adjuntos: {
+    list:    (refTipo, refId) => get(`/adjuntos/${refTipo}/${refId}`),
+    delete:  (id)             => del(`/adjuntos/${id}`),
+    upload: async (refTipo, refId, file) => {
+      const token = localStorage.getItem('erp_token');
+      const fd = new FormData();
+      fd.append('file', file);
+      const r = await fetch(`${API_BASE_URL}/adjuntos/${refTipo}/${refId}`, {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: fd,
+      });
+      if (!r.ok) {
+        const err = await r.json().catch(() => ({}));
+        throw new Error(err.error || `Error HTTP ${r.status}`);
+      }
+      return r.json();
+    },
+  },
+  facturacion: {
+    diagnostico: () => get('/facturacion/diagnostico'),
+  },
 };
