@@ -31,6 +31,8 @@ import PeriodosService from './app/modules/configuracion/PeriodosService';
 import AdjuntosService from './app/modules/configuracion/AdjuntosService';
 import NubefactService from './app/modules/facturacion/NubefactService';
 import FacturaService from './app/modules/facturacion/FacturaService';
+import PLEExporter from './app/modules/facturacion/PLEExporter';
+import { FacturacionCron } from './app/modules/facturacion/FacturacionCron';
 import { auditLog } from './app/middlewares/auditLog';
 import { periodoGuard } from './app/middlewares/periodoGuard';
 
@@ -792,6 +794,62 @@ facturasRouter.post('/:id/consultar-estado', validateIdParam, auditLog('Factura'
 
 app.use('/api/facturas', facturasRouter);
 
+// ===== LIBROS ELECTRÓNICOS (PLE) SUNAT =====
+const pleRouter = express.Router();
+pleRouter.use(requireAuth);
+
+/**
+ * Genera el TXT del Registro de Ventas (14.1) para el periodo dado.
+ * Se devuelve como descarga forzada.
+ */
+pleRouter.get('/ventas', auditLog('PLEVentas', 'EXPORT'), async (req: Request, res: Response) => {
+  const anio = parseInt(req.query.anio as string) || new Date().getFullYear();
+  const mes = parseInt(req.query.mes as string) || (new Date().getMonth() + 1);
+  const file = await PLEExporter.registroVentas({ anio, mes });
+  res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="${file.nombreArchivo}"`);
+  res.setHeader('X-PLE-Lineas', String(file.cantidadLineas));
+  res.send(file.contenido);
+});
+
+pleRouter.get('/compras', auditLog('PLECompras', 'EXPORT'), async (req: Request, res: Response) => {
+  const anio = parseInt(req.query.anio as string) || new Date().getFullYear();
+  const mes = parseInt(req.query.mes as string) || (new Date().getMonth() + 1);
+  const file = await PLEExporter.registroCompras({ anio, mes });
+  res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="${file.nombreArchivo}"`);
+  res.setHeader('X-PLE-Lineas', String(file.cantidadLineas));
+  res.send(file.contenido);
+});
+
+/**
+ * Preview del contenido sin descargar — útil para la UI que muestra
+ * "hay X facturas que se exportarán" antes de dar click al botón.
+ */
+pleRouter.get('/ventas/preview', async (req: Request, res: Response) => {
+  const anio = parseInt(req.query.anio as string) || new Date().getFullYear();
+  const mes = parseInt(req.query.mes as string) || (new Date().getMonth() + 1);
+  const file = await PLEExporter.registroVentas({ anio, mes });
+  res.json({
+    nombreArchivo: file.nombreArchivo,
+    lineas: file.cantidadLineas,
+    preview: file.contenido.split('\r\n').slice(0, 5),
+  });
+});
+
+pleRouter.get('/compras/preview', async (req: Request, res: Response) => {
+  const anio = parseInt(req.query.anio as string) || new Date().getFullYear();
+  const mes = parseInt(req.query.mes as string) || (new Date().getMonth() + 1);
+  const file = await PLEExporter.registroCompras({ anio, mes });
+  res.json({
+    nombreArchivo: file.nombreArchivo,
+    lineas: file.cantidadLineas,
+    preview: file.contenido.split('\r\n').slice(0, 5),
+  });
+});
+
+app.use('/api/ple', pleRouter);
+
 // Anidamos el API controlada bajo la rama estándar /api
 app.use('/api', apiRouter);
 
@@ -813,4 +871,6 @@ app.listen(PORT, async () => {
     await db.query("INSERT INTO Cuentas (nombre, tipo, saldo_actual) VALUES ('Caja General Soles', 'EFECTIVO', 0.00)");
     console.log('[SYS] Cuenta base recreada automáticamente.');
   }
+  // Cron de refresco estado SUNAT (solo activo en modo REAL)
+  FacturacionCron.start();
 });
