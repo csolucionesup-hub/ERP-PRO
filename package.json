@@ -4,14 +4,20 @@
   "description": "Enterprise Resource Planning system",
   "main": "index.js",
   "scripts": {
-    "build": "tsc",
+    "build": "npx tsc",
     "start": "node dist/index.js",
     "dev": "ts-node index.ts",
     "db:setup": "ts-node database/setup_db.ts",
     "db:clean": "ts-node database/clean_db.ts"
   },
   "dependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/jsonwebtoken": "^9.0.10",
+    "@types/morgan": "^1.9.10",
     "@types/multer": "^2.1.0",
+    "@types/node": "^20.0.0",
     "@types/pdfkit": "^0.17.5",
     "bcryptjs": "^3.0.3",
     "chart.js": "^4.5.1",
@@ -26,16 +32,10 @@
     "mysql2": "^3.20.0",
     "pdfjs-dist": "^3.11.174",
     "pdfkit": "^0.18.0",
+    "typescript": "^5.0.0",
     "zod": "^4.3.6"
   },
   "devDependencies": {
-    "@types/bcryptjs": "^2.4.6",
-    "@types/cors": "^2.8.19",
-    "@types/express": "^5.0.6",
-    "@types/jsonwebtoken": "^9.0.10",
-    "@types/morgan": "^1.9.10",
-    "@types/node": "^20.0.0",
-    "ts-node": "^10.9.2",
-    "typescript": "^5.0.0"
+    "ts-node": "^10.9.2"
   }
 }
