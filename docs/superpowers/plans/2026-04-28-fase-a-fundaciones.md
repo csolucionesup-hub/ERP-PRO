@@ -1691,7 +1691,7 @@ Antes de arrancar Fase B (Facturación Electrónica), confirmar que:
 - [ ] `ConfiguracionEmpresa.serie_factura` y `serie_boleta` editables desde UI
 - [ ] `AdjuntosService` probado y funcional (facturas usan esta tabla para su PDF+XML+CDR)
 - [ ] `AuditoriaService` captura cualquier mutación en configuración
-- [ ] Certificado digital Metal Engineers tramitado en INDECOPI (si no — bloquear Fase B)
+- [ ] Certificado digital Metal Engineers adquirido en un ECEP privado (Llama.pe / Camerfirma / SecureSoft — NO INDECOPI). Archivo .pfx disponible. Tarda 1-5 días hábiles, ~S/ 200/año.
 - [ ] Cuenta sandbox Nubefact creada con credenciales de prueba
 
 ---

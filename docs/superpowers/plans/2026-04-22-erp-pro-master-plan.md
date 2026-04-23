@@ -389,7 +389,7 @@ Estos concerns NO son una fase aparte — son prácticas que cada fase debe resp
 |---|---|---|---|
 | Nubefact cambia su API durante desarrollo | Media | Alto | Wrapper aislado en `NubefactService`; test de integración con ambiente sandbox semanal |
 | SUNAT actualiza formato PLE | Baja | Alto | Versionar generadores por año fiscal; validar contra validador SUNAT antes de release |
-| Certificado digital no se puede conseguir a tiempo | Media | Alto | Iniciar trámite en INDECOPI en semana 1 (2-3 semanas de espera) |
+| Certificado digital no se consigue a tiempo | Baja | Alto | Contratar ECEP privado (Llama.pe / Camerfirma) en semana 1 de Fase A — tarda 1-5 días hábiles. NO va a INDECOPI (solo acredita a los ECEP, no emite). |
 | Contador no está cómodo con cambio de proceso | Media | Medio | Incluir al contador en UAT de Fase D; Pack Contable debe verse igual a lo que él hace hoy |
 | Operarios del taller no usan el kiosko (Fase E) | Alta | Medio | Capacitación 1:1 + incentivo (primer mes con bonificación por usar el sistema) |
 | Deploy Railway se cae durante migración crítica | Baja | Alto | Migraciones en transacción + plan de rollback documentado + staging environment |
@@ -456,7 +456,7 @@ Cuando termine este plan, así será un día típico en Metal Engineers:
 ## Próximos pasos inmediatos (esta semana)
 
 - [ ] **Paso 0.1:** Julio confirma arranque y elige fecha de kickoff (propuesta: lunes 28/04/2026)
-- [ ] **Paso 0.2:** Iniciar trámite de certificado digital Metal Engineers en INDECOPI (para Fase B)
+- [ ] **Paso 0.2:** Contratar certificado digital Metal Engineers en un ECEP privado (Llama.pe o Camerfirma) — NO va a INDECOPI, 1-5 días hábiles, ~S/ 200/año
 - [ ] **Paso 0.3:** Crear cuenta sandbox en Nubefact (para Fase B)
 - [ ] **Paso 0.4:** Confirmar régimen tributario actual con el contador (RMT confirmado)
 - [ ] **Paso 0.5:** Generar plan detallado de Fase A (tarea-por-tarea con TDD) en `docs/superpowers/plans/2026-04-28-fase-a-fundaciones.md`
