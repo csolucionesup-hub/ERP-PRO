@@ -11,6 +11,7 @@ import { Comercial }     from './pages/Comercial.js';
 import { ConfiguracionComercial } from './pages/ConfiguracionComercial.js';
 import { Logistica }     from './pages/Logistica.js';
 import { Administracion } from './pages/Administracion.js';
+import { Configuracion }  from './pages/Configuracion.js';
 
 // ── Módulos en orden de preferencia para redirección inicial ──
 const MODULE_ORDER = ['GERENCIA', 'COMERCIAL', 'FINANZAS', 'LOGISTICA', 'ALMACEN', 'ADMINISTRACION'];
@@ -34,6 +35,7 @@ const PAGE_MODULE = {
   inventario:     'ALMACEN',
   administracion: 'ADMINISTRACION',
   usuarios:       null, // solo GERENTE, controlado aparte
+  configuracion:  null, // solo GERENTE
 };
 
 const PAGES = {
@@ -49,6 +51,7 @@ const PAGES = {
   servicios:      Servicios,
   proveedores:    Proveedores,
   prestamos:      Prestamos,
+  configuracion:  Configuracion,
 };
 
 // ── Auth helpers ──────────────────────────────────────────────
@@ -77,7 +80,7 @@ function getPaginaInicio(user) {
 
 function tieneAcceso(user, page) {
   if (user.rol === 'GERENTE') return true;
-  if (page === 'usuarios') return false;
+  if (page === 'usuarios' || page === 'configuracion') return false;
   const moduloRequerido = PAGE_MODULE[page];
   if (!moduloRequerido) return true; // páginas sin módulo requerido
   return (user.modulos || []).includes(moduloRequerido);

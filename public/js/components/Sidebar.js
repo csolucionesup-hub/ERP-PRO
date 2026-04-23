@@ -31,6 +31,10 @@ export function renderSidebar(activePage) {
          data-page="usuarios">
       Usuarios
     </div>
+    <div class="nav-item ${activePage === 'configuracion' ? 'active' : ''}"
+         data-page="configuracion">
+      ⚙️ Configuración
+    </div>
   ` : '';
 
   const rolLabel = esGerente ? 'Gerente' : (user.rol || 'Usuario');

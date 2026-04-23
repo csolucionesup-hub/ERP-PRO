@@ -25,8 +25,8 @@ export function TabBar({ container, tabs, defaultTab, onChange }) {
   if (!el) throw new Error('TabBar: container no encontrado');
   if (!Array.isArray(tabs) || tabs.length === 0) throw new Error('TabBar: tabs[] requerido');
 
-  // Extraer tab del hash: #/modulo/tab
-  const parts = (window.location.hash || '').replace(/^#\//, '').split('/');
+  // Extraer tab del hash. El router usa #modulo o #modulo/tab (sin slash inicial).
+  const parts = (window.location.hash || '').replace(/^#\/?/, '').split('/');
   const tabFromUrl = parts[1];
   const activeId = tabs.find(t => t.id === tabFromUrl)?.id || defaultTab || tabs[0].id;
 
@@ -48,8 +48,9 @@ export function TabBar({ container, tabs, defaultTab, onChange }) {
       el.querySelectorAll('.tabbar-btn').forEach(b => {
         b.classList.toggle('active', b.dataset.tab === id);
       });
-      const modulo = (window.location.hash || '#/').replace(/^#\//, '').split('/')[0];
-      if (modulo) history.replaceState(null, '', `#/${modulo}/${id}`);
+      // Conservar el módulo actual y agregar /tab sin duplicar el #.
+      const modulo = (window.location.hash || '').replace(/^#\/?/, '').split('/')[0];
+      if (modulo) history.replaceState(null, '', `#${modulo}/${id}`);
       onChange?.(id);
     });
   });
