@@ -1,5 +1,6 @@
 import { api } from '../services/api.js';
 import { showSuccess, showError, showToast } from '../services/ui.js';
+import { kpiGrid } from '../components/KpiCard.js';
 
 const CATEGORIA_BADGE = {
   Material:    'background:#3b82f6;color:white',
@@ -109,12 +110,41 @@ export const Inventario = async () => {
      window.verKardex = async (id, name) => {
          try {
             const logs = await api.inventory.getKardex(id);
-            let logInfo = `KÁRDEX - ${name}\n\n`;
-            logs.forEach(l => {
-               logInfo += `[${l.fecha_movimiento.split('T')[0]}] ${l.tipo_movimiento} | Ref: ${l.referencia_tipo}#${l.referencia_id} | Cant: ${l.cantidad} | Saldo: ${l.saldo_posterior}\n`;
-            });
-            if(logs.length === 0) logInfo += "Sin movimientos aún.";
-            showToast(logInfo, 'info', 8000);
+            const rows = logs.length ? logs.map(l => {
+              const esEntrada = l.tipo_movimiento === 'ENTRADA';
+              const tipoBadge = `<span style="background:${esEntrada ? '#dcfce7' : '#fee2e2'};color:${esEntrada ? '#166534' : '#991b1b'};padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600">${l.tipo_movimiento}</span>`;
+              return `<tr style="border-bottom:1px solid #e5e7eb">
+                <td style="padding:8px;font-size:12px">${String(l.fecha_movimiento).split('T')[0]}</td>
+                <td style="padding:8px;text-align:center">${tipoBadge}</td>
+                <td style="padding:8px;font-size:11px;color:var(--text-secondary)">${l.referencia_tipo || '—'}#${l.referencia_id || '—'}</td>
+                <td style="padding:8px;text-align:right;font-weight:${esEntrada ? '600' : '500'};color:${esEntrada ? '#166534' : '#991b1b'}">${esEntrada ? '+' : '−'} ${l.cantidad}</td>
+                <td style="padding:8px;text-align:right;font-weight:700">${l.saldo_posterior}</td>
+              </tr>`;
+            }).join('') : '<tr><td colspan="5" style="padding:40px;text-align:center;color:var(--text-secondary)">Sin movimientos registrados todavía.</td></tr>';
+
+            const html = `
+              <div id="ov-kardex" style="position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:2000;display:flex;align-items:center;justify-content:center;padding:20px">
+                <div style="background:white;border-radius:12px;padding:28px;width:720px;max-width:95vw;max-height:90vh;overflow:auto;box-shadow:0 12px 40px rgba(0,0,0,0.25)">
+                  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px">
+                    <div>
+                      <h3 style="margin:0;font-size:18px">📊 Kárdex de ${name}</h3>
+                      <p style="margin:4px 0 0;font-size:12px;color:var(--text-secondary)">${logs.length} movimiento(s) registrados</p>
+                    </div>
+                    <button onclick="document.getElementById('ov-kardex').remove()" style="background:#f3f4f6;border:none;border-radius:6px;padding:8px 14px;cursor:pointer;font-weight:600">Cerrar</button>
+                  </div>
+                  <table style="width:100%;border-collapse:collapse;font-size:13px">
+                    <thead><tr style="background:#f9fafb;border-bottom:2px solid #d9dad9">
+                      <th style="padding:10px;text-align:left">Fecha</th>
+                      <th style="padding:10px;text-align:center">Tipo</th>
+                      <th style="padding:10px;text-align:left">Referencia</th>
+                      <th style="padding:10px;text-align:right">Cantidad</th>
+                      <th style="padding:10px;text-align:right">Saldo</th>
+                    </tr></thead>
+                    <tbody>${rows}</tbody>
+                  </table>
+                </div>
+              </div>`;
+            document.body.insertAdjacentHTML('beforeend', html);
          } catch(e) {
             showError('No se pudo extraer Kárdex');
          }
@@ -138,6 +168,11 @@ export const Inventario = async () => {
 
   const btnStyle = 'padding:6px 12px; border:1px solid var(--border-light); border-radius:4px; cursor:pointer; font-size:12px; background:var(--bg-app)';
 
+  const valorTotal = inventario.reduce((s, i) => s + Number(i.valorizado || 0), 0);
+  const itemsBajoMin = inventario.filter(i => Number(i.stock_actual) <= Number(i.stock_minimo) && Number(i.stock_actual) > 0).length;
+  const itemsSinStock = inventario.filter(i => Number(i.stock_actual) <= 0).length;
+  const totalItems = inventario.length;
+
   return `
     <header class="header">
       <div>
@@ -145,6 +180,15 @@ export const Inventario = async () => {
          <span style="color:var(--text-secondary)">Gestiona insumos, revisa costos móviles y merma inventario afectando los márgenes de servicios.</span>
       </div>
     </header>
+
+    <div style="margin-top:16px">
+      ${kpiGrid([
+        { label: 'Valor Total Stock', value: formatCurrency(valorTotal), icon: '💎', changeType: 'positive' },
+        { label: 'Ítems Catalogados', value: totalItems, icon: '📦' },
+        { label: 'Bajo Stock Mínimo', value: itemsBajoMin, icon: '⚠️', changeType: itemsBajoMin > 0 ? 'negative' : 'neutral' },
+        { label: 'Sin Stock', value: itemsSinStock, icon: '🚫', changeType: itemsSinStock > 0 ? 'negative' : 'neutral' },
+      ], 4)}
+    </div>
 
     <div style="margin-top:16px; display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
       <span style="font-size:12px; color:var(--text-secondary); font-weight:600">Filtrar:</span>
