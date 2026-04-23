@@ -1,0 +1,15 @@
+# nixpacks.toml — configuración explícita de build para Railway
+# Soluciona el bug "tsc: not found" forzando la instalación completa
+# de dependencias (incluyendo devDeps si las hubiera) antes del build.
+
+[phases.setup]
+nixPkgs = ["nodejs_20", "npm-10_x"]
+
+[phases.install]
+cmds = ["npm ci --include=dev"]
+
+[phases.build]
+cmds = ["npm run build"]
+
+[start]
+cmd = "npm start"
