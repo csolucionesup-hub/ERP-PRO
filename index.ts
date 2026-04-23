@@ -31,6 +31,7 @@ import PeriodosService from './app/modules/configuracion/PeriodosService';
 import AdjuntosService from './app/modules/configuracion/AdjuntosService';
 import NubefactService from './app/modules/facturacion/NubefactService';
 import { auditLog } from './app/middlewares/auditLog';
+import { periodoGuard } from './app/middlewares/periodoGuard';
 
 // Middlewares de Producción (Securización & Validación)
 import { requireAuth, requireModulo } from './app/middlewares/auth';
@@ -107,23 +108,23 @@ apiRouter.get('/gastos', async (req: Request, res: Response) => {
   res.json(await FinanceService.getGastos());
 });
 
-apiRouter.post('/gastos', validateParams(gastoCreateSchema), async (req: Request, res: Response) => {
+apiRouter.post('/gastos', validateParams(gastoCreateSchema), periodoGuard('fecha'), auditLog('Gasto', 'CREATE'), async (req: Request, res: Response) => {
   const result = await FinanceService.createGasto(req.body);
   res.status(201).json(result);
 });
 
-apiRouter.put('/gastos/:id', validateIdParam, validateParams(gastoUpdateSchema), async (req: Request, res: Response) => {
+apiRouter.put('/gastos/:id', validateIdParam, validateParams(gastoUpdateSchema), periodoGuard('fecha'), auditLog('Gasto', 'UPDATE'), async (req: Request, res: Response) => {
   res.json(await FinanceService.updateGasto(parseInt(req.params.id as string), req.body));
 });
-apiRouter.delete('/gastos/:id', validateIdParam, async (req: Request, res: Response) => {
+apiRouter.delete('/gastos/:id', validateIdParam, auditLog('Gasto', 'DELETE'), async (req: Request, res: Response) => {
   res.json(await FinanceService.deleteGasto(parseInt(req.params.id as string)));
 });
-apiRouter.post('/gastos/:id/pago', validateIdParam, validateParams(gastoPaymentSchema), async (req: Request, res: Response) => {
+apiRouter.post('/gastos/:id/pago', validateIdParam, validateParams(gastoPaymentSchema), auditLog('Gasto', 'UPDATE'), async (req: Request, res: Response) => {
   const result = await FinanceService.registrarPagoGasto(parseInt(req.params.id as string), req.body.abono);
   res.json(result);
 });
 
-apiRouter.post('/gastos/:id/anular', validateIdParam, async (req: Request, res: Response) => {
+apiRouter.post('/gastos/:id/anular', validateIdParam, auditLog('Gasto', 'ANULAR'), async (req: Request, res: Response) => {
   res.json(await FinanceService.anularGasto(parseInt(req.params.id as string)));
 });
 
@@ -135,30 +136,30 @@ apiRouter.get('/servicios', async (req: Request, res: Response) => {
   res.json(await CatalogService.getServicios());
 });
 
-apiRouter.post('/servicios', validateParams(serviceCreateSchema), async (req: Request, res: Response) => {
+apiRouter.post('/servicios', validateParams(serviceCreateSchema), periodoGuard('fecha'), auditLog('Servicio', 'CREATE'), async (req: Request, res: Response) => {
   const result = await CatalogService.createServicio(req.body);
   res.status(201).json(result);
 });
 
-apiRouter.post('/servicios/:id/pago', validateIdParam, validateParams(servicePaymentSchema), async (req: Request, res: Response) => {
+apiRouter.post('/servicios/:id/pago', validateIdParam, validateParams(servicePaymentSchema), auditLog('Servicio', 'UPDATE'), async (req: Request, res: Response) => {
   const idServicio = parseInt(req.params.id as string);
   const result = await CatalogService.registrarCobro(idServicio, req.body.monto_pagado_liquido, req.body.descripcion);
   res.json(result);
 });
 
-apiRouter.post('/servicios/:id/anular', validateIdParam, async (req: Request, res: Response) => {
+apiRouter.post('/servicios/:id/anular', validateIdParam, auditLog('Servicio', 'ANULAR'), async (req: Request, res: Response) => {
   res.json(await CatalogService.anularServicio(parseInt(req.params.id as string)));
 });
-apiRouter.post('/servicios/:id/terminar', validateIdParam, async (req: Request, res: Response) => {
+apiRouter.post('/servicios/:id/terminar', validateIdParam, auditLog('Servicio', 'UPDATE'), async (req: Request, res: Response) => {
   res.json(await CatalogService.terminarServicio(parseInt(req.params.id as string)));
 });
-apiRouter.post('/servicios/:id/detraccion-deposito', validateIdParam, async (req: Request, res: Response) => {
+apiRouter.post('/servicios/:id/detraccion-deposito', validateIdParam, auditLog('Servicio', 'UPDATE'), async (req: Request, res: Response) => {
   res.json(await TributarioService.marcarDetraccionPorServicio(parseInt(req.params.id as string), req.body));
 });
-apiRouter.put('/servicios/:id', validateIdParam, validateParams(serviceUpdateSchema), async (req: Request, res: Response) => {
+apiRouter.put('/servicios/:id', validateIdParam, validateParams(serviceUpdateSchema), periodoGuard('fecha'), auditLog('Servicio', 'UPDATE'), async (req: Request, res: Response) => {
   res.json(await CatalogService.updateServicio(parseInt(req.params.id as string), req.body));
 });
-apiRouter.delete('/servicios/:id', validateIdParam, async (req: Request, res: Response) => {
+apiRouter.delete('/servicios/:id', validateIdParam, auditLog('Servicio', 'DELETE'), async (req: Request, res: Response) => {
   res.json(await CatalogService.deleteServicio(parseInt(req.params.id as string)));
 });
 
@@ -167,7 +168,7 @@ apiRouter.get('/compras', async (req: Request, res: Response) => {
   res.json(await PurchaseService.getCompras());
 });
 
-apiRouter.post('/compras', validateParams(purchaseCreateSchema), async (req: Request, res: Response) => {
+apiRouter.post('/compras', validateParams(purchaseCreateSchema), periodoGuard('fecha'), auditLog('Compra', 'CREATE'), async (req: Request, res: Response) => {
   const result = await PurchaseService.registrarCompra(req.body);
   res.json(result);
 });
@@ -176,11 +177,11 @@ apiRouter.get('/compras/:id', validateIdParam, async (req: Request, res: Respons
   res.json(await PurchaseService.getCompraDetalle(parseInt(req.params.id as string)));
 });
 
-apiRouter.put('/compras/:id', validateIdParam, validateParams(purchaseUpdateSchema), async (req: Request, res: Response) => {
+apiRouter.put('/compras/:id', validateIdParam, validateParams(purchaseUpdateSchema), periodoGuard('fecha'), auditLog('Compra', 'UPDATE'), async (req: Request, res: Response) => {
   res.json(await PurchaseService.updateCompra(parseInt(req.params.id as string), req.body));
 });
 
-apiRouter.post('/compras/:id/anular', validateIdParam, async (req: Request, res: Response) => {
+apiRouter.post('/compras/:id/anular', validateIdParam, auditLog('Compra', 'ANULAR'), async (req: Request, res: Response) => {
   res.json(await PurchaseService.anularCompra(parseInt(req.params.id as string)));
 });
 
@@ -244,19 +245,19 @@ apiRouter.get('/prestamos/totales', async (req: Request, res: Response) => {
 apiRouter.get('/prestamos/tomados', async (req: Request, res: Response) => {
   res.json(await PrestamosService.getTomados());
 });
-apiRouter.post('/prestamos/tomados', validateParams(prestamoTomadoCreateSchema), async (req: Request, res: Response) => {
+apiRouter.post('/prestamos/tomados', validateParams(prestamoTomadoCreateSchema), auditLog('PrestamoTomado', 'CREATE'), async (req: Request, res: Response) => {
   res.status(201).json(await PrestamosService.createTomado(req.body));
 });
-apiRouter.put('/prestamos/tomados/:id', validateIdParam, validateParams(prestamoTomadoUpdateSchema), async (req: Request, res: Response) => {
+apiRouter.put('/prestamos/tomados/:id', validateIdParam, validateParams(prestamoTomadoUpdateSchema), auditLog('PrestamoTomado', 'UPDATE'), async (req: Request, res: Response) => {
   res.json(await PrestamosService.updateTomado(parseInt(req.params.id as string), req.body));
 });
-apiRouter.delete('/prestamos/tomados/:id', validateIdParam, async (req: Request, res: Response) => {
+apiRouter.delete('/prestamos/tomados/:id', validateIdParam, auditLog('PrestamoTomado', 'DELETE'), async (req: Request, res: Response) => {
   res.json(await PrestamosService.deleteTomado(parseInt(req.params.id as string)));
 });
-apiRouter.post('/prestamos/tomados/:id/pago', validateIdParam, validateParams(pagoPrestamSchema), async (req: Request, res: Response) => {
+apiRouter.post('/prestamos/tomados/:id/pago', validateIdParam, validateParams(pagoPrestamSchema), auditLog('PrestamoTomado', 'UPDATE'), async (req: Request, res: Response) => {
   res.json(await PrestamosService.pagarTomado(parseInt(req.params.id as string), req.body));
 });
-apiRouter.post('/prestamos/tomados/:id/anular', validateIdParam, async (req: Request, res: Response) => {
+apiRouter.post('/prestamos/tomados/:id/anular', validateIdParam, auditLog('PrestamoTomado', 'ANULAR'), async (req: Request, res: Response) => {
   res.json(await PrestamosService.anularTomado(parseInt(req.params.id as string)));
 });
 
@@ -264,19 +265,19 @@ apiRouter.post('/prestamos/tomados/:id/anular', validateIdParam, async (req: Req
 apiRouter.get('/prestamos/otorgados', async (req: Request, res: Response) => {
   res.json(await PrestamosService.getOtorgados());
 });
-apiRouter.post('/prestamos/otorgados', validateParams(prestamoOtorgadoCreateSchema), async (req: Request, res: Response) => {
+apiRouter.post('/prestamos/otorgados', validateParams(prestamoOtorgadoCreateSchema), auditLog('PrestamoOtorgado', 'CREATE'), async (req: Request, res: Response) => {
   res.status(201).json(await PrestamosService.createOtorgado(req.body));
 });
-apiRouter.put('/prestamos/otorgados/:id', validateIdParam, validateParams(prestamoOtorgadoUpdateSchema), async (req: Request, res: Response) => {
+apiRouter.put('/prestamos/otorgados/:id', validateIdParam, validateParams(prestamoOtorgadoUpdateSchema), auditLog('PrestamoOtorgado', 'UPDATE'), async (req: Request, res: Response) => {
   res.json(await PrestamosService.updateOtorgado(parseInt(req.params.id as string), req.body));
 });
-apiRouter.delete('/prestamos/otorgados/:id', validateIdParam, async (req: Request, res: Response) => {
+apiRouter.delete('/prestamos/otorgados/:id', validateIdParam, auditLog('PrestamoOtorgado', 'DELETE'), async (req: Request, res: Response) => {
   res.json(await PrestamosService.deleteOtorgado(parseInt(req.params.id as string)));
 });
-apiRouter.post('/prestamos/otorgados/:id/cobro', validateIdParam, validateParams(cobroPrestamoSchema), async (req: Request, res: Response) => {
+apiRouter.post('/prestamos/otorgados/:id/cobro', validateIdParam, validateParams(cobroPrestamoSchema), auditLog('PrestamoOtorgado', 'UPDATE'), async (req: Request, res: Response) => {
   res.json(await PrestamosService.cobrarOtorgado(parseInt(req.params.id as string), req.body));
 });
-apiRouter.post('/prestamos/otorgados/:id/anular', validateIdParam, async (req: Request, res: Response) => {
+apiRouter.post('/prestamos/otorgados/:id/anular', validateIdParam, auditLog('PrestamoOtorgado', 'ANULAR'), async (req: Request, res: Response) => {
   res.json(await PrestamosService.anularOtorgado(parseInt(req.params.id as string)));
 });
 
@@ -337,12 +338,12 @@ apiRouter.get('/cobranzas/:id/detalle', async (req: Request, res: Response) => {
   res.json(await CobranzasService.getDetalle(parseInt(req.params.id as string)));
 });
 
-apiRouter.post('/cobranzas', async (req: Request, res: Response) => {
+apiRouter.post('/cobranzas', periodoGuard('fecha'), auditLog('Cobranza', 'CREATE'), async (req: Request, res: Response) => {
   const user = (req as any).user;
   res.json(await CobranzasService.registrarCobranza(req.body, user?.id));
 });
 
-apiRouter.delete('/cobranzas/:id', async (req: Request, res: Response) => {
+apiRouter.delete('/cobranzas/:id', auditLog('Cobranza', 'DELETE'), async (req: Request, res: Response) => {
   res.json(await CobranzasService.eliminarCobranza(parseInt(req.params.id as string)));
 });
 
@@ -368,11 +369,11 @@ apiRouter.delete('/cobranzas/cuentas/:id', async (req: Request, res: Response) =
 apiRouter.get('/cobranzas/gastos-bancarios', async (_req: Request, res: Response) => {
   res.json(await CobranzasService.getGastosBancarios());
 });
-apiRouter.post('/cobranzas/gastos-bancarios', async (req: Request, res: Response) => {
+apiRouter.post('/cobranzas/gastos-bancarios', periodoGuard('fecha'), auditLog('GastoBancario', 'CREATE'), async (req: Request, res: Response) => {
   const user = (req as any).user;
   res.json(await CobranzasService.createGastoBancario(req.body, user?.id));
 });
-apiRouter.delete('/cobranzas/gastos-bancarios/:id', async (req: Request, res: Response) => {
+apiRouter.delete('/cobranzas/gastos-bancarios/:id', auditLog('GastoBancario', 'DELETE'), async (req: Request, res: Response) => {
   res.json(await CobranzasService.deleteGastoBancario(parseInt(req.params.id as string)));
 });
 
@@ -380,10 +381,10 @@ apiRouter.delete('/cobranzas/gastos-bancarios/:id', async (req: Request, res: Re
 apiRouter.get('/cobranzas/pagos-impuestos', async (_req: Request, res: Response) => {
   res.json(await CobranzasService.getPagosImpuestos());
 });
-apiRouter.post('/cobranzas/pagos-impuestos', async (req: Request, res: Response) => {
+apiRouter.post('/cobranzas/pagos-impuestos', periodoGuard('fecha'), auditLog('PagoImpuesto', 'CREATE'), async (req: Request, res: Response) => {
   res.json(await CobranzasService.registrarPagoIGV(req.body));
 });
-apiRouter.delete('/cobranzas/pagos-impuestos/:id', async (req: Request, res: Response) => {
+apiRouter.delete('/cobranzas/pagos-impuestos/:id', auditLog('PagoImpuesto', 'DELETE'), async (req: Request, res: Response) => {
   res.json(await CobranzasService.deletePagoImpuesto(parseInt(req.params.id as string)));
 });
 
@@ -478,7 +479,7 @@ apiRouter.get('/cotizaciones', async (req: Request, res: Response) => {
   ));
 });
 
-apiRouter.post('/cotizaciones', validateParams(cotizacionCreateSchema), async (req: Request, res: Response) => {
+apiRouter.post('/cotizaciones', validateParams(cotizacionCreateSchema), auditLog('Cotizacion', 'CREATE'), async (req: Request, res: Response) => {
   const result = await CotizacionService.createCotizacion(req.body);
 
   // Subir PDF a Google Drive en background (no bloquea la respuesta)
@@ -504,12 +505,12 @@ apiRouter.get('/cotizaciones/:id', validateIdParam, async (req: Request, res: Re
   res.json(await CotizacionService.getCotizacionById(parseInt(req.params.id as string)));
 });
 
-apiRouter.put('/cotizaciones/:id', validateIdParam, validateParams(cotizacionUpdateSchema), async (req: Request, res: Response) => {
+apiRouter.put('/cotizaciones/:id', validateIdParam, validateParams(cotizacionUpdateSchema), auditLog('Cotizacion', 'UPDATE'), async (req: Request, res: Response) => {
   await CotizacionService.updateCotizacion(parseInt(req.params.id as string), req.body);
   res.json({ success: true });
 });
 
-apiRouter.put('/cotizaciones/:id/estado', validateIdParam, validateParams(cotizacionEstadoSchema), async (req: Request, res: Response) => {
+apiRouter.put('/cotizaciones/:id/estado', validateIdParam, validateParams(cotizacionEstadoSchema), auditLog('Cotizacion', 'UPDATE'), async (req: Request, res: Response) => {
   const id = parseInt(req.params.id as string);
   await CotizacionService.updateEstado(id, req.body.estado);
 
@@ -528,7 +529,7 @@ apiRouter.put('/cotizaciones/:id/estado', validateIdParam, validateParams(cotiza
   res.json({ success: true });
 });
 
-apiRouter.post('/cotizaciones/:id/anular', validateIdParam, async (req: Request, res: Response) => {
+apiRouter.post('/cotizaciones/:id/anular', validateIdParam, auditLog('Cotizacion', 'ANULAR'), async (req: Request, res: Response) => {
   await CotizacionService.anularCotizacion(parseInt(req.params.id as string));
   res.json({ success: true });
 });
