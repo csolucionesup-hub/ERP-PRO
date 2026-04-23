@@ -45,4 +45,40 @@ export const CloudinaryService = {
   async eliminarFoto(public_id: string) {
     await cloudinary.uploader.destroy(public_id);
   },
+
+  /**
+   * Sube un archivo genérico (PDF, imagen, etc.) a una carpeta dada.
+   * No aplica las transformaciones de foto — conserva el archivo tal cual.
+   * Usado por AdjuntosService para facturas, gastos, recibos, etc.
+   */
+  async subirArchivoGenerico(buffer: Buffer, originalName: string, folder: string) {
+    return new Promise<{ url: string; public_id: string; resource_type: string }>((resolve, reject) => {
+      const stream = cloudinary.uploader.upload_stream(
+        {
+          folder,
+          resource_type: 'auto', // auto-detecta image/pdf/raw
+          use_filename: true,
+          unique_filename: true,
+        },
+        (err, result) => {
+          if (err) return reject(err);
+          if (!result) return reject(new Error('Cloudinary devolvió respuesta vacía'));
+          resolve({
+            url: result.secure_url,
+            public_id: result.public_id,
+            resource_type: result.resource_type,
+          });
+        }
+      );
+      stream.end(buffer);
+    });
+  },
+
+  /**
+   * Elimina un recurso (foto, PDF, etc.) por public_id.
+   * Requiere resource_type correcto ('image' default, 'raw' para PDFs subidos como raw).
+   */
+  async eliminarRecurso(public_id: string, resource_type: 'image' | 'raw' | 'video' = 'image') {
+    await cloudinary.uploader.destroy(public_id, { resource_type });
+  },
 };
