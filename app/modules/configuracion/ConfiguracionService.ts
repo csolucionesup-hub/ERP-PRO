@@ -146,15 +146,17 @@ class ConfiguracionService {
    * Throws si el régimen no permite emitir factura.
    * Llamar SIEMPRE antes de emitir una factura electrónica.
    */
+  /**
+   * Valida que el régimen y las flags permitan emitir factura.
+   * NO valida la existencia del OSE — eso lo maneja NubefactService,
+   * que en modo STUB simula respuesta y en modo REAL envía a SUNAT.
+   */
   validarPuedeEmitirFactura(c: ConfiguracionEmpresa): void {
     if (c.regimen === 'NRUS') {
       throw new Error('Tu régimen NRUS no permite emitir facturas. Solo boletas de venta.');
     }
     if (!c.emite_factura) {
       throw new Error('Facturación no habilitada. Configúrala en ⚙️ Configuración → Facturación.');
-    }
-    if (c.ose_proveedor === 'NONE') {
-      throw new Error('Falta configurar OSE (Nubefact / EFACT / SUNAT). Ve a ⚙️ Configuración → Facturación.');
     }
   }
 

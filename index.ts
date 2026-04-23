@@ -30,6 +30,7 @@ import AuditoriaService from './app/modules/configuracion/AuditoriaService';
 import PeriodosService from './app/modules/configuracion/PeriodosService';
 import AdjuntosService from './app/modules/configuracion/AdjuntosService';
 import NubefactService from './app/modules/facturacion/NubefactService';
+import FacturaService from './app/modules/facturacion/FacturaService';
 import { auditLog } from './app/middlewares/auditLog';
 import { periodoGuard } from './app/middlewares/periodoGuard';
 
@@ -742,6 +743,54 @@ facturacionRouter.get('/diagnostico', async (_req, res) => {
 });
 
 app.use('/api/facturacion', facturacionRouter);
+
+// ===== FACTURAS (CPE — Comprobantes de Pago Electrónicos) =====
+const facturasRouter = express.Router();
+facturasRouter.use(requireAuth);
+
+// Emitir factura/boleta desde una cotización aprobada
+facturasRouter.post(
+  '/emitir-desde-cotizacion/:id_cotizacion',
+  auditLog('Factura', 'EMIT'),
+  async (req: Request, res: Response) => {
+    const id_cot = parseInt(req.params.id_cotizacion as string);
+    if (isNaN(id_cot) || id_cot <= 0) {
+      return res.status(400).json({ error: 'id_cotizacion inválido' });
+    }
+    const result = await FacturaService.emitirDesdeCotizacion(id_cot, {
+      forma_pago: req.body?.forma_pago,
+      dias_credito: req.body?.dias_credito,
+      observaciones: req.body?.observaciones,
+      forzar_tipo: req.body?.forzar_tipo,
+      id_usuario_emisor: req.user!.id_usuario,
+    });
+    res.json(result);
+  }
+);
+
+// Listar con filtros
+facturasRouter.get('/', async (req: Request, res: Response) => {
+  res.json(await FacturaService.listar({
+    desde: req.query.desde as string | undefined,
+    hasta: req.query.hasta as string | undefined,
+    tipo: req.query.tipo as any,
+    estado: req.query.estado as string | undefined,
+    cliente_numero_doc: req.query.cliente_numero_doc as string | undefined,
+    limit: req.query.limit ? Number(req.query.limit) : undefined,
+  }));
+});
+
+// Ficha completa con detalle
+facturasRouter.get('/:id', validateIdParam, async (req: Request, res: Response) => {
+  res.json(await FacturaService.obtener(parseInt(req.params.id as string)));
+});
+
+// Refrescar estado desde SUNAT (útil cuando quedó PENDIENTE o ERROR)
+facturasRouter.post('/:id/consultar-estado', validateIdParam, auditLog('Factura', 'UPDATE'), async (req: Request, res: Response) => {
+  res.json(await FacturaService.consultarEstado(parseInt(req.params.id as string)));
+});
+
+app.use('/api/facturas', facturasRouter);
 
 // Anidamos el API controlada bajo la rama estándar /api
 app.use('/api', apiRouter);

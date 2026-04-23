@@ -240,4 +240,15 @@ export const api = {
   facturacion: {
     diagnostico: () => get('/facturacion/diagnostico'),
   },
+  facturas: {
+    emitirDesdeCotizacion: (idCot, data = {}) =>
+      post(`/facturas/emitir-desde-cotizacion/${idCot}`, data),
+    list: (filtros = {}) => {
+      const p = new URLSearchParams();
+      Object.entries(filtros).forEach(([k, v]) => { if (v != null && v !== '') p.append(k, v); });
+      return get(`/facturas${p.toString() ? '?' + p : ''}`);
+    },
+    get:              (id)    => get(`/facturas/${id}`),
+    consultarEstado:  (id)    => post(`/facturas/${id}/consultar-estado`),
+  },
 };

@@ -18,6 +18,7 @@
  */
 
 import ConfiguracionService from '../configuracion/ConfiguracionService';
+import { NubefactPayloadBuilder } from './NubefactPayloadBuilder';
 
 export type TipoComprobante =
   | 'FACTURA'        // 01
@@ -125,19 +126,93 @@ class NubefactService {
     }
 
     // ──────────────────────────────────────────────────────────
-    // FASE B — Implementación real (NO HACER AÚN)
+    // MODO REAL — Fase B activa
     // ──────────────────────────────────────────────────────────
-    // 1. Armar payload JSON según spec Nubefact v1
-    // 2. POST a cfg.ose_endpoint_url con token en header
-    // 3. Parsear respuesta
-    // 4. Mapear a EstadoSunat
-    // 5. Si error de red → retry con backoff 3 veces
-    // 6. Persistir enlaces PDF/XML/CDR en tabla Facturas
-    // ──────────────────────────────────────────────────────────
+    const cfg = await ConfiguracionService.getActual();
+    const payload = (params.tipo === 'FACTURA' || params.tipo === 'BOLETA')
+      ? NubefactPayloadBuilder.buildFactura(
+          {
+            tipo: params.tipo,
+            serie: params.serie,
+            numero: params.numero,
+            fecha_emision: params.fecha_emision,
+            fecha_vencimiento: null,
+            cliente_tipo_doc: this.mapClienteTipoDoc(params.cliente.tipo_documento),
+            cliente_numero_doc: params.cliente.numero_documento,
+            cliente_razon_social: params.cliente.razon_social,
+            cliente_direccion: params.cliente.direccion ?? null,
+            cliente_email: params.cliente.email ?? null,
+            moneda: params.moneda,
+            tipo_cambio: params.tipo_cambio ?? 1,
+            subtotal: params.subtotal,
+            igv: params.igv,
+            total: params.total,
+            forma_pago: params.forma_pago ?? 'CONTADO',
+            dias_credito: params.dias_credito,
+            observaciones: params.observaciones,
+          },
+          params.detalles.map(d => ({
+            codigo_item: d.codigo ?? null,
+            descripcion: d.descripcion,
+            unidad_sunat: d.unidad,
+            cantidad: d.cantidad,
+            precio_unitario: d.precio_unitario,
+            subtotal: Number((d.cantidad * d.precio_unitario).toFixed(2)),
+            igv: Number((d.cantidad * d.precio_unitario * 0.18).toFixed(2)),
+            total: d.total,
+          }))
+        )
+      : (() => { throw new Error('Tipo ' + params.tipo + ' no soportado por buildFactura'); })();
 
-    throw new Error(
-      'NubefactService.emitir(): modo real no implementado — se activa en Fase B del plan maestro.'
-    );
+    // POST a Nubefact con retry exponencial (3 intentos)
+    const data = await this.fetchWithRetry(cfg.ose_endpoint_url!, cfg.ose_token_hash!, payload);
+    const mapped = NubefactPayloadBuilder.mapResponse(data);
+
+    return {
+      estado: mapped.estado,
+      aceptada_por_sunat: mapped.estado === 'ACEPTADA',
+      codigo_sunat: mapped.codigo_sunat,
+      descripcion: mapped.descripcion,
+      mensaje: mapped.descripcion,
+      cadena_para_codigo_qr: mapped.cadena_qr,
+      enlace_del_pdf: mapped.pdf_url,
+      enlace_del_xml: mapped.xml_url,
+      enlace_del_cdr: mapped.cdr_url,
+      errors: mapped.errors,
+      simulado: false,
+    };
+  }
+
+  /** POST con hasta 3 reintentos y backoff exponencial. */
+  private async fetchWithRetry(url: string, token: string, payload: any, attempt = 1): Promise<any> {
+    try {
+      const resp = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Token token="${token}"`,
+        },
+        body: JSON.stringify(payload),
+      });
+      if (!resp.ok && resp.status >= 500 && attempt < 3) {
+        await new Promise(r => setTimeout(r, attempt * 1000));
+        return this.fetchWithRetry(url, token, payload, attempt + 1);
+      }
+      return await resp.json();
+    } catch (e) {
+      if (attempt < 3) {
+        await new Promise(r => setTimeout(r, attempt * 1000));
+        return this.fetchWithRetry(url, token, payload, attempt + 1);
+      }
+      throw e;
+    }
+  }
+
+  private mapClienteTipoDoc(code: string): 'DNI' | 'CE' | 'RUC' | 'PASAPORTE' {
+    const map: Record<string, 'DNI' | 'CE' | 'RUC' | 'PASAPORTE'> = {
+      '1': 'DNI', '4': 'CE', '6': 'RUC', '7': 'PASAPORTE',
+    };
+    return map[code] ?? 'RUC';
   }
 
   /**
