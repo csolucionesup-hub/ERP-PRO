@@ -92,13 +92,13 @@ class AdminService {
     // 3. Total global del período
     const [totales] = await db.query(`
       SELECT
-        SUM(CASE WHEN tipo_gasto_logistica = 'GENERAL'  THEN monto_base ELSE 0 END) AS total_oficina,
-        SUM(CASE WHEN tipo_gasto_logistica = 'SERVICIO' THEN monto_base ELSE 0 END) AS total_proyectos,
-        SUM(monto_base) AS total_general
-      FROM Gastos
-      WHERE estado != 'ANULADO'
-        AND tipo_gasto_logistica IN ('GENERAL', 'SERVICIO')
-        AND YEAR(fecha) = ?
+        SUM(CASE WHEN g.tipo_gasto_logistica = 'GENERAL'  THEN g.monto_base ELSE 0 END) AS total_oficina,
+        SUM(CASE WHEN g.tipo_gasto_logistica = 'SERVICIO' THEN g.monto_base ELSE 0 END) AS total_proyectos,
+        SUM(g.monto_base) AS total_general
+      FROM Gastos g
+      WHERE g.estado != 'ANULADO'
+        AND g.tipo_gasto_logistica IN ('GENERAL', 'SERVICIO')
+        AND YEAR(g.fecha) = ?
         ${mesFiltro}
     `, params);
 
