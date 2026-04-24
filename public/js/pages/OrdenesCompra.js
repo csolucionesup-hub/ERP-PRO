@@ -84,7 +84,7 @@ function init() {
     },
   });
 
-  window.OC = { nuevaOC, verOC, aprobar, enviar, recibir, facturar, anular };
+  window.OC = { nuevaOC, verOC, aprobar, enviar, recibir, facturar, anular, descargarPDF };
 }
 
 // ──────── Tab Kanban ────────
@@ -315,6 +315,8 @@ async function verOC(id_oc) {
 
 function accionesSegunEstado(oc) {
   const btns = [];
+  // PDF siempre disponible — botón principal
+  btns.push(`<button onclick="OC.descargarPDF(${oc.id_oc})" style="padding:10px 18px;background:#dc2626;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">📄 Descargar PDF</button>`);
   if (oc.estado === 'BORRADOR') {
     btns.push(`<button onclick="OC.aprobar(${oc.id_oc})" style="padding:10px 18px;background:#16a34a;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">✓ Aprobar</button>`);
   }
@@ -391,6 +393,13 @@ async function anular(id) {
     showSuccess('OC anulada');
     setTimeout(() => location.reload(), 600);
   } catch (e) { showError(e.message); }
+}
+
+async function descargarPDF(id) {
+  try {
+    const r = await api.ordenesCompra.descargarPDF(id);
+    showSuccess('PDF abierto en nueva pestaña');
+  } catch (e) { showError('Error generando PDF: ' + e.message); }
 }
 
 // ──────── Modal: Nueva OC ────────

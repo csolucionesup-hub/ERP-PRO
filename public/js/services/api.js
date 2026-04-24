@@ -264,6 +264,19 @@ export const api = {
     recibir:    (id, lineas) => post(`/ordenes-compra/${id}/recibir`, { lineas }),
     facturar:   (id, data)   => post(`/ordenes-compra/${id}/facturar`, data),
     anular:     (id, motivo) => post(`/ordenes-compra/${id}/anular`, { motivo }),
+    descargarPDF: async (id) => {
+      const token = localStorage.getItem('erp_token');
+      const r = await fetch(`${API_BASE_URL}/ordenes-compra/${id}/pdf`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!r.ok) throw new Error('Error generando PDF: HTTP ' + r.status);
+      const blob = await r.blob();
+      const nombre = r.headers.get('content-disposition')?.match(/filename="(.+)"/)?.[1] || `OC-${id}.pdf`;
+      const url = URL.createObjectURL(blob);
+      window.open(url, '_blank');
+      setTimeout(() => URL.revokeObjectURL(url), 30_000);
+      return { nombre };
+    },
   },
   ple: {
     ventasPreview:  (anio, mes) => get(`/ple/ventas/preview?anio=${anio}&mes=${mes}`),

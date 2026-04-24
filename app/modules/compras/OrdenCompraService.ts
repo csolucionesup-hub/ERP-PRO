@@ -55,26 +55,39 @@ export interface CrearOCParams {
   observaciones?: string;
   lineas: LineaOC[];
   id_usuario?: number;
+
+  // Campos PDF (todos opcionales, se autocompletan desde ConfiguracionEmpresa)
+  atencion?: string;
+  contacto_interno?: string;
+  contacto_telefono?: string;
+  solicitado_por?: string;
+  revisado_por?: string;
+  autorizado_por?: string;
+  cuenta_bancaria_pago?: string;
+  lugar_entrega?: string;
 }
 
 class OrdenCompraService {
   /**
-   * Siguiente correlativo por empresa. Formato: OC-YYYY-NNN
+   * Siguiente correlativo por empresa. Formato: "NNN - YYYY"
+   * Replica el formato real del PDF de Metal Engineers: "Nº 001 - 2026"
+   * Secuencias separadas ME y PT (cada empresa lleva su propia numeración).
    */
   private async proximoNumero(empresa: 'ME' | 'PT', anio: number): Promise<string> {
     const [rows]: any = await db.query(
       `SELECT nro_oc FROM OrdenesCompra WHERE empresa = ?
          AND nro_oc LIKE ?
        ORDER BY id_oc DESC LIMIT 1`,
-      [empresa, `OC-${anio}-%`]
+      [empresa, `%- ${anio}`]
     );
     const ultimo = rows[0];
     let siguiente = 1;
     if (ultimo) {
-      const partes = ultimo.nro_oc.split('-');
-      siguiente = (parseInt(partes[2], 10) || 0) + 1;
+      // Formato "NNN - YYYY" → primer segmento es el número
+      const partes = String(ultimo.nro_oc).split('-').map((s: string) => s.trim());
+      siguiente = (parseInt(partes[0], 10) || 0) + 1;
     }
-    return `OC-${anio}-${String(siguiente).padStart(3, '0')}`;
+    return `${String(siguiente).padStart(3, '0')} - ${anio}`;
   }
 
   /**
@@ -105,14 +118,24 @@ class OrdenCompraService {
       const nro_oc = await this.proximoNumero(empresa, anio);
       const estado: EstadoOC = autoAprobar ? 'APROBADA' : 'BORRADOR';
 
+      // Auto-fill defaults de firmas/contacto desde ConfiguracionEmpresa
+      const solicitado   = params.solicitado_por   || (cfg as any).oc_solicitado_default   || null;
+      const revisado     = params.revisado_por     || (cfg as any).oc_revisado_default     || null;
+      const autorizado   = params.autorizado_por   || (cfg as any).oc_autorizado_default   || null;
+      const ctactoNombre = params.contacto_interno || (cfg as any).oc_contacto_nombre      || null;
+      const ctactoTel    = params.contacto_telefono|| (cfg as any).oc_contacto_telefono    || null;
+
       const [res]: any = await conn.query(
         `INSERT INTO OrdenesCompra
           (nro_oc, fecha_emision, fecha_entrega_esperada, id_proveedor, id_servicio,
            centro_costo, tipo_oc, empresa, moneda, tipo_cambio,
            subtotal, descuento, aplica_igv, igv, total,
            forma_pago, dias_credito, condiciones_entrega, observaciones,
-           estado, id_usuario_crea, id_usuario_aprueba, fecha_aprobacion)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           estado, id_usuario_crea, id_usuario_aprueba, fecha_aprobacion,
+           atencion, contacto_interno, contacto_telefono,
+           solicitado_por, revisado_por, autorizado_por,
+           cuenta_bancaria_pago, lugar_entrega)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [nro_oc, params.fecha_emision, params.fecha_entrega_esperada || null,
          params.id_proveedor, params.id_servicio || null,
          params.centro_costo || 'OFICINA CENTRAL', params.tipo_oc || 'GENERAL',
@@ -122,7 +145,10 @@ class OrdenCompraService {
          params.condiciones_entrega || null, params.observaciones || null,
          estado, params.id_usuario || null,
          autoAprobar ? (params.id_usuario || null) : null,
-         autoAprobar ? new Date() : null]
+         autoAprobar ? new Date() : null,
+         params.atencion || null, ctactoNombre, ctactoTel,
+         solicitado, revisado, autorizado,
+         params.cuenta_bancaria_pago || null, params.lugar_entrega || 'Lima']
       );
       const id_oc = res.insertId;
 

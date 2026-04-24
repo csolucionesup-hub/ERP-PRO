@@ -35,6 +35,7 @@ import PLEExporter from './app/modules/facturacion/PLEExporter';
 import { FacturacionCron } from './app/modules/facturacion/FacturacionCron';
 import ImportadorService, { EntidadImportable } from './app/modules/importador/ImportadorService';
 import OrdenCompraService from './app/modules/compras/OrdenCompraService';
+import { OrdenCompraPDFService } from './app/modules/compras/OrdenCompraPDFService';
 import { auditLog } from './app/middlewares/auditLog';
 import { periodoGuard } from './app/middlewares/periodoGuard';
 
@@ -942,6 +943,17 @@ ocRouter.post('/:id/facturar', validateIdParam, auditLog('OrdenCompra', 'UPDATE'
 
 ocRouter.post('/:id/anular', validateIdParam, auditLog('OrdenCompra', 'ANULAR'), async (req: Request, res: Response) => {
   res.json(await OrdenCompraService.anular(Number(req.params.id), req.body?.motivo || 'Sin motivo'));
+});
+
+ocRouter.get('/:id/pdf', validateIdParam, async (req: Request, res: Response) => {
+  const oc = await OrdenCompraService.obtener(Number(req.params.id));
+  const cfg = await ConfiguracionService.getActual();
+  const pdf = await OrdenCompraPDFService.generar(oc as any, cfg as any);
+  const filename = `OC N° ${oc.nro_oc} - ${oc.proveedor_nombre || 'proveedor'} - ${oc.centro_costo}.pdf`
+    .replace(/[\\\/:"*?<>|]/g, ' ');
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
+  res.send(pdf);
 });
 
 app.use('/api/ordenes-compra', ocRouter);
