@@ -14,10 +14,12 @@ export function errorHandler(err: any, req: Request, res: Response, next: NextFu
   console.error(`[CRITICAL ERROR] Error procesando [${req.method}] ${req.originalUrl}:`, err);
 
   // Respuesta controlada hacia UI
-  // No emitimos \`err.stack\` ni \`err.message\` en producción para no filtrar inyecciones
+  // Incluimos el message del error — útil para debugging y para que la UI
+  // pueda mostrar algo más específico que "error interno". El stack se queda
+  // en logs del servidor. Los schemas de validación de Zod ya devolvieron 400 arriba.
   res.status(500).json({
-    error: 'Ocurrió un error interno procesando la solicitud en el servidor. Revise los registros operativos.',
-    // Solo emitir mensajes de error si corremos en entorno local dev
-    ...(process.env.NODE_ENV === 'development' && { debugging: err.message })
+    error: err.message || 'Ocurrió un error interno procesando la solicitud en el servidor. Revise los registros operativos.',
+    // debugging extra en dev
+    ...(process.env.NODE_ENV === 'development' && { stack: err.stack }),
   });
 }
