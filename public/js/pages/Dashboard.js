@@ -271,16 +271,32 @@ export const Dashboard = async () => {
         },
       });
 
+      // Estado del rango elegido — persistente mientras dura la sesión
+      let _rangoMeses = 12; // default 12 meses
+
+      window.cambiarRangoDash = (meses) => {
+        _rangoMeses = Number(meses);
+        document.querySelectorAll('.btn-rango').forEach(b => {
+          b.style.background = b.dataset.rango == meses ? 'var(--primary-color)' : 'var(--bg-app)';
+          b.style.color      = b.dataset.rango == meses ? 'white' : 'var(--text-primary)';
+        });
+        // Resetear panel y re-renderizar
+        const panel = document.getElementById('tab-analisis');
+        panel.dataset.rendered = '';
+        panel.innerHTML = '';
+        renderAnalisisGrafico();
+      };
+
       function renderAnalisisGrafico() {
         const panel = document.getElementById('tab-analisis');
         if (panel.dataset.rendered === '1') return;
         panel.dataset.rendered = '1';
 
-        // Construir data agregada mensual (últimos 12 meses)
+        // Construir data agregada mensual — N meses según rango elegido
         const meses = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
         const now = new Date();
         const buckets = {};
-        for (let i = 11; i >= 0; i--) {
+        for (let i = _rangoMeses - 1; i >= 0; i--) {
           const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
           const k = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
           buckets[k] = { label: `${meses[d.getMonth()]} ${String(d.getFullYear()).slice(2)}`, ventas: 0, gastos: 0, compras: 0 };
@@ -346,18 +362,45 @@ export const Dashboard = async () => {
           .map(([label, valor]) => ({ label: label.slice(0, 22), valor }))
           .sort((a, b) => b.valor - a.valor).slice(0, 5);
 
+        // Construir comparativa año vs año — todos los años con data detectados
+        const comparativa = buildComparativaAnual();
+        const etiquetaRango = {
+          12:  'últimos 12 meses', 24: 'últimos 24 meses', 36: 'últimos 36 meses',
+          60:  'últimos 5 años',   120: 'últimos 10 años', 999: 'toda la historia',
+        }[_rangoMeses] || `últimos ${_rangoMeses} meses`;
+
         panel.innerHTML = `
           <div style="margin-top:16px">
+            <div class="card" style="margin-bottom:16px;display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+              <strong style="font-size:13px">📅 Rango:</strong>
+              <div style="display:flex;gap:6px;flex-wrap:wrap">
+                ${[
+                  { m: 12,  lbl: '12 meses' },
+                  { m: 24,  lbl: '24 meses' },
+                  { m: 36,  lbl: '36 meses' },
+                  { m: 60,  lbl: '5 años' },
+                  { m: 120, lbl: '10 años' },
+                  { m: 999, lbl: 'Todo' },
+                ].map(r => `
+                  <button class="btn-rango" data-rango="${r.m}" onclick="cambiarRangoDash(${r.m})"
+                    style="padding:6px 14px;border:1px solid #d9dad9;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;
+                           background:${_rangoMeses === r.m ? 'var(--primary-color)' : 'var(--bg-app)'};
+                           color:${_rangoMeses === r.m ? 'white' : 'var(--text-primary)'}">${r.lbl}</button>
+                `).join('')}
+              </div>
+              <span style="font-size:11px;color:var(--text-secondary);margin-left:auto">Mostrando ${etiquetaRango}</span>
+            </div>
+
             ${kpiGrid([
-              { label: 'Ventas 12 meses',   value: formatCurrency(totalVentas),  icon: '📈', changeType: 'positive' },
-              { label: 'Egresos 12 meses',  value: formatCurrency(totalEgresos), icon: '📉', changeType: 'neutral' },
-              { label: 'Utilidad Acumulada', value: formatCurrency(utilidadAcum), icon: '💎', changeType: utilidadAcum >= 0 ? 'positive' : 'negative' },
-              { label: 'Mejor mes',          value: mejorMes?.label || '—',       icon: '🏆' },
+              { label: `Ventas ${etiquetaRango}`,   value: formatCurrency(totalVentas),  icon: '📈', changeType: 'positive' },
+              { label: `Egresos ${etiquetaRango}`,  value: formatCurrency(totalEgresos), icon: '📉', changeType: 'neutral' },
+              { label: `Utilidad Acumulada`,         value: formatCurrency(utilidadAcum), icon: '💎', changeType: utilidadAcum >= 0 ? 'positive' : 'negative' },
+              { label: 'Mejor mes',                  value: mejorMes?.label || '—',       icon: '🏆' },
             ], 4)}
 
             <div style="display:grid;grid-template-columns:2fr 1fr;gap:16px;margin-top:20px">
               <div class="card">
-                <h3 style="margin-bottom:6px;font-size:14px">📊 Ingresos vs Egresos — últimos 12 meses</h3>
+                <h3 style="margin-bottom:6px;font-size:14px">📊 Ingresos vs Egresos — ${etiquetaRango}</h3>
                 <p style="font-size:11px;color:var(--text-secondary);margin-bottom:14px">Verde = ventas aprobadas · Rojo = gastos + compras</p>
                 <div style="height:280px"><canvas id="dash-chart-tendencia"></canvas></div>
               </div>
@@ -375,18 +418,46 @@ export const Dashboard = async () => {
                 <div style="height:240px"><canvas id="dash-chart-utilidad"></canvas></div>
               </div>
               <div class="card">
-                <h3 style="margin-bottom:6px;font-size:14px">🏆 Top 5 clientes del año</h3>
-                <p style="font-size:11px;color:var(--text-secondary);margin-bottom:14px">Por cotizaciones aprobadas/terminadas</p>
+                <h3 style="margin-bottom:6px;font-size:14px">🏆 Top 5 clientes</h3>
+                <p style="font-size:11px;color:var(--text-secondary);margin-bottom:14px">Por cotizaciones aprobadas/terminadas (${etiquetaRango})</p>
                 ${topClientes.length ? `<div style="height:240px"><canvas id="dash-chart-topcli"></canvas></div>`
-                  : `<div style="padding:40px;text-align:center;color:var(--text-secondary);font-size:12px">Aún no hay cotizaciones aprobadas en el año.</div>`}
+                  : `<div style="padding:40px;text-align:center;color:var(--text-secondary);font-size:12px">Aún no hay cotizaciones aprobadas en este rango.</div>`}
               </div>
             </div>
+
+            ${comparativa.anios.length >= 2 ? `
+              <div class="card" style="margin-top:16px">
+                <h3 style="margin-bottom:6px;font-size:14px">📅 Comparativa anual — Ventas por mes</h3>
+                <p style="font-size:11px;color:var(--text-secondary);margin-bottom:14px">
+                  ${comparativa.anios.join(' · ')} — una línea por año para ver evolución de la empresa.
+                </p>
+                <div style="height:300px"><canvas id="dash-chart-comparativa"></canvas></div>
+                <div style="display:grid;grid-template-columns:repeat(${comparativa.anios.length},1fr);gap:10px;margin-top:14px">
+                  ${comparativa.anios.map((a, i) => {
+                    const totalA = comparativa.serie[i].data.reduce((s, v) => s + v, 0);
+                    const prev   = i > 0 ? comparativa.serie[i - 1].data.reduce((s, v) => s + v, 0) : null;
+                    const delta  = prev ? ((totalA - prev) / prev * 100).toFixed(1) : null;
+                    const deltaColor = delta > 0 ? '#16a34a' : delta < 0 ? '#dc2626' : '#676767';
+                    return `<div style="padding:12px;background:#f9fafb;border-radius:8px;text-align:center">
+                      <div style="font-size:11px;color:var(--text-secondary);font-weight:600">${a}</div>
+                      <div style="font-size:18px;font-weight:700;margin:4px 0">${formatCurrency(totalA)}</div>
+                      ${delta !== null ? `<div style="font-size:11px;color:${deltaColor};font-weight:600">${delta > 0 ? '▲' : delta < 0 ? '▼' : '='} ${Math.abs(delta)}% vs ${comparativa.anios[i-1]}</div>` : '<div style="font-size:11px;color:var(--text-secondary)">año base</div>'}
+                    </div>`;
+                  }).join('')}
+                </div>
+              </div>
+            ` : `
+              <div class="card" style="margin-top:16px;padding:30px;text-align:center;color:var(--text-secondary);font-size:12px">
+                La comparativa anual aparecerá cuando tengas ventas en al menos 2 años distintos.
+              </div>
+            `}
           </div>
         `;
 
         setTimeout(() => {
           destroyChart(_charts.tendencia); destroyChart(_charts.dist);
           destroyChart(_charts.utilidad);  destroyChart(_charts.topCli);
+          destroyChart(_charts.comparativa);
 
           // Ingresos vs Egresos (línea doble)
           if (window.Chart) {
@@ -431,7 +502,51 @@ export const Dashboard = async () => {
               colors: topClientes.map(() => chartColors.info),
             });
           }
+
+          // Comparativa anual (una línea por año con los 12 meses)
+          if (comparativa.anios.length >= 2 && window.Chart) {
+            const ctx = document.getElementById('dash-chart-comparativa');
+            if (ctx) {
+              const paleta = ['#dc2626','#f59e0b','#3b82f6','#16a34a','#8b5cf6','#ec4899','#0ea5e9','#64748b'];
+              _charts.comparativa = new window.Chart(ctx, {
+                type: 'line',
+                data: {
+                  labels: meses,
+                  datasets: comparativa.serie.map((s, i) => ({
+                    label: String(s.anio),
+                    data: s.data,
+                    borderColor: paleta[i % paleta.length],
+                    backgroundColor: paleta[i % paleta.length] + '11',
+                    fill: false, tension: 0.3, borderWidth: 2.5, pointRadius: 3, pointHoverRadius: 6,
+                  })),
+                },
+                options: {
+                  responsive: true, maintainAspectRatio: false,
+                  plugins: { legend: { position: 'bottom' }, tooltip: { mode: 'index', intersect: false } },
+                  scales: { y: { beginAtZero: true, ticks: { callback: v => 'S/ ' + v.toLocaleString() } } },
+                },
+              });
+            }
+          }
         }, 100);
+      }
+
+      // Construye la data agregada por año-mes para la comparativa anual
+      function buildComparativaAnual() {
+        const porAnio = {};
+        (hist_cotizaciones || []).forEach(c => {
+          if (!c.fecha || !['APROBADA', 'TERMINADA'].includes(c.estado)) return;
+          const y = String(c.fecha).slice(0, 4);
+          const m = parseInt(String(c.fecha).slice(5, 7), 10) - 1;
+          const tc = c.moneda === 'USD' ? Number(c.tipo_cambio) || 1 : 1;
+          if (!porAnio[y]) porAnio[y] = new Array(12).fill(0);
+          porAnio[y][m] += Number(c.total || 0) * tc;
+        });
+        const anios = Object.keys(porAnio).sort();
+        return {
+          anios,
+          serie: anios.map(a => ({ anio: a, data: porAnio[a] })),
+        };
       }
     }, 80);
 
