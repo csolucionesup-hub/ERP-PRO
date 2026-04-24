@@ -117,7 +117,17 @@ class FinanceService {
       SELECT SUM(total_base) - IFNULL((SELECT SUM(monto_base) FROM Transacciones WHERE referencia_tipo='GASTO' AND tipo_movimiento='EGRESO'), 0) as deuda_gastos
       FROM Gastos WHERE estado_pago IN ('PENDIENTE', 'PARCIAL')
     `);
-    const cxpGlobal = Number((rowsCxP_Compras as any)[0]?.deuda_prov || 0) + Number((rowsCxP_Gastos as any)[0]?.deuda_gastos || 0);
+    // OCs que ya son compromiso firme pero aún no se convirtieron en Compra vía Facturar
+    // (FACTURADA ya está contada en Compras via id_oc_origen, así que se excluye para evitar double-count)
+    const [rowsCxP_OCs] = await db.query(`
+      SELECT IFNULL(SUM(CASE WHEN moneda='PEN' THEN total ELSE total * tipo_cambio END), 0) as deuda_ocs
+      FROM OrdenesCompra
+      WHERE estado IN ('APROBADA','ENVIADA','RECIBIDA_PARCIAL','RECIBIDA')
+    `);
+    const cxpGlobal =
+      Number((rowsCxP_Compras as any)[0]?.deuda_prov   || 0) +
+      Number((rowsCxP_Gastos as any)[0]?.deuda_gastos  || 0) +
+      Number((rowsCxP_OCs as any)[0]?.deuda_ocs        || 0);
 
     // 3. Préstamos
     const [ptRows] = await db.query("SELECT IFNULL(SUM(saldo),0) as total FROM PrestamosTomados WHERE estado IN ('PENDIENTE','PARCIAL')");
@@ -178,7 +188,7 @@ class FinanceService {
    */
   async getCuentasPorPagar() {
     const queryCompras = `
-      SELECT 
+      SELECT
         'COMPRA' as tipo, c.id_compra as id, c.nro_comprobante as doc, p.razon_social as acreedor, c.fecha,
         c.total_base, c.estado_pago as estado,
         IFNULL((SELECT SUM(monto_base) FROM Transacciones WHERE referencia_tipo='COMPRA' AND referencia_id=c.id_compra AND tipo_movimiento='EGRESO'), 0) AS pagado
@@ -187,21 +197,35 @@ class FinanceService {
       WHERE c.estado_pago IN ('PENDIENTE', 'PARCIAL')
     `;
     const queryGastos = `
-      SELECT 
+      SELECT
         'GASTO' as tipo, g.id_gasto as id, g.concepto as doc, g.proveedor_nombre as acreedor, g.fecha,
         g.total_base, g.estado_pago as estado,
         IFNULL((SELECT SUM(monto_base) FROM Transacciones WHERE referencia_tipo='GASTO' AND referencia_id=g.id_gasto AND tipo_movimiento='EGRESO'), 0) AS pagado
       FROM Gastos g
       WHERE g.estado_pago IN ('PENDIENTE', 'PARCIAL')
     `;
+    // OCs de Logística (compromiso firme) — excluye FACTURADA (ya se contó en Compras)
+    const queryOCs = `
+      SELECT
+        'OC' as tipo, oc.id_oc as id, oc.nro_oc as doc,
+        p.razon_social as acreedor,
+        oc.fecha_emision as fecha,
+        (CASE WHEN oc.moneda='PEN' THEN oc.total ELSE oc.total * oc.tipo_cambio END) as total_base,
+        oc.estado,
+        0 AS pagado
+      FROM OrdenesCompra oc
+      JOIN Proveedores p ON p.id_proveedor = oc.id_proveedor
+      WHERE oc.estado IN ('APROBADA','ENVIADA','RECIBIDA_PARCIAL','RECIBIDA')
+    `;
 
     const [compras] = await db.query(queryCompras);
-    const [gastos] = await db.query(queryGastos);
+    const [gastos]  = await db.query(queryGastos);
+    const [ocs]     = await db.query(queryOCs);
 
-    const pool = [...(compras as any[]), ...(gastos as any[])].map(r => {
+    const pool = [...(compras as any[]), ...(gastos as any[]), ...(ocs as any[])].map(r => {
        return {
           ...r,
-          deuda_activa: Number(r.total_base) - Number(r.pagado) 
+          deuda_activa: Number(r.total_base) - Number(r.pagado)
        };
     });
 
