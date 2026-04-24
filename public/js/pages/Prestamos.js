@@ -1,5 +1,7 @@
 import { api } from '../services/api.js';
 import { showSuccess, showError } from '../services/ui.js';
+import { kpiGrid } from '../components/KpiCard.js';
+import { lineChart, barChart, chartColors, destroyChart } from '../components/charts.js';
 
 const formatCurrency = (val) => new Intl.NumberFormat('es-PE', { style: 'currency', currency: 'PEN' }).format(Number(val) || 0);
 const formatUSD = (val) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(Number(val) || 0);
@@ -256,16 +258,207 @@ export const Prestamos = async () => {
     };
 
     // Tabs
+    let _chartInstances = {};
+    const tabStyleActive = (bg) => `padding:10px 20px;border:none;border-radius:6px;cursor:pointer;font-weight:bold;background:${bg};color:white`;
+    const tabStyleInactive = 'padding:10px 20px;border:none;border-radius:6px;cursor:pointer;font-weight:500;background:var(--bg-app);color:var(--text-primary)';
+
     window.showTab = (tab) => {
-      document.getElementById('seccion-tomados').style.display = tab === 'tomados' ? 'block' : 'none';
+      document.getElementById('seccion-tomados').style.display   = tab === 'tomados'   ? 'block' : 'none';
       document.getElementById('seccion-otorgados').style.display = tab === 'otorgados' ? 'block' : 'none';
-      document.getElementById('tab-tomados').style.cssText = tab === 'tomados'
-        ? 'padding:10px 20px;border:none;border-radius:6px;cursor:pointer;font-weight:bold;background:var(--danger);color:white'
-        : 'padding:10px 20px;border:none;border-radius:6px;cursor:pointer;font-weight:500;background:var(--bg-app);color:var(--text-primary)';
-      document.getElementById('tab-otorgados').style.cssText = tab === 'otorgados'
-        ? 'padding:10px 20px;border:none;border-radius:6px;cursor:pointer;font-weight:bold;background:var(--primary-color);color:white'
-        : 'padding:10px 20px;border:none;border-radius:6px;cursor:pointer;font-weight:500;background:var(--bg-app);color:var(--text-primary)';
+      document.getElementById('seccion-dashboard').style.display = tab === 'dashboard' ? 'block' : 'none';
+      document.getElementById('tab-tomados').style.cssText   = tab === 'tomados'   ? tabStyleActive('var(--danger)')        : tabStyleInactive;
+      document.getElementById('tab-otorgados').style.cssText = tab === 'otorgados' ? tabStyleActive('var(--primary-color)') : tabStyleInactive;
+      document.getElementById('tab-dashboard').style.cssText = tab === 'dashboard' ? tabStyleActive('#16a34a')              : tabStyleInactive;
+      if (tab === 'dashboard') renderPrestamosDashboard();
     };
+
+    function renderPrestamosDashboard() {
+      const panel = document.getElementById('seccion-dashboard');
+      if (!panel || panel.dataset.rendered === '1') return;
+      panel.dataset.rendered = '1';
+
+      // ──── KPIs ────
+      const hoy = new Date();
+      const ms30 = 30 * 24 * 60 * 60 * 1000;
+      const vencidosT = tomados.filter(p => p.fecha_vencimiento && new Date(p.fecha_vencimiento) < hoy && Number(p.saldo) > 0.1);
+      const vencidosO = otorgados.filter(p => p.fecha_vencimiento && new Date(p.fecha_vencimiento) < hoy && Number(p.saldo) > 0.1);
+      const proximosT = tomados.filter(p => {
+        if (!p.fecha_vencimiento || Number(p.saldo) <= 0.1) return false;
+        const d = new Date(p.fecha_vencimiento);
+        return d >= hoy && d <= new Date(hoy.getTime() + ms30);
+      });
+      const proximosO = otorgados.filter(p => {
+        if (!p.fecha_vencimiento || Number(p.saldo) <= 0.1) return false;
+        const d = new Date(p.fecha_vencimiento);
+        return d >= hoy && d <= new Date(hoy.getTime() + ms30);
+      });
+      const deudaNeta = Number(totales.total_debo || 0) - Number(totales.total_me_deben || 0);
+      const cumplimientoT = tomados.length > 0
+        ? Math.round((tomados.filter(p => p.estado === 'PAGADO').length / tomados.length) * 100)
+        : 0;
+
+      // ──── Tendencia mensual 12 meses ────
+      const tendencia = buildTendencia12m();
+      // ──── Vencimientos 90 días ────
+      const proximosTodos = [...proximosT.map(p => ({ ...p, _tipo: 'tomado' })),
+                             ...proximosO.map(p => ({ ...p, _tipo: 'otorgado' }))]
+        .sort((a, b) => new Date(a.fecha_vencimiento) - new Date(b.fecha_vencimiento))
+        .slice(0, 10);
+      // ──── Top acreedores / deudores ────
+      const topAcreedores = Object.entries(tomados.reduce((acc, p) => {
+        const k = (p.acreedor || 'Sin nombre').trim();
+        acc[k] = (acc[k] || 0) + Number(p.saldo || 0);
+        return acc;
+      }, {})).map(([label, valor]) => ({ label: label.slice(0, 22), valor }))
+        .filter(x => x.valor > 0).sort((a, b) => b.valor - a.valor).slice(0, 5);
+      const topDeudores = Object.entries(otorgados.reduce((acc, p) => {
+        const k = (p.deudor || 'Sin nombre').trim();
+        acc[k] = (acc[k] || 0) + Number(p.saldo || 0);
+        return acc;
+      }, {})).map(([label, valor]) => ({ label: label.slice(0, 22), valor }))
+        .filter(x => x.valor > 0).sort((a, b) => b.valor - a.valor).slice(0, 5);
+
+      panel.innerHTML = `
+        <div style="margin-top:16px">
+          ${kpiGrid([
+            { label: 'Deuda Neta',       value: formatCurrency(deudaNeta), icon: '⚖️', changeType: deudaNeta > 0 ? 'negative' : 'positive' },
+            { label: 'Total Debo',       value: formatCurrency(totales.total_debo),       icon: '🔴' },
+            { label: 'Total Me Deben',   value: formatCurrency(totales.total_me_deben),   icon: '🟢' },
+            { label: 'Préstamos Activos',value: (tomados.length + otorgados.length),      icon: '📋' },
+            { label: 'Vencidos',         value: (vencidosT.length + vencidosO.length),    icon: '⚠️', changeType: (vencidosT.length + vencidosO.length) > 0 ? 'negative' : 'neutral' },
+            { label: 'Vencen ≤30d',      value: (proximosT.length + proximosO.length),    icon: '📅', changeType: (proximosT.length + proximosO.length) > 0 ? 'negative' : 'neutral' },
+            { label: 'Abonos registrados (t)', value: tomados.reduce((s,p) => s + Number(p.monto_pagado||0), 0) > 0 ? formatCurrency(tomados.reduce((s,p) => s + Number(p.monto_pagado||0), 0)) : 'S/ 0.00', icon: '💸' },
+            { label: '% Préstamos pagados', value: cumplimientoT + '%', icon: '✅', changeType: cumplimientoT >= 50 ? 'positive' : 'neutral' },
+          ], 4)}
+
+          <div style="display:grid;grid-template-columns:2fr 1fr;gap:16px;margin-top:20px">
+            <div class="card">
+              <h3 style="margin-bottom:14px;font-size:14px">Tendencia mensual (últimos 12 meses)</h3>
+              <p style="font-size:11px;color:var(--text-secondary);margin-bottom:12px">Evolución de préstamos TOMADOS (rojo) vs OTORGADOS (verde) registrados por mes.</p>
+              <div style="height:260px"><canvas id="chart-tendencia-prest"></canvas></div>
+            </div>
+            <div class="card">
+              <h3 style="margin-bottom:14px;font-size:14px">⚠️ Próximos vencimientos</h3>
+              ${proximosTodos.length ? `
+                <div style="display:flex;flex-direction:column;gap:8px;max-height:260px;overflow-y:auto">
+                  ${proximosTodos.map(p => {
+                    const d = new Date(p.fecha_vencimiento);
+                    const diasRest = Math.ceil((d - hoy) / (24*60*60*1000));
+                    const urgente = diasRest <= 7;
+                    const contraparte = p._tipo === 'tomado' ? p.acreedor : p.deudor;
+                    return `<div style="padding:10px;border-left:3px solid ${urgente ? '#dc2626' : '#f59e0b'};background:${urgente ? '#fef2f2' : '#fffbeb'};border-radius:4px">
+                      <div style="display:flex;justify-content:space-between;align-items:center">
+                        <strong style="font-size:12px">${contraparte.slice(0, 24)}</strong>
+                        <span style="font-size:10px;padding:1px 6px;border-radius:10px;background:${p._tipo === 'tomado' ? '#dc2626' : '#16a34a'};color:white">${p._tipo === 'tomado' ? 'Pago' : 'Cobro'}</span>
+                      </div>
+                      <div style="display:flex;justify-content:space-between;margin-top:4px;font-size:11px">
+                        <span style="color:var(--text-secondary)">${String(p.fecha_vencimiento).split('T')[0]}</span>
+                        <span style="font-weight:700;color:${urgente ? '#dc2626' : '#92400e'}">${formatCurrency(p.saldo)} · ${diasRest}d</span>
+                      </div>
+                    </div>`;
+                  }).join('')}
+                </div>
+              ` : `<p style="padding:30px;text-align:center;color:var(--text-secondary);font-size:12px">Sin vencimientos en los próximos 30 días 🎉</p>`}
+            </div>
+          </div>
+
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px">
+            <div class="card">
+              <h3 style="margin-bottom:14px;font-size:14px">🔴 Top 5 Acreedores (a quién le debo)</h3>
+              ${topAcreedores.length ? `<div style="height:220px"><canvas id="chart-top-acreedores"></canvas></div>`
+                : '<p style="padding:30px;text-align:center;color:var(--text-secondary);font-size:12px">Sin deudas activas.</p>'}
+            </div>
+            <div class="card">
+              <h3 style="margin-bottom:14px;font-size:14px">🟢 Top 5 Deudores (quién me debe)</h3>
+              ${topDeudores.length ? `<div style="height:220px"><canvas id="chart-top-deudores"></canvas></div>`
+                : '<p style="padding:30px;text-align:center;color:var(--text-secondary);font-size:12px">Sin préstamos otorgados activos.</p>'}
+            </div>
+          </div>
+        </div>
+      `;
+
+      setTimeout(() => {
+        destroyChart(_chartInstances.tendencia);
+        destroyChart(_chartInstances.topAcr);
+        destroyChart(_chartInstances.topDeu);
+
+        // Chart línea doble: tomados vs otorgados
+        if (window.Chart) {
+          const ctx = document.getElementById('chart-tendencia-prest');
+          if (ctx) {
+            _chartInstances.tendencia = new window.Chart(ctx, {
+              type: 'line',
+              data: {
+                labels: tendencia.map(t => t.mes),
+                datasets: [
+                  {
+                    label: 'Préstamos Tomados',
+                    data: tendencia.map(t => t.tomado),
+                    borderColor: chartColors.danger,
+                    backgroundColor: chartColors.danger + '22',
+                    fill: true, tension: 0.3,
+                  },
+                  {
+                    label: 'Préstamos Otorgados',
+                    data: tendencia.map(t => t.otorgado),
+                    borderColor: chartColors.success,
+                    backgroundColor: chartColors.success + '22',
+                    fill: true, tension: 0.3,
+                  },
+                ],
+              },
+              options: {
+                responsive: true, maintainAspectRatio: false,
+                plugins: { legend: { position: 'bottom' }, tooltip: { mode: 'index', intersect: false } },
+                scales: { y: { beginAtZero: true, ticks: { callback: v => 'S/ ' + v.toLocaleString() } } },
+              },
+            });
+          }
+        }
+
+        if (topAcreedores.length) {
+          _chartInstances.topAcr = barChart('#chart-top-acreedores', topAcreedores, {
+            colors: topAcreedores.map(() => chartColors.danger),
+          });
+        }
+        if (topDeudores.length) {
+          _chartInstances.topDeu = barChart('#chart-top-deudores', topDeudores, {
+            colors: topDeudores.map(() => chartColors.success),
+          });
+        }
+      }, 100);
+    }
+
+    function buildTendencia12m() {
+      const buckets = {};
+      const now = new Date();
+      for (let i = 11; i >= 0; i--) {
+        const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        const k = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+        buckets[k] = { tomado: 0, otorgado: 0 };
+      }
+      tomados.forEach(p => {
+        if (!p.fecha_emision) return;
+        const k = String(p.fecha_emision).slice(0, 7);
+        if (k in buckets) {
+          const tc = p.moneda === 'USD' ? Number(p.tipo_cambio) || 1 : 1;
+          buckets[k].tomado += Number(p.monto_total || 0) * tc;
+        }
+      });
+      otorgados.forEach(p => {
+        if (!p.fecha_emision) return;
+        const k = String(p.fecha_emision).slice(0, 7);
+        if (k in buckets) {
+          const tc = p.moneda === 'USD' ? Number(p.tipo_cambio) || 1 : 1;
+          buckets[k].otorgado += Number(p.monto_total || 0) * tc;
+        }
+      });
+      const meses = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+      return Object.entries(buckets).map(([k, v]) => {
+        const [y, m] = k.split('-');
+        return { mes: `${meses[+m - 1]} ${y.slice(2)}`, tomado: Number(v.tomado.toFixed(2)), otorgado: Number(v.otorgado.toFixed(2)) };
+      });
+    }
 
     // Form crear tomado
     const formT = document.getElementById('form-crear-tomado');
@@ -451,9 +644,10 @@ export const Prestamos = async () => {
     </div>
 
     <!-- Tabs -->
-    <div style="display:flex;gap:10px;margin-top:24px;margin-bottom:0">
-      <button id="tab-tomados" onclick="window.showTab('tomados')" style="${tabBase};background:var(--danger);color:white">Préstamos Tomados (Lo que debo)</button>
-      <button id="tab-otorgados" onclick="window.showTab('otorgados')" style="${tabBase};background:var(--bg-app);color:var(--text-primary)">Préstamos Otorgados (Lo que me deben)</button>
+    <div style="display:flex;gap:10px;margin-top:24px;margin-bottom:0;flex-wrap:wrap">
+      <button id="tab-tomados"   onclick="window.showTab('tomados')"   style="${tabBase};background:var(--danger);color:white">🔴 Préstamos Tomados (Lo que debo)</button>
+      <button id="tab-otorgados" onclick="window.showTab('otorgados')" style="${tabBase};background:var(--bg-app);color:var(--text-primary)">🟢 Préstamos Otorgados (Lo que me deben)</button>
+      <button id="tab-dashboard" onclick="window.showTab('dashboard')" style="${tabBase};background:var(--bg-app);color:var(--text-primary)">📊 Dashboard</button>
     </div>
 
     <!-- SECCIÓN TOMADOS -->
@@ -479,5 +673,8 @@ export const Prestamos = async () => {
         </div>
       </div>
     </div>
+
+    <!-- SECCIÓN DASHBOARD -->
+    <div id="seccion-dashboard" style="display:none"></div>
   `;
 };
