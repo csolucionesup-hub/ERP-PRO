@@ -53,20 +53,31 @@ interface CotizacionInput {
 class CotizacionService {
 
   /**
-   * Correlativo independiente por marca dentro del año:
+   * Correlativo independiente por marca dentro del año — ATÓMICO.
    * COT 2026-001-MN (Metal), COT 2026-001-ME (Perfotools) — secuencias separadas.
+   *
+   * Usa tabla Correlativos con INSERT ... ON DUPLICATE KEY UPDATE para
+   * garantizar que dos inserts concurrentes no obtengan el mismo número.
+   * Corre dentro de la transacción de createCotizacion (conn opcional).
    */
-  private async generarCorrelativo(marca: Marca): Promise<string> {
+  private async generarCorrelativo(marca: Marca, conn?: any): Promise<string> {
     const anio = new Date().getFullYear();
     const sufijo = SUFIJO_MARCA[marca];
+    const runner = conn || db;
 
-    const [rows] = await db.query(
-      `SELECT COUNT(*) AS total FROM Cotizaciones
-       WHERE YEAR(fecha) = ? AND marca = ?`,
+    await runner.query(
+      `INSERT INTO Correlativos (anio, marca, ultimo)
+       VALUES (?, ?, 1)
+       ON DUPLICATE KEY UPDATE ultimo = ultimo + 1`,
       [anio, marca]
     );
-    const total = Number((rows as any)[0].total);
-    const nnn = String(total + 1).padStart(3, '0');
+
+    const [rows] = await runner.query(
+      `SELECT ultimo FROM Correlativos WHERE anio = ? AND marca = ?`,
+      [anio, marca]
+    );
+    const secuencia = Number((rows as any)[0].ultimo);
+    const nnn = String(secuencia).padStart(3, '0');
 
     return `COT ${anio}-${nnn}-${sufijo}`;
   }
@@ -302,12 +313,12 @@ class CotizacionService {
       detalles, moneda, tipo_cambio, aplica_igv
     );
 
-    const nro_cotizacion = await this.generarCorrelativo(marca);
     const fecha = new Date().toISOString().split('T')[0];
 
     const conn = await db.getConnection();
     await conn.beginTransaction();
     try {
+      const nro_cotizacion = await this.generarCorrelativo(marca, conn);
       const [res] = await conn.query(
         `INSERT INTO Cotizaciones
            (nro_cotizacion, marca, fecha, cliente, atencion, telefono, correo, proyecto, ref,

@@ -896,12 +896,19 @@ class CobranzasService {
     const lista = (movs as any[]).map(m => ({ ...m, monto: Number(m.monto) }));
     let saldo = saldo_inicial;
     let ingresos = 0, egresos = 0, pendientes = 0, comisiones = 0;
+    // Heurística: movimientos importados de EECC con tipo_movimiento_banco de
+    // comisión (ITF / N/D / COM. / PORTE) cuentan como comisión aunque ref_tipo sea NULL.
+    const esComisionImportada = (m: any) => {
+      if (!m || m.fuente !== 'IMPORT_EECC') return false;
+      const t = String(m.tipo_movimiento_banco || '').toUpperCase();
+      return t.includes('ITF') || t.includes('N/D') || t.includes('COM.') || t.includes('PORTE');
+    };
     for (const m of lista) {
       if (m.tipo === 'ABONO') { saldo += m.monto; ingresos += m.monto; }
       else                    { saldo -= m.monto; egresos  += m.monto; }
       m.saldo_calculado = +saldo.toFixed(2);
       if (m.estado_conciliacion === 'POR_CONCILIAR') pendientes++;
-      if (m.ref_tipo === 'GASTO_BANCARIO') comisiones += m.monto;
+      if (m.ref_tipo === 'GASTO_BANCARIO' || esComisionImportada(m)) comisiones += m.monto;
     }
     const saldo_final = saldo;
 
@@ -1078,7 +1085,14 @@ class CobranzasService {
       // Extraer tipo de movimiento
       const tipoMatch = movDesc.match(/^(ITF|N\/D[^\s]*|ABONO\s*TRANSFERENCIA|CARGO\s*TRANSFERENCIA|TRAN\s*TIL|PAGO\s*DE\s*SERVICIOS|TRANSFERENCIA|DEPOSITO|RETIRO)/i);
       const tipoMov = tipoMatch ? tipoMatch[1].toUpperCase().replace(/\s+/g, ' ') : movDesc.split(' ')[0].toUpperCase();
-      const descripcion = tipoMatch ? movDesc.slice(tipoMatch[0].length).trim() : movDesc;
+      let descripcion = tipoMatch ? movDesc.slice(tipoMatch[0].length).trim() : movDesc;
+
+      // Scrub TODAS las ocurrencias de nroOp en la descripción (el PDF a veces
+      // lo repite varias veces en el cuerpo del segmento).
+      if (nroOp !== '-') {
+        const reNroOp = new RegExp(`\\b${nroOp.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'g');
+        descripcion = descripcion.replace(reNroOp, '').replace(/\s+/g, ' ').trim();
+      }
 
       const monto = parseMonto(impStr);
       items.push({
@@ -1086,7 +1100,7 @@ class CobranzasService {
         fecha_proc: parseFecha(fp.fProc),
         nro_operacion: nroOp === '-' ? null : nroOp,
         tipo_mov: tipoMov,
-        descripcion: descripcion.replace(/\s+/g, ' ').trim(),
+        descripcion,
         canal,
         monto: Math.abs(monto),
         tipo: monto >= 0 ? 'ABONO' as const : 'CARGO' as const,
