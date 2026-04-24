@@ -36,6 +36,7 @@ import { FacturacionCron } from './app/modules/facturacion/FacturacionCron';
 import ImportadorService, { EntidadImportable } from './app/modules/importador/ImportadorService';
 import OrdenCompraService from './app/modules/compras/OrdenCompraService';
 import { OrdenCompraPDFService } from './app/modules/compras/OrdenCompraPDFService';
+import ROCService from './app/modules/compras/ROCService';
 import { auditLog } from './app/middlewares/auditLog';
 import { periodoGuard } from './app/middlewares/periodoGuard';
 
@@ -907,7 +908,35 @@ ocRouter.get('/', async (req: Request, res: Response) => {
     id_proveedor:  req.query.id_proveedor ? Number(req.query.id_proveedor) : undefined,
     empresa:       req.query.empresa as any,
     limit:         req.query.limit ? Number(req.query.limit) : undefined,
+    tipo_oc:       req.query.tipo_oc as any,
+    centro_costo:  req.query.centro_costo as string | undefined,
+    id_servicio:   req.query.id_servicio ? Number(req.query.id_servicio) : undefined,
   }));
+});
+
+// ROC — Reporte de Órdenes de Compra semanal (Excel).
+// DEBE ir ANTES de /:id para que no lo capture validateIdParam con "roc" como id.
+ocRouter.get('/roc', async (req: Request, res: Response) => {
+  const centro_costo = String(req.query.centro_costo || 'OFICINA CENTRAL');
+  const anio        = Number(req.query.anio) || new Date().getFullYear();
+  const semana      = req.query.semana ? Number(req.query.semana) : undefined;
+  const empresa     = (req.query.empresa as 'ME' | 'PT' | undefined) || undefined;
+
+  const buffer = await ROCService.generar({
+    centro_costo,
+    anio,
+    semana_corte: semana,
+    empresa,
+  });
+
+  const semanaTxt = String(semana || '').padStart(2, '0');
+  const filename = `ROC - SEMANA ${semanaTxt} - ${centro_costo}.xlsx`.replace(/[\\\/:"*?<>|]/g, ' ');
+  res.setHeader(
+    'Content-Type',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+  );
+  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+  res.send(buffer);
 });
 
 ocRouter.get('/:id', validateIdParam, async (req: Request, res: Response) => {

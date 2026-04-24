@@ -266,10 +266,10 @@ class OrdenCompraService {
     const conn = await db.getConnection();
     await conn.beginTransaction();
     try {
-      // Insert en Compras
+      // Insert en Compras (columna real es nro_comprobante)
       const [comp]: any = await conn.query(
         `INSERT INTO Compras
-          (nro_factura_proveedor, id_proveedor, fecha, moneda, tipo_cambio,
+          (nro_comprobante, id_proveedor, fecha, moneda, tipo_cambio,
            monto_base, igv_base, total_base, centro_costo, estado)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'CONFIRMADO')`,
         [nro_factura_proveedor, oc.id_proveedor, fecha_factura, oc.moneda, oc.tipo_cambio,
@@ -308,6 +308,9 @@ class OrdenCompraService {
   async listar(filtros: {
     estado?: EstadoOC; desde?: string; hasta?: string;
     id_proveedor?: number; empresa?: 'ME' | 'PT'; limit?: number;
+    tipo_oc?: 'GENERAL' | 'SERVICIO' | 'ALMACEN';
+    centro_costo?: string;
+    id_servicio?: number;
   } = {}) {
     const where: string[] = [];
     const vals: any[] = [];
@@ -316,6 +319,9 @@ class OrdenCompraService {
     if (filtros.hasta)        { where.push('oc.fecha_emision <= ?'); vals.push(filtros.hasta); }
     if (filtros.id_proveedor) { where.push('oc.id_proveedor = ?'); vals.push(filtros.id_proveedor); }
     if (filtros.empresa)      { where.push('oc.empresa = ?'); vals.push(filtros.empresa); }
+    if (filtros.tipo_oc)      { where.push('oc.tipo_oc = ?'); vals.push(filtros.tipo_oc); }
+    if (filtros.centro_costo) { where.push('oc.centro_costo = ?'); vals.push(filtros.centro_costo); }
+    if (filtros.id_servicio)  { where.push('oc.id_servicio = ?'); vals.push(filtros.id_servicio); }
     const sql = `
       SELECT oc.*, p.razon_social AS proveedor_nombre, s.codigo AS servicio_codigo
       FROM OrdenesCompra oc
