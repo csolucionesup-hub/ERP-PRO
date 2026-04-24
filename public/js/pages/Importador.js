@@ -17,26 +17,44 @@ const ENTIDADES = [
   {
     id: 'proveedores',
     label: '👤 Proveedores',
-    desc: 'Maestro de proveedores (clientes internos y externos). Cárgalos primero — las compras históricas los referencian.',
+    desc: 'Maestro de proveedores. Cárgalos primero — las compras históricas los referencian por id_proveedor.',
+    soportaMoneda: false,
     columnas: ['nombre', 'ruc', 'tipo (JURIDICO/NATURAL)', 'dni', 'telefono', 'email', 'direccion'],
   },
   {
     id: 'cotizaciones',
     label: '📋 Cotizaciones',
-    desc: 'Cotizaciones históricas directamente en estado APROBADA/TERMINADA. Numeración libre (ej. "COT 2022-001-MN").',
+    desc: 'Ventas históricas directamente en estado APROBADA/TERMINADA. Numeración libre (ej. "COT 2022-001-MN").',
+    soportaMoneda: true,
     columnas: ['nro_cotizacion', 'fecha', 'marca', 'moneda', 'tipo_cambio', 'cliente', 'cliente_ruc', 'proyecto', 'descripcion_item', 'subtotal', 'igv', 'total', 'estado'],
   },
   {
     id: 'gastos',
     label: '💸 Gastos',
-    desc: 'Gastos históricos de Logística (General u Oficina). Centro de costo y tipo_gasto_logistica clasifican.',
+    desc: 'Gastos históricos (General / Servicio). Moneda + tipo_cambio se convierten a PEN para totales.',
+    soportaMoneda: true,
     columnas: ['concepto', 'proveedor_nombre', 'fecha', 'moneda', 'tipo_cambio', 'monto_base', 'igv_base', 'total_base', 'centro_costo', 'tipo_gasto_logistica', 'id_servicio'],
   },
   {
     id: 'compras',
     label: '📦 Compras',
     desc: 'Compras históricas. El id_proveedor se saca del maestro — carga Proveedores primero.',
+    soportaMoneda: true,
     columnas: ['nro_factura_proveedor', 'id_proveedor', 'fecha', 'moneda', 'tipo_cambio', 'monto_base', 'igv_base', 'total_base', 'centro_costo'],
+  },
+  {
+    id: 'prestamos_tomados',
+    label: '🔴 Préstamos Tomados',
+    desc: 'Deudas históricas (banco, socios, familia). Si el préstamo ya está pagado, pon monto_pagado = monto_total.',
+    soportaMoneda: true,
+    columnas: ['nro_oc', 'acreedor', 'descripcion', 'comentario', 'fecha_emision', 'fecha_vencimiento', 'moneda', 'tipo_cambio', 'monto_capital', 'tasa_interes', 'monto_interes', 'monto_pagado'],
+  },
+  {
+    id: 'prestamos_otorgados',
+    label: '🟢 Préstamos Otorgados',
+    desc: 'Lo que prestaste a otros (trabajadores, clientes, socios). monto_pagado = cuánto ya te devolvieron.',
+    soportaMoneda: true,
+    columnas: ['nro_oc', 'deudor', 'descripcion', 'comentario', 'fecha_emision', 'fecha_vencimiento', 'moneda', 'tipo_cambio', 'monto_capital', 'tasa_interes', 'monto_interes', 'monto_pagado'],
   },
 ];
 
@@ -69,7 +87,14 @@ export const Importador = async () => {
     <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:16px;margin-top:20px">
       ${ENTIDADES.map(e => `
         <div class="card" data-entidad="${e.id}">
-          <h3 style="margin:0 0 8px;font-size:15px">${e.label}</h3>
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px">
+            <h3 style="margin:0;font-size:15px">${e.label}</h3>
+            ${e.soportaMoneda ? `
+              <span title="Acepta PEN y USD con tipo_cambio por fila"
+                style="background:#dbeafe;color:#1e40af;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;white-space:nowrap">
+                💱 PEN / USD
+              </span>` : ''}
+          </div>
           <p style="font-size:12px;color:var(--text-secondary);margin-bottom:14px">${e.desc}</p>
           <details style="margin-bottom:12px">
             <summary style="cursor:pointer;font-size:11px;color:var(--primary-color);font-weight:600">Ver columnas esperadas</summary>

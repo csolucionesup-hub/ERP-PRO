@@ -19,7 +19,7 @@
 
 import { db } from '../../../database/connection';
 
-export type EntidadImportable = 'proveedores' | 'cotizaciones' | 'gastos' | 'compras';
+export type EntidadImportable = 'proveedores' | 'cotizaciones' | 'gastos' | 'compras' | 'prestamos_tomados' | 'prestamos_otorgados';
 
 export interface ParseResult {
   entidad: EntidadImportable;
@@ -79,10 +79,12 @@ class ImportadorService {
     const [headers, ...filas] = lineas;
 
     const validadores: Record<EntidadImportable, (h: string[], f: string[], i: number) => { ok: boolean; data?: any; errores?: any[] }> = {
-      proveedores:  validarProveedor,
-      cotizaciones: validarCotizacion,
-      gastos:       validarGasto,
-      compras:      validarCompra,
+      proveedores:        validarProveedor,
+      cotizaciones:       validarCotizacion,
+      gastos:             validarGasto,
+      compras:            validarCompra,
+      prestamos_tomados:  (h, f, i) => validarPrestamo(h, f, i, 'tomado'),
+      prestamos_otorgados:(h, f, i) => validarPrestamo(h, f, i, 'otorgado'),
     };
     const validador = validadores[entidad];
     if (!validador) throw new Error(`Entidad no soportada: ${entidad}`);
@@ -159,6 +161,44 @@ class ImportadorService {
             [d.nro_factura_proveedor || null, d.id_proveedor || null, d.fecha, d.moneda || 'PEN', d.tipo_cambio || 1,
              d.monto_base, d.igv_base || 0, d.total_base, d.centro_costo || 'OFICINA CENTRAL']
           );
+        } else if (entidad === 'prestamos_tomados') {
+          const capital = Number(d.monto_capital) || 0;
+          const interes = Number(d.monto_interes) || 0;
+          const total = capital + interes;
+          const pagado = Number(d.monto_pagado) || 0;
+          const saldo = Math.max(total - pagado, 0);
+          const estado = saldo <= 0.1 ? 'PAGADO' : (pagado > 0 ? 'PARCIAL' : 'PENDIENTE');
+          await conn.query(
+            `INSERT INTO PrestamosTomados
+              (nro_oc, acreedor, descripcion, comentario, fecha_emision, fecha_vencimiento,
+               moneda, tipo_cambio, monto_capital, tasa_interes, monto_interes,
+               monto_total, monto_pagado, saldo, estado)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [d.nro_oc || null, d.acreedor, d.descripcion || '', d.comentario || '',
+             d.fecha_emision, d.fecha_vencimiento || null,
+             d.moneda || 'PEN', d.tipo_cambio || 1,
+             capital, Number(d.tasa_interes) || 0, interes,
+             total, pagado, saldo, estado]
+          );
+        } else if (entidad === 'prestamos_otorgados') {
+          const capital = Number(d.monto_capital) || 0;
+          const interes = Number(d.monto_interes) || 0;
+          const total = capital + interes;
+          const cobrado = Number(d.monto_pagado) || 0;
+          const saldo = Math.max(total - cobrado, 0);
+          const estado = saldo <= 0.1 ? 'COBRADO' : (cobrado > 0 ? 'PARCIAL' : 'PENDIENTE');
+          await conn.query(
+            `INSERT INTO PrestamosOtorgados
+              (nro_oc, deudor, descripcion, comentario, fecha_emision, fecha_vencimiento,
+               moneda, tipo_cambio, monto_capital, tasa_interes, monto_interes,
+               monto_total, monto_pagado, saldo, estado)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [d.nro_oc || null, d.deudor, d.descripcion || '', d.comentario || '',
+             d.fecha_emision, d.fecha_vencimiento || null,
+             d.moneda || 'PEN', d.tipo_cambio || 1,
+             capital, Number(d.tasa_interes) || 0, interes,
+             total, cobrado, saldo, estado]
+          );
         }
         insertados++;
       }
@@ -189,6 +229,14 @@ class ImportadorService {
       compras: 'nro_factura_proveedor,id_proveedor,fecha,moneda,tipo_cambio,monto_base,igv_base,total_base,centro_costo\n' +
                'F001-00123,1,2022-04-05,PEN,1,8500.00,1530.00,10030.00,ALMACEN METAL\n' +
                'B001-00045,2,2022-04-10,PEN,1,450.00,81.00,531.00,OFICINA CENTRAL\n',
+      prestamos_tomados:
+              'nro_oc,acreedor,descripcion,comentario,fecha_emision,fecha_vencimiento,moneda,tipo_cambio,monto_capital,tasa_interes,monto_interes,monto_pagado\n' +
+              'PREST-BCP-001,BCP - Capital trabajo,Pr\u00e9stamo Q1 2022,Cronograma 12 cuotas,2022-01-15,2023-01-15,PEN,1,30000.00,0,3600.00,33600.00\n' +
+              'PREST-SOCIO-001,Carlos M - socio,Capital en USD,Devoluci\u00f3n flexible,2022-06-10,2023-06-10,USD,3.8500,5000.00,0,0,2000.00\n',
+      prestamos_otorgados:
+              'nro_oc,deudor,descripcion,comentario,fecha_emision,fecha_vencimiento,moneda,tipo_cambio,monto_capital,tasa_interes,monto_interes,monto_pagado\n' +
+              'ADEL-001,Juan P\u00e9rez - soldador,Adelanto sueldo,Se descuenta en recibos,2022-05-01,2022-05-31,PEN,1,800.00,0,0,800.00\n' +
+              'PREST-SAM-001,SAMAYCA - adelanto material,50kg acero urgencia,Regulariza en factura,2023-08-15,2023-09-15,PEN,1,3200.00,0,0,3200.00\n',
     };
     return templates[entidad] || '';
   }
@@ -270,6 +318,38 @@ function validarGasto(headers: string[], fila: string[], nroFila: number) {
       centro_costo: fila[findIndex(headers, 'centro_costo')] || 'OFICINA CENTRAL',
       tipo_gasto_logistica: fila[findIndex(headers, 'tipo_gasto_logistica')] || 'GENERAL',
       id_servicio: fila[findIndex(headers, 'id_servicio')] ? parseInt(fila[findIndex(headers, 'id_servicio')], 10) : null,
+    },
+  };
+}
+
+function validarPrestamo(headers: string[], fila: string[], nroFila: number, tipo: 'tomado' | 'otorgado') {
+  const errores: any[] = [];
+  const contraparteCampo = tipo === 'tomado' ? 'acreedor' : 'deudor';
+  const contraparte = fila[findIndex(headers, contraparteCampo)];
+  const fechaEmision = fila[findIndex(headers, 'fecha_emision')];
+  const capital = parseFloat(fila[findIndex(headers, 'monto_capital')] || '0');
+  const moneda = (fila[findIndex(headers, 'moneda')] || 'PEN').toUpperCase();
+
+  if (!contraparte) errores.push({ fila: nroFila, campo: contraparteCampo, mensaje: 'requerido' });
+  if (!fechaEmision || !/^\d{4}-\d{2}-\d{2}$/.test(fechaEmision)) errores.push({ fila: nroFila, campo: 'fecha_emision', mensaje: 'formato YYYY-MM-DD requerido' });
+  if (isNaN(capital) || capital <= 0) errores.push({ fila: nroFila, campo: 'monto_capital', mensaje: 'capital > 0 requerido' });
+  if (!['PEN', 'USD'].includes(moneda)) errores.push({ fila: nroFila, campo: 'moneda', mensaje: 'debe ser PEN o USD' });
+
+  return errores.length ? { ok: false, errores } : {
+    ok: true,
+    data: {
+      nro_oc: fila[findIndex(headers, 'nro_oc')] || null,
+      [contraparteCampo]: contraparte,
+      descripcion: fila[findIndex(headers, 'descripcion')] || null,
+      comentario: fila[findIndex(headers, 'comentario')] || null,
+      fecha_emision: fechaEmision,
+      fecha_vencimiento: fila[findIndex(headers, 'fecha_vencimiento')] || null,
+      moneda,
+      tipo_cambio: parseFloat(fila[findIndex(headers, 'tipo_cambio')] || '1') || 1,
+      monto_capital: capital,
+      tasa_interes: parseFloat(fila[findIndex(headers, 'tasa_interes')] || '0') || 0,
+      monto_interes: parseFloat(fila[findIndex(headers, 'monto_interes')] || '0') || 0,
+      monto_pagado: parseFloat(fila[findIndex(headers, 'monto_pagado')] || '0') || 0,
     },
   };
 }
