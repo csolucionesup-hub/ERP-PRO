@@ -34,6 +34,7 @@ import FacturaService from './app/modules/facturacion/FacturaService';
 import PLEExporter from './app/modules/facturacion/PLEExporter';
 import { FacturacionCron } from './app/modules/facturacion/FacturacionCron';
 import ImportadorService, { EntidadImportable } from './app/modules/importador/ImportadorService';
+import OrdenCompraService from './app/modules/compras/OrdenCompraService';
 import { auditLog } from './app/middlewares/auditLog';
 import { periodoGuard } from './app/middlewares/periodoGuard';
 
@@ -892,6 +893,58 @@ importadorRouter.post('/commit', auditLog('Importador', 'CREATE'), async (req: a
 });
 
 app.use('/api/importador', importadorRouter);
+
+// ===== ÓRDENES DE COMPRA — flujo formal proveedor =====
+const ocRouter = express.Router();
+ocRouter.use(requireAuth);
+
+ocRouter.get('/', async (req: Request, res: Response) => {
+  res.json(await OrdenCompraService.listar({
+    estado:        req.query.estado as any,
+    desde:         req.query.desde as string | undefined,
+    hasta:         req.query.hasta as string | undefined,
+    id_proveedor:  req.query.id_proveedor ? Number(req.query.id_proveedor) : undefined,
+    empresa:       req.query.empresa as any,
+    limit:         req.query.limit ? Number(req.query.limit) : undefined,
+  }));
+});
+
+ocRouter.get('/:id', validateIdParam, async (req: Request, res: Response) => {
+  res.json(await OrdenCompraService.obtener(Number(req.params.id)));
+});
+
+ocRouter.post('/', auditLog('OrdenCompra', 'CREATE'), async (req: any, res: Response) => {
+  req.body.id_usuario = req.user!.id_usuario;
+  res.status(201).json(await OrdenCompraService.crear(req.body));
+});
+
+ocRouter.post('/:id/aprobar', validateIdParam, auditLog('OrdenCompra', 'UPDATE'), async (req: any, res: Response) => {
+  res.json(await OrdenCompraService.aprobar(
+    Number(req.params.id), req.user!.id_usuario, req.user!.rol, req.body?.comentario
+  ));
+});
+
+ocRouter.post('/:id/enviar', validateIdParam, auditLog('OrdenCompra', 'UPDATE'), async (req: Request, res: Response) => {
+  res.json(await OrdenCompraService.marcarEnviada(Number(req.params.id)));
+});
+
+ocRouter.post('/:id/recibir', validateIdParam, auditLog('OrdenCompra', 'UPDATE'), async (req: Request, res: Response) => {
+  res.json(await OrdenCompraService.recibir(Number(req.params.id), req.body?.lineas || []));
+});
+
+ocRouter.post('/:id/facturar', validateIdParam, auditLog('OrdenCompra', 'UPDATE'), async (req: Request, res: Response) => {
+  const { nro_factura_proveedor, fecha_factura } = req.body;
+  if (!nro_factura_proveedor || !fecha_factura) {
+    return res.status(400).json({ error: 'nro_factura_proveedor y fecha_factura requeridos' });
+  }
+  res.json(await OrdenCompraService.facturar(Number(req.params.id), nro_factura_proveedor, fecha_factura));
+});
+
+ocRouter.post('/:id/anular', validateIdParam, auditLog('OrdenCompra', 'ANULAR'), async (req: Request, res: Response) => {
+  res.json(await OrdenCompraService.anular(Number(req.params.id), req.body?.motivo || 'Sin motivo'));
+});
+
+app.use('/api/ordenes-compra', ocRouter);
 
 // Anidamos el API controlada bajo la rama estándar /api
 app.use('/api', apiRouter);

@@ -251,6 +251,20 @@ export const api = {
     get:              (id)    => get(`/facturas/${id}`),
     consultarEstado:  (id)    => post(`/facturas/${id}/consultar-estado`),
   },
+  ordenesCompra: {
+    list:       (filtros = {}) => {
+      const p = new URLSearchParams();
+      Object.entries(filtros).forEach(([k, v]) => { if (v != null && v !== '') p.append(k, v); });
+      return get(`/ordenes-compra${p.toString() ? '?' + p : ''}`);
+    },
+    get:        (id)         => get(`/ordenes-compra/${id}`),
+    create:     (data)       => post('/ordenes-compra', data),
+    aprobar:    (id, data)   => post(`/ordenes-compra/${id}/aprobar`, data || {}),
+    enviar:     (id)         => post(`/ordenes-compra/${id}/enviar`, {}),
+    recibir:    (id, lineas) => post(`/ordenes-compra/${id}/recibir`, { lineas }),
+    facturar:   (id, data)   => post(`/ordenes-compra/${id}/facturar`, data),
+    anular:     (id, motivo) => post(`/ordenes-compra/${id}/anular`, { motivo }),
+  },
   ple: {
     ventasPreview:  (anio, mes) => get(`/ple/ventas/preview?anio=${anio}&mes=${mes}`),
     comprasPreview: (anio, mes) => get(`/ple/compras/preview?anio=${anio}&mes=${mes}`),
