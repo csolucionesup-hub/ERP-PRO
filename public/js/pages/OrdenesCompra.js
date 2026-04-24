@@ -51,9 +51,14 @@ export const OrdenesCompra = async () => {
         <h1>📋 Órdenes de Compra</h1>
         <span style="color:var(--text-secondary)">Flujo formal con proveedores: Borrador → Aprobada → Enviada → Recibida → Facturada → Pagada</span>
       </div>
-      <button onclick="OC.nuevaOC()" style="padding:10px 22px;background:var(--primary-color);color:white;border:none;border-radius:8px;font-weight:600;cursor:pointer">
-        ➕ Nueva OC
-      </button>
+      <div style="display:flex;gap:10px">
+        <button onclick="OC.reporteROC()" style="padding:10px 18px;background:#065f46;color:white;border:none;border-radius:8px;font-weight:600;cursor:pointer" title="Reporte Semanal de OC por centro de costo (Excel)">
+          📊 ROC Semanal
+        </button>
+        <button onclick="OC.nuevaOC()" style="padding:10px 22px;background:var(--primary-color);color:white;border:none;border-radius:8px;font-weight:600;cursor:pointer">
+          ➕ Nueva OC
+        </button>
+      </div>
     </header>
 
     <div id="oc-tabbar" style="margin-top:20px"></div>
@@ -84,7 +89,113 @@ function init() {
     },
   });
 
-  window.OC = { nuevaOC, verOC, aprobar, enviar, recibir, facturar, anular, descargarPDF };
+  window.OC = { nuevaOC, verOC, aprobar, enviar, recibir, facturar, anular, descargarPDF, reporteROC };
+}
+
+// ──────── Reporte Semanal ROC (Excel) ────────
+function reporteROC() {
+  const centros = [
+    'OFICINA CENTRAL',
+    'ALMACEN CENTRAL',
+    'PERFOTOOLS',
+    'FABRICACION DE AUGER - PSV',
+    'CORE ROLLER DE 800MM',
+    'TECHO PARABOLICO',
+  ];
+  // Detectar centros únicos ya usados en las OCs (por si hay obras nuevas)
+  const centrosDesdeData = [...new Set(_ocs.map(oc => (oc.centro_costo || '').toUpperCase().trim()).filter(Boolean))];
+  centrosDesdeData.forEach(c => { if (!centros.includes(c)) centros.push(c); });
+
+  const anioActual = new Date().getFullYear();
+  const semanaActual = semanaISOHoy();
+
+  const modal = document.getElementById('oc-modal');
+  modal.innerHTML = `
+    <div id="ov-roc" style="position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9999;display:flex;align-items:center;justify-content:center">
+      <div style="background:white;padding:26px;border-radius:12px;width:460px;max-width:90vw">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px">
+          <h2 style="margin:0">📊 Generar ROC Semanal</h2>
+          <button onclick="document.getElementById('ov-roc').remove()" style="background:none;border:none;font-size:22px;cursor:pointer">✕</button>
+        </div>
+        <p style="color:var(--text-secondary);font-size:13px;margin:0 0 18px">
+          Descarga el Reporte de Órdenes de Compra en Excel, agrupado por semanas y con totales en S/ y $, para el centro de costo seleccionado.
+        </p>
+
+        <div style="display:flex;flex-direction:column;gap:14px">
+          <label style="display:flex;flex-direction:column;gap:6px">
+            <span style="font-weight:600;font-size:13px">Centro de costo</span>
+            <select id="roc-centro" style="padding:10px;border:1px solid #ddd;border-radius:6px;font-size:14px">
+              ${centros.map(c => `<option value="${c}">${c}</option>`).join('')}
+            </select>
+          </label>
+
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+            <label style="display:flex;flex-direction:column;gap:6px">
+              <span style="font-weight:600;font-size:13px">Año</span>
+              <input id="roc-anio" type="number" value="${anioActual}" min="2020" max="2035"
+                     style="padding:10px;border:1px solid #ddd;border-radius:6px;font-size:14px">
+            </label>
+            <label style="display:flex;flex-direction:column;gap:6px">
+              <span style="font-weight:600;font-size:13px">Semana corte (ISO)</span>
+              <input id="roc-semana" type="number" value="${semanaActual}" min="1" max="53"
+                     style="padding:10px;border:1px solid #ddd;border-radius:6px;font-size:14px">
+            </label>
+          </div>
+
+          <label style="display:flex;flex-direction:column;gap:6px">
+            <span style="font-weight:600;font-size:13px">Marca</span>
+            <select id="roc-empresa" style="padding:10px;border:1px solid #ddd;border-radius:6px;font-size:14px">
+              <option value="">Ambas (ME + PT)</option>
+              <option value="ME" selected>Metal Engineers (ME)</option>
+              <option value="PT">Perfotools (PT)</option>
+            </select>
+          </label>
+        </div>
+
+        <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:22px">
+          <button onclick="document.getElementById('ov-roc').remove()"
+                  style="padding:10px 18px;background:#e5e7eb;color:#374151;border:none;border-radius:6px;font-weight:600;cursor:pointer">
+            Cancelar
+          </button>
+          <button id="roc-btn-descargar" onclick="OC._descargarROC()"
+                  style="padding:10px 20px;background:#065f46;color:white;border:none;border-radius:6px;font-weight:600;cursor:pointer">
+            📥 Descargar Excel
+          </button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  window.OC._descargarROC = async () => {
+    const centro_costo = document.getElementById('roc-centro').value;
+    const anio         = Number(document.getElementById('roc-anio').value);
+    const semana       = Number(document.getElementById('roc-semana').value);
+    const empresa      = document.getElementById('roc-empresa').value;
+    const btn          = document.getElementById('roc-btn-descargar');
+    btn.disabled = true;
+    const textoOriginal = btn.textContent;
+    btn.textContent = '⏳ Generando...';
+    try {
+      await api.ordenesCompra.descargarROC({ centro_costo, anio, semana, empresa });
+      showSuccess('ROC generado ✓');
+      document.getElementById('ov-roc').remove();
+    } catch (e) {
+      console.error(e);
+      showError('No se pudo generar el ROC: ' + (e.message || e));
+      btn.disabled = false;
+      btn.textContent = textoOriginal;
+    }
+  };
+}
+
+// ISO week actual, como en el backend
+function semanaISOHoy() {
+  const d = new Date();
+  const utc = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  const diaSem = utc.getUTCDay() || 7;
+  utc.setUTCDate(utc.getUTCDate() + 4 - diaSem);
+  const anioIni = new Date(Date.UTC(utc.getUTCFullYear(), 0, 1));
+  return Math.ceil((((utc.getTime() - anioIni.getTime()) / 86400000) + 1) / 7);
 }
 
 // ──────── Tab Kanban ────────
