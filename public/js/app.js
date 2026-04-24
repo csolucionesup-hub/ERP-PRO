@@ -13,6 +13,7 @@ import { Logistica }     from './pages/Logistica.js';
 import { Administracion } from './pages/Administracion.js';
 import { Configuracion }  from './pages/Configuracion.js';
 import { Contabilidad }   from './pages/Contabilidad.js';
+import { Importador }     from './pages/Importador.js';
 
 // ── Módulos en orden de preferencia para redirección inicial ──
 const MODULE_ORDER = ['GERENCIA', 'COMERCIAL', 'FINANZAS', 'LOGISTICA', 'ALMACEN', 'ADMINISTRACION'];
@@ -38,6 +39,7 @@ const PAGE_MODULE = {
   usuarios:       null, // solo GERENTE, controlado aparte
   configuracion:  null, // solo GERENTE
   contabilidad:   null, // GERENTE o CONTADOR — chequeo aparte
+  importador:     null, // solo GERENTE
 };
 
 const PAGES = {
@@ -55,6 +57,7 @@ const PAGES = {
   prestamos:      Prestamos,
   configuracion:  Configuracion,
   contabilidad:   Contabilidad,
+  importador:     Importador,
 };
 
 // ── Auth helpers ──────────────────────────────────────────────
@@ -83,7 +86,7 @@ function getPaginaInicio(user) {
 
 function tieneAcceso(user, page) {
   if (user.rol === 'GERENTE') return true;
-  if (page === 'usuarios' || page === 'configuracion') return false;
+  if (page === 'usuarios' || page === 'configuracion' || page === 'importador') return false;
   if (page === 'contabilidad') return user.rol === 'CONTADOR';
   const moduloRequerido = PAGE_MODULE[page];
   if (!moduloRequerido) return true; // páginas sin módulo requerido

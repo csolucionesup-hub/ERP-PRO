@@ -33,6 +33,7 @@ import NubefactService from './app/modules/facturacion/NubefactService';
 import FacturaService from './app/modules/facturacion/FacturaService';
 import PLEExporter from './app/modules/facturacion/PLEExporter';
 import { FacturacionCron } from './app/modules/facturacion/FacturacionCron';
+import ImportadorService, { EntidadImportable } from './app/modules/importador/ImportadorService';
 import { auditLog } from './app/middlewares/auditLog';
 import { periodoGuard } from './app/middlewares/periodoGuard';
 
@@ -849,6 +850,48 @@ pleRouter.get('/compras/preview', async (req: Request, res: Response) => {
 });
 
 app.use('/api/ple', pleRouter);
+
+// ===== IMPORTADOR — bulk import CSV para data histórica =====
+const importadorRouter = express.Router();
+importadorRouter.use(requireAuth);
+
+/**
+ * Descarga template CSV de una entidad.
+ */
+importadorRouter.get('/template/:entidad', (req: Request, res: Response) => {
+  const entidad = req.params.entidad as EntidadImportable;
+  const csv = ImportadorService.getTemplate(entidad);
+  if (!csv) return res.status(400).json({ error: 'Entidad no soportada' });
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="template_${entidad}.csv"`);
+  res.send(csv);
+});
+
+/**
+ * Sube un CSV y devuelve preview + errores sin persistir.
+ * Body: { entidad, csv_texto }
+ */
+importadorRouter.post('/preview', async (req: any, res: Response) => {
+  if (req.user!.rol !== 'GERENTE') return res.status(403).json({ error: 'Solo GERENTE' });
+  const { entidad, csv_texto } = req.body;
+  if (!entidad || !csv_texto) return res.status(400).json({ error: 'entidad y csv_texto requeridos' });
+  const result = await ImportadorService.parsear(entidad, csv_texto);
+  res.json(result);
+});
+
+/**
+ * Confirma e inserta los datos validados.
+ * Body: { entidad, datos }
+ */
+importadorRouter.post('/commit', auditLog('Importador', 'CREATE'), async (req: any, res: Response) => {
+  if (req.user!.rol !== 'GERENTE') return res.status(403).json({ error: 'Solo GERENTE' });
+  const { entidad, datos } = req.body;
+  if (!entidad || !Array.isArray(datos)) return res.status(400).json({ error: 'entidad y datos[] requeridos' });
+  const result = await ImportadorService.commit(entidad, datos);
+  res.json(result);
+});
+
+app.use('/api/importador', importadorRouter);
 
 // Anidamos el API controlada bajo la rama estándar /api
 app.use('/api', apiRouter);

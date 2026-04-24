@@ -38,6 +38,10 @@ export function renderSidebar(activePage) {
   ` : '';
 
   const usuariosItem = esGerente ? `
+    <div class="nav-item ${activePage === 'importador' ? 'active' : ''}"
+         data-page="importador">
+      📥 Importar Histórico
+    </div>
     <div class="nav-item ${activePage === 'usuarios' ? 'active' : ''}"
          data-page="usuarios">
       Usuarios
