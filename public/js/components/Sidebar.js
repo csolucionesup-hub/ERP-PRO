@@ -2,6 +2,7 @@ const MODULE_NAV = [
   { modulo: 'GERENCIA',       label: 'Dashboard',          page: 'dashboard'    },
   { modulo: 'COMERCIAL',      label: 'Comercial',          page: 'comercial'    },
   { modulo: 'FINANZAS',       label: 'Finanzas y Flujo',   page: 'finanzas'     },
+  { modulo: 'FINANZAS',       label: '💳 Préstamos',        page: 'prestamos'    },
   { modulo: 'LOGISTICA',      label: 'Logística',          page: 'logistica'    },
   { modulo: 'ALMACEN',        label: 'Inventario',         page: 'inventario'   },
   { modulo: 'ADMINISTRACION', label: 'Administración',     page: 'administracion' },
