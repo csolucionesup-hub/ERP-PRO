@@ -1,10 +1,14 @@
 import { api } from '../services/api.js';
+import { TabBar } from '../components/TabBar.js';
+import { kpiGrid } from '../components/KpiCard.js';
+import { lineChart, barChart, donutChart, chartColors, destroyChart } from '../components/charts.js';
 
 export const Dashboard = async () => {
   const erpUser = JSON.parse(localStorage.getItem('erp_user') || '{}');
   const esGerente = erpUser.rol === 'GERENTE';
   try {
-    const [dataMaster, dataOperativa, dataBN, dataIGV, prestamosTotales, prestamosTomados, prestamosOtorgados, tcHoy] = await Promise.all([
+    const [dataMaster, dataOperativa, dataBN, dataIGV, prestamosTotales, prestamosTomados, prestamosOtorgados, tcHoy,
+           hist_cotizaciones, hist_gastos, hist_compras] = await Promise.all([
       api.finances.getDashboard(),
       api.finances.getResumenOperativo(),
       api.tributario.getCuentaBN(),
@@ -12,7 +16,11 @@ export const Dashboard = async () => {
       api.prestamos.getTotales(),
       api.prestamos.getTomados(),
       api.prestamos.getOtorgados(),
-      api.tipoCambio.getHoy('USD').catch(() => ({ valor_venta: 1, es_hoy: false, fecha: '' }))
+      api.tipoCambio.getHoy('USD').catch(() => ({ valor_venta: 1, es_hoy: false, fecha: '' })),
+      // Para gráficas análisis
+      api.cotizaciones.getCotizaciones().catch(() => []),
+      api.finances.getGastos().catch(() => []),
+      api.purchases.getCompras().catch(() => [])
     ]);
 
     const formatCurrency = (val) => new Intl.NumberFormat('es-PE', { style: 'currency', currency: 'PEN' }).format(val);
@@ -245,6 +253,188 @@ export const Dashboard = async () => {
       };
     }, 100);
 
+    // Setup handler para las gráficas (se ejecuta cuando se carga la vista)
+    setTimeout(() => {
+      let _charts = {};
+      // TabBar con 2 tabs
+      TabBar({
+        container: '#dashboard-tabbar',
+        tabs: [
+          { id: 'ejecutivo', label: '🏛️ Vista Ejecutiva' },
+          { id: 'analisis',  label: '📊 Análisis Gráfico' },
+        ],
+        defaultTab: 'ejecutivo',
+        onChange: (id) => {
+          document.getElementById('tab-ejecutivo').style.display = id === 'ejecutivo' ? 'block' : 'none';
+          document.getElementById('tab-analisis').style.display  = id === 'analisis'  ? 'block' : 'none';
+          if (id === 'analisis') renderAnalisisGrafico();
+        },
+      });
+
+      function renderAnalisisGrafico() {
+        const panel = document.getElementById('tab-analisis');
+        if (panel.dataset.rendered === '1') return;
+        panel.dataset.rendered = '1';
+
+        // Construir data agregada mensual (últimos 12 meses)
+        const meses = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+        const now = new Date();
+        const buckets = {};
+        for (let i = 11; i >= 0; i--) {
+          const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+          const k = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+          buckets[k] = { label: `${meses[d.getMonth()]} ${String(d.getFullYear()).slice(2)}`, ventas: 0, gastos: 0, compras: 0 };
+        }
+
+        // Ventas = cotizaciones aprobadas/terminadas
+        (hist_cotizaciones || []).forEach(c => {
+          if (!c.fecha) return;
+          const k = String(c.fecha).slice(0, 7);
+          if (k in buckets && ['APROBADA', 'TERMINADA'].includes(c.estado)) {
+            const tc = c.moneda === 'USD' ? Number(c.tipo_cambio) || 1 : 1;
+            buckets[k].ventas += Number(c.total || 0) * tc;
+          }
+        });
+        // Gastos
+        (hist_gastos || []).forEach(g => {
+          if (!g.fecha) return;
+          const k = String(g.fecha).slice(0, 7);
+          if (k in buckets && g.estado !== 'ANULADO') {
+            buckets[k].gastos += Number(g.total_base || g.monto_base || 0);
+          }
+        });
+        // Compras
+        (hist_compras || []).forEach(c => {
+          if (!c.fecha) return;
+          const k = String(c.fecha).slice(0, 7);
+          if (k in buckets && c.estado !== 'ANULADO') {
+            buckets[k].compras += Number(c.total_base || 0);
+          }
+        });
+
+        const tendencia = Object.values(buckets);
+        const totalVentas   = tendencia.reduce((s, b) => s + b.ventas, 0);
+        const totalEgresos  = tendencia.reduce((s, b) => s + b.gastos + b.compras, 0);
+        const utilidadAcum  = totalVentas - totalEgresos;
+        const mejorMes      = tendencia.slice().sort((a,b) => (b.ventas - b.gastos - b.compras) - (a.ventas - a.gastos - a.compras))[0];
+
+        // Distribución gastos por tipo (gastos + compras)
+        const distGastos = { general: 0, servicio: 0, almacen: 0 };
+        (hist_gastos || []).forEach(g => {
+          if (g.estado === 'ANULADO') return;
+          const monto = Number(g.total_base || g.monto_base || 0);
+          const tipo = (g.tipo_gasto_logistica || '').toUpperCase();
+          if (tipo === 'SERVICIO' || g.id_servicio) distGastos.servicio += monto;
+          else distGastos.general += monto;
+        });
+        (hist_compras || []).forEach(c => {
+          if (c.estado === 'ANULADO') return;
+          const monto = Number(c.total_base || 0);
+          if ((c.centro_costo || '').toUpperCase().includes('ALMAC')) distGastos.almacen += monto;
+          else distGastos.general += monto;
+        });
+
+        // Top 5 clientes (por cotizaciones aprobadas)
+        const topCli = {};
+        (hist_cotizaciones || []).forEach(c => {
+          if (!['APROBADA', 'TERMINADA'].includes(c.estado)) return;
+          const k = (c.cliente || 'Sin cliente').trim();
+          const tc = c.moneda === 'USD' ? Number(c.tipo_cambio) || 1 : 1;
+          topCli[k] = (topCli[k] || 0) + Number(c.total || 0) * tc;
+        });
+        const topClientes = Object.entries(topCli)
+          .map(([label, valor]) => ({ label: label.slice(0, 22), valor }))
+          .sort((a, b) => b.valor - a.valor).slice(0, 5);
+
+        panel.innerHTML = `
+          <div style="margin-top:16px">
+            ${kpiGrid([
+              { label: 'Ventas 12 meses',   value: formatCurrency(totalVentas),  icon: '📈', changeType: 'positive' },
+              { label: 'Egresos 12 meses',  value: formatCurrency(totalEgresos), icon: '📉', changeType: 'neutral' },
+              { label: 'Utilidad Acumulada', value: formatCurrency(utilidadAcum), icon: '💎', changeType: utilidadAcum >= 0 ? 'positive' : 'negative' },
+              { label: 'Mejor mes',          value: mejorMes?.label || '—',       icon: '🏆' },
+            ], 4)}
+
+            <div style="display:grid;grid-template-columns:2fr 1fr;gap:16px;margin-top:20px">
+              <div class="card">
+                <h3 style="margin-bottom:6px;font-size:14px">📊 Ingresos vs Egresos — últimos 12 meses</h3>
+                <p style="font-size:11px;color:var(--text-secondary);margin-bottom:14px">Verde = ventas aprobadas · Rojo = gastos + compras</p>
+                <div style="height:280px"><canvas id="dash-chart-tendencia"></canvas></div>
+              </div>
+              <div class="card">
+                <h3 style="margin-bottom:6px;font-size:14px">🥧 Distribución de egresos</h3>
+                <p style="font-size:11px;color:var(--text-secondary);margin-bottom:14px">Por centro de costo</p>
+                <div style="height:280px"><canvas id="dash-chart-dist"></canvas></div>
+              </div>
+            </div>
+
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px">
+              <div class="card">
+                <h3 style="margin-bottom:6px;font-size:14px">💰 Utilidad neta mensual</h3>
+                <p style="font-size:11px;color:var(--text-secondary);margin-bottom:14px">Ventas − (gastos + compras) por mes</p>
+                <div style="height:240px"><canvas id="dash-chart-utilidad"></canvas></div>
+              </div>
+              <div class="card">
+                <h3 style="margin-bottom:6px;font-size:14px">🏆 Top 5 clientes del año</h3>
+                <p style="font-size:11px;color:var(--text-secondary);margin-bottom:14px">Por cotizaciones aprobadas/terminadas</p>
+                ${topClientes.length ? `<div style="height:240px"><canvas id="dash-chart-topcli"></canvas></div>`
+                  : `<div style="padding:40px;text-align:center;color:var(--text-secondary);font-size:12px">Aún no hay cotizaciones aprobadas en el año.</div>`}
+              </div>
+            </div>
+          </div>
+        `;
+
+        setTimeout(() => {
+          destroyChart(_charts.tendencia); destroyChart(_charts.dist);
+          destroyChart(_charts.utilidad);  destroyChart(_charts.topCli);
+
+          // Ingresos vs Egresos (línea doble)
+          if (window.Chart) {
+            const ctx = document.getElementById('dash-chart-tendencia');
+            if (ctx) {
+              _charts.tendencia = new window.Chart(ctx, {
+                type: 'line',
+                data: {
+                  labels: tendencia.map(t => t.label),
+                  datasets: [
+                    { label: 'Ventas',  data: tendencia.map(t => t.ventas),  borderColor: chartColors.success, backgroundColor: chartColors.success + '22', fill: true, tension: 0.3 },
+                    { label: 'Egresos', data: tendencia.map(t => t.gastos + t.compras), borderColor: chartColors.danger, backgroundColor: chartColors.danger + '22', fill: true, tension: 0.3 },
+                  ],
+                },
+                options: {
+                  responsive: true, maintainAspectRatio: false,
+                  plugins: { legend: { position: 'bottom' }, tooltip: { mode: 'index', intersect: false } },
+                  scales: { y: { beginAtZero: true, ticks: { callback: v => 'S/ ' + v.toLocaleString() } } },
+                },
+              });
+            }
+          }
+
+          // Distribución egresos donut
+          _charts.dist = donutChart('#dash-chart-dist', [
+            { label: 'General (Oficina)', valor: distGastos.general },
+            { label: 'Servicio/Proyecto', valor: distGastos.servicio },
+            { label: 'Almacén (Insumos)', valor: distGastos.almacen },
+          ], {
+            colors: [chartColors.info, chartColors.warning, chartColors.primary],
+          });
+
+          // Utilidad por mes (barras)
+          const utilData = tendencia.map(t => ({ label: t.label, valor: Number((t.ventas - t.gastos - t.compras).toFixed(2)) }));
+          _charts.utilidad = barChart('#dash-chart-utilidad', utilData, {
+            colors: utilData.map(d => d.valor >= 0 ? chartColors.success : chartColors.danger),
+          });
+
+          // Top clientes
+          if (topClientes.length) {
+            _charts.topCli = barChart('#dash-chart-topcli', topClientes, {
+              colors: topClientes.map(() => chartColors.info),
+            });
+          }
+        }, 100);
+      }
+    }, 80);
+
     return `
       <header class="header" style="margin-bottom:20px;">
         <div>
@@ -261,7 +451,12 @@ export const Dashboard = async () => {
           ⚙ Gestionar Usuarios
         </button>` : ''}
       </header>
-      
+
+      <div id="dashboard-tabbar" style="margin-bottom:10px"></div>
+
+      <div id="tab-analisis" style="display:none"></div>
+
+      <div id="tab-ejecutivo">
       <h2 style="font-size:16px; margin: 25px 0 15px; color:var(--text-primary); text-transform:uppercase; letter-spacing:1px;">A. Tesorería Diaria</h2>
       <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap: 20px;">
          <div class="card" style="border-left: 4px solid var(--info); background: linear-gradient(to right, #ffffff, #f4f7fe);">
@@ -482,6 +677,7 @@ export const Dashboard = async () => {
           </div>
         </div>
       </div>
+      </div><!-- /#tab-ejecutivo -->
     `;
   } catch (error) {
     console.error("Dashboard Render Error:", error);
