@@ -627,12 +627,24 @@ tr:last-child td {
     flex-shrink: 0;
   }
 
-  /* Modales */
-  div[style*="position:fixed"][style*="inset:0"] > div {
+  /* Modales — todos los overlays tienen inset:0 con un hijo que es el modal box */
+  div[style*="position:fixed"][style*="inset:0"] > div,
+  div[style*="position: fixed"][style*="inset: 0"] > div {
     max-width: 95vw !important;
     width: 95vw !important;
+    max-height: 90vh !important;
     margin: 10px;
+    overflow-y: auto !important;
+    box-sizing: border-box;
   }
+  /* Si el modal tiene grids internos con 2 cols, colapsarlas */
+  div[style*="position:fixed"][style*="inset:0"] div[style*="grid-template-columns:1fr 1fr"],
+  div[style*="position: fixed"][style*="inset: 0"] div[style*="grid-template-columns:1fr 1fr"] {
+    grid-template-columns: 1fr !important;
+  }
+  /* Header buttons en mobile: wrap si no caben */
+  header.header { flex-wrap: wrap; gap: 8px; }
+  header.header > div { flex: 1 1 100%; }
 
   /* Forms: inputs full width */
   input, select, textarea { font-size: 14px !important; }
@@ -665,6 +677,49 @@ tr:last-child td {
   div[style*="font-size:24px"], div[style*="font-size: 24px"] { font-size: 16px !important; }
   div[style*="font-size:22px"], div[style*="font-size: 22px"] { font-size: 14px !important; }
   div[style*="font-size:20px"], div[style*="font-size: 20px"] { font-size: 13px !important; }
+}
+
+/* ==========================================
+   Override universal de inline font-size grandes en mobile
+   (cubre TODOS los elementos: h1-h6, div, span, p)
+   ========================================== */
+@media (max-width: 768px) {
+  main [style*="font-size:36px"], main [style*="font-size: 36px"],
+  main [style*="font-size:32px"], main [style*="font-size: 32px"],
+  main [style*="font-size:30px"], main [style*="font-size: 30px"],
+  main [style*="font-size:28px"], main [style*="font-size: 28px"] {
+    font-size: 20px !important;
+  }
+  main [style*="font-size:26px"], main [style*="font-size: 26px"],
+  main [style*="font-size:24px"], main [style*="font-size: 24px"],
+  main [style*="font-size:22px"], main [style*="font-size: 22px"] {
+    font-size: 17px !important;
+  }
+  main [style*="font-size:20px"], main [style*="font-size: 20px"] {
+    font-size: 15px !important;
+  }
+  main [style*="font-size:60px"], main [style*="font-size: 60px"],
+  main [style*="font-size:50px"], main [style*="font-size: 50px"] {
+    display: none !important;
+  }
+  main [style*="font-size:40px"], main [style*="font-size: 40px"] {
+    font-size: 24px !important;
+  }
+  /* Word break para que valores S/ 1.234.567 no rompan layout */
+  main h1, main h2, main h3, main .card-value { word-break: break-word; }
+}
+@media (max-width: 480px) {
+  main [style*="font-size:36px"], main [style*="font-size: 36px"],
+  main [style*="font-size:32px"], main [style*="font-size: 32px"],
+  main [style*="font-size:30px"], main [style*="font-size: 30px"],
+  main [style*="font-size:28px"], main [style*="font-size: 28px"] {
+    font-size: 17px !important;
+  }
+  main [style*="font-size:26px"], main [style*="font-size: 26px"],
+  main [style*="font-size:24px"], main [style*="font-size: 24px"],
+  main [style*="font-size:22px"], main [style*="font-size: 22px"] {
+    font-size: 15px !important;
+  }
 }
 
 /* ==========================================
