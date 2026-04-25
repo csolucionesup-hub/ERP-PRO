@@ -78,18 +78,19 @@ while ((m = tableRegex.exec(sql)) !== null) {
       continue;
     }
 
-    // UNIQUE KEY name (cols)
+    // UNIQUE KEY name (cols) — prefijar con tableName para evitar colisión de relations
     let uniqueMatch = line.match(/^UNIQUE\s+KEY\s+`([^`]+)`\s*\(([^)]+)\)/i);
     if (uniqueMatch) {
       const cols = uniqueMatch[2].replace(/`/g, '');
-      inlineConstraints.push(`CONSTRAINT ${uniqueMatch[1]} UNIQUE (${cols})`);
+      const ukName = `${tableName}_${uniqueMatch[1]}_uk`;
+      inlineConstraints.push(`CONSTRAINT ${ukName} UNIQUE (${cols})`);
       continue;
     }
 
-    // KEY name (cols)  → índice separado
+    // KEY name (cols) → índice separado, prefijar con tableName para evitar colisiones
     let keyMatch = line.match(/^KEY\s+`([^`]+)`\s*\(([^)]+)\)/i);
     if (keyMatch) {
-      const idxName = keyMatch[1];
+      const idxName = `${tableName}_${keyMatch[1]}`;
       const cols = keyMatch[2].replace(/`/g, '');
       indexStatements.push(`CREATE INDEX IF NOT EXISTS ${idxName} ON ${tableName} (${cols});`);
       continue;
@@ -160,6 +161,9 @@ while ((m = tableRegex.exec(sql)) !== null) {
         .replace(/INTEGER(\s+NOT\s+NULL)?\s+AUTO_INCREMENT/i, 'INTEGER GENERATED ALWAYS AS IDENTITY')
         .replace(/\s*AUTO_INCREMENT/gi, ''); // catch-all por si quedó algún resto
     }
+
+    // COMMENT 'texto' inline de columna (MySQL) → eliminar (Postgres usa COMMENT ON COLUMN)
+    colDef = colDef.replace(/\s+COMMENT\s+'(?:[^']|'')*'/gi, '');
 
     // ON UPDATE CURRENT_TIMESTAMP → eliminar (lo agregamos como trigger genérico)
     const hasUpdateTrigger = /ON\s+UPDATE\s+CURRENT_TIMESTAMP/i.test(colDef);

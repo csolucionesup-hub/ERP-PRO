@@ -147,7 +147,7 @@ CREATE TABLE IF NOT EXISTS configuracionempresa (
   oc_contacto_telefono VARCHAR(30) DEFAULT '975574228',
   oc_ciudad_emision VARCHAR(100) DEFAULT 'Puente Piedra',
   PRIMARY KEY (id),
-  CONSTRAINT ruc UNIQUE (ruc)
+  CONSTRAINT configuracionempresa_ruc_uk UNIQUE (ruc)
 );
 CREATE TABLE IF NOT EXISTS configuracionmarca (
   marca TEXT CHECK (marca IN ('METAL','PERFOTOOLS')) NOT NULL,
@@ -235,7 +235,7 @@ CREATE TABLE IF NOT EXISTS cotizaciones (
   monto_cobrado_detraccion NUMERIC(12,2) NOT NULL DEFAULT '0.00',
   fecha_aprobacion_finanzas TIMESTAMPTZ DEFAULT NULL,
   PRIMARY KEY (id_cotizacion),
-  CONSTRAINT nro_cotizacion UNIQUE (nro_cotizacion)
+  CONSTRAINT cotizaciones_nro_cotizacion_uk UNIQUE (nro_cotizacion)
 );
 CREATE TABLE IF NOT EXISTS cuentas (
   id_cuenta INTEGER GENERATED ALWAYS AS IDENTITY,
@@ -389,7 +389,7 @@ CREATE TABLE IF NOT EXISTS facturas (
   created_at TIMESTAMPTZ NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NULL DEFAULT NOW(),
   PRIMARY KEY (id_factura),
-  CONSTRAINT uk_factura_serie_nro UNIQUE (tipo,serie,numero)
+  CONSTRAINT facturas_uk_factura_serie_nro_uk UNIQUE (tipo,serie,numero)
 );
 CREATE TABLE IF NOT EXISTS gastobancario (
   id_gasto_bancario INTEGER GENERATED ALWAYS AS IDENTITY,
@@ -470,7 +470,7 @@ CREATE TABLE IF NOT EXISTS guiasremision (
   created_at TIMESTAMPTZ NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NULL DEFAULT NOW(),
   PRIMARY KEY (id_guia),
-  CONSTRAINT uk_guia UNIQUE (serie,numero)
+  CONSTRAINT guiasremision_uk_guia_uk UNIQUE (serie,numero)
 );
 CREATE TABLE IF NOT EXISTS inventario (
   id_item INTEGER GENERATED ALWAYS AS IDENTITY,
@@ -485,7 +485,7 @@ CREATE TABLE IF NOT EXISTS inventario (
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW(),
   PRIMARY KEY (id_item),
-  CONSTRAINT sku UNIQUE (sku)
+  CONSTRAINT inventario_sku_uk UNIQUE (sku)
 );
 CREATE TABLE IF NOT EXISTS movimientobancario (
   id_movimiento INTEGER GENERATED ALWAYS AS IDENTITY,
@@ -552,7 +552,7 @@ CREATE TABLE IF NOT EXISTS notascredito (
   created_at TIMESTAMPTZ NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NULL DEFAULT NOW(),
   PRIMARY KEY (id_nota),
-  CONSTRAINT uk_nota_credito UNIQUE (serie,numero)
+  CONSTRAINT notascredito_uk_nota_credito_uk UNIQUE (serie,numero)
 );
 CREATE TABLE IF NOT EXISTS notasdebito (
   id_nota INTEGER GENERATED ALWAYS AS IDENTITY,
@@ -584,7 +584,7 @@ CREATE TABLE IF NOT EXISTS notasdebito (
   created_at TIMESTAMPTZ NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NULL DEFAULT NOW(),
   PRIMARY KEY (id_nota),
-  CONSTRAINT uk_nota_debito UNIQUE (serie,numero)
+  CONSTRAINT notasdebito_uk_nota_debito_uk UNIQUE (serie,numero)
 );
 CREATE TABLE IF NOT EXISTS ordenescompra (
   id_oc INTEGER GENERATED ALWAYS AS IDENTITY,
@@ -616,16 +616,16 @@ CREATE TABLE IF NOT EXISTS ordenescompra (
   id_compra_generada INTEGER DEFAULT NULL,
   created_at TIMESTAMPTZ NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NULL DEFAULT NOW(),
-  atencion VARCHAR(150) DEFAULT NULL COMMENT 'Persona contacto en la empresa del proveedor',
-  contacto_interno VARCHAR(150) DEFAULT NULL COMMENT 'Nombre del ejecutivo interno que atiende la OC',
-  contacto_telefono VARCHAR(30) DEFAULT NULL COMMENT 'Celular del contacto interno',
-  solicitado_por VARCHAR(150) DEFAULT NULL COMMENT 'Firma: nombre de quien solicitó',
-  revisado_por VARCHAR(150) DEFAULT NULL COMMENT 'Firma: nombre de quien revisó',
-  autorizado_por VARCHAR(150) DEFAULT NULL COMMENT 'Firma: nombre de quien autorizó',
-  cuenta_bancaria_pago VARCHAR(300) DEFAULT NULL COMMENT 'Cta bancaria del proveedor: ej "Cta.Interbank Soles 898-3187294381; CCI 00389801318729438149"',
-  lugar_entrega VARCHAR(200) DEFAULT NULL COMMENT 'Lima, Puente Piedra, Obra Toromocho, N/A',
+  atencion VARCHAR(150) DEFAULT NULL,
+  contacto_interno VARCHAR(150) DEFAULT NULL,
+  contacto_telefono VARCHAR(30) DEFAULT NULL,
+  solicitado_por VARCHAR(150) DEFAULT NULL,
+  revisado_por VARCHAR(150) DEFAULT NULL,
+  autorizado_por VARCHAR(150) DEFAULT NULL,
+  cuenta_bancaria_pago VARCHAR(300) DEFAULT NULL,
+  lugar_entrega VARCHAR(200) DEFAULT NULL,
   PRIMARY KEY (id_oc),
-  CONSTRAINT uk_oc_nro UNIQUE (nro_oc,empresa)
+  CONSTRAINT ordenescompra_uk_oc_nro_uk UNIQUE (nro_oc,empresa)
 );
 CREATE TABLE IF NOT EXISTS pagosimpuestos (
   id_pago INTEGER GENERATED ALWAYS AS IDENTITY,
@@ -649,7 +649,7 @@ CREATE TABLE IF NOT EXISTS periodoscontables (
   id_usuario_cierre INTEGER DEFAULT NULL,
   observaciones VARCHAR(500) DEFAULT NULL,
   PRIMARY KEY (id),
-  CONSTRAINT uk_periodo UNIQUE (anio,mes)
+  CONSTRAINT periodoscontables_uk_periodo_uk UNIQUE (anio,mes)
 );
 CREATE TABLE IF NOT EXISTS prestamosotorgados (
   id_prestamo INTEGER GENERATED ALWAYS AS IDENTITY,
@@ -712,7 +712,7 @@ CREATE TABLE IF NOT EXISTS proveedores (
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW(),
   PRIMARY KEY (id_proveedor),
-  CONSTRAINT ruc UNIQUE (ruc)
+  CONSTRAINT proveedores_ruc_uk UNIQUE (ruc)
 );
 CREATE TABLE IF NOT EXISTS servicios (
   id_servicio INTEGER GENERATED ALWAYS AS IDENTITY,
@@ -739,7 +739,7 @@ CREATE TABLE IF NOT EXISTS servicios (
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW(),
   PRIMARY KEY (id_servicio),
-  CONSTRAINT codigo UNIQUE (codigo)
+  CONSTRAINT servicios_codigo_uk UNIQUE (codigo)
 );
 CREATE TABLE IF NOT EXISTS tipocambio (
   id_tipo_cambio INTEGER GENERATED ALWAYS AS IDENTITY,
@@ -751,7 +751,7 @@ CREATE TABLE IF NOT EXISTS tipocambio (
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW(),
   PRIMARY KEY (id_tipo_cambio),
-  CONSTRAINT uk_tipocambio_fecha_moneda UNIQUE (fecha,moneda)
+  CONSTRAINT tipocambio_uk_tipocambio_fecha_moneda_uk UNIQUE (fecha,moneda)
 );
 CREATE TABLE IF NOT EXISTS transacciones (
   id_transaccion INTEGER GENERATED ALWAYS AS IDENTITY,
@@ -782,7 +782,7 @@ CREATE TABLE IF NOT EXISTS usuariomodulos (
   modulo TEXT CHECK (modulo IN ('GERENCIA','COMERCIAL','FINANZAS','LOGISTICA','ALMACEN','ADMINISTRACION')) NOT NULL,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   PRIMARY KEY (id),
-  CONSTRAINT uk_usuario_modulo UNIQUE (id_usuario,modulo)
+  CONSTRAINT usuariomodulos_uk_usuario_modulo_uk UNIQUE (id_usuario,modulo)
 );
 CREATE TABLE IF NOT EXISTS usuarios (
   id_usuario INTEGER GENERATED ALWAYS AS IDENTITY,
@@ -795,7 +795,7 @@ CREATE TABLE IF NOT EXISTS usuarios (
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW(),
   PRIMARY KEY (id_usuario),
-  CONSTRAINT email UNIQUE (email)
+  CONSTRAINT usuarios_email_uk UNIQUE (email)
 );
 
 -- Foreign Keys (después de crear todas las tablas para evitar order issues)
@@ -831,76 +831,76 @@ ALTER TABLE transacciones ADD CONSTRAINT fk_transacciones_cuenta FOREIGN KEY (id
 ALTER TABLE usuariomodulos ADD CONSTRAINT usuariomodulos_ibfk_1 FOREIGN KEY (id_usuario) REFERENCES usuarios (id_usuario) ON DELETE CASCADE;
 
 -- Índices
-CREATE INDEX IF NOT EXISTS idx_adjuntos_ref ON adjuntos (ref_tipo,ref_id);
-CREATE INDEX IF NOT EXISTS idx_adjuntos_usuario ON adjuntos (id_usuario_subio);
-CREATE INDEX IF NOT EXISTS idx_aprob_oc ON aprobacionesoc (id_oc);
-CREATE INDEX IF NOT EXISTS idx_auditoria_fecha ON auditoria (fecha);
-CREATE INDEX IF NOT EXISTS idx_auditoria_entidad ON auditoria (entidad,entidad_id);
-CREATE INDEX IF NOT EXISTS idx_auditoria_usuario ON auditoria (id_usuario);
-CREATE INDEX IF NOT EXISTS idx_auditoria_accion ON auditoria (accion);
-CREATE INDEX IF NOT EXISTS fk_cobranza_cuenta ON cobranzascotizacion (id_cuenta);
-CREATE INDEX IF NOT EXISTS fk_cobranza_usuario ON cobranzascotizacion (registrado_por);
-CREATE INDEX IF NOT EXISTS idx_cob_cotizacion ON cobranzascotizacion (id_cotizacion);
-CREATE INDEX IF NOT EXISTS idx_cob_fecha ON cobranzascotizacion (fecha_movimiento);
-CREATE INDEX IF NOT EXISTS idx_cob_tipo ON cobranzascotizacion (tipo);
-CREATE INDEX IF NOT EXISTS idx_compras_fecha ON compras (fecha);
-CREATE INDEX IF NOT EXISTS idx_compras_estado_pago ON compras (estado_pago);
-CREATE INDEX IF NOT EXISTS idx_costos_fecha ON costosservicio (fecha);
-CREATE INDEX IF NOT EXISTS fk_costos_servicio ON costosservicio (id_servicio);
-CREATE INDEX IF NOT EXISTS fk_cotizacion_servicio ON cotizaciones (id_servicio);
-CREATE INDEX IF NOT EXISTS idx_cotizaciones_estado ON cotizaciones (estado);
-CREATE INDEX IF NOT EXISTS idx_cotizaciones_cliente ON cotizaciones (cliente);
-CREATE INDEX IF NOT EXISTS idx_cotizaciones_fecha ON cotizaciones (fecha);
-CREATE INDEX IF NOT EXISTS idx_cotizaciones_marca ON cotizaciones (marca);
-CREATE INDEX IF NOT EXISTS fk_detalle_item ON detallecompra (id_item);
-CREATE INDEX IF NOT EXISTS fk_detalle_cotizacion ON detallecotizacion (id_cotizacion);
-CREATE INDEX IF NOT EXISTS idx_detalle_factura ON detallefactura (id_factura);
-CREATE INDEX IF NOT EXISTS idx_detalle_guia ON detalleguiaremision (id_guia);
-CREATE INDEX IF NOT EXISTS idx_detalle_nc ON detallenotacredito (id_nota);
-CREATE INDEX IF NOT EXISTS idx_detalle_nd ON detallenotadebito (id_nota);
-CREATE INDEX IF NOT EXISTS idx_detalle_oc ON detalleordencompra (id_oc);
-CREATE INDEX IF NOT EXISTS idx_detalle_item ON detalleordencompra (id_item);
-CREATE INDEX IF NOT EXISTS fk_detracciones_servicio ON detracciones (id_servicio);
-CREATE INDEX IF NOT EXISTS idx_facturas_fecha ON facturas (fecha_emision);
-CREATE INDEX IF NOT EXISTS idx_facturas_cliente_doc ON facturas (cliente_numero_doc);
-CREATE INDEX IF NOT EXISTS idx_facturas_estado ON facturas (estado_sunat);
-CREATE INDEX IF NOT EXISTS idx_facturas_cotizacion ON facturas (id_cotizacion);
-CREATE INDEX IF NOT EXISTS fk_gb_usuario ON gastobancario (registrado_por);
-CREATE INDEX IF NOT EXISTS idx_gb_cuenta_fecha ON gastobancario (id_cuenta,fecha);
-CREATE INDEX IF NOT EXISTS idx_gb_categoria ON gastobancario (categoria);
-CREATE INDEX IF NOT EXISTS idx_gastos_fecha ON gastos (fecha);
-CREATE INDEX IF NOT EXISTS idx_guia_fecha ON guiasremision (fecha_emision);
-CREATE INDEX IF NOT EXISTS idx_guia_traslado ON guiasremision (fecha_traslado);
-CREATE INDEX IF NOT EXISTS idx_guia_factura ON guiasremision (id_factura_referencia);
-CREATE INDEX IF NOT EXISTS idx_guia_estado ON guiasremision (estado_sunat);
-CREATE INDEX IF NOT EXISTS fk_mov_usuario ON movimientobancario (conciliado_por);
-CREATE INDEX IF NOT EXISTS idx_mov_cuenta_fecha ON movimientobancario (id_cuenta,fecha);
-CREATE INDEX IF NOT EXISTS idx_mov_estado ON movimientobancario (estado_conciliacion);
-CREATE INDEX IF NOT EXISTS idx_mov_unico ON movimientobancario (id_cuenta,nro_operacion,fecha,monto);
-CREATE INDEX IF NOT EXISTS idx_movimientos_ref ON movimientosinventario (referencia_tipo,referencia_id);
-CREATE INDEX IF NOT EXISTS idx_movimientos_fecha ON movimientosinventario (fecha_movimiento);
-CREATE INDEX IF NOT EXISTS fk_movimientos_item ON movimientosinventario (id_item);
-CREATE INDEX IF NOT EXISTS idx_nc_referencia ON notascredito (id_factura_referencia);
-CREATE INDEX IF NOT EXISTS idx_nc_fecha ON notascredito (fecha_emision);
-CREATE INDEX IF NOT EXISTS idx_nc_estado ON notascredito (estado_sunat);
-CREATE INDEX IF NOT EXISTS idx_nd_referencia ON notasdebito (id_factura_referencia);
-CREATE INDEX IF NOT EXISTS idx_nd_fecha ON notasdebito (fecha_emision);
-CREATE INDEX IF NOT EXISTS idx_oc_fecha ON ordenescompra (fecha_emision);
-CREATE INDEX IF NOT EXISTS idx_oc_proveedor ON ordenescompra (id_proveedor);
-CREATE INDEX IF NOT EXISTS idx_oc_estado ON ordenescompra (estado);
-CREATE INDEX IF NOT EXISTS idx_oc_servicio ON ordenescompra (id_servicio);
-CREATE INDEX IF NOT EXISTS fk_oc_compra ON ordenescompra (id_compra_generada);
-CREATE INDEX IF NOT EXISTS fk_pagoimp_cuenta ON pagosimpuestos (id_cuenta);
-CREATE INDEX IF NOT EXISTS idx_periodos_estado ON periodoscontables (estado);
-CREATE INDEX IF NOT EXISTS idx_servicios_estado ON servicios (estado);
-CREATE INDEX IF NOT EXISTS idx_servicios_cliente ON servicios (cliente);
-CREATE INDEX IF NOT EXISTS idx_servicios_vencimiento ON servicios (fecha_vencimiento);
-CREATE INDEX IF NOT EXISTS idx_tipocambio_fecha ON tipocambio (fecha);
-CREATE INDEX IF NOT EXISTS idx_transacciones_ref ON transacciones (referencia_tipo,referencia_id);
-CREATE INDEX IF NOT EXISTS idx_transacciones_fecha ON transacciones (fecha);
-CREATE INDEX IF NOT EXISTS fk_transacciones_cuenta ON transacciones (id_cuenta);
-CREATE INDEX IF NOT EXISTS idx_usuario_modulos ON usuariomodulos (id_usuario);
-CREATE INDEX IF NOT EXISTS idx_usuarios_email ON usuarios (email);
+CREATE INDEX IF NOT EXISTS adjuntos_idx_adjuntos_ref ON adjuntos (ref_tipo,ref_id);
+CREATE INDEX IF NOT EXISTS adjuntos_idx_adjuntos_usuario ON adjuntos (id_usuario_subio);
+CREATE INDEX IF NOT EXISTS aprobacionesoc_idx_aprob_oc ON aprobacionesoc (id_oc);
+CREATE INDEX IF NOT EXISTS auditoria_idx_auditoria_fecha ON auditoria (fecha);
+CREATE INDEX IF NOT EXISTS auditoria_idx_auditoria_entidad ON auditoria (entidad,entidad_id);
+CREATE INDEX IF NOT EXISTS auditoria_idx_auditoria_usuario ON auditoria (id_usuario);
+CREATE INDEX IF NOT EXISTS auditoria_idx_auditoria_accion ON auditoria (accion);
+CREATE INDEX IF NOT EXISTS cobranzascotizacion_fk_cobranza_cuenta ON cobranzascotizacion (id_cuenta);
+CREATE INDEX IF NOT EXISTS cobranzascotizacion_fk_cobranza_usuario ON cobranzascotizacion (registrado_por);
+CREATE INDEX IF NOT EXISTS cobranzascotizacion_idx_cob_cotizacion ON cobranzascotizacion (id_cotizacion);
+CREATE INDEX IF NOT EXISTS cobranzascotizacion_idx_cob_fecha ON cobranzascotizacion (fecha_movimiento);
+CREATE INDEX IF NOT EXISTS cobranzascotizacion_idx_cob_tipo ON cobranzascotizacion (tipo);
+CREATE INDEX IF NOT EXISTS compras_idx_compras_fecha ON compras (fecha);
+CREATE INDEX IF NOT EXISTS compras_idx_compras_estado_pago ON compras (estado_pago);
+CREATE INDEX IF NOT EXISTS costosservicio_idx_costos_fecha ON costosservicio (fecha);
+CREATE INDEX IF NOT EXISTS costosservicio_fk_costos_servicio ON costosservicio (id_servicio);
+CREATE INDEX IF NOT EXISTS cotizaciones_fk_cotizacion_servicio ON cotizaciones (id_servicio);
+CREATE INDEX IF NOT EXISTS cotizaciones_idx_cotizaciones_estado ON cotizaciones (estado);
+CREATE INDEX IF NOT EXISTS cotizaciones_idx_cotizaciones_cliente ON cotizaciones (cliente);
+CREATE INDEX IF NOT EXISTS cotizaciones_idx_cotizaciones_fecha ON cotizaciones (fecha);
+CREATE INDEX IF NOT EXISTS cotizaciones_idx_cotizaciones_marca ON cotizaciones (marca);
+CREATE INDEX IF NOT EXISTS detallecompra_fk_detalle_item ON detallecompra (id_item);
+CREATE INDEX IF NOT EXISTS detallecotizacion_fk_detalle_cotizacion ON detallecotizacion (id_cotizacion);
+CREATE INDEX IF NOT EXISTS detallefactura_idx_detalle_factura ON detallefactura (id_factura);
+CREATE INDEX IF NOT EXISTS detalleguiaremision_idx_detalle_guia ON detalleguiaremision (id_guia);
+CREATE INDEX IF NOT EXISTS detallenotacredito_idx_detalle_nc ON detallenotacredito (id_nota);
+CREATE INDEX IF NOT EXISTS detallenotadebito_idx_detalle_nd ON detallenotadebito (id_nota);
+CREATE INDEX IF NOT EXISTS detalleordencompra_idx_detalle_oc ON detalleordencompra (id_oc);
+CREATE INDEX IF NOT EXISTS detalleordencompra_idx_detalle_item ON detalleordencompra (id_item);
+CREATE INDEX IF NOT EXISTS detracciones_fk_detracciones_servicio ON detracciones (id_servicio);
+CREATE INDEX IF NOT EXISTS facturas_idx_facturas_fecha ON facturas (fecha_emision);
+CREATE INDEX IF NOT EXISTS facturas_idx_facturas_cliente_doc ON facturas (cliente_numero_doc);
+CREATE INDEX IF NOT EXISTS facturas_idx_facturas_estado ON facturas (estado_sunat);
+CREATE INDEX IF NOT EXISTS facturas_idx_facturas_cotizacion ON facturas (id_cotizacion);
+CREATE INDEX IF NOT EXISTS gastobancario_fk_gb_usuario ON gastobancario (registrado_por);
+CREATE INDEX IF NOT EXISTS gastobancario_idx_gb_cuenta_fecha ON gastobancario (id_cuenta,fecha);
+CREATE INDEX IF NOT EXISTS gastobancario_idx_gb_categoria ON gastobancario (categoria);
+CREATE INDEX IF NOT EXISTS gastos_idx_gastos_fecha ON gastos (fecha);
+CREATE INDEX IF NOT EXISTS guiasremision_idx_guia_fecha ON guiasremision (fecha_emision);
+CREATE INDEX IF NOT EXISTS guiasremision_idx_guia_traslado ON guiasremision (fecha_traslado);
+CREATE INDEX IF NOT EXISTS guiasremision_idx_guia_factura ON guiasremision (id_factura_referencia);
+CREATE INDEX IF NOT EXISTS guiasremision_idx_guia_estado ON guiasremision (estado_sunat);
+CREATE INDEX IF NOT EXISTS movimientobancario_fk_mov_usuario ON movimientobancario (conciliado_por);
+CREATE INDEX IF NOT EXISTS movimientobancario_idx_mov_cuenta_fecha ON movimientobancario (id_cuenta,fecha);
+CREATE INDEX IF NOT EXISTS movimientobancario_idx_mov_estado ON movimientobancario (estado_conciliacion);
+CREATE INDEX IF NOT EXISTS movimientobancario_idx_mov_unico ON movimientobancario (id_cuenta,nro_operacion,fecha,monto);
+CREATE INDEX IF NOT EXISTS movimientosinventario_idx_movimientos_ref ON movimientosinventario (referencia_tipo,referencia_id);
+CREATE INDEX IF NOT EXISTS movimientosinventario_idx_movimientos_fecha ON movimientosinventario (fecha_movimiento);
+CREATE INDEX IF NOT EXISTS movimientosinventario_fk_movimientos_item ON movimientosinventario (id_item);
+CREATE INDEX IF NOT EXISTS notascredito_idx_nc_referencia ON notascredito (id_factura_referencia);
+CREATE INDEX IF NOT EXISTS notascredito_idx_nc_fecha ON notascredito (fecha_emision);
+CREATE INDEX IF NOT EXISTS notascredito_idx_nc_estado ON notascredito (estado_sunat);
+CREATE INDEX IF NOT EXISTS notasdebito_idx_nd_referencia ON notasdebito (id_factura_referencia);
+CREATE INDEX IF NOT EXISTS notasdebito_idx_nd_fecha ON notasdebito (fecha_emision);
+CREATE INDEX IF NOT EXISTS ordenescompra_idx_oc_fecha ON ordenescompra (fecha_emision);
+CREATE INDEX IF NOT EXISTS ordenescompra_idx_oc_proveedor ON ordenescompra (id_proveedor);
+CREATE INDEX IF NOT EXISTS ordenescompra_idx_oc_estado ON ordenescompra (estado);
+CREATE INDEX IF NOT EXISTS ordenescompra_idx_oc_servicio ON ordenescompra (id_servicio);
+CREATE INDEX IF NOT EXISTS ordenescompra_fk_oc_compra ON ordenescompra (id_compra_generada);
+CREATE INDEX IF NOT EXISTS pagosimpuestos_fk_pagoimp_cuenta ON pagosimpuestos (id_cuenta);
+CREATE INDEX IF NOT EXISTS periodoscontables_idx_periodos_estado ON periodoscontables (estado);
+CREATE INDEX IF NOT EXISTS servicios_idx_servicios_estado ON servicios (estado);
+CREATE INDEX IF NOT EXISTS servicios_idx_servicios_cliente ON servicios (cliente);
+CREATE INDEX IF NOT EXISTS servicios_idx_servicios_vencimiento ON servicios (fecha_vencimiento);
+CREATE INDEX IF NOT EXISTS tipocambio_idx_tipocambio_fecha ON tipocambio (fecha);
+CREATE INDEX IF NOT EXISTS transacciones_idx_transacciones_ref ON transacciones (referencia_tipo,referencia_id);
+CREATE INDEX IF NOT EXISTS transacciones_idx_transacciones_fecha ON transacciones (fecha);
+CREATE INDEX IF NOT EXISTS transacciones_fk_transacciones_cuenta ON transacciones (id_cuenta);
+CREATE INDEX IF NOT EXISTS usuariomodulos_idx_usuario_modulos ON usuariomodulos (id_usuario);
+CREATE INDEX IF NOT EXISTS usuarios_idx_usuarios_email ON usuarios (email);
 
 -- Trigger genérico para updated_at
 CREATE OR REPLACE FUNCTION trigger_set_updated_at()
