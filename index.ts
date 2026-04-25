@@ -1024,6 +1024,17 @@ async function autoHealDatabase(): Promise<void> {
     console.warn('[BOOT] ⚠ DB incompleta. Ejecutando self-heal...');
     console.warn(`[BOOT]    Usuarios=${usuariosOk} OrdenesCompra=${ocOk} _migrations=${migOk}`);
 
+    // CASO ANÓMALO: _migrations existe (con N filas) pero las tablas que esas
+    // migraciones crearon NO existen. Significa que alguien hizo DROP TABLE
+    // selectivo. Limpiamos _migrations para que re-ejecuten todas las migraciones.
+    if (migOk && (!usuariosOk || !ocOk)) {
+      const [mCount]: any = await db.query('SELECT COUNT(*) AS n FROM _migrations');
+      if (mCount[0]?.n > 0) {
+        console.warn('[BOOT] _migrations dice que ya se aplicaron pero tablas faltan. Limpiando _migrations para re-ejecutar.');
+        await db.query('DELETE FROM _migrations');
+      }
+    }
+
     // Path resolution: en prod compila a /dist/index.js, en dev corre desde raíz.
     const baseDir = path.resolve(__dirname, __dirname.endsWith('dist') ? '..' : '.');
     const dbDir = path.join(baseDir, 'database');
