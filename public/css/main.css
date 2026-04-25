@@ -666,3 +666,25 @@ tr:last-child td {
   div[style*="font-size:22px"], div[style*="font-size: 22px"] { font-size: 14px !important; }
   div[style*="font-size:20px"], div[style*="font-size: 20px"] { font-size: 13px !important; }
 }
+
+/* ==========================================
+   Dashboard Gerencial — fonts grandes en mobile
+   ========================================== */
+@media (max-width: 768px) {
+  /* Card values del Dashboard (h2.card-value) — 32-36px en desktop */
+  .card-value { font-size: 22px !important; line-height: 1.2 !important; }
+  /* Inline font-sizes grandes específicos del dashboard */
+  h2[style*="font-size:32px"], h2[style*="font-size: 32px"],
+  h2[style*="font-size:36px"], h2[style*="font-size: 36px"] { font-size: 22px !important; }
+  h3[style*="font-size:24px"], h3[style*="font-size: 24px"] { font-size: 18px !important; }
+  /* Decoraciones tipo "+" y "%" tamaño 60px → ocultar en mobile */
+  div[style*="font-size:60px"], div[style*="font-size: 60px"] { display: none !important; }
+  /* "OK" central tipo 40px */
+  div[style*="font-size:40px"], div[style*="font-size: 40px"] { font-size: 28px !important; }
+}
+@media (max-width: 480px) {
+  .card-value { font-size: 18px !important; }
+  h2[style*="font-size:32px"], h2[style*="font-size: 32px"],
+  h2[style*="font-size:36px"], h2[style*="font-size: 36px"] { font-size: 18px !important; }
+  h3[style*="font-size:24px"], h3[style*="font-size: 24px"] { font-size: 16px !important; }
+}
