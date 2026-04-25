@@ -586,7 +586,7 @@ tr:last-child td {
 
   header.header h1 { font-size: 18px !important; }
 
-  /* Grids → 1 columna en mobile */
+  /* Grids → 1 o 2 columnas en mobile */
   div[style*="grid-template-columns:1.2fr 1fr"],
   div[style*="grid-template-columns:1.3fr 1fr"],
   div[style*="grid-template-columns:1.5fr 1fr"],
@@ -596,6 +596,16 @@ tr:last-child td {
   div[style*="grid-template-columns:repeat(4,1fr)"] {
     grid-template-columns: 1fr !important;
   }
+  /* KPI grids: 2 columnas en mobile (no 1, los KPIs son chicos) */
+  .kpi-grid {
+    grid-template-columns: repeat(2, minmax(0,1fr)) !important;
+    gap: 8px !important;
+  }
+  .kpi-card { padding: 10px 8px !important; }
+  .kpi-label { font-size: 10px !important; line-height: 1.2 !important; }
+  .kpi-value { font-size: 16px !important; line-height: 1.2 !important; word-break: break-all; }
+  .kpi-icon { font-size: 14px !important; }
+  .kpi-change { font-size: 10px !important; }
   /* Tablas con scroll horizontal */
   .table-container, table { font-size: 12px; }
   .table-container { overflow-x: auto; -webkit-overflow-scrolling: touch; }
@@ -647,6 +657,12 @@ tr:last-child td {
 
 @media (max-width: 480px) {
   header.header h1 { font-size: 16px !important; }
-  .kpi-value { font-size: 18px !important; }
+  header.header span { font-size: 11px !important; }
+  .kpi-value { font-size: 14px !important; }
+  .kpi-label { font-size: 9px !important; }
   .card { padding: 10px !important; }
+  /* En pantallas muy chicas también los textos custom inline son grandes */
+  div[style*="font-size:24px"], div[style*="font-size: 24px"] { font-size: 16px !important; }
+  div[style*="font-size:22px"], div[style*="font-size: 22px"] { font-size: 14px !important; }
+  div[style*="font-size:20px"], div[style*="font-size: 20px"] { font-size: 13px !important; }
 }
