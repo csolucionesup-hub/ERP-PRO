@@ -59,6 +59,128 @@ class InventoryService {
   }
 
   /**
+   * Dashboard de almacén — KPIs + gráficos para análisis gerencial.
+   * Incluye comparativas históricas y mes vs mes anterior.
+   */
+  async getDashboard() {
+    const ahora = new Date();
+    const anioActual = ahora.getFullYear();
+    const mesActual = ahora.getMonth() + 1;
+    const mesAnterior = mesActual === 1 ? 12 : mesActual - 1;
+    const anioMesAnterior = mesActual === 1 ? anioActual - 1 : anioActual;
+
+    // 1. KPIs generales
+    const [kpis]: any = await db.query(`
+      SELECT
+        COUNT(*)::int AS items_catalogados,
+        SUM(stock_actual * costo_promedio_unitario)::numeric(14,2) AS valor_total_stock,
+        SUM(CASE WHEN stock_actual <= stock_minimo AND stock_actual > 0 THEN 1 ELSE 0 END)::int AS items_bajo_minimo,
+        SUM(CASE WHEN stock_actual = 0 THEN 1 ELSE 0 END)::int AS items_sin_stock
+      FROM Inventario
+    `);
+
+    // 2. Distribución por categoría
+    const [porCategoria]: any = await db.query(`
+      SELECT categoria,
+             COUNT(*)::int AS cantidad,
+             SUM(stock_actual * costo_promedio_unitario)::numeric(14,2) AS valor
+      FROM Inventario
+      GROUP BY categoria
+      ORDER BY valor DESC NULLS LAST
+    `);
+
+    // 3. Top 10 productos más usados (SALIDAS últimos 6 meses)
+    const [topRotados]: any = await db.query(`
+      SELECT i.sku, i.nombre, i.unidad,
+             SUM(m.cantidad)::numeric(14,2) AS cantidad_total,
+             COUNT(*)::int AS num_movimientos
+      FROM MovimientosInventario m
+      JOIN Inventario i ON i.id_item = m.id_item
+      WHERE m.tipo_movimiento = 'SALIDA'
+        AND m.fecha_movimiento >= (CURRENT_DATE - INTERVAL '6 months')
+      GROUP BY i.id_item, i.sku, i.nombre, i.unidad
+      ORDER BY cantidad_total DESC
+      LIMIT 10
+    `);
+
+    // 4. Top 10 productos más comprados (mayor inversión últimos 6 meses)
+    const [topComprados]: any = await db.query(`
+      SELECT i.sku, i.nombre, i.unidad,
+             SUM(dc.cantidad)::numeric(14,2) AS cantidad_total,
+             SUM(dc.subtotal)::numeric(14,2) AS valor_total
+      FROM DetalleCompra dc
+      JOIN Inventario i ON i.id_item = dc.id_item
+      JOIN Compras c ON c.id_compra = dc.id_compra
+      WHERE c.estado != 'ANULADO'
+        AND c.fecha >= (CURRENT_DATE - INTERVAL '6 months')
+      GROUP BY i.id_item, i.sku, i.nombre, i.unidad
+      ORDER BY valor_total DESC
+      LIMIT 10
+    `);
+
+    // 5. Tendencia mensual entradas vs salidas (últimos 12 meses)
+    const [tendencia]: any = await db.query(`
+      SELECT TO_CHAR(fecha_movimiento, 'YYYY-MM') AS mes,
+             SUM(CASE WHEN tipo_movimiento = 'ENTRADA' THEN cantidad ELSE 0 END)::numeric(14,2) AS entradas,
+             SUM(CASE WHEN tipo_movimiento = 'SALIDA' THEN cantidad ELSE 0 END)::numeric(14,2) AS salidas
+      FROM MovimientosInventario
+      WHERE fecha_movimiento >= (CURRENT_DATE - INTERVAL '12 months')
+      GROUP BY TO_CHAR(fecha_movimiento, 'YYYY-MM')
+      ORDER BY mes ASC
+    `);
+
+    // 6. Items sin movimiento en >90 días (inventario muerto)
+    const [sinMovimiento]: any = await db.query(`
+      SELECT i.sku, i.nombre, i.categoria, i.stock_actual,
+             (i.stock_actual * i.costo_promedio_unitario)::numeric(14,2) AS valorizado,
+             (SELECT MAX(m.fecha_movimiento) FROM MovimientosInventario m WHERE m.id_item = i.id_item) AS ultimo_movimiento
+      FROM Inventario i
+      WHERE i.stock_actual > 0
+        AND NOT EXISTS (
+          SELECT 1 FROM MovimientosInventario m
+          WHERE m.id_item = i.id_item
+            AND m.fecha_movimiento >= (CURRENT_DATE - INTERVAL '90 days')
+        )
+      ORDER BY valorizado DESC NULLS LAST
+      LIMIT 10
+    `);
+
+    // 7. Comparativa mes actual vs mes anterior
+    const [compMesActual]: any = await db.query(`
+      SELECT
+        SUM(CASE WHEN tipo_movimiento = 'ENTRADA' THEN cantidad ELSE 0 END)::numeric(14,2) AS entradas,
+        SUM(CASE WHEN tipo_movimiento = 'SALIDA' THEN cantidad ELSE 0 END)::numeric(14,2) AS salidas
+      FROM MovimientosInventario
+      WHERE EXTRACT(YEAR FROM fecha_movimiento) = ?
+        AND EXTRACT(MONTH FROM fecha_movimiento) = ?
+    `, [anioActual, mesActual]);
+
+    const [compMesPrev]: any = await db.query(`
+      SELECT
+        SUM(CASE WHEN tipo_movimiento = 'ENTRADA' THEN cantidad ELSE 0 END)::numeric(14,2) AS entradas,
+        SUM(CASE WHEN tipo_movimiento = 'SALIDA' THEN cantidad ELSE 0 END)::numeric(14,2) AS salidas
+      FROM MovimientosInventario
+      WHERE EXTRACT(YEAR FROM fecha_movimiento) = ?
+        AND EXTRACT(MONTH FROM fecha_movimiento) = ?
+    `, [anioMesAnterior, mesAnterior]);
+
+    return {
+      kpis: (kpis as any[])[0] || { items_catalogados: 0, valor_total_stock: 0, items_bajo_minimo: 0, items_sin_stock: 0 },
+      por_categoria:    porCategoria,
+      top_rotados:      topRotados,
+      top_comprados:    topComprados,
+      tendencia_12m:    tendencia,
+      sin_movimiento:   sinMovimiento,
+      comparativa_mes: {
+        actual:   (compMesActual as any[])[0]   || { entradas: 0, salidas: 0 },
+        anterior: (compMesPrev as any[])[0]     || { entradas: 0, salidas: 0 },
+        anio_mes_actual:   `${anioActual}-${String(mesActual).padStart(2, '0')}`,
+        anio_mes_anterior: `${anioMesAnterior}-${String(mesAnterior).padStart(2, '0')}`,
+      },
+    };
+  }
+
+  /**
    * Extraer trazabilidad Kárdex por Ítem
    */
   async getKardex(id_item: number) {

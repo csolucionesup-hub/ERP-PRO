@@ -109,6 +109,7 @@ export const api = {
   },
   inventory: {
     getInventario:        () => get('/inventario'),
+    getDashboard:         () => get('/inventario/dashboard'),
     getKardex:       (id)    => get(`/inventario/${id}/kardex`),
     createInventarioItem: (data) => post('/inventario', data),
     consumirInventario:   (data) => post('/inventario/consumo', data),

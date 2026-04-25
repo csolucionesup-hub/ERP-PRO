@@ -217,6 +217,10 @@ apiRouter.delete('/proveedores/:id', async (req: Request, res: Response) => {
 });
 
 apiRouter.use('/inventario', requireModulo('ALMACEN'));
+// Dashboard ANTES de /:id para que no sea capturado por validateIdParam
+apiRouter.get('/inventario/dashboard', async (req: Request, res: Response) => {
+  res.json(await InventoryService.getDashboard());
+});
 apiRouter.get('/inventario', async (req: Request, res: Response) => {
   res.json(await InventoryService.getInventario());
 });
