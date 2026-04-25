@@ -60,12 +60,12 @@ export const Logistica = async () => {
       </div>
     </header>
     <div id="logi-tabbar" style="margin-top:20px"></div>
-    <div id="tab-proveedores" class="tab-content"></div>
-    <div id="tab-oc"        class="tab-content" style="display:none"></div>
-    <div id="tab-general"   class="tab-content" style="display:none"></div>
-    <div id="tab-servicio"  class="tab-content" style="display:none"></div>
-    <div id="tab-almacen"   class="tab-content" style="display:none"></div>
-    <div id="tab-dash"      class="tab-content" style="display:none"></div>
+    <div id="logi-panel-proveedores" class="logi-tab-content"></div>
+    <div id="logi-panel-oc"        class="logi-tab-content" style="display:none"></div>
+    <div id="logi-panel-general"   class="logi-tab-content" style="display:none"></div>
+    <div id="logi-panel-servicio"  class="logi-tab-content" style="display:none"></div>
+    <div id="logi-panel-almacen"   class="logi-tab-content" style="display:none"></div>
+    <div id="logi-panel-dash"      class="logi-tab-content" style="display:none"></div>
   `;
 };
 
@@ -82,8 +82,9 @@ function initTabs() {
     ],
     defaultTab: 'proveedores',
     onChange: async (id) => {
-      document.querySelectorAll('.tab-content').forEach(t => t.style.display = 'none');
-      const panel = document.getElementById('tab-' + id);
+      // Solo escondemos los paneles de Logística (no los de páginas anidadas)
+      document.querySelectorAll('.logi-tab-content').forEach(t => t.style.display = 'none');
+      const panel = document.getElementById('logi-panel-' + id);
       if (panel) panel.style.display = 'block';
       if (id === 'proveedores' && !panel.dataset.rendered) await renderTabProveedores(panel);
       if (id === 'oc'          && !panel.dataset.rendered) await renderTabOC(panel);
