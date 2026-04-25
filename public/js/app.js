@@ -154,18 +154,43 @@ function init() {
 
   const user = getUser();
 
-  // Shell estática con sidebar + main-content
+  // Shell estática con sidebar + main-content + hamburger mobile
   document.getElementById('root').innerHTML = `
+    <button class="mobile-menu-toggle" id="mobile-menu-toggle" aria-label="Menú">☰</button>
+    <div class="mobile-overlay" id="mobile-overlay"></div>
     <div class="app-container">
       <aside class="sidebar" id="sidebar"></aside>
       <main class="main-content" id="main-content"></main>
     </div>
   `;
 
+  // Toggle hamburger en mobile
+  const sidebarEl = document.getElementById('sidebar');
+  const overlayEl = document.getElementById('mobile-overlay');
+  const toggleBtn = document.getElementById('mobile-menu-toggle');
+  const closeMobileSidebar = () => {
+    sidebarEl.classList.remove('mobile-open');
+    overlayEl.classList.remove('mobile-open');
+    document.body.classList.remove('sidebar-open');
+  };
+  const openMobileSidebar = () => {
+    sidebarEl.classList.add('mobile-open');
+    overlayEl.classList.add('mobile-open');
+    document.body.classList.add('sidebar-open');
+  };
+  toggleBtn.addEventListener('click', () => {
+    if (sidebarEl.classList.contains('mobile-open')) closeMobileSidebar();
+    else openMobileSidebar();
+  });
+  overlayEl.addEventListener('click', closeMobileSidebar);
+
   // Delegación de eventos en sidebar
   document.getElementById('sidebar').addEventListener('click', (e) => {
     const item = e.target.closest('[data-page]');
-    if (item) navigate(item.dataset.page);
+    if (item) {
+      navigate(item.dataset.page);
+      closeMobileSidebar(); // cierra al navegar en mobile
+    }
   });
 
   // Botón atrás del browser
