@@ -1008,13 +1008,18 @@ async function autoHealDatabase(): Promise<void> {
     const fs = require('fs');
     const bcrypt = require('bcryptjs');
 
-    // 1) ¿Existen las tablas core?
-    const [tUsr]: any = await db.query("SHOW TABLES LIKE 'Usuarios'");
-    const [tOC]:  any = await db.query("SHOW TABLES LIKE 'OrdenesCompra'");
-    const [tMig]: any = await db.query("SHOW TABLES LIKE '_migrations'");
-    const usuariosOk = tUsr.length > 0;
-    const ocOk       = tOC.length  > 0;
-    const migOk      = tMig.length > 0;
+    // 1) ¿Existen las tablas core? (Postgres — query a information_schema)
+    const checkTable = async (name: string): Promise<boolean> => {
+      const [rows]: any = await db.query(
+        `SELECT 1 FROM information_schema.tables
+          WHERE table_schema = 'public' AND lower(table_name) = lower(?) LIMIT 1`,
+        [name]
+      );
+      return (rows as any[]).length > 0;
+    };
+    const usuariosOk = await checkTable('usuarios');
+    const ocOk       = await checkTable('ordenescompra');
+    const migOk      = await checkTable('_migrations');
 
     if (usuariosOk && ocOk && migOk) {
       console.log('[BOOT] DB OK — tablas críticas presentes.');
@@ -1108,7 +1113,9 @@ async function autoHealDatabase(): Promise<void> {
       await db.query(
         `INSERT INTO Usuarios (nombre, email, password_hash, rol, activo)
          VALUES (?, ?, ?, 'GERENTE', TRUE)
-         ON DUPLICATE KEY UPDATE password_hash=VALUES(password_hash), activo=TRUE`,
+         ON CONFLICT (email) DO UPDATE SET
+           password_hash = EXCLUDED.password_hash,
+           activo = TRUE`,
         ['Julio Rojas Cotrina', 'julio@metalengineers.com.pe', hash]
       );
       console.log('[BOOT] Gerente julio@ creado.');

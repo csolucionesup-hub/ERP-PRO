@@ -25,19 +25,22 @@ class FinanceService {
     const saldo = Number((rowsCaja as any)[0].saldo_actual || 0);
 
     // 2. Alerta: Servicios con Pérdida (CRÍTICO)
+    // Postgres: HAVING sin GROUP BY no acepta aliases, usar derived table
     const [rowsPerdida] = await db.query(`
-      SELECT s.codigo, s.nombre, s.monto_base, 
-      IFNULL((SELECT SUM(monto_base) FROM CostosServicio WHERE id_servicio = s.id_servicio), 0) AS costos
-      FROM Servicios s
-      HAVING (monto_base - costos) < 0
+      SELECT * FROM (
+        SELECT s.codigo, s.nombre, s.monto_base,
+          COALESCE((SELECT SUM(monto_base) FROM CostosServicio WHERE id_servicio = s.id_servicio), 0) AS costos
+        FROM Servicios s
+      ) t WHERE (monto_base - costos) < 0
     `);
 
     // 2b. Alerta: Servicios con Margen Bajo < 20% (ADVERTENCIA)
     const [rowsMargenBajo] = await db.query(`
-      SELECT s.codigo, s.nombre, s.monto_base, 
-      IFNULL((SELECT SUM(monto_base) FROM CostosServicio WHERE id_servicio = s.id_servicio), 0) AS costos
-      FROM Servicios s
-      HAVING (monto_base - costos) >= 0 AND monto_base > 0 AND ((monto_base - costos) / monto_base) < 0.20
+      SELECT * FROM (
+        SELECT s.codigo, s.nombre, s.monto_base,
+          COALESCE((SELECT SUM(monto_base) FROM CostosServicio WHERE id_servicio = s.id_servicio), 0) AS costos
+        FROM Servicios s
+      ) t WHERE (monto_base - costos) >= 0 AND monto_base > 0 AND ((monto_base - costos) / monto_base) < 0.20
     `);
 
     // 3. Alerta: Stock Bajo (ADVERTENCIA)

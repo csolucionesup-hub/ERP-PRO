@@ -83,7 +83,7 @@ class TributarioService {
     const ejercicio = anio || new Date().getFullYear();
     const [ventas] = await db.query(`
       SELECT MONTH(fecha_servicio) as mes, SUM(igv_base) as igv_ventas
-      FROM Servicios WHERE estado!='ANULADO' AND aplica_igv=1
+      FROM Servicios WHERE estado!='ANULADO' AND aplica_igv=TRUE
       AND YEAR(fecha_servicio) = ?
       GROUP BY YEAR(fecha_servicio), MONTH(fecha_servicio)
     `, [ejercicio]);
@@ -95,7 +95,7 @@ class TributarioService {
     `, [ejercicio]);
     const [gastos] = await db.query(`
       SELECT MONTH(fecha) as mes, SUM(igv_base) as igv_gastos
-      FROM Gastos WHERE estado!='ANULADO' AND aplica_igv=1
+      FROM Gastos WHERE estado!='ANULADO' AND aplica_igv=TRUE
       AND YEAR(fecha) = ?
       GROUP BY YEAR(fecha), MONTH(fecha)
     `, [ejercicio]);

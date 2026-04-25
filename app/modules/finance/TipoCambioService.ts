@@ -80,11 +80,15 @@ class TipoCambioService {
       fechaISO = rawFecha || todaySQL();
     }
 
-    // Upsert: si ya existe para esa fecha/moneda, actualizar
+    // Upsert: si ya existe para esa fecha/moneda, actualizar (Postgres ON CONFLICT)
+    // Constraint name viene del unique key uk_tipocambio_fecha_moneda definido en schema.
     await db.query(
       `INSERT INTO TipoCambio (fecha, moneda, valor_compra, valor_venta, fuente)
        VALUES (?, ?, ?, ?, 'SBS')
-       ON DUPLICATE KEY UPDATE valor_compra = VALUES(valor_compra), valor_venta = VALUES(valor_venta), updated_at = NOW()`,
+       ON CONFLICT (fecha, moneda) DO UPDATE SET
+         valor_compra = EXCLUDED.valor_compra,
+         valor_venta = EXCLUDED.valor_venta,
+         updated_at = NOW()`,
       [fechaISO, moneda.toUpperCase(), compra, venta]
     );
 
@@ -107,8 +111,11 @@ class TipoCambioService {
     await db.query(
       `INSERT INTO TipoCambio (fecha, moneda, valor_compra, valor_venta, fuente)
        VALUES (?, ?, ?, ?, 'MANUAL')
-       ON DUPLICATE KEY UPDATE valor_compra = VALUES(valor_compra), valor_venta = VALUES(valor_venta),
-       fuente = 'MANUAL', updated_at = NOW()`,
+       ON CONFLICT (fecha, moneda) DO UPDATE SET
+         valor_compra = EXCLUDED.valor_compra,
+         valor_venta = EXCLUDED.valor_venta,
+         fuente = 'MANUAL',
+         updated_at = NOW()`,
       [fecha, moneda.toUpperCase(), Number(valor_compra), Number(valor_venta)]
     );
     return { success: true, fecha, moneda: moneda.toUpperCase(), valor_compra, valor_venta };
