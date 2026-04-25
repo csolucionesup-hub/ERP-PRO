@@ -998,16 +998,130 @@ app.use('/api', apiRouter);
 app.use(errorHandler);
 
 
+/**
+ * Self-heal de DB en boot: si las tablas críticas no existen (ej. tras
+ * reset del volumen de MySQL en Railway), reinicializa schema+migraciones
+ * + gerente sin destruir datos preexistentes. Solo crea lo que falta.
+ */
+async function autoHealDatabase(): Promise<void> {
+  try {
+    const fs = require('fs');
+    const bcrypt = require('bcryptjs');
+
+    // 1) ¿Existen las tablas core?
+    const [tUsr]: any = await db.query("SHOW TABLES LIKE 'Usuarios'");
+    const [tOC]:  any = await db.query("SHOW TABLES LIKE 'OrdenesCompra'");
+    const [tMig]: any = await db.query("SHOW TABLES LIKE '_migrations'");
+    const usuariosOk = tUsr.length > 0;
+    const ocOk       = tOC.length  > 0;
+    const migOk      = tMig.length > 0;
+
+    if (usuariosOk && ocOk && migOk) {
+      console.log('[BOOT] DB OK — tablas críticas presentes.');
+      return;
+    }
+
+    console.warn('[BOOT] ⚠ DB incompleta. Ejecutando self-heal...');
+    console.warn(`[BOOT]    Usuarios=${usuariosOk} OrdenesCompra=${ocOk} _migrations=${migOk}`);
+
+    // Path resolution: en prod compila a /dist/index.js, en dev corre desde raíz.
+    const baseDir = path.resolve(__dirname, __dirname.endsWith('dist') ? '..' : '.');
+    const dbDir = path.join(baseDir, 'database');
+
+    // 2) Aplicar schema.sql (con CREATE TABLE IF NOT EXISTS — no destructivo)
+    if (!usuariosOk) {
+      const schemaSQL = fs.readFileSync(path.join(dbDir, 'schema.sql'), 'utf8');
+      const delimIdx = schemaSQL.indexOf('DELIMITER //');
+      const tablasPart = delimIdx === -1 ? schemaSQL : schemaSQL.substring(0, delimIdx);
+      const stmts = tablasPart.replace(/--.*$/gm, '').split(/;\s*\n/).map((s: string) => s.trim()).filter((s: string) => s);
+      for (const s of stmts) { try { await db.query(s); } catch (e: any) { /* tablas ya existentes */ } }
+      // Triggers del schema.sql
+      if (delimIdx !== -1) {
+        const trigPart = schemaSQL.substring(delimIdx)
+          .replace(/^\s*DELIMITER\s+\/\/\s*$/gm, '')
+          .replace(/^\s*DELIMITER\s+;\s*$/gm, '');
+        const triggers = trigPart.match(/CREATE TRIGGER[\s\S]*?END\s*;/g) || [];
+        for (const t of triggers) { try { await db.query(t.replace(/;\s*$/, '')); } catch (_) {} }
+      }
+      // relations.sql (FKs)
+      try {
+        const rel = fs.readFileSync(path.join(dbDir, 'relations.sql'), 'utf8');
+        for (const s of rel.replace(/--.*$/gm, '').split(/;\s*\n/).map((s: string) => s.trim()).filter((s: string) => s)) {
+          try { await db.query(s); } catch (_) {}
+        }
+      } catch (_) {}
+      console.log('[BOOT] schema + relations aplicados.');
+    }
+
+    // 3) Aplicar migraciones pendientes (idempotente vía tabla _migrations)
+    await db.query(`CREATE TABLE IF NOT EXISTS _migrations (
+      name VARCHAR(190) PRIMARY KEY, applied_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )`);
+    const [appliedRows]: any = await db.query('SELECT name FROM _migrations');
+    const applied = new Set((appliedRows as any[]).map(r => r.name));
+    const SKIP = new Set(['001_multimoneda.sql', '006_indices_optimizacion.sql']);
+    const migDir = path.join(dbDir, 'migrations');
+    const files = fs.readdirSync(migDir).filter((f: string) => f.endsWith('.sql')).sort();
+    let migCount = 0;
+    for (const file of files) {
+      if (applied.has(file)) continue;
+      if (SKIP.has(file)) {
+        await db.query('INSERT IGNORE INTO _migrations (name) VALUES (?)', [file]);
+        continue;
+      }
+      try {
+        const raw = fs.readFileSync(path.join(migDir, file), 'utf8')
+          .replace(/ADD\s+COLUMN\s+IF\s+NOT\s+EXISTS\s+/gi, 'ADD COLUMN ')
+          .replace(/ADD\s+CONSTRAINT\s+IF\s+NOT\s+EXISTS\s+/gi, 'ADD CONSTRAINT ')
+          .replace(/CREATE\s+INDEX\s+IF\s+NOT\s+EXISTS\s+/gi, 'CREATE INDEX ');
+        if (raw.includes('DELIMITER')) {
+          const cleaned = raw.replace(/^\s*DELIMITER\s+\/\/\s*$/gm, '').replace(/^\s*DELIMITER\s+;\s*$/gm, '');
+          for (const block of cleaned.split(/\/\//).map((b: string) => b.trim()).filter((b: string) => b)) {
+            try { await db.query(block); } catch (_) {}
+          }
+        } else {
+          try { await db.query(raw); } catch (_) {}
+        }
+        await db.query('INSERT IGNORE INTO _migrations (name) VALUES (?)', [file]);
+        migCount++;
+      } catch (e: any) {
+        console.warn(`[BOOT] migración ${file} falló:`, e.message);
+      }
+    }
+    if (migCount) console.log(`[BOOT] ${migCount} migración(es) aplicadas.`);
+
+    // 4) Seed gerente si no hay ninguno
+    const [gers]: any = await db.query("SELECT id_usuario FROM Usuarios WHERE rol='GERENTE' LIMIT 1");
+    if (gers.length === 0) {
+      const hash = bcrypt.hashSync('Metal2026!', 10);
+      await db.query(
+        `INSERT INTO Usuarios (nombre, email, password_hash, rol, activo)
+         VALUES (?, ?, ?, 'GERENTE', TRUE)
+         ON DUPLICATE KEY UPDATE password_hash=VALUES(password_hash), activo=TRUE`,
+        ['Julio Rojas Cotrina', 'julio@metalengineers.com.pe', hash]
+      );
+      console.log('[BOOT] Gerente julio@ creado.');
+    }
+
+    // 5) Seed Cuentas 1 y 2
+    await db.query(`INSERT IGNORE INTO Cuentas (id_cuenta, nombre, tipo, moneda, saldo_actual, estado)
+                    VALUES (1, 'Caja General Soles', 'EFECTIVO', 'PEN', 0, 'ACTIVA'),
+                           (2, 'Caja General Dólares', 'EFECTIVO', 'USD', 0, 'ACTIVA')`);
+
+    console.log('[BOOT] ✅ Self-heal completado.');
+  } catch (err: any) {
+    console.error('[BOOT] ❌ Self-heal falló:', err.message);
+  }
+}
+
 // Levantar Máquina
 app.listen(PORT, async () => {
   console.log(`[SYS] ERP API Backend SECURE_LAYER Operativo y escuchando en puerto ${PORT}`);
   console.log(`[SYS] Entrar: http://localhost:${PORT}`);
-  // Garantizar cuenta base siempre existe (requerida por Transacciones)
-  const [rows] = await db.query('SELECT id_cuenta FROM Cuentas WHERE id_cuenta = ?', [DEFAULT_ACCOUNT_ID]);
-  if ((rows as any[]).length === 0) {
-    await db.query("INSERT INTO Cuentas (nombre, tipo, saldo_actual) VALUES ('Caja General Soles', 'EFECTIVO', 0.00)");
-    console.log('[SYS] Cuenta base recreada automáticamente.');
-  }
+
+  // Self-heal: detecta DB vacía/incompleta y la regenera (Railway free a veces resetea volumen)
+  await autoHealDatabase();
+
   // Cron de refresco estado SUNAT (solo activo en modo REAL)
   FacturacionCron.start();
 });
