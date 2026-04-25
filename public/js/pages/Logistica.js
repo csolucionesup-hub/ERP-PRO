@@ -123,29 +123,19 @@ async function renderTabOC(panel) {
   }
 }
 
-// ─── TAB Gastos Generales / Servicios (ambos comparten layout) ──────────
+// ─── TAB Gastos Generales / Servicios (ambos comparten layout multi-línea) ──
 function renderTabGastos(panel, tipoOC) {
   panel.dataset.rendered = '1';
   const esServicio = tipoOC === 'SERVICIO';
   const ocs = esServicio ? _ocsServicio : _ocsGeneral;
   const total = ocs.reduce((s, o) => s + Number(o.total || 0), 0);
-  const hoy = new Date().toISOString().slice(0, 10);
 
-  const provOpts = _proveedores.map(p => {
-    const doc = p.ruc || p.dni || '';
-    return `<option value="${p.id_proveedor}">${p.razon_social}${doc ? ' · ' + doc : ''}</option>`;
-  }).join('');
-  const servOpts = _servicios.map(s =>
-    `<option value="${s.id_servicio}">${s.nro_servicio || ('SRV-' + s.id_servicio)} · ${s.cliente || s.descripcion || '—'}</option>`
-  ).join('');
-
-  const tituloPanel = esServicio ? 'Gastos vinculados a Servicios / Proyectos' : 'Gastos Generales — Oficina, Marketing, SUNAT, Servicios públicos';
-  const ayudaForm = esServicio
-    ? 'Honorarios persona natural (con DNI) NO llevan IGV. El monto se inyecta como costo directo del proyecto.'
-    : 'Cada gasto genera una OC formal con correlativo (001, 002…) y PDF descargable. Auto-aprueba si total ≤ S/ ' + (_cfg?.monto_limite_sin_aprobacion || 5000) + '.';
+  const tituloPanel = esServicio
+    ? 'Gastos vinculados a Servicios / Proyectos'
+    : 'Gastos Generales — Oficina, Marketing, SUNAT, Servicios públicos';
 
   panel.innerHTML = `
-    <div style="display:grid;grid-template-columns:1.5fr 1fr;gap:20px;margin-top:16px;align-items:start">
+    <div style="display:grid;grid-template-columns:1.2fr 1fr;gap:20px;margin-top:16px;align-items:start">
       <div class="card">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
           <h3 style="margin:0;font-size:15px">${tituloPanel}</h3>
@@ -156,114 +146,21 @@ function renderTabGastos(panel, tipoOC) {
           'Cada OC que crees aparece aquí con su PDF descargable.'
         )}
       </div>
-
-      <div class="card">
-        <h3 style="margin-bottom:6px;font-size:15px">➕ Nueva OC ${esServicio ? 'de Servicio' : 'General'}</h3>
-        <p style="font-size:11px;color:var(--text-secondary);margin-bottom:14px">${ayudaForm}</p>
-        <form id="form-oc-${tipoOC.toLowerCase()}" style="display:flex;flex-direction:column;gap:10px">
-          <input type="hidden" name="tipo_oc" value="${tipoOC}">
-
-          ${esServicio ? `
-          <div>
-            <label>Servicio / Proyecto *</label>
-            <select name="id_servicio" required onchange="(()=>{const s=_servicios.find(x=>x.id_servicio==this.value);if(s){document.querySelector('[name=centro_costo]').value=s.cliente||('PROYECTO-'+s.id_servicio);}})()">
-              <option value="">— Selecciona proyecto —</option>
-              ${servOpts || '<option value="" disabled>Sin servicios activos</option>'}
-            </select>
-          </div>
-          ` : ''}
-
-          <div>
-            <label>Proveedor * ${_proveedores.length === 0 ? '<span style="color:#e65100">(crea uno primero en Proveedores)</span>' : ''}</label>
-            <select name="id_proveedor" required>
-              <option value="">— Selecciona proveedor —</option>
-              ${provOpts}
-            </select>
-          </div>
-
-          <div>
-            <label>Concepto / Descripción *</label>
-            <input name="descripcion" required placeholder="${esServicio ? 'Ej: Honorario soldador 3 días, Flete a Las Bambas' : 'Ej: SERVICIO DE INTERNET FEB/2026, PAGO LUZ ENE'}">
-          </div>
-
-          <div>
-            <label>Centro de Costo *</label>
-            <input name="centro_costo" value="${esServicio ? '' : 'OFICINA CENTRAL'}" placeholder="${esServicio ? 'Auto-rellena al elegir proyecto' : 'OFICINA CENTRAL, MARKETING, etc.'}" required>
-          </div>
-
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-            <div><label>Fecha emisión *</label><input type="date" name="fecha_emision" value="${hoy}" required></div>
-            <div><label>Empresa</label>
-              <select name="empresa">
-                <option value="ME">Metal Engineers (PEN)</option>
-                <option value="PT">Perfotools (USD)</option>
-              </select>
-            </div>
-          </div>
-
-          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
-            <div><label>Monto *</label><input type="number" step="0.01" name="monto" required></div>
-            <div><label>Moneda</label>
-              <select name="moneda"><option value="PEN">PEN</option><option value="USD">USD</option></select>
-            </div>
-            <div><label>TC</label><input type="number" step="0.0001" name="tipo_cambio" value="1.0000"></div>
-          </div>
-
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-            <div><label>Forma de pago</label>
-              <select name="forma_pago"><option value="CONTADO">Contado</option><option value="CREDITO">Crédito</option></select>
-            </div>
-            <div><label>Unidad</label>
-              <select name="unidad"><option value="UND">UND</option><option value="GLB">GLB</option><option value="SERV">SERV</option></select>
-            </div>
-          </div>
-
-          <div>
-            <label>Observaciones</label>
-            <input name="observaciones" placeholder="Ej: Banca Móvil — Pago servicio, Depósito a cuenta, NPS SUNAT">
-          </div>
-
-          <label style="display:flex;gap:6px;align-items:center;font-size:12px">
-            <input type="checkbox" name="aplica_igv" ${esServicio ? '' : (_cfg?.aplica_igv ? 'checked' : '')}>
-            Aplica IGV 18%${esServicio ? ' (desmarcar si es RH persona natural)' : ''}
-          </label>
-
-          <button type="submit" style="padding:10px;background:var(--primary-color);color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:600">
-            Crear OC + generar PDF
-          </button>
-        </form>
-      </div>
+      ${renderFormOC(tipoOC)}
     </div>
   `;
 
-  // Si es servicio, auto-rellenar centro_costo al elegir servicio
-  if (esServicio) {
-    const sel = panel.querySelector('[name=id_servicio]');
-    const cc = panel.querySelector('[name=centro_costo]');
-    if (sel && cc) {
-      sel.onchange = () => {
-        const s = _servicios.find(x => String(x.id_servicio) === sel.value);
-        if (s) cc.value = s.cliente || ('PROYECTO-' + s.id_servicio);
-      };
-    }
-  }
-
-  bindFormOC(`form-oc-${tipoOC.toLowerCase()}`);
+  bindFormOCMulti(panel, tipoOC);
 }
 
-// ─── TAB Compras Almacén (multi-línea) ──────────────────────────────────
+// ─── TAB Compras Almacén (usa el mismo form unificado) ──────────────────
 function renderTabAlmacen(panel) {
   panel.dataset.rendered = '1';
   const ocs = _ocsAlmacen;
   const total = ocs.reduce((s, o) => s + Number(o.total || 0), 0);
-  const hoy = new Date().toISOString().slice(0, 10);
-  const provOpts = _proveedores.map(p => {
-    const doc = p.ruc || p.dni || '';
-    return `<option value="${p.id_proveedor}">${p.razon_social}${doc ? ' · ' + doc : ''}</option>`;
-  }).join('');
 
   panel.innerHTML = `
-    <div style="display:grid;grid-template-columns:1.3fr 1fr;gap:20px;margin-top:16px;align-items:start">
+    <div style="display:grid;grid-template-columns:1.2fr 1fr;gap:20px;margin-top:16px;align-items:start">
       <div class="card">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
           <h3 style="margin:0;font-size:15px">Compras de Almacén</h3>
@@ -277,94 +174,11 @@ function renderTabAlmacen(panel) {
           'Registrá una OC con ítems y cantidades.'
         )}
       </div>
-
-      <div class="card">
-        <h3 style="margin-bottom:14px;font-size:15px">➕ Nueva OC Almacén (multi-línea)</h3>
-        <form id="form-oc-almacen" style="display:flex;flex-direction:column;gap:10px">
-          <input type="hidden" name="tipo_oc" value="ALMACEN">
-
-          <div>
-            <label>Proveedor *</label>
-            <select name="id_proveedor" required>
-              <option value="">— Selecciona proveedor —</option>
-              ${provOpts}
-            </select>
-          </div>
-
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-            <div><label>Fecha emisión *</label><input type="date" name="fecha_emision" value="${hoy}" required></div>
-            <div><label>Empresa</label>
-              <select name="empresa">
-                <option value="ME">Metal Engineers (PEN)</option>
-                <option value="PT">Perfotools (USD)</option>
-              </select>
-            </div>
-          </div>
-
-          <div><label>Centro de Costo</label>
-            <input name="centro_costo" value="ALMACEN METAL" required>
-          </div>
-
-          <div style="border:1px solid #e5e7eb;border-radius:6px;padding:10px">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-              <strong style="font-size:13px">Líneas</strong>
-              <button type="button" id="add-linea" style="padding:4px 10px;font-size:11px;background:#f3f4f6;border:1px solid #d1d5db;border-radius:4px;cursor:pointer">+ línea</button>
-            </div>
-            <div id="lineas-almacen">
-              <div class="linea" style="display:grid;grid-template-columns:2fr 60px 70px 90px 24px;gap:4px;margin-bottom:4px">
-                <input name="desc[]" placeholder="Descripción" required style="font-size:12px">
-                <input name="und[]" value="UND" style="font-size:12px">
-                <input name="cant[]" type="number" step="0.01" value="1" required style="font-size:12px">
-                <input name="pu[]" type="number" step="0.01" placeholder="P/U" required style="font-size:12px">
-                <button type="button" onclick="this.parentNode.remove()" style="color:#dc2626;background:transparent;border:none;cursor:pointer">✕</button>
-              </div>
-            </div>
-          </div>
-
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-            <div><label>Moneda</label>
-              <select name="moneda"><option value="PEN">PEN</option><option value="USD">USD</option></select>
-            </div>
-            <div><label>TC</label><input type="number" step="0.0001" name="tipo_cambio" value="1.0000"></div>
-          </div>
-
-          <div>
-            <label>Observaciones</label>
-            <input name="observaciones" placeholder="Ej: Entrega en almacén La Molina">
-          </div>
-
-          <label style="display:flex;gap:6px;align-items:center;font-size:12px">
-            <input type="checkbox" name="aplica_igv" ${_cfg?.aplica_igv ? 'checked' : ''}> Aplica IGV 18%
-          </label>
-
-          <button type="submit" style="padding:10px;background:var(--primary-color);color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:600">
-            Crear OC Almacén + PDF
-          </button>
-        </form>
-      </div>
+      ${renderFormOC('ALMACEN')}
     </div>
   `;
 
-  // Botón "+ línea"
-  const btnAdd = panel.querySelector('#add-linea');
-  const wrap = panel.querySelector('#lineas-almacen');
-  if (btnAdd && wrap) {
-    btnAdd.onclick = () => {
-      const row = document.createElement('div');
-      row.className = 'linea';
-      row.style.cssText = 'display:grid;grid-template-columns:2fr 60px 70px 90px 24px;gap:4px;margin-bottom:4px';
-      row.innerHTML = `
-        <input name="desc[]" placeholder="Descripción" required style="font-size:12px">
-        <input name="und[]" value="UND" style="font-size:12px">
-        <input name="cant[]" type="number" step="0.01" value="1" required style="font-size:12px">
-        <input name="pu[]" type="number" step="0.01" placeholder="P/U" required style="font-size:12px">
-        <button type="button" onclick="this.parentNode.remove()" style="color:#dc2626;background:transparent;border:none;cursor:pointer">✕</button>
-      `;
-      wrap.appendChild(row);
-    };
-  }
-
-  bindFormOCAlmacen('form-oc-almacen');
+  bindFormOCMulti(panel, 'ALMACEN');
 }
 
 // ─── TAB Dashboard ──────────────────────────────────────────────────────
@@ -500,15 +314,265 @@ function emptyState(titulo, subtitulo = '') {
   </div>`;
 }
 
-// ─── Form handlers ──────────────────────────────────────────────────────
+// ─── Form unificado: replica formato físico de OC Metal Engineers ───────
+// Multi-línea + sub-descripción + auto-fill datos del proveedor + totales en vivo
 
-function bindFormOC(formId) {
-  const form = document.getElementById(formId);
+function renderFormOC(tipoOC) {
+  const esServicio = tipoOC === 'SERVICIO';
+  const esAlmacen  = tipoOC === 'ALMACEN';
+  const esGeneral  = tipoOC === 'GENERAL';
+  const hoy = new Date().toISOString().slice(0, 10);
+  const formId = `form-oc-${tipoOC.toLowerCase()}`;
+  const igvDefault = !esServicio && _cfg?.aplica_igv;
+
+  const provOpts = _proveedores.map(p => {
+    const doc = p.ruc || p.dni || '';
+    return `<option value="${p.id_proveedor}">${p.razon_social}${doc ? ' · ' + doc : ''}</option>`;
+  }).join('');
+  const servOpts = _servicios.map(s =>
+    `<option value="${s.id_servicio}">${s.nro_servicio || ('SRV-' + s.id_servicio)} · ${s.cliente || s.descripcion || '—'}</option>`
+  ).join('');
+
+  const titulo = esServicio ? 'Nueva OC de Servicio'
+              : esAlmacen  ? 'Nueva OC Almacén'
+              : 'Nueva OC General';
+  const ccDefault = esAlmacen ? 'ALMACEN METAL' : esServicio ? '' : 'OFICINA CENTRAL';
+  const undDefault = esAlmacen ? 'NIU' : esServicio ? 'DIAS' : 'UND';
+  const formaPagoDefault = esAlmacen ? 'CREDITO' : 'CONTADO';
+  const ayuda = esServicio
+    ? 'Honorarios persona natural (con DNI) NO llevan IGV. Vinculado al proyecto.'
+    : 'Cada gasto genera OC con correlativo (NNN-YYYY-CC) y PDF formal.'
+      + ` Auto-aprueba si total ≤ S/ ${_cfg?.monto_limite_sin_aprobacion || 5000}.`;
+
+  return `
+    <div class="card">
+      <h3 style="margin-bottom:6px;font-size:15px">➕ ${titulo}</h3>
+      <p style="font-size:11px;color:var(--text-secondary);margin-bottom:12px">${ayuda}</p>
+      <form id="${formId}" data-tipo-oc="${tipoOC}" style="display:flex;flex-direction:column;gap:10px">
+        <input type="hidden" name="tipo_oc" value="${tipoOC}">
+
+        ${esServicio ? `
+        <div>
+          <label>Servicio / Proyecto *</label>
+          <select name="id_servicio" required>
+            <option value="">— Selecciona proyecto —</option>
+            ${servOpts || '<option value="" disabled>Sin servicios activos</option>'}
+          </select>
+        </div>` : ''}
+
+        <div>
+          <label>Proveedor * ${_proveedores.length === 0 ? '<span style="color:#e65100">(crea uno en pestaña Proveedores)</span>' : ''}</label>
+          <select name="id_proveedor" required>
+            <option value="">— Selecciona proveedor —</option>
+            ${provOpts}
+          </select>
+        </div>
+
+        <div id="prov-info-${tipoOC}" style="display:none;font-size:11px;background:#f9fafb;border-radius:6px;padding:8px;line-height:1.5">
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <div><label>Atención</label><input name="atencion" placeholder="Persona contacto"></div>
+          <div><label>Lugar entrega</label><input name="lugar_entrega" value="Lima"></div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <div><label>Centro de Costo *</label>
+            <input name="centro_costo" value="${ccDefault}" placeholder="${esServicio ? 'Auto-rellena con proyecto' : 'OFICINA CENTRAL, MARKETING…'}" required>
+          </div>
+          <div><label>Fecha emisión *</label><input type="date" name="fecha_emision" value="${hoy}" required></div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
+          <div><label>Empresa</label>
+            <select name="empresa">
+              <option value="ME">Metal Engineers (PEN)</option>
+              <option value="PT">Perfotools (USD)</option>
+            </select>
+          </div>
+          <div><label>Moneda</label>
+            <select name="moneda"><option value="PEN">PEN</option><option value="USD">USD</option></select>
+          </div>
+          <div><label>TC</label><input type="number" step="0.0001" name="tipo_cambio" value="1.0000"></div>
+        </div>
+
+        <div style="border:1px solid #e5e7eb;border-radius:6px;padding:10px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+            <strong style="font-size:13px">Items / Líneas *</strong>
+            <button type="button" class="btn-add-linea" style="padding:4px 10px;font-size:11px;background:#f3f4f6;border:1px solid #d1d5db;border-radius:4px;cursor:pointer">+ línea</button>
+          </div>
+          <div class="lineas-wrap" data-und-default="${undDefault}"></div>
+        </div>
+
+        <label style="display:flex;gap:6px;align-items:center;font-size:12px">
+          <input type="checkbox" name="aplica_igv" ${igvDefault ? 'checked' : ''}>
+          Aplica IGV 18%${esServicio ? ' (desmarcar si es RH persona natural)' : ''}
+        </label>
+
+        <div style="background:#f9fafb;padding:10px;border-radius:6px;font-size:13px">
+          <div style="display:flex;justify-content:space-between"><span>Subtotal:</span><strong class="t-subtotal">S/ 0.00</strong></div>
+          <div style="display:flex;justify-content:space-between"><span>IGV 18%:</span><strong class="t-igv" style="color:var(--text-secondary)">S/ 0.00</strong></div>
+          <div style="display:flex;justify-content:space-between;border-top:1px solid #e5e7eb;margin-top:4px;padding-top:4px"><span>Total:</span><strong class="t-total" style="font-size:15px">S/ 0.00</strong></div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <div><label>Forma de pago</label>
+            <select name="forma_pago">
+              <option value="CONTADO" ${formaPagoDefault === 'CONTADO' ? 'selected' : ''}>Contado</option>
+              <option value="CREDITO" ${formaPagoDefault === 'CREDITO' ? 'selected' : ''}>Crédito</option>
+            </select>
+          </div>
+          <div class="dc-wrap" style="display:none">
+            <label>Días crédito</label>
+            <input type="number" name="dias_credito" value="0" min="0">
+          </div>
+        </div>
+
+        <div>
+          <label>Observaciones / Forma pago detalle</label>
+          <input name="observaciones" placeholder="Ej: Banca Móvil — Pago servicio · Depósito a CCI · NPS SUNAT 0004…">
+        </div>
+
+        <button type="submit" style="padding:12px;background:var(--primary-color);color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:600;font-size:14px">
+          ✅ Crear OC + generar PDF
+        </button>
+      </form>
+    </div>
+  `;
+}
+
+function bindFormOCMulti(panel, tipoOC) {
+  const form = panel.querySelector(`#form-oc-${tipoOC.toLowerCase()}`);
   if (!form) return;
+
+  const lineasWrap   = form.querySelector('.lineas-wrap');
+  const undDefault   = lineasWrap.dataset.undDefault || 'UND';
+  const btnAddLinea  = form.querySelector('.btn-add-linea');
+  const provInfoDiv  = form.querySelector(`#prov-info-${tipoOC}`);
+  const provSelect   = form.querySelector('[name=id_proveedor]');
+  const servSelect   = form.querySelector('[name=id_servicio]');
+  const ccInput      = form.querySelector('[name=centro_costo]');
+  const igvCheckbox  = form.querySelector('[name=aplica_igv]');
+  const formaPagoSel = form.querySelector('[name=forma_pago]');
+  const dcWrap       = form.querySelector('.dc-wrap');
+  const tSubtotal    = form.querySelector('.t-subtotal');
+  const tIGV         = form.querySelector('.t-igv');
+  const tTotal       = form.querySelector('.t-total');
+
+  // ── Crear una nueva línea ──
+  function addLinea(data = {}) {
+    const idx = lineasWrap.children.length + 1;
+    const row = document.createElement('div');
+    row.className = 'linea';
+    row.style.cssText = 'display:grid;grid-template-columns:32px 2fr 60px 70px 90px 80px 24px;gap:4px;align-items:start;margin-bottom:6px;font-size:12px';
+    row.innerHTML = `
+      <div style="text-align:center;padding-top:8px;color:var(--text-secondary)">${idx}</div>
+      <div>
+        <input class="l-desc" placeholder="Descripción del ítem" required style="width:100%;font-size:12px">
+        <input class="l-subdesc" placeholder="Sub-descripción / nota (opcional)" style="width:100%;font-size:11px;margin-top:2px;color:var(--text-secondary)">
+      </div>
+      <input class="l-und" value="${data.unidad || undDefault}" style="font-size:12px;text-align:center">
+      <input class="l-cant" type="number" step="0.01" min="0.01" value="${data.cantidad || 1}" required style="font-size:12px;text-align:right">
+      <input class="l-pu" type="number" step="0.01" min="0" placeholder="P/U" required style="font-size:12px;text-align:right">
+      <span class="l-total" style="text-align:right;font-weight:600;padding-top:8px">S/ 0.00</span>
+      <button type="button" class="l-del" style="color:#dc2626;background:transparent;border:none;cursor:pointer;padding-top:6px">✕</button>
+    `;
+    lineasWrap.appendChild(row);
+    row.querySelectorAll('input').forEach(i => i.addEventListener('input', recalc));
+    row.querySelector('.l-del').onclick = () => { row.remove(); renumber(); recalc(); };
+    recalc();
+  }
+
+  function renumber() {
+    [...lineasWrap.children].forEach((row, i) => {
+      const n = row.querySelector(':scope > div:first-child');
+      if (n) n.textContent = String(i + 1);
+    });
+  }
+
+  function recalc() {
+    let subtotal = 0;
+    [...lineasWrap.children].forEach(row => {
+      const cant = Number(row.querySelector('.l-cant')?.value) || 0;
+      const pu   = Number(row.querySelector('.l-pu')?.value) || 0;
+      const sub  = cant * pu;
+      const lt = row.querySelector('.l-total');
+      if (lt) lt.textContent = fPEN(sub);
+      subtotal += sub;
+    });
+    const aplica = igvCheckbox.checked;
+    const igv = aplica ? subtotal * 0.18 : 0;
+    const total = subtotal + igv;
+    tSubtotal.textContent = fPEN(subtotal);
+    tIGV.textContent = fPEN(igv);
+    tTotal.textContent = fPEN(total);
+  }
+
+  btnAddLinea.onclick = () => addLinea();
+  igvCheckbox.onchange = recalc;
+
+  // ── Auto-fill datos del proveedor al elegirlo ──
+  provSelect.onchange = () => {
+    const p = _proveedores.find(x => String(x.id_proveedor) === provSelect.value);
+    if (!p) { provInfoDiv.style.display = 'none'; return; }
+    const cuenta = p.banco_1_nombre
+      ? `${p.banco_1_nombre} ${p.banco_1_numero || ''}${p.banco_1_cci ? ' · CCI ' + p.banco_1_cci : ''}`
+      : '';
+    const cuenta2 = p.banco_2_nombre
+      ? `<br>${p.banco_2_nombre} ${p.banco_2_numero || ''}${p.banco_2_cci ? ' · CCI ' + p.banco_2_cci : ''}`
+      : '';
+    provInfoDiv.innerHTML = `
+      <div>📞 <strong>${p.telefono || '—'}</strong>  📧 ${p.email || '—'}</div>
+      ${p.contacto ? `<div>👤 Contacto: ${p.contacto}</div>` : ''}
+      ${cuenta ? `<div>🏦 ${cuenta}${cuenta2}</div>` : '<div style="color:#e65100">⚠️ Sin cuenta bancaria registrada — agregar en Proveedores</div>'}
+    `;
+    provInfoDiv.style.display = 'block';
+    // Auto-rellenar atención
+    const atInput = form.querySelector('[name=atencion]');
+    if (atInput && !atInput.value && p.contacto) atInput.value = p.contacto;
+  };
+
+  // ── Auto-fill centro costo al elegir servicio ──
+  if (servSelect) {
+    servSelect.onchange = () => {
+      const s = _servicios.find(x => String(x.id_servicio) === servSelect.value);
+      if (s && ccInput) ccInput.value = (s.cliente || ('PROYECTO-' + s.id_servicio)).toUpperCase();
+    };
+  }
+
+  // ── Show/hide días crédito según forma pago ──
+  formaPagoSel.onchange = () => {
+    dcWrap.style.display = formaPagoSel.value === 'CREDITO' ? 'block' : 'none';
+  };
+  formaPagoSel.dispatchEvent(new Event('change'));
+
+  // ── Línea inicial ──
+  addLinea();
+
+  // ── Submit ──
   form.onsubmit = async (e) => {
     e.preventDefault();
     const fd = new FormData(form);
-    const monto = Number(fd.get('monto')) || 0;
+
+    // Construir líneas
+    const lineas = [];
+    [...lineasWrap.children].forEach(row => {
+      const desc = row.querySelector('.l-desc')?.value.trim();
+      const subdesc = row.querySelector('.l-subdesc')?.value.trim();
+      const und = row.querySelector('.l-und')?.value.trim() || 'UND';
+      const cant = Number(row.querySelector('.l-cant')?.value) || 0;
+      const pu = Number(row.querySelector('.l-pu')?.value) || 0;
+      if (!desc || cant <= 0 || pu < 0) return;
+      const descCompleta = subdesc ? `${desc}\n${subdesc}` : desc;
+      lineas.push({
+        descripcion: descCompleta,
+        unidad: und,
+        cantidad: cant,
+        precio_unitario: pu,
+      });
+    });
+    if (lineas.length === 0) { showError('Agregá al menos un ítem con descripción y precio'); return; }
+
     const payload = {
       tipo_oc:        fd.get('tipo_oc'),
       empresa:        fd.get('empresa') || 'ME',
@@ -520,13 +584,11 @@ function bindFormOC(formId) {
       tipo_cambio:    Number(fd.get('tipo_cambio')) || 1,
       aplica_igv:     fd.get('aplica_igv') === 'on',
       forma_pago:     fd.get('forma_pago') || 'CONTADO',
+      dias_credito:   Number(fd.get('dias_credito')) || 0,
+      atencion:       fd.get('atencion') || null,
+      lugar_entrega:  fd.get('lugar_entrega') || 'Lima',
       observaciones:  fd.get('observaciones') || null,
-      lineas: [{
-        descripcion:     fd.get('descripcion'),
-        unidad:          fd.get('unidad') || 'UND',
-        cantidad:        1,
-        precio_unitario: monto,
-      }],
+      lineas,
     };
 
     const btn = form.querySelector('button[type=submit]');
@@ -537,58 +599,7 @@ function bindFormOC(formId) {
       setTimeout(() => api.ordenesCompra.descargarPDF(r.id_oc).catch(() => {}), 400);
       setTimeout(() => location.reload(), 1800);
     } catch (err) {
-      if (btn) { btn.disabled = false; btn.textContent = 'Crear OC + generar PDF'; }
-      showError(err?.error || err?.message || 'Error al crear OC');
-    }
-  };
-}
-
-function bindFormOCAlmacen(formId) {
-  const form = document.getElementById(formId);
-  if (!form) return;
-  form.onsubmit = async (e) => {
-    e.preventDefault();
-    const fd = new FormData(form);
-    const descs = fd.getAll('desc[]');
-    const unds = fd.getAll('und[]');
-    const cants = fd.getAll('cant[]');
-    const pus = fd.getAll('pu[]');
-
-    const lineas = [];
-    for (let i = 0; i < descs.length; i++) {
-      const d = String(descs[i] || '').trim();
-      if (!d) continue;
-      lineas.push({
-        descripcion: d,
-        unidad: unds[i] || 'UND',
-        cantidad: Number(cants[i]) || 0,
-        precio_unitario: Number(pus[i]) || 0,
-      });
-    }
-    if (lineas.length === 0) { showError('Agregá al menos una línea'); return; }
-
-    const payload = {
-      tipo_oc:       'ALMACEN',
-      empresa:       fd.get('empresa') || 'ME',
-      fecha_emision: fd.get('fecha_emision'),
-      id_proveedor:  Number(fd.get('id_proveedor')),
-      centro_costo:  fd.get('centro_costo') || 'ALMACEN METAL',
-      moneda:        fd.get('moneda') || 'PEN',
-      tipo_cambio:   Number(fd.get('tipo_cambio')) || 1,
-      aplica_igv:    fd.get('aplica_igv') === 'on',
-      observaciones: fd.get('observaciones') || null,
-      lineas,
-    };
-
-    const btn = form.querySelector('button[type=submit]');
-    if (btn) { btn.disabled = true; btn.textContent = 'Creando OC…'; }
-    try {
-      const r = await api.ordenesCompra.create(payload);
-      showSuccess(`OC ${r.nro_oc} creada — abriendo PDF...`);
-      setTimeout(() => api.ordenesCompra.descargarPDF(r.id_oc).catch(() => {}), 400);
-      setTimeout(() => location.reload(), 1800);
-    } catch (err) {
-      if (btn) { btn.disabled = false; btn.textContent = 'Crear OC Almacén + PDF'; }
+      if (btn) { btn.disabled = false; btn.textContent = '✅ Crear OC + generar PDF'; }
       showError(err?.error || err?.message || 'Error al crear OC');
     }
   };
