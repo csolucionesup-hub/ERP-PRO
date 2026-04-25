@@ -366,15 +366,9 @@ function renderDashboard(panel) {
   setTimeout(() => {
     const allOCs = [..._ocsGeneral, ..._ocsServicio, ..._ocsAlmacen];
     const trend = buildMonthlyTrend(allOCs);
-    _chartInstances.trend = lineChart('ch-trend', {
-      labels: trend.map(x => x.mes),
-      datasets: [{ label: 'Total', data: trend.map(x => x.valor), borderColor: chartColors.primary, backgroundColor: chartColors.primary + '33', fill: true, tension: 0.3 }]
-    });
-    const byCC = buildByCentroCosto(allOCs);
-    _chartInstances.cc = barChart('ch-cc', {
-      labels: byCC.map(x => x.cc),
-      datasets: [{ label: 'S/', data: byCC.map(x => x.valor), backgroundColor: chartColors.primary }]
-    });
+    _chartInstances.trend = lineChart('#ch-trend', trend, { label: 'Total OCs', currency: true });
+    const byCC = buildByCentroCosto(allOCs).map(x => ({ label: x.cc, valor: x.valor }));
+    _chartInstances.cc = barChart('#ch-cc', byCC, { label: 'S/' });
   }, 50);
 }
 
