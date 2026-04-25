@@ -256,6 +256,13 @@ export const api = {
     get:              (id)    => get(`/facturas/${id}`),
     consultarEstado:  (id)    => post(`/facturas/${id}/consultar-estado`),
   },
+  centrosCosto: {
+    list:    (soloActivos = false) => get(`/centros-costo${soloActivos ? '?activos=1' : ''}`),
+    resumen: (anio)    => get(`/centros-costo/resumen${anio ? '?anio=' + anio : ''}`),
+    create:  (data)    => post('/centros-costo', data),
+    update:  (id, d)   => put(`/centros-costo/${id}`, d),
+    remove:  (id)      => del(`/centros-costo/${id}`),
+  },
   ordenesCompra: {
     list:       (filtros = {}) => {
       const p = new URLSearchParams();

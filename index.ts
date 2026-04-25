@@ -35,6 +35,7 @@ import PLEExporter from './app/modules/facturacion/PLEExporter';
 import { FacturacionCron } from './app/modules/facturacion/FacturacionCron';
 import ImportadorService, { EntidadImportable } from './app/modules/importador/ImportadorService';
 import OrdenCompraService from './app/modules/compras/OrdenCompraService';
+import CentrosCostoService from './app/modules/compras/CentrosCostoService';
 import { OrdenCompraPDFService } from './app/modules/compras/OrdenCompraPDFService';
 import ROCService from './app/modules/compras/ROCService';
 import { auditLog } from './app/middlewares/auditLog';
@@ -996,6 +997,29 @@ ocRouter.get('/:id/pdf', validateIdParam, async (req: Request, res: Response) =>
 });
 
 app.use('/api/ordenes-compra', ocRouter);
+
+// ===== CENTROS DE COSTO (maestro) — modulo LOGISTICA =====
+const ccRouter = express.Router();
+ccRouter.use(requireAuth);
+ccRouter.use(requireModulo('LOGISTICA'));
+ccRouter.get('/', async (req: Request, res: Response) => {
+  const soloActivos = req.query.activos === '1' || req.query.activos === 'true';
+  res.json(await CentrosCostoService.listar(soloActivos));
+});
+ccRouter.get('/resumen', async (req: Request, res: Response) => {
+  const anio = req.query.anio ? Number(req.query.anio) : undefined;
+  res.json(await CentrosCostoService.resumen(anio));
+});
+ccRouter.post('/', auditLog('CentroCosto', 'CREATE'), async (req: Request, res: Response) => {
+  res.json(await CentrosCostoService.crear(req.body));
+});
+ccRouter.put('/:id', validateIdParam, auditLog('CentroCosto', 'UPDATE'), async (req: Request, res: Response) => {
+  res.json(await CentrosCostoService.actualizar(Number(req.params.id), req.body));
+});
+ccRouter.delete('/:id', validateIdParam, auditLog('CentroCosto', 'DELETE'), async (req: Request, res: Response) => {
+  res.json(await CentrosCostoService.eliminar(Number(req.params.id)));
+});
+app.use('/api/centros-costo', ccRouter);
 
 // Anidamos el API controlada bajo la rama estándar /api
 app.use('/api', apiRouter);

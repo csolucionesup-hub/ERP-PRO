@@ -31,6 +31,7 @@ const fmtMoney = (v, moneda) => moneda === 'USD' ? fUSD(v) : fPEN(v);
 let _cfg = null;
 let _servicios = [];
 let _proveedores = [];
+let _centrosCosto = [];
 let _ocsGeneral = [];
 let _ocsServicio = [];
 let _ocsAlmacen = [];
@@ -38,10 +39,11 @@ let _chartInstances = {};
 
 export const Logistica = async () => {
   try {
-    [_cfg, _servicios, _proveedores, _ocsGeneral, _ocsServicio, _ocsAlmacen] = await Promise.all([
+    [_cfg, _servicios, _proveedores, _centrosCosto, _ocsGeneral, _ocsServicio, _ocsAlmacen] = await Promise.all([
       api.config.get().catch(() => ({ aplica_igv: 1, tasa_igv: 18, monto_limite_sin_aprobacion: 5000 })),
       api.services.getServiciosActivos().catch(() => []),
       api.purchases.getProveedores().catch(() => []),
+      api.centrosCosto.list(true).catch(() => []),
       api.ordenesCompra.list({ tipo_oc: 'GENERAL' }).catch(() => []),
       api.ordenesCompra.list({ tipo_oc: 'SERVICIO' }).catch(() => []),
       api.ordenesCompra.list({ tipo_oc: 'ALMACEN' }).catch(() => []),
@@ -61,11 +63,12 @@ export const Logistica = async () => {
     </header>
     <div id="logi-tabbar" style="margin-top:20px"></div>
     <div id="logi-panel-proveedores" class="logi-tab-content"></div>
-    <div id="logi-panel-oc"        class="logi-tab-content" style="display:none"></div>
-    <div id="logi-panel-general"   class="logi-tab-content" style="display:none"></div>
-    <div id="logi-panel-servicio"  class="logi-tab-content" style="display:none"></div>
-    <div id="logi-panel-almacen"   class="logi-tab-content" style="display:none"></div>
-    <div id="logi-panel-dash"      class="logi-tab-content" style="display:none"></div>
+    <div id="logi-panel-oc"            class="logi-tab-content" style="display:none"></div>
+    <div id="logi-panel-centros"       class="logi-tab-content" style="display:none"></div>
+    <div id="logi-panel-general"       class="logi-tab-content" style="display:none"></div>
+    <div id="logi-panel-servicio"      class="logi-tab-content" style="display:none"></div>
+    <div id="logi-panel-almacen"       class="logi-tab-content" style="display:none"></div>
+    <div id="logi-panel-dash"          class="logi-tab-content" style="display:none"></div>
   `;
 };
 
@@ -73,11 +76,12 @@ function initTabs() {
   TabBar({
     container: '#logi-tabbar',
     tabs: [
-      { id: 'proveedores', label: `🤝 Proveedores`,        badge: _proveedores.length },
-      { id: 'oc',          label: `📋 Órdenes de Compra`,  badge: _ocsGeneral.length + _ocsServicio.length + _ocsAlmacen.length },
-      { id: 'general',     label: `🏢 Gastos Generales`,   badge: _ocsGeneral.length },
-      { id: 'servicio',    label: `🔧 Gastos de Servicio`, badge: _ocsServicio.length },
-      { id: 'almacen',     label: `📥 Compras Almacén`,    badge: _ocsAlmacen.length },
+      { id: 'proveedores', label: `🤝 Proveedores`,         badge: _proveedores.length },
+      { id: 'centros',     label: `🎯 Centros de Costo`,    badge: _centrosCosto.length },
+      { id: 'oc',          label: `📋 Órdenes de Compra`,   badge: _ocsGeneral.length + _ocsServicio.length + _ocsAlmacen.length },
+      { id: 'general',     label: `🏢 Gastos Generales`,    badge: _ocsGeneral.length },
+      { id: 'servicio',    label: `🔧 Gastos de Servicio`,  badge: _ocsServicio.length },
+      { id: 'almacen',     label: `📥 Compras Almacén`,     badge: _ocsAlmacen.length },
       { id: 'dash',        label: '📊 Dashboard' },
     ],
     defaultTab: 'proveedores',
@@ -87,6 +91,7 @@ function initTabs() {
       const panel = document.getElementById('logi-panel-' + id);
       if (panel) panel.style.display = 'block';
       if (id === 'proveedores' && !panel.dataset.rendered) await renderTabProveedores(panel);
+      if (id === 'centros'     && !panel.dataset.rendered) await renderTabCentros(panel);
       if (id === 'oc'          && !panel.dataset.rendered) await renderTabOC(panel);
       if (id === 'general'     && !panel.dataset.rendered) renderTabGastos(panel, 'GENERAL');
       if (id === 'servicio'    && !panel.dataset.rendered) renderTabGastos(panel, 'SERVICIO');
@@ -95,7 +100,7 @@ function initTabs() {
     },
   });
 
-  window.Logistica = { descargarPDF, anularOC };
+  window.Logistica = { descargarPDF, anularOC, editarCC, toggleCC, eliminarCC, descargarROC };
 }
 
 // ─── TAB Proveedores (delega a página Proveedores.js) ───────────────────
@@ -121,6 +126,192 @@ async function renderTabOC(panel) {
   } catch (e) {
     panel.innerHTML = `<div style="padding:40px;color:var(--danger)">Error: ${e.message}</div>`;
   }
+}
+
+// ─── TAB Centros de Costo (CRUD + ROC) ─────────────────────────────────
+async function renderTabCentros(panel) {
+  panel.dataset.rendered = '1';
+  panel.innerHTML = '<div style="padding:30px;text-align:center;color:var(--text-secondary)">Cargando…</div>';
+
+  let resumen = [];
+  try {
+    resumen = await api.centrosCosto.resumen(new Date().getFullYear());
+  } catch (e) {
+    panel.innerHTML = `<div style="padding:30px;color:var(--danger)">Error: ${e.message}</div>`;
+    return;
+  }
+
+  const tipos = ['OFICINA', 'PROYECTO', 'ALMACEN', 'OTRO'];
+  const tipoColor = {
+    OFICINA:  { bg: '#dbeafe', fg: '#1e40af', icon: '🏢' },
+    PROYECTO: { bg: '#fef3c7', fg: '#92400e', icon: '🔧' },
+    ALMACEN:  { bg: '#dcfce7', fg: '#166534', icon: '📦' },
+    OTRO:     { bg: '#f3f4f6', fg: '#374151', icon: '📁' },
+  };
+
+  const rows = resumen.map(cc => {
+    const c = tipoColor[cc.tipo] || tipoColor.OTRO;
+    const monto = Number(cc.monto_total) || 0;
+    return `
+      <tr style="${!cc.activo ? 'opacity:0.5' : ''}">
+        <td style="padding:8px"><span style="background:${c.bg};color:${c.fg};padding:3px 8px;border-radius:8px;font-size:11px;font-weight:600">${c.icon} ${cc.tipo}</span></td>
+        <td style="padding:8px;font-weight:600">${cc.nombre}</td>
+        <td style="padding:8px;text-align:right">${cc.cantidad_ocs || 0}</td>
+        <td style="padding:8px;text-align:right;font-weight:700">${fPEN(monto)}</td>
+        <td style="padding:8px;font-size:11px;color:var(--text-secondary)">${cc.ultima_fecha ? fmtDate(cc.ultima_fecha) : '—'}</td>
+        <td style="padding:8px;text-align:center">${cc.activo ? '✅' : '❌'}</td>
+        <td style="padding:8px;white-space:nowrap">
+          <button onclick="Logistica.descargarROC('${cc.nombre.replace(/'/g, "\\'")}')" style="padding:4px 8px;font-size:11px;background:#065f46;color:white;border:none;border-radius:4px;cursor:pointer" title="Reporte semanal de OCs (Excel)">📊 ROC</button>
+          <button onclick="Logistica.editarCC(${cc.id_centro_costo})" style="padding:4px 8px;font-size:11px;background:var(--info);color:white;border:none;border-radius:4px;cursor:pointer">Editar</button>
+          <button onclick="Logistica.toggleCC(${cc.id_centro_costo}, ${cc.activo})" style="padding:4px 8px;font-size:11px;background:${cc.activo ? '#f59e0b' : '#16a34a'};color:white;border:none;border-radius:4px;cursor:pointer">${cc.activo ? 'Desactivar' : 'Activar'}</button>
+          <button onclick="Logistica.eliminarCC(${cc.id_centro_costo}, '${cc.nombre.replace(/'/g, "\\'")}')" style="padding:4px 8px;font-size:11px;background:#dc2626;color:white;border:none;border-radius:4px;cursor:pointer">×</button>
+        </td>
+      </tr>`;
+  }).join('');
+
+  panel.innerHTML = `
+    <div style="display:grid;grid-template-columns:1.5fr 1fr;gap:20px;margin-top:16px;align-items:start">
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+          <h3 style="margin:0;font-size:15px">Centros de Costo registrados</h3>
+          <span style="font-size:11px;color:var(--text-secondary)">${resumen.length} centro(s) · año ${new Date().getFullYear()}</span>
+        </div>
+        <div style="overflow-x:auto">
+          <table style="width:100%;border-collapse:collapse;font-size:12px">
+            <thead><tr style="background:#fafafa;border-bottom:2px solid #e5e7eb">
+              <th style="padding:8px;text-align:left">Tipo</th>
+              <th style="padding:8px;text-align:left">Nombre</th>
+              <th style="padding:8px;text-align:right">OCs</th>
+              <th style="padding:8px;text-align:right">Monto Total</th>
+              <th style="padding:8px;text-align:left">Última OC</th>
+              <th style="padding:8px;text-align:center">Activo</th>
+              <th style="padding:8px;text-align:center">Acciones</th>
+            </tr></thead>
+            <tbody>
+              ${rows || '<tr><td colspan="7" style="padding:30px;text-align:center;color:var(--text-secondary)">Sin centros — crea uno con el form de la derecha</td></tr>'}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3 style="margin:0 0 12px;font-size:15px">➕ Nuevo Centro de Costo</h3>
+        <form id="form-cc-nuevo" style="display:flex;flex-direction:column;gap:10px">
+          <div>
+            <label style="font-size:11px;color:var(--text-secondary)">Tipo *</label>
+            <select name="tipo" required style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
+              ${tipos.map(t => `<option value="${t}">${tipoColor[t].icon} ${t}</option>`).join('')}
+            </select>
+          </div>
+          <div>
+            <label style="font-size:11px;color:var(--text-secondary)">Nombre *</label>
+            <input name="nombre" required placeholder="Ej: FABRICACION AUGER PSV, OFICINA SUR" style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
+            <span style="font-size:10px;color:var(--text-secondary)">Se guarda en MAYÚSCULAS para evitar duplicados</span>
+          </div>
+          <div>
+            <label style="font-size:11px;color:var(--text-secondary)">Descripción (opcional)</label>
+            <input name="descripcion" placeholder="Notas internas sobre el centro" style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
+          </div>
+          <button type="submit" style="padding:11px;border:none;background:var(--primary-color);color:white;border-radius:6px;cursor:pointer;font-weight:600;font-size:13px">
+            ➕ Guardar
+          </button>
+        </form>
+        <div style="margin-top:14px;padding:10px;background:#f0f9ff;border-left:3px solid #0284c7;border-radius:4px;font-size:11px;color:#075985">
+          💡 <strong>Tip:</strong> En cada OC, el campo "Centro de Costo" autocompleta desde esta lista.
+          Si escribís un nombre nuevo, se crea automáticamente al guardar la OC.
+        </div>
+      </div>
+    </div>
+  `;
+
+  // Form crear
+  panel.querySelector('#form-cc-nuevo').onsubmit = async (e) => {
+    e.preventDefault();
+    const f = e.target;
+    try {
+      await api.centrosCosto.create({
+        nombre: f.nombre.value,
+        tipo: f.tipo.value,
+        descripcion: f.descripcion.value || undefined,
+      });
+      showSuccess('Centro de costo creado');
+      window.location.reload();
+    } catch (err) {
+      showError(err?.error || err?.message || 'Error al crear');
+    }
+  };
+}
+
+// ─── Window handlers Centros de Costo ─────────────────────────────────
+async function editarCC(id) {
+  let cc;
+  try {
+    const lista = await api.centrosCosto.list(false);
+    cc = lista.find(c => c.id_centro_costo === id);
+  } catch (e) { showError('No se pudo cargar'); return; }
+  if (!cc) { showError('No encontrado'); return; }
+
+  const tipos = ['OFICINA', 'PROYECTO', 'ALMACEN', 'OTRO'];
+  const overlay = document.createElement('div');
+  overlay.id = 'modal-edit-cc';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1500;display:flex;align-items:center;justify-content:center;padding:20px';
+  overlay.innerHTML = `
+    <div style="background:white;border-radius:10px;padding:24px;width:420px;max-width:95vw">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+        <h3 style="margin:0">Editar centro de costo</h3>
+        <button onclick="document.getElementById('modal-edit-cc').remove()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#999">×</button>
+      </div>
+      <form id="form-edit-cc" style="display:flex;flex-direction:column;gap:10px">
+        <select name="tipo" required style="padding:8px 10px;border:1px solid #d1d5db;border-radius:6px">
+          ${tipos.map(t => `<option value="${t}" ${cc.tipo === t ? 'selected' : ''}>${t}</option>`).join('')}
+        </select>
+        <input name="nombre" value="${cc.nombre}" required style="padding:8px 10px;border:1px solid #d1d5db;border-radius:6px">
+        <input name="descripcion" value="${cc.descripcion || ''}" placeholder="Descripción" style="padding:8px 10px;border:1px solid #d1d5db;border-radius:6px">
+        <button type="submit" style="padding:11px;background:var(--primary-color);color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">Guardar cambios</button>
+      </form>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  document.getElementById('form-edit-cc').onsubmit = async (e) => {
+    e.preventDefault();
+    const f = e.target;
+    try {
+      await api.centrosCosto.update(id, {
+        nombre: f.nombre.value,
+        tipo: f.tipo.value,
+        descripcion: f.descripcion.value || null,
+      });
+      showSuccess('Actualizado');
+      window.location.reload();
+    } catch (err) { showError(err?.error || 'Error'); }
+  };
+}
+
+async function toggleCC(id, activo) {
+  try {
+    await api.centrosCosto.update(id, { activo: !activo });
+    showSuccess(activo ? 'Desactivado' : 'Activado');
+    window.location.reload();
+  } catch (e) { showError(e?.error || 'Error'); }
+}
+
+async function eliminarCC(id, nombre) {
+  if (!confirm(`¿Eliminar "${nombre}"?\n\nSi tiene OCs asociadas se desactivará en lugar de borrarse.`)) return;
+  try {
+    const r = await api.centrosCosto.remove(id);
+    showSuccess(r.desactivado ? `Desactivado (tiene ${r.registros_asociados} OCs asociadas)` : 'Eliminado');
+    window.location.reload();
+  } catch (e) { showError(e?.error || 'Error'); }
+}
+
+async function descargarROC(centroNombre) {
+  const anio = new Date().getFullYear();
+  const semana = prompt(`ROC Semanal — ${centroNombre}\n\nNº de semana del año (1-52, vacío = semana actual):`);
+  if (semana === null) return; // canceló
+  try {
+    await api.ordenesCompra.descargarROC({ centro_costo: centroNombre, anio, semana: semana || undefined });
+    showSuccess('ROC descargado');
+  } catch (e) { showError(e?.message || 'Error generando ROC'); }
 }
 
 // ─── TAB Gastos Generales / Servicios (ambos comparten layout multi-línea) ──
@@ -378,7 +569,11 @@ function renderFormOC(tipoOC) {
 
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
           <div><label>Centro de Costo *</label>
-            <input name="centro_costo" value="${ccDefault}" placeholder="${esServicio ? 'Auto-rellena con proyecto' : 'OFICINA CENTRAL, MARKETING…'}" required>
+            <input name="centro_costo" list="cc-list-${tipoOC}" value="${ccDefault}" placeholder="${esServicio ? 'Auto-rellena con proyecto' : 'OFICINA CENTRAL, MARKETING…'}" required autocomplete="off">
+            <datalist id="cc-list-${tipoOC}">
+              ${_centrosCosto.filter(c => c.activo !== false).map(c => `<option value="${c.nombre}">${c.tipo}</option>`).join('')}
+            </datalist>
+            <span style="font-size:10px;color:var(--text-secondary)">↳ Si escribís un nuevo nombre, se crea al guardar la OC</span>
           </div>
           <div><label>Fecha emisión *</label><input type="date" name="fecha_emision" value="${hoy}" required></div>
         </div>
@@ -596,6 +791,19 @@ function bindFormOCMulti(panel, tipoOC) {
 
     const btn = form.querySelector('button[type=submit]');
     if (btn) { btn.disabled = true; btn.textContent = 'Creando OC…'; }
+
+    // Auto-crear centro de costo si es nuevo (no existe en _centrosCosto)
+    const ccNombre = (payload.centro_costo || '').trim().toUpperCase();
+    const ccExiste = _centrosCosto.some(c => c.nombre.toUpperCase() === ccNombre);
+    if (ccNombre && !ccExiste) {
+      // Inferir tipo según contexto
+      const tipoCC = tipoOC === 'ALMACEN' ? 'ALMACEN' : tipoOC === 'SERVICIO' ? 'PROYECTO' : 'OFICINA';
+      try {
+        await api.centrosCosto.create({ nombre: ccNombre, tipo: tipoCC, descripcion: `Auto-creado desde OC ${tipoOC}` });
+      } catch (_) { /* si falla por race condition, lo ignoramos */ }
+    }
+    payload.centro_costo = ccNombre;
+
     try {
       const r = await api.ordenesCompra.create(payload);
       showSuccess(`OC ${r.nro_oc} creada (${r.estado}) — abriendo PDF...`);
