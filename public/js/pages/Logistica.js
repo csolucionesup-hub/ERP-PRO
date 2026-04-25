@@ -467,15 +467,18 @@ function bindFormOCMulti(panel, tipoOC) {
     row.style.cssText = 'display:grid;grid-template-columns:32px 2fr 60px 70px 90px 80px 24px;gap:4px;align-items:start;margin-bottom:6px;font-size:12px';
     row.innerHTML = `
       <div style="text-align:center;padding-top:8px;color:var(--text-secondary)">${idx}</div>
-      <div>
-        <input class="l-desc" placeholder="Descripción del ítem" required style="width:100%;font-size:12px">
-        <input class="l-subdesc" placeholder="Sub-descripción / nota (opcional)" style="width:100%;font-size:11px;margin-top:2px;color:var(--text-secondary)">
+      <div style="display:flex;flex-direction:column;gap:4px">
+        <input class="l-desc" placeholder="Descripción del ítem (ej: SOLDADURA 7018 1/8)" required style="width:100%;font-size:12px;padding:6px 8px;border:1px solid #d1d5db;border-radius:4px">
+        <div style="display:flex;align-items:center;gap:4px">
+          <span style="font-size:10px;color:var(--text-secondary);padding:0 2px">↳</span>
+          <input class="l-subdesc" placeholder="Sub-descripción opcional (ej: REEMBOLSO JULIO, SUMINISTRO 3239076)" style="flex:1;font-size:11px;padding:5px 8px;border:1px dashed #d1d5db;border-radius:4px;background:#fafafa;color:#555">
+        </div>
       </div>
-      <input class="l-und" value="${data.unidad || undDefault}" style="font-size:12px;text-align:center">
-      <input class="l-cant" type="number" step="0.01" min="0.01" value="${data.cantidad || 1}" required style="font-size:12px;text-align:right">
-      <input class="l-pu" type="number" step="0.01" min="0" placeholder="P/U" required style="font-size:12px;text-align:right">
+      <input class="l-und" value="${data.unidad || undDefault}" style="font-size:12px;text-align:center;padding:6px;border:1px solid #d1d5db;border-radius:4px">
+      <input class="l-cant" type="number" step="0.01" min="0.01" value="${data.cantidad || 1}" required style="font-size:12px;text-align:right;padding:6px;border:1px solid #d1d5db;border-radius:4px">
+      <input class="l-pu" type="number" step="0.01" min="0" placeholder="P/U" required style="font-size:12px;text-align:right;padding:6px;border:1px solid #d1d5db;border-radius:4px">
       <span class="l-total" style="text-align:right;font-weight:600;padding-top:8px">S/ 0.00</span>
-      <button type="button" class="l-del" style="color:#dc2626;background:transparent;border:none;cursor:pointer;padding-top:6px">✕</button>
+      <button type="button" class="l-del" style="color:#dc2626;background:transparent;border:none;cursor:pointer;padding-top:6px;font-size:14px">✕</button>
     `;
     lineasWrap.appendChild(row);
     row.querySelectorAll('input').forEach(i => i.addEventListener('input', recalc));
