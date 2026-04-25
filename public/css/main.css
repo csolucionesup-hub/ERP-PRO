@@ -672,15 +672,26 @@ tr:last-child td {
    ========================================== */
 @media (max-width: 768px) {
   /* Card values del Dashboard (h2.card-value) — 32-36px en desktop */
-  .card-value { font-size: 22px !important; line-height: 1.2 !important; }
-  /* Inline font-sizes grandes específicos del dashboard */
-  h2[style*="font-size:32px"], h2[style*="font-size: 32px"],
-  h2[style*="font-size:36px"], h2[style*="font-size: 36px"] { font-size: 22px !important; }
-  h3[style*="font-size:24px"], h3[style*="font-size: 24px"] { font-size: 18px !important; }
-  /* Decoraciones tipo "+" y "%" tamaño 60px → ocultar en mobile */
+  .card-value,
+  .main-content h2.card-value,
+  main h2.card-value,
+  #main-content h2.card-value { font-size: 20px !important; line-height: 1.2 !important; word-break: break-word; }
+  /* Cualquier h2 dentro del contenido principal con inline font-size grande */
+  main h2, #main-content h2, .main-content h2 { max-width: 100%; word-break: break-word; }
+  main h2[style], #main-content h2[style], .main-content h2[style] {
+    /* override TODA inline font-size si está entre 24-99px */
+    font-size: 20px !important;
+  }
+  /* h3 grandes inline */
+  main h3[style*="font-size:24px"], main h3[style*="font-size: 24px"],
+  #main-content h3[style*="font-size:24px"], #main-content h3[style*="font-size: 24px"] { font-size: 18px !important; }
+  /* Decoraciones tipo "+" y "%" tamaño 60px → ocultar */
   div[style*="font-size:60px"], div[style*="font-size: 60px"] { display: none !important; }
-  /* "OK" central tipo 40px */
-  div[style*="font-size:40px"], div[style*="font-size: 40px"] { font-size: 28px !important; }
+  /* "OK" central 40px */
+  div[style*="font-size:40px"], div[style*="font-size: 40px"] { font-size: 26px !important; }
+  /* h2 chicos (16px) que son títulos de sección — mantenerlos */
+  main h2[style*="font-size:16px"], main h2[style*="font-size: 16px"],
+  #main-content h2[style*="font-size:16px"], #main-content h2[style*="font-size: 16px"] { font-size: 14px !important; }
 }
 @media (max-width: 480px) {
   .card-value { font-size: 18px !important; }
