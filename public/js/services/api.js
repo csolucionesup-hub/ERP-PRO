@@ -185,6 +185,9 @@ export const api = {
     getByMarca:    (marca)         => get(`/configuracion-marca/${marca}`),
     update:        (marca, data)   => put(`/configuracion-marca/${marca}`, data),
   },
+  alertas: {
+    list: () => get('/alertas'),
+  },
   administracion: {
     getGastoPersonal: (anio, mes) => {
       const params = new URLSearchParams({ anio });

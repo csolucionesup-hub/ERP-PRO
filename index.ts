@@ -23,6 +23,7 @@ import { GoogleDriveService } from './app/modules/comercial/GoogleDriveService';
 import multer from 'multer';
 import ConfiguracionMarcaService from './app/modules/comercial/ConfiguracionMarcaService';
 import AdminService from './app/modules/admin/AdminService';
+import AlertasService from './app/modules/admin/AlertasService';
 
 // Fase A — Capas transversales
 import ConfiguracionService from './app/modules/configuracion/ConfiguracionService';
@@ -598,6 +599,15 @@ apiRouter.use('/admin/dashboard', requireModulo('ADMINISTRACION'));
 apiRouter.get('/admin/dashboard', async (req: Request, res: Response) => {
   const anio = req.query.anio ? parseInt(req.query.anio as string) : undefined;
   res.json(await AdminService.getDashboardAdmin(anio));
+});
+
+// ===== ALERTAS / NOTIFICACIONES =====
+apiRouter.get('/alertas', async (req: any, res: Response) => {
+  const modulos = req.user?.modulos || [];
+  const esGerente = req.user?.rol === 'GERENTE';
+  // Gerente ve TODO; usuario ve solo de sus módulos
+  const efectivos = esGerente ? ['GERENCIA', 'COMERCIAL', 'FINANZAS', 'LOGISTICA', 'ALMACEN', 'ADMINISTRACION'] : modulos;
+  res.json(await AlertasService.listar(efectivos));
 });
 
 // ===== AUTH: Rutas públicas (sin requireAuth) =====

@@ -817,9 +817,73 @@ function renderDashboardTab(d) {
       </div>`;
   }).join('');
 
+  // ── Comparativa anual + mes a mes ──────────────────────────────
+  const comp = d.comparativa || {};
+  const ytdAct = comp.ytd_actual || { cantidad: 0, monto_pen: 0, aprobadas: 0, tasa: 0 };
+  const ytdPrev = comp.ytd_anterior || { cantidad: 0, monto_pen: 0, aprobadas: 0, tasa: 0 };
+  const mesAct = comp.mes_actual || { cantidad: 0, monto_pen: 0 };
+  const mesPrev = comp.mes_anterior || { cantidad: 0, monto_pen: 0 };
+  const dPct = (a, b) => b > 0 ? ((a - b) / b * 100) : 0;
+  const fPct = (v) => (v >= 0 ? '+' : '') + v.toFixed(0) + '%';
+  const cPct = (v) => v > 0 ? '#16a34a' : v < 0 ? '#dc2626' : '#6b7280';
+
+  const dMontoYTD = dPct(ytdAct.monto_pen, ytdPrev.monto_pen);
+  const dCantYTD  = dPct(ytdAct.cantidad,  ytdPrev.cantidad);
+  const dTasaYTD  = ytdAct.tasa - ytdPrev.tasa;
+  const dMontoMes = dPct(mesAct.monto_pen, mesPrev.monto_pen);
+  const dCantMes  = dPct(mesAct.cantidad,  mesPrev.cantidad);
+
+  const compHTML = `
+    <div class="card" style="margin-bottom:20px">
+      <div style="font-size:12px;font-weight:700;color:#555;text-transform:uppercase;margin-bottom:14px">📅 Comparativas históricas</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+        <div style="padding:14px;background:#f0f9ff;border-left:4px solid #0284c7;border-radius:6px">
+          <div style="font-size:11px;color:#666;font-weight:600;text-transform:uppercase">YTD ${comp.anio_actual} (${comp.meses_transcurridos} meses) vs ${comp.anio_anterior}</div>
+          <div style="margin-top:8px;font-size:13px;display:grid;grid-template-columns:1fr 1fr;gap:6px">
+            <div>
+              <div style="font-size:10px;color:#888">Monto cotizado</div>
+              <div style="font-weight:700;font-size:16px">${fPEN(ytdAct.monto_pen)}</div>
+              <div style="color:${cPct(dMontoYTD)};font-weight:600;font-size:11px">${fPct(dMontoYTD)} vs ${fPEN(ytdPrev.monto_pen)}</div>
+            </div>
+            <div>
+              <div style="font-size:10px;color:#888">Cantidad</div>
+              <div style="font-weight:700;font-size:16px">${ytdAct.cantidad}</div>
+              <div style="color:${cPct(dCantYTD)};font-weight:600;font-size:11px">${fPct(dCantYTD)} vs ${ytdPrev.cantidad}</div>
+            </div>
+            <div>
+              <div style="font-size:10px;color:#888">Aprobadas</div>
+              <div style="font-weight:700;font-size:16px">${ytdAct.aprobadas} <span style="font-size:11px;color:#888">/ ${ytdAct.cantidad}</span></div>
+            </div>
+            <div>
+              <div style="font-size:10px;color:#888">Tasa cierre</div>
+              <div style="font-weight:700;font-size:16px;color:${ytdAct.tasa >= 50 ? '#16a34a' : '#ea580c'}">${ytdAct.tasa}%</div>
+              <div style="color:${cPct(dTasaYTD)};font-weight:600;font-size:11px">${dTasaYTD >= 0 ? '+' : ''}${dTasaYTD}pp vs ${ytdPrev.tasa}%</div>
+            </div>
+          </div>
+        </div>
+        <div style="padding:14px;background:#fef3c7;border-left:4px solid #d97706;border-radius:6px">
+          <div style="font-size:11px;color:#666;font-weight:600;text-transform:uppercase">Mes actual vs mes anterior</div>
+          <div style="margin-top:8px;font-size:13px;display:grid;grid-template-columns:1fr 1fr;gap:6px">
+            <div>
+              <div style="font-size:10px;color:#888">Monto</div>
+              <div style="font-weight:700;font-size:16px">${fPEN(mesAct.monto_pen)}</div>
+              <div style="color:${cPct(dMontoMes)};font-weight:600;font-size:11px">${fPct(dMontoMes)} vs ${fPEN(mesPrev.monto_pen)}</div>
+            </div>
+            <div>
+              <div style="font-size:10px;color:#888">Cantidad</div>
+              <div style="font-weight:700;font-size:16px">${mesAct.cantidad}</div>
+              <div style="color:${cPct(dCantMes)};font-weight:600;font-size:11px">${fPct(dCantMes)} vs ${mesPrev.cantidad}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+
   return `
     ${kpis1}
     ${kpis2}
+    ${compHTML}
 
     <!-- Estados y Marcas -->
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px">
@@ -833,20 +897,12 @@ function renderDashboardTab(d) {
       </div>
     </div>
 
-    <!-- Tendencia mensual -->
+    <!-- Tendencia 12 meses con Chart.js -->
     <div class="card" style="margin-bottom:20px">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
-        <div style="font-size:12px;font-weight:700;color:#555;text-transform:uppercase">Tendencia mensual — últimos 6 meses</div>
-        <div style="font-size:11px;color:#999;display:flex;align-items:center;gap:8px">
-          <span style="display:inline-block;width:12px;height:8px;background:#000;border-radius:2px"></span>Total
-          <span style="display:inline-block;width:12px;height:8px;background:#22c55e;border-radius:2px;opacity:.8"></span>Aprobadas
-        </div>
-      </div>
+      <div style="font-size:12px;font-weight:700;color:#555;text-transform:uppercase;margin-bottom:14px">📈 Tendencia 12 meses — Cotizado vs Aprobado (PEN equiv)</div>
       ${d.tendencia.length === 0
-        ? '<div style="color:#999;font-size:13px">Sin datos en el período</div>'
-        : `<div style="display:flex;align-items:flex-end;gap:10px;height:120px;padding-bottom:4px">
-            ${barrasMes}
-           </div>`}
+        ? '<div style="color:#999;font-size:13px;padding:20px;text-align:center">Sin datos en el período</div>'
+        : `<canvas id="ch-cotiz-trend" style="max-height:280px"></canvas>`}
     </div>
 
     <!-- Top clientes -->
@@ -911,6 +967,32 @@ export const Comercial = async () => {
       if (tab === 'metal'      && !bound.METAL)      { bindForm('METAL');      bound.METAL = true; }
       if (tab === 'perfotools' && !bound.PERFOTOOLS) { bindForm('PERFOTOOLS'); bound.PERFOTOOLS = true; }
       if (tab === 'archivo')                         { bindArchivo(); }
+      if (tab === 'dashboard')                       { renderDashboardChart(); }
+    };
+
+    // Chart línea para tendencia 12m (Cotizado vs Aprobado)
+    let chartCotizTrend = null;
+    const renderDashboardChart = () => {
+      const ctx = document.getElementById('ch-cotiz-trend');
+      if (!ctx || !window.Chart || !dash?.tendencia?.length) return;
+      if (chartCotizTrend) return; // ya creado
+      const labels = dash.tendencia.map(r => {
+        const [a, m] = r.mes.split('-');
+        return `${MESES_ES[Number(m) - 1]} ${a.slice(2)}`;
+      });
+      const dataCot = dash.tendencia.map(r => Number(r.monto_pen) || 0);
+      const dataApr = dash.tendencia.map(r => Number(r.aprobadas_pen) || 0);
+      chartCotizTrend = new window.Chart(ctx, {
+        type: 'line',
+        data: {
+          labels,
+          datasets: [
+            { label: 'Cotizado (PEN)', data: dataCot, borderColor: '#000', backgroundColor: '#00000022', fill: true, tension: 0.3 },
+            { label: 'Aprobado (PEN)', data: dataApr, borderColor: '#16a34a', backgroundColor: '#16a34a22', fill: true, tension: 0.3 },
+          ],
+        },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'top' } }, scales: { y: { beginAtZero: true, ticks: { callback: v => 'S/ ' + Number(v).toLocaleString() } } } }
+      });
     };
     // Si hay hash #dashboard al cargar, activar ese tab
     const hashTab = window.location.hash === '#comercial-dashboard' ? 'dashboard' : 'metal';
