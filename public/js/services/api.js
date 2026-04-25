@@ -191,6 +191,10 @@ export const api = {
       if (mes) params.append('mes', mes);
       return get(`/admin/gasto-personal?${params}`);
     },
+    getDashboard: (anio) => {
+      const qs = anio ? `?anio=${anio}` : '';
+      return get(`/admin/dashboard${qs}`);
+    },
   },
   usuarios: {
     getUsuarios:          () => fetchAPI('/api/usuarios'),

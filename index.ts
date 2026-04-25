@@ -593,6 +593,12 @@ apiRouter.get('/admin/gasto-personal', async (req: Request, res: Response) => {
   res.json(await AdminService.getGastoPersonal(anio, mes));
 });
 
+apiRouter.use('/admin/dashboard', requireModulo('ADMINISTRACION'));
+apiRouter.get('/admin/dashboard', async (req: Request, res: Response) => {
+  const anio = req.query.anio ? parseInt(req.query.anio as string) : undefined;
+  res.json(await AdminService.getDashboardAdmin(anio));
+});
+
 // ===== AUTH: Rutas públicas (sin requireAuth) =====
 const authRouter = express.Router();
 
