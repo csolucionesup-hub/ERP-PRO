@@ -4,8 +4,7 @@ const MODULE_NAV = [
   { modulo: 'FINANZAS',       label: 'Finanzas y Flujo',   page: 'finanzas'     },
   { modulo: 'FINANZAS',       label: '💳 Préstamos',        page: 'prestamos'    },
   { modulo: 'LOGISTICA',      label: 'Logística',          page: 'logistica'    },
-  { modulo: 'LOGISTICA',      label: '🤝 Proveedores',     page: 'proveedores'  },
-  { modulo: 'LOGISTICA',      label: '📋 Órdenes de Compra', page: 'ordenes-compra' },
+  // Proveedores y Órdenes de Compra ahora son sub-pestañas DENTRO de Logística (módulo unificado)
   { modulo: 'ALMACEN',        label: 'Inventario',         page: 'inventario'   },
   { modulo: 'ADMINISTRACION', label: 'Administración',     page: 'administracion' },
 ];

@@ -1,11 +1,13 @@
 /**
- * Logistica.js — Módulo 📦 Logística (v2: unificado sobre OrdenesCompra)
+ * Logistica.js — Módulo 📦 Logística (v3: hub completo con todos los sub-recursos)
  *
- * 4 tabs, TODAS generan Órdenes de Compra:
- *   🏢 Gastos Generales   — tipo_oc=GENERAL,  centro_costo editable (OFICINA CENTRAL, MARKETING, etc.)
- *   🔧 Gastos de Servicio — tipo_oc=SERVICIO, centro_costo = nombre del proyecto
- *   📥 Compras Almacén    — tipo_oc=ALMACEN,  centro_costo=ALMACEN METAL (multi-línea con ítems)
- *   📊 Dashboard          — KPIs consolidados desde OrdenesCompra
+ * 6 tabs: TODA la logística vive aquí. Sin links sueltos en el sidebar.
+ *   🤝 Proveedores         — CRUD de proveedores (empresas + personas naturales)
+ *   📋 Órdenes de Compra   — workflow completo (Borrador → Aprobada → ... → Pagada)
+ *   🏢 Gastos Generales    — tipo_oc=GENERAL  (luz, agua, SUNAT, marketing, etc.)
+ *   🔧 Gastos de Servicio  — tipo_oc=SERVICIO (vinculado a proyecto)
+ *   📥 Compras Almacén     — tipo_oc=ALMACEN  (multi-línea con ítems)
+ *   📊 Dashboard           — KPIs consolidados desde OrdenesCompra
  *
  * Cada OC creada:
  *   - Recibe correlativo "NNN - YYYY" secuencial por empresa (ME/PT)
@@ -18,6 +20,8 @@ import { showSuccess, showError } from '../services/ui.js';
 import { TabBar } from '../components/TabBar.js';
 import { kpiGrid } from '../components/KpiCard.js';
 import { lineChart, barChart, chartColors, destroyChart } from '../components/charts.js';
+import { Proveedores } from './Proveedores.js';
+import { OrdenesCompra } from './OrdenesCompra.js';
 
 const fPEN = (v) => new Intl.NumberFormat('es-PE', { style: 'currency', currency: 'PEN' }).format(Number(v) || 0);
 const fUSD = (v) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(Number(v) || 0);
@@ -52,14 +56,16 @@ export const Logistica = async () => {
     <header class="header">
       <div>
         <h1>📦 Logística</h1>
-        <span style="color:var(--text-secondary)">Todas las salidas de dinero generan Orden de Compra con correlativo y PDF formal.</span>
+        <span style="color:var(--text-secondary)">Hub de operaciones: proveedores, OCs, gastos por centro de costo. Todas las salidas generan OC formal.</span>
       </div>
     </header>
     <div id="logi-tabbar" style="margin-top:20px"></div>
-    <div id="tab-general"  class="tab-content"></div>
-    <div id="tab-servicio" class="tab-content" style="display:none"></div>
-    <div id="tab-almacen"  class="tab-content" style="display:none"></div>
-    <div id="tab-dash"     class="tab-content" style="display:none"></div>
+    <div id="tab-proveedores" class="tab-content"></div>
+    <div id="tab-oc"        class="tab-content" style="display:none"></div>
+    <div id="tab-general"   class="tab-content" style="display:none"></div>
+    <div id="tab-servicio"  class="tab-content" style="display:none"></div>
+    <div id="tab-almacen"   class="tab-content" style="display:none"></div>
+    <div id="tab-dash"      class="tab-content" style="display:none"></div>
   `;
 };
 
@@ -67,24 +73,53 @@ function initTabs() {
   TabBar({
     container: '#logi-tabbar',
     tabs: [
-      { id: 'general',  label: `🏢 Gastos Generales`,  badge: _ocsGeneral.length },
-      { id: 'servicio', label: `🔧 Gastos de Servicio`, badge: _ocsServicio.length },
-      { id: 'almacen',  label: `📥 Compras Almacén`,    badge: _ocsAlmacen.length },
-      { id: 'dash',     label: '📊 Dashboard' },
+      { id: 'proveedores', label: `🤝 Proveedores`,        badge: _proveedores.length },
+      { id: 'oc',          label: `📋 Órdenes de Compra`,  badge: _ocsGeneral.length + _ocsServicio.length + _ocsAlmacen.length },
+      { id: 'general',     label: `🏢 Gastos Generales`,   badge: _ocsGeneral.length },
+      { id: 'servicio',    label: `🔧 Gastos de Servicio`, badge: _ocsServicio.length },
+      { id: 'almacen',     label: `📥 Compras Almacén`,    badge: _ocsAlmacen.length },
+      { id: 'dash',        label: '📊 Dashboard' },
     ],
-    defaultTab: 'general',
-    onChange: (id) => {
+    defaultTab: 'proveedores',
+    onChange: async (id) => {
       document.querySelectorAll('.tab-content').forEach(t => t.style.display = 'none');
       const panel = document.getElementById('tab-' + id);
       if (panel) panel.style.display = 'block';
-      if (id === 'general'  && !panel.dataset.rendered) renderTabGastos(panel, 'GENERAL');
-      if (id === 'servicio' && !panel.dataset.rendered) renderTabGastos(panel, 'SERVICIO');
-      if (id === 'almacen'  && !panel.dataset.rendered) renderTabAlmacen(panel);
-      if (id === 'dash')                                renderDashboard(panel);
+      if (id === 'proveedores' && !panel.dataset.rendered) await renderTabProveedores(panel);
+      if (id === 'oc'          && !panel.dataset.rendered) await renderTabOC(panel);
+      if (id === 'general'     && !panel.dataset.rendered) renderTabGastos(panel, 'GENERAL');
+      if (id === 'servicio'    && !panel.dataset.rendered) renderTabGastos(panel, 'SERVICIO');
+      if (id === 'almacen'     && !panel.dataset.rendered) renderTabAlmacen(panel);
+      if (id === 'dash')                                   renderDashboard(panel);
     },
   });
 
   window.Logistica = { descargarPDF, anularOC };
+}
+
+// ─── TAB Proveedores (delega a página Proveedores.js) ───────────────────
+async function renderTabProveedores(panel) {
+  panel.dataset.rendered = '1';
+  panel.innerHTML = '<div style="padding:40px;text-align:center;color:var(--text-secondary)">Cargando proveedores…</div>';
+  try {
+    const html = await Proveedores();
+    // Proveedores.js incluye su propio <header>. Lo quitamos al embeber en tab.
+    panel.innerHTML = html.replace(/<header[\s\S]*?<\/header>/, '');
+  } catch (e) {
+    panel.innerHTML = `<div style="padding:40px;color:var(--danger)">Error: ${e.message}</div>`;
+  }
+}
+
+// ─── TAB Órdenes de Compra (delega a página OrdenesCompra.js) ────────────
+async function renderTabOC(panel) {
+  panel.dataset.rendered = '1';
+  panel.innerHTML = '<div style="padding:40px;text-align:center;color:var(--text-secondary)">Cargando OCs…</div>';
+  try {
+    const html = await OrdenesCompra();
+    panel.innerHTML = html.replace(/<header[\s\S]*?<\/header>/, '');
+  } catch (e) {
+    panel.innerHTML = `<div style="padding:40px;color:var(--danger)">Error: ${e.message}</div>`;
+  }
 }
 
 // ─── TAB Gastos Generales / Servicios (ambos comparten layout) ──────────
