@@ -616,12 +616,16 @@ tr:last-child td {
   /* Charts más bajos */
   canvas { max-height: 220px !important; }
 
-  /* Tabs en mobile: scroll horizontal */
+  /* Tabs en mobile: scroll horizontal limpio (sin flechas verticales) */
   .tabbar {
     overflow-x: auto;
+    overflow-y: hidden !important;
     flex-wrap: nowrap !important;
     -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
   }
+  .tabbar::-webkit-scrollbar { height: 4px; }
+  .tabbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 2px; }
   .tabbar-btn {
     white-space: nowrap;
     flex-shrink: 0;
