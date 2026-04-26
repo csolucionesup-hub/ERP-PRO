@@ -894,15 +894,33 @@ const importadorRouter = express.Router();
 importadorRouter.use(requireAuth);
 
 /**
- * Descarga template CSV de una entidad.
+ * Descarga template CSV de una entidad (legacy, sigue disponible).
  */
 importadorRouter.get('/template/:entidad', (req: Request, res: Response) => {
   const entidad = req.params.entidad as EntidadImportable;
   const csv = ImportadorService.getTemplate(entidad);
   if (!csv) return res.status(400).json({ error: 'Entidad no soportada' });
+  // BOM UTF-8 para que Excel detecte correctamente acentos al abrir el CSV
   res.setHeader('Content-Type', 'text/csv; charset=utf-8');
   res.setHeader('Content-Disposition', `attachment; filename="template_${entidad}.csv"`);
-  res.send(csv);
+  res.send('\uFEFF' + csv);
+});
+
+/**
+ * Descarga template XLSX con branding Metal Engineers (logo, colores, instrucciones).
+ */
+importadorRouter.get('/template-xlsx/:entidad', async (req: Request, res: Response) => {
+  try {
+    const { generarTemplateXLSX } = await import('./app/modules/importador/TemplateGenerator');
+    const entidad = req.params.entidad as EntidadImportable;
+    const buffer = await generarTemplateXLSX(entidad);
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="plantilla_${entidad}.xlsx"`);
+    res.send(buffer);
+  } catch (e: any) {
+    console.error('[importador/template-xlsx] error:', e);
+    res.status(400).json({ error: e?.message || 'Error generando plantilla' });
+  }
 });
 
 /**
@@ -915,6 +933,96 @@ importadorRouter.post('/preview', async (req: any, res: Response) => {
   if (!entidad || !csv_texto) return res.status(400).json({ error: 'entidad y csv_texto requeridos' });
   const result = await ImportadorService.parsear(entidad, csv_texto);
   res.json(result);
+});
+
+/**
+ * Sube un XLSX y devuelve preview + errores sin persistir.
+ * El backend convierte el XLSX a CSV en memoria y reusa el mismo parser.
+ */
+const uploadImportXlsx = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB
+});
+importadorRouter.post('/preview-xlsx', uploadImportXlsx.single('archivo'), async (req: any, res: Response) => {
+  if (req.user!.rol !== 'GERENTE') return res.status(403).json({ error: 'Solo GERENTE' });
+  const entidad = req.body.entidad as EntidadImportable;
+  if (!entidad || !req.file) return res.status(400).json({ error: 'entidad y archivo requeridos' });
+  try {
+    const XLSX = await import('xlsx');
+    const wb = XLSX.read(req.file.buffer, { type: 'buffer', cellDates: false });
+    const sheetName = wb.SheetNames.find(n => n.toLowerCase() === 'datos') || wb.SheetNames[0];
+    const ws = wb.Sheets[sheetName];
+    // Convertir hoja → array de arrays, formatear fechas a string
+    const rows: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, defval: '' });
+    // Las primeras 5 filas son branding (logo + título + subtítulo + espacios).
+    // Detectamos la fila de headers buscando la primera con la columna esperada.
+    let headerIdx = rows.findIndex(r =>
+      Array.isArray(r) && r.some(c => typeof c === 'string' && /^(nombre|nro_|concepto|deudor|acreedor)/i.test(String(c).trim().split(' ')[0] || ''))
+    );
+    if (headerIdx < 0) headerIdx = 5; // fallback al row 6 (índice 5) que es donde generamos headers
+    // Tomar headers + filas de datos. Filtrar filas vacías y la fila de "↓ Empezá a llenar..."
+    const headers = (rows[headerIdx] || []).map(h => String(h || '').replace(/\s*\*\s*$/, '').toLowerCase().trim());
+    // Mapeamos los títulos del template a las claves esperadas por el parser
+    const headerMap: Record<string, string> = {
+      'nombre / razón social': 'nombre',
+      'ruc (11 dígitos)': 'ruc',
+      'tipo': 'tipo',
+      'dni (8 dígitos)': 'dni',
+      'teléfono': 'telefono',
+      'email': 'email',
+      'dirección': 'direccion',
+      'n° cotización': 'nro_cotizacion',
+      'fecha': 'fecha',
+      'marca': 'marca',
+      'moneda': 'moneda',
+      'tipo cambio': 'tipo_cambio',
+      'cliente': 'cliente',
+      'ruc cliente': 'cliente_ruc',
+      'proyecto / obra': 'proyecto',
+      'descripción item': 'descripcion_item',
+      'subtotal': 'subtotal',
+      'igv (18%)': 'igv',
+      'total': 'total',
+      'estado': 'estado',
+      'concepto': 'concepto',
+      'proveedor': 'proveedor_nombre',
+      'monto base': 'monto_base',
+      'igv': 'igv_base',
+      'centro de costo': 'centro_costo',
+      'tipo': 'tipo_gasto_logistica',
+      'id servicio': 'id_servicio',
+      'n° factura proveedor': 'nro_factura_proveedor',
+      'id proveedor': 'id_proveedor',
+      'n° / identificador': 'nro_oc',
+      'acreedor': 'acreedor',
+      'deudor': 'deudor',
+      'descripción': 'descripcion',
+      'comentario': 'comentario',
+      'fecha emisión': 'fecha_emision',
+      'fecha vencimiento': 'fecha_vencimiento',
+      'monto capital': 'monto_capital',
+      'tasa interés (%)': 'tasa_interes',
+      'monto interés': 'monto_interes',
+      'monto pagado': 'monto_pagado',
+    };
+    const cleanHeaders = headers.map(h => headerMap[h] || h);
+    const dataRows = rows.slice(headerIdx + 1).filter(r =>
+      Array.isArray(r) && r.some(c => String(c || '').trim() !== '') &&
+      // Saltar la fila de instrucción "↓ Empezá a llenar..."
+      !(typeof r[0] === 'string' && /^↓/.test(String(r[0])))
+    );
+    // Reconstruir CSV simple para el parser existente
+    const escape = (v: any) => {
+      const s = String(v == null ? '' : v);
+      return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    const csvTexto = [cleanHeaders.map(escape).join(','), ...dataRows.map(r => r.map(escape).join(','))].join('\n');
+    const result = await ImportadorService.parsear(entidad, csvTexto);
+    res.json(result);
+  } catch (e: any) {
+    console.error('[importador/preview-xlsx] error:', e);
+    res.status(400).json({ error: e?.message || 'Error procesando XLSX' });
+  }
 });
 
 /**

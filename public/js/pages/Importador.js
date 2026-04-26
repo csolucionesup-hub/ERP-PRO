@@ -78,9 +78,9 @@ export const Importador = async () => {
       <h3 style="margin:0 0 8px;font-size:14px">📌 Antes de empezar</h3>
       <ol style="font-size:12px;margin:0;padding-left:18px;line-height:1.7;color:var(--text-secondary)">
         <li><strong>Orden recomendado:</strong> Proveedores primero → luego Cotizaciones, Gastos, Compras.</li>
-        <li>Descarga el template CSV, ábrelo en Excel, llena las filas con tus datos históricos.</li>
-        <li>Guarda como CSV UTF-8 (Excel: "Guardar como... CSV UTF-8").</li>
-        <li>Súbelo aquí — verás un preview con errores antes de confirmar.</li>
+        <li>Descargá la <strong>plantilla XLSX</strong> (con logo, instrucciones y validaciones), abrila en Excel y llená las filas con tus datos históricos.</li>
+        <li>Borrá las 2 filas de ejemplo en gris itálico antes de subir.</li>
+        <li>Subila — el sistema acepta <strong>XLSX directo</strong> o CSV (UTF-8). Verás un preview con errores antes de confirmar.</li>
       </ol>
     </div>
 
@@ -105,12 +105,12 @@ export const Importador = async () => {
           <div style="display:flex;gap:8px">
             <button class="btn-template" data-entidad="${e.id}"
               style="flex:1;padding:10px;background:var(--bg-app);border:1px solid #d9dad9;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600">
-              📄 Descargar template
+              📥 Descargar plantilla
             </button>
             <label class="btn-upload" data-entidad="${e.id}"
               style="flex:1;padding:10px;background:var(--primary-color);color:white;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;text-align:center">
-              ⬆️ Subir CSV
-              <input type="file" accept=".csv" data-entidad="${e.id}" style="display:none">
+              ⬆️ Subir archivo
+              <input type="file" accept=".csv,.xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" data-entidad="${e.id}" style="display:none">
             </label>
           </div>
         </div>
@@ -122,45 +122,62 @@ export const Importador = async () => {
 };
 
 function bindHandlers() {
-  // Descarga de templates
+  // Descarga de templates XLSX (con logo, colores, instrucciones)
   document.querySelectorAll('.btn-template').forEach(btn => {
     btn.addEventListener('click', async () => {
       const entidad = btn.dataset.entidad;
       try {
         const token = localStorage.getItem('erp_token');
-        const r = await fetch(`/api/importador/template/${entidad}`, {
+        const r = await fetch(`/api/importador/template-xlsx/${entidad}`, {
           headers: token ? { Authorization: `Bearer ${token}` } : {},
         });
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         const blob = await r.blob();
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
-        a.href = url; a.download = `template_${entidad}.csv`; a.click();
+        a.href = url; a.download = `plantilla_${entidad}.xlsx`; a.click();
         URL.revokeObjectURL(url);
-        showSuccess(`Template descargado: template_${entidad}.csv`);
+        showSuccess(`Plantilla descargada: plantilla_${entidad}.xlsx`);
       } catch (e) {
-        showError('Error descargando template: ' + e.message);
+        showError('Error descargando plantilla: ' + e.message);
       }
     });
   });
 
-  // Upload de CSV — preview + commit
+  // Upload de archivo (XLSX o CSV) — preview + commit
   document.querySelectorAll('input[type="file"]').forEach(input => {
     input.addEventListener('change', async (e) => {
       const file = e.target.files[0];
       if (!file) return;
       const entidad = e.target.dataset.entidad;
-      const texto = await file.text();
+      const token = localStorage.getItem('erp_token');
+      const esXlsx = /\.xlsx?$/i.test(file.name) ||
+                     file.type.includes('spreadsheet') || file.type.includes('excel');
       try {
-        const token = localStorage.getItem('erp_token');
-        const preview = await fetch('/api/importador/preview', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-          body: JSON.stringify({ entidad, csv_texto: texto }),
-        }).then(r => r.json());
+        let preview;
+        if (esXlsx) {
+          // XLSX → multipart al endpoint /preview-xlsx
+          const fd = new FormData();
+          fd.append('archivo', file);
+          fd.append('entidad', entidad);
+          preview = await fetch('/api/importador/preview-xlsx', {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${token}` },
+            body: fd,
+          }).then(r => r.json());
+        } else {
+          // CSV → texto al endpoint clásico /preview
+          const texto = await file.text();
+          preview = await fetch('/api/importador/preview', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+            body: JSON.stringify({ entidad, csv_texto: texto }),
+          }).then(r => r.json());
+        }
+        if (preview?.error) throw new Error(preview.error);
         renderPreview(entidad, preview);
       } catch (err) {
-        showError('Error procesando CSV: ' + err.message);
+        showError('Error procesando archivo: ' + err.message);
       }
       e.target.value = ''; // reset
     });
