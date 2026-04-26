@@ -246,3 +246,67 @@ async function init() {
 }
 
 document.addEventListener('DOMContentLoaded', init);
+
+// ── Auto-cierre flotante para modales ─────────────────────────
+// En el ERP los modales son divs con `position:fixed; inset:0;` y un hijo box.
+// El botón "Cerrar" suele estar al final → en mobile queda fuera del viewport
+// y el usuario no sabe cómo cerrar. Inyectamos un ✕ flotante arriba a la derecha
+// que dispara el handler del botón Cerrar existente (o remueve el overlay).
+(function setupFloatingCloseButton() {
+  const isModalOverlay = (el) => {
+    if (!el || el.nodeType !== 1) return false;
+    const s = el.getAttribute('style') || '';
+    return /position:\s*fixed/.test(s) && /inset:\s*0/.test(s);
+  };
+
+  const inyectarCerrarFlotante = (overlay) => {
+    if (overlay.dataset.fcInjected) return;
+    const box = overlay.querySelector(':scope > div');
+    if (!box) return;
+    overlay.dataset.fcInjected = '1';
+
+    // Posicionar el contenedor relativo para que el ✕ se ancle al box
+    if (getComputedStyle(box).position === 'static') box.style.position = 'relative';
+
+    const x = document.createElement('button');
+    x.type = 'button';
+    x.setAttribute('aria-label', 'Cerrar');
+    x.textContent = '✕';
+    x.style.cssText = [
+      'position:absolute', 'top:8px', 'right:8px',
+      'width:32px', 'height:32px',
+      'border:none', 'border-radius:50%',
+      'background:#f3f4f6', 'color:#111',
+      'font-size:18px', 'font-weight:700',
+      'cursor:pointer', 'z-index:10',
+      'display:flex', 'align-items:center', 'justify-content:center',
+      'box-shadow:0 1px 3px rgba(0,0,0,.12)',
+    ].join(';');
+    x.onmouseenter = () => { x.style.background = '#e5e7eb'; };
+    x.onmouseleave = () => { x.style.background = '#f3f4f6'; };
+    x.onclick = (ev) => {
+      ev.stopPropagation();
+      // Si hay un botón "Cerrar" existente, dispará su handler (mantiene reglas
+      // de negocio si el modal hace algo extra al cerrar).
+      const cerrarExistente = box.querySelector('button[id^="close-"], button[data-close]');
+      if (cerrarExistente) cerrarExistente.click();
+      else overlay.remove();
+    };
+    box.appendChild(x);
+  };
+
+  // Procesar overlays ya existentes
+  document.querySelectorAll('body > div').forEach(el => {
+    if (isModalOverlay(el)) inyectarCerrarFlotante(el);
+  });
+
+  // Observar nuevos modales que se inyecten en runtime
+  const obs = new MutationObserver((muts) => {
+    for (const m of muts) {
+      m.addedNodes.forEach(n => {
+        if (isModalOverlay(n)) inyectarCerrarFlotante(n);
+      });
+    }
+  });
+  obs.observe(document.body, { childList: true });
+})();
