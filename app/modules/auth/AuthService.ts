@@ -60,18 +60,30 @@ class AuthService {
   }
 
   async getUsuarios() {
-    const [rows] = await db.query(`
-      SELECT u.id_usuario, u.nombre, u.email, u.rol, u.activo, u.ultimo_acceso, u.created_at,
-        GROUP_CONCAT(um.modulo ORDER BY um.modulo SEPARATOR ',') as modulos_raw
-      FROM Usuarios u
-      LEFT JOIN UsuarioModulos um ON um.id_usuario = u.id_usuario
-      GROUP BY u.id_usuario
-      ORDER BY u.nombre ASC
+    // Portable a MySQL y Postgres: dos queries en lugar de GROUP_CONCAT con
+    // ORDER BY interno (que el adapter Postgres no traduce correctamente).
+    const [users] = await db.query(`
+      SELECT id_usuario, nombre, email, rol, activo, ultimo_acceso, created_at
+      FROM Usuarios
+      ORDER BY nombre ASC
     `);
-    return (rows as any[]).map(u => ({
+    const [allModulos] = await db.query(`
+      SELECT id_usuario, modulo
+      FROM UsuarioModulos
+      ORDER BY id_usuario, modulo ASC
+    `);
+
+    // Agrupar módulos por id_usuario
+    const modulosByUser = new Map<number, string[]>();
+    for (const m of (allModulos as any[])) {
+      const arr = modulosByUser.get(m.id_usuario) || [];
+      arr.push(m.modulo);
+      modulosByUser.set(m.id_usuario, arr);
+    }
+
+    return (users as any[]).map(u => ({
       ...u,
-      modulos: u.modulos_raw ? u.modulos_raw.split(',') : [],
-      modulos_raw: undefined
+      modulos: modulosByUser.get(u.id_usuario) || [],
     }));
   }
 
@@ -84,8 +96,14 @@ class AuthService {
     try {
       await conn.query('DELETE FROM UsuarioModulos WHERE id_usuario = ?', [id_usuario]);
       if (modulos.length > 0) {
-        const values = modulos.map(m => [id_usuario, m]);
-        await conn.query('INSERT INTO UsuarioModulos (id_usuario, modulo) VALUES ?', [values]);
+        // INSERT por fila (portable MySQL ↔ Postgres). El bulk de mysql2
+        // 'INSERT ... VALUES ?' no funciona en Postgres.
+        for (const m of modulos) {
+          await conn.query(
+            'INSERT INTO UsuarioModulos (id_usuario, modulo) VALUES (?, ?)',
+            [id_usuario, m]
+          );
+        }
       }
       await conn.commit();
       return { success: true, modulos };
