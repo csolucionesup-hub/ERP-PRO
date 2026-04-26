@@ -654,19 +654,36 @@ tr:last-child td {
   /* Charts más bajos */
   canvas { max-height: 220px !important; }
 
-  /* Tabs en mobile: scroll horizontal limpio (sin flechas verticales) */
+  /* Tabs en mobile: wrap a múltiples filas (no scroll horizontal). Así
+     todas las tabs son visibles sin tener que deslizar con el dedo. */
   .tabbar {
-    overflow-x: auto;
+    overflow-x: visible !important;
     overflow-y: hidden !important;
-    flex-wrap: nowrap !important;
-    -webkit-overflow-scrolling: touch;
-    scrollbar-width: thin;
+    flex-wrap: wrap !important;
+    gap: 4px !important;
+    border-bottom: 2px solid var(--border-light);
+    padding-bottom: 4px;
   }
-  .tabbar::-webkit-scrollbar { height: 4px; }
-  .tabbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 2px; }
   .tabbar-btn {
-    white-space: nowrap;
-    flex-shrink: 0;
+    white-space: normal !important;     /* permite saltos en label largo */
+    flex: 1 1 calc(50% - 4px);          /* mínimo 2 por fila */
+    min-width: 0;
+    text-align: center;
+    font-size: 11px !important;
+    padding: 8px 6px !important;
+    line-height: 1.2 !important;
+    /* Sin border-bottom flotante (con wrap se desfasa); usamos fondo */
+    border-bottom: none !important;
+    margin-bottom: 0 !important;
+    border-radius: 6px;
+    background: #f9fafb;
+  }
+  .tabbar-btn.active {
+    background: var(--primary-color) !important;
+    color: #fff !important;
+  }
+  .tabbar-btn .tabbar-badge {
+    margin-left: 4px;
   }
 
   /* Modales — todos los overlays tienen inset:0 con un hijo que es el modal box */
