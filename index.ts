@@ -602,12 +602,11 @@ apiRouter.get('/admin/dashboard', async (req: Request, res: Response) => {
 });
 
 // ===== ALERTAS / NOTIFICACIONES =====
+// El service mismo decide qué mostrar según rol + módulos. GERENTE ve TODO.
 apiRouter.get('/alertas', async (req: any, res: Response) => {
   const modulos = req.user?.modulos || [];
-  const esGerente = req.user?.rol === 'GERENTE';
-  // Gerente ve TODO; usuario ve solo de sus módulos
-  const efectivos = esGerente ? ['GERENCIA', 'COMERCIAL', 'FINANZAS', 'LOGISTICA', 'ALMACEN', 'ADMINISTRACION'] : modulos;
-  res.json(await AlertasService.listar(efectivos));
+  const rol = req.user?.rol || 'USUARIO';
+  res.json(await AlertasService.listar(modulos, rol));
 });
 
 // ===== AUTH: Rutas públicas (sin requireAuth) =====
