@@ -515,7 +515,246 @@ tr:last-child td {
   margin-top: 4px;
 }
 
+/* ==========================================
+   MOBILE RESPONSIVE — celulares y tablets
+   ========================================== */
+
+/* Hamburger menu — oculto en desktop */
+.mobile-menu-toggle {
+  display: none;
+  position: fixed;
+  top: 12px;
+  left: 12px;
+  z-index: 1001;
+  width: 42px;
+  height: 42px;
+  border-radius: 8px;
+  border: none;
+  background: var(--bg-sidebar, #000);
+  color: white;
+  font-size: 22px;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+  align-items: center;
+  justify-content: center;
+}
+.mobile-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.5);
+  z-index: 999;
+}
+.mobile-overlay.mobile-open { display: block; }
+
+@media (max-width: 1024px) {
+  /* Tabs y KPIs algo más compactos */
+  .tabbar { font-size: 12px; flex-wrap: wrap; }
+  .tabbar-btn { padding: 8px 10px !important; }
+  .kpi-value { font-size: 20px; }
+}
+
 @media (max-width: 768px) {
-  .tabbar { font-size: 12px; }
-  .kpi-value { font-size: 22px; }
+  body { font-size: 14px; }
+
+  /* Mostrar hamburger */
+  .mobile-menu-toggle { display: flex !important; }
+
+  /* Sidebar: panel deslizable desde la izquierda, oculto por defecto */
+  .sidebar {
+    position: fixed !important;
+    top: 0; left: 0;
+    width: 260px !important;
+    height: 100vh !important;
+    z-index: 1000;
+    transform: translateX(-100%);
+    transition: transform 0.3s ease;
+    overflow-y: auto;
+    box-shadow: 2px 0 12px rgba(0,0,0,0.2);
+  }
+  .sidebar.mobile-open { transform: translateX(0); }
+
+  /* Body lock cuando sidebar abierto (evita scroll detrás) */
+  body.sidebar-open { overflow: hidden; }
+
+  /* Main content: ocupa todo el ancho, padding extra arriba para el hamburger */
+  .main-content, main {
+    margin-left: 0 !important;
+    padding: 64px 12px 16px 12px !important;
+    width: 100% !important;
+  }
+
+  header.header h1 { font-size: 18px !important; }
+
+  /* Grids → 1 o 2 columnas en mobile */
+  div[style*="grid-template-columns:1.2fr 1fr"],
+  div[style*="grid-template-columns:1.3fr 1fr"],
+  div[style*="grid-template-columns:1.5fr 1fr"],
+  div[style*="grid-template-columns: 1.5fr 1fr"],
+  div[style*="grid-template-columns:1fr 1fr"],
+  div[style*="grid-template-columns:repeat(3,1fr)"],
+  div[style*="grid-template-columns:repeat(4,1fr)"] {
+    grid-template-columns: 1fr !important;
+  }
+  /* KPI grids: 2 columnas en mobile (no 1, los KPIs son chicos) */
+  .kpi-grid {
+    grid-template-columns: repeat(2, minmax(0,1fr)) !important;
+    gap: 8px !important;
+  }
+  .kpi-card { padding: 10px 8px !important; }
+  .kpi-label { font-size: 10px !important; line-height: 1.2 !important; }
+  .kpi-value { font-size: 16px !important; line-height: 1.2 !important; word-break: break-all; }
+  .kpi-icon { font-size: 14px !important; }
+  .kpi-change { font-size: 10px !important; }
+  /* Tablas con scroll horizontal */
+  .table-container, table { font-size: 12px; }
+  .table-container { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+  /* Cards con menos padding */
+  .card { padding: 12px !important; }
+
+  /* Charts más bajos */
+  canvas { max-height: 220px !important; }
+
+  /* Tabs en mobile: scroll horizontal limpio (sin flechas verticales) */
+  .tabbar {
+    overflow-x: auto;
+    overflow-y: hidden !important;
+    flex-wrap: nowrap !important;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+  }
+  .tabbar::-webkit-scrollbar { height: 4px; }
+  .tabbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 2px; }
+  .tabbar-btn {
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  /* Modales — todos los overlays tienen inset:0 con un hijo que es el modal box */
+  div[style*="position:fixed"][style*="inset:0"] > div,
+  div[style*="position: fixed"][style*="inset: 0"] > div {
+    max-width: 95vw !important;
+    width: 95vw !important;
+    max-height: 90vh !important;
+    margin: 10px;
+    overflow-y: auto !important;
+    box-sizing: border-box;
+  }
+  /* Si el modal tiene grids internos con 2 cols, colapsarlas */
+  div[style*="position:fixed"][style*="inset:0"] div[style*="grid-template-columns:1fr 1fr"],
+  div[style*="position: fixed"][style*="inset: 0"] div[style*="grid-template-columns:1fr 1fr"] {
+    grid-template-columns: 1fr !important;
+  }
+  /* Header buttons en mobile: wrap si no caben */
+  header.header { flex-wrap: wrap; gap: 8px; }
+  header.header > div { flex: 1 1 100%; }
+
+  /* Forms: inputs full width */
+  input, select, textarea { font-size: 14px !important; }
+  /* Líneas de OC en mobile: stack */
+  .linea {
+    grid-template-columns: 1fr !important;
+    gap: 6px !important;
+    padding: 10px;
+    border: 1px solid #e5e7eb;
+    border-radius: 6px;
+    margin-bottom: 8px;
+  }
+
+  /* Panel alertas full width */
+  #alertas-panel {
+    left: 8px !important;
+    right: 8px !important;
+    width: auto !important;
+    top: 80px !important;
+  }
+}
+
+@media (max-width: 480px) {
+  header.header h1 { font-size: 16px !important; }
+  header.header span { font-size: 11px !important; }
+  .kpi-value { font-size: 14px !important; }
+  .kpi-label { font-size: 9px !important; }
+  .card { padding: 10px !important; }
+  /* En pantallas muy chicas también los textos custom inline son grandes */
+  div[style*="font-size:24px"], div[style*="font-size: 24px"] { font-size: 16px !important; }
+  div[style*="font-size:22px"], div[style*="font-size: 22px"] { font-size: 14px !important; }
+  div[style*="font-size:20px"], div[style*="font-size: 20px"] { font-size: 13px !important; }
+}
+
+/* ==========================================
+   Override universal de inline font-size grandes en mobile
+   (cubre TODOS los elementos: h1-h6, div, span, p)
+   ========================================== */
+@media (max-width: 768px) {
+  main [style*="font-size:36px"], main [style*="font-size: 36px"],
+  main [style*="font-size:32px"], main [style*="font-size: 32px"],
+  main [style*="font-size:30px"], main [style*="font-size: 30px"],
+  main [style*="font-size:28px"], main [style*="font-size: 28px"] {
+    font-size: 20px !important;
+  }
+  main [style*="font-size:26px"], main [style*="font-size: 26px"],
+  main [style*="font-size:24px"], main [style*="font-size: 24px"],
+  main [style*="font-size:22px"], main [style*="font-size: 22px"] {
+    font-size: 17px !important;
+  }
+  main [style*="font-size:20px"], main [style*="font-size: 20px"] {
+    font-size: 15px !important;
+  }
+  main [style*="font-size:60px"], main [style*="font-size: 60px"],
+  main [style*="font-size:50px"], main [style*="font-size: 50px"] {
+    display: none !important;
+  }
+  main [style*="font-size:40px"], main [style*="font-size: 40px"] {
+    font-size: 24px !important;
+  }
+  /* Word break para que valores S/ 1.234.567 no rompan layout */
+  main h1, main h2, main h3, main .card-value { word-break: break-word; }
+}
+@media (max-width: 480px) {
+  main [style*="font-size:36px"], main [style*="font-size: 36px"],
+  main [style*="font-size:32px"], main [style*="font-size: 32px"],
+  main [style*="font-size:30px"], main [style*="font-size: 30px"],
+  main [style*="font-size:28px"], main [style*="font-size: 28px"] {
+    font-size: 17px !important;
+  }
+  main [style*="font-size:26px"], main [style*="font-size: 26px"],
+  main [style*="font-size:24px"], main [style*="font-size: 24px"],
+  main [style*="font-size:22px"], main [style*="font-size: 22px"] {
+    font-size: 15px !important;
+  }
+}
+
+/* ==========================================
+   Dashboard Gerencial — fonts grandes en mobile
+   ========================================== */
+@media (max-width: 768px) {
+  /* Card values del Dashboard (h2.card-value) — 32-36px en desktop */
+  .card-value,
+  .main-content h2.card-value,
+  main h2.card-value,
+  #main-content h2.card-value { font-size: 20px !important; line-height: 1.2 !important; word-break: break-word; }
+  /* Cualquier h2 dentro del contenido principal con inline font-size grande */
+  main h2, #main-content h2, .main-content h2 { max-width: 100%; word-break: break-word; }
+  main h2[style], #main-content h2[style], .main-content h2[style] {
+    /* override TODA inline font-size si está entre 24-99px */
+    font-size: 20px !important;
+  }
+  /* h3 grandes inline */
+  main h3[style*="font-size:24px"], main h3[style*="font-size: 24px"],
+  #main-content h3[style*="font-size:24px"], #main-content h3[style*="font-size: 24px"] { font-size: 18px !important; }
+  /* Decoraciones tipo "+" y "%" tamaño 60px → ocultar */
+  div[style*="font-size:60px"], div[style*="font-size: 60px"] { display: none !important; }
+  /* "OK" central 40px */
+  div[style*="font-size:40px"], div[style*="font-size: 40px"] { font-size: 26px !important; }
+  /* h2 chicos (16px) que son títulos de sección — mantenerlos */
+  main h2[style*="font-size:16px"], main h2[style*="font-size: 16px"],
+  #main-content h2[style*="font-size:16px"], #main-content h2[style*="font-size: 16px"] { font-size: 14px !important; }
+}
+@media (max-width: 480px) {
+  .card-value { font-size: 18px !important; }
+  h2[style*="font-size:32px"], h2[style*="font-size: 32px"],
+  h2[style*="font-size:36px"], h2[style*="font-size: 36px"] { font-size: 18px !important; }
+  h3[style*="font-size:24px"], h3[style*="font-size: 24px"] { font-size: 16px !important; }
 }

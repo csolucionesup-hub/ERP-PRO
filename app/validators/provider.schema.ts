@@ -1,12 +1,13 @@
 import { z } from 'zod';
 
 const bancoCampos = {
-  banco_1_nombre: z.string().optional(),
-  banco_1_numero: z.string().optional(),
-  banco_1_cci:    z.string().optional(),
-  banco_2_nombre: z.string().optional(),
-  banco_2_numero: z.string().optional(),
-  banco_2_cci:    z.string().optional(),
+  banco_1_nombre:    z.string().optional(),
+  banco_1_numero:    z.string().optional(),
+  banco_1_cci:       z.string().optional(),
+  banco_2_nombre:    z.string().optional(),
+  banco_2_numero:    z.string().optional(),
+  banco_2_cci:       z.string().optional(),
+  billetera_digital: z.string().optional(),
 };
 
 export const providerCreateSchema = z.object({

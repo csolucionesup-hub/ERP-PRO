@@ -5,7 +5,8 @@ class ProvidersService {
     const [rows] = await db.query(
       `SELECT id_proveedor, ruc, dni, tipo, razon_social, contacto, telefono, email, direccion,
               banco_1_nombre, banco_1_numero, banco_1_cci,
-              banco_2_nombre, banco_2_numero, banco_2_cci
+              banco_2_nombre, banco_2_numero, banco_2_cci,
+              billetera_digital
        FROM Proveedores ORDER BY razon_social ASC`
     );
     return rows;
@@ -16,14 +17,16 @@ class ProvidersService {
       `INSERT INTO Proveedores
         (ruc, dni, tipo, razon_social, contacto, telefono, email, direccion,
          banco_1_nombre, banco_1_numero, banco_1_cci,
-         banco_2_nombre, banco_2_numero, banco_2_cci)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         banco_2_nombre, banco_2_numero, banco_2_cci,
+         billetera_digital)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         data.ruc || null, data.dni || null, data.tipo || 'EMPRESA',
         data.razon_social,
         data.contacto || null, data.telefono || null, data.email || null, data.direccion || null,
         data.banco_1_nombre || null, data.banco_1_numero || null, data.banco_1_cci || null,
         data.banco_2_nombre || null, data.banco_2_numero || null, data.banco_2_cci || null,
+        data.billetera_digital || null,
       ]
     );
     return { id_proveedor: (result as any).insertId, ...data };
@@ -34,7 +37,8 @@ class ProvidersService {
       `UPDATE Proveedores SET
         ruc=?, dni=?, tipo=?, razon_social=?, contacto=?, telefono=?, email=?, direccion=?,
         banco_1_nombre=?, banco_1_numero=?, banco_1_cci=?,
-        banco_2_nombre=?, banco_2_numero=?, banco_2_cci=?
+        banco_2_nombre=?, banco_2_numero=?, banco_2_cci=?,
+        billetera_digital=?
        WHERE id_proveedor=?`,
       [
         data.ruc || null, data.dni || null, data.tipo || 'EMPRESA',
@@ -42,6 +46,7 @@ class ProvidersService {
         data.contacto || null, data.telefono || null, data.email || null, data.direccion || null,
         data.banco_1_nombre || null, data.banco_1_numero || null, data.banco_1_cci || null,
         data.banco_2_nombre || null, data.banco_2_numero || null, data.banco_2_cci || null,
+        data.billetera_digital || null,
         id,
       ]
     );

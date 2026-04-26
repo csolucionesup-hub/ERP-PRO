@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tutorial ERP — Bienvenido Luis</title>
+<style>
+  :root {
+    --bg: #f5f5f5;
+    --card: #ffffff;
+    --black: #000000;
+    --gray: #676767;
+    --gray-light: #d9dad9;
+    --gray-text: #a5a5a6;
+    --accent: #2e7d32;
+    --warn: #e65100;
+    --danger: #c62828;
+    --info: #1565c0;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--black);
+    line-height: 1.6;
+    padding: 20px 16px 80px;
+  }
+  .container { max-width: 760px; margin: 0 auto; }
+
+  /* Hero */
+  .hero {
+    background: var(--black);
+    color: white;
+    border-radius: 12px;
+    padding: 32px 24px;
+    margin-bottom: 24px;
+    text-align: center;
+  }
+  .hero h1 { font-size: 28px; margin-bottom: 8px; }
+  .hero p { color: var(--gray-light); font-size: 15px; }
+  .logo-bars {
+    display: flex; gap: 4px; justify-content: center;
+    margin-bottom: 16px;
+  }
+  .logo-bars div {
+    width: 8px; height: 28px; background: var(--gray-light);
+  }
+
+  /* Cards */
+  .card {
+    background: var(--card);
+    border-radius: 10px;
+    padding: 20px;
+    margin-bottom: 16px;
+    box-shadow: 0 1px 3px rgba(0,0,0,.08);
+  }
+  .card h2 {
+    font-size: 20px;
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+    border-bottom: 2px solid var(--gray-light);
+  }
+  .card h3 { font-size: 16px; margin: 16px 0 8px; color: var(--gray); }
+  .card p { margin-bottom: 10px; }
+
+  /* Credential box */
+  .creds {
+    background: #fff8e1;
+    border-left: 4px solid var(--warn);
+    padding: 16px;
+    border-radius: 6px;
+    font-family: "Courier New", monospace;
+    font-size: 14px;
+    margin: 12px 0;
+  }
+  .creds div { margin: 4px 0; }
+  .creds strong { color: var(--warn); }
+
+  /* Flow diagram */
+  .flow {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin: 20px 0;
+  }
+  .flow-step {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+    background: var(--bg);
+    border-radius: 8px;
+    border-left: 4px solid var(--black);
+  }
+  .flow-step .icon { font-size: 28px; }
+  .flow-step .text { flex: 1; }
+  .flow-step .text strong { display: block; font-size: 15px; }
+  .flow-step .text span { font-size: 13px; color: var(--gray-text); }
+  .flow-arrow {
+    text-align: center;
+    color: var(--gray);
+    font-size: 20px;
+    margin: -2px 0;
+  }
+
+  /* Module grid */
+  .modules {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 12px;
+    margin-top: 12px;
+  }
+  .module-box {
+    padding: 14px;
+    background: var(--bg);
+    border-radius: 8px;
+    border-top: 3px solid var(--gray);
+  }
+  .module-box.focus {
+    border-top-color: var(--warn);
+    background: #fff3e0;
+  }
+  .module-box h4 { font-size: 15px; margin-bottom: 6px; }
+  .module-box p { font-size: 13px; color: var(--gray); margin: 0; }
+
+  /* Callouts */
+  .callout {
+    padding: 14px 16px;
+    border-radius: 8px;
+    margin: 14px 0;
+    font-size: 14px;
+  }
+  .callout.info    { background: #e3f2fd; border-left: 4px solid var(--info); }
+  .callout.warn    { background: #fff3e0; border-left: 4px solid var(--warn); }
+  .callout.tip     { background: #e8f5e9; border-left: 4px solid var(--accent); }
+  .callout.danger  { background: #ffebee; border-left: 4px solid var(--danger); }
+  .callout strong { display: block; margin-bottom: 4px; }
+
+  /* Steps */
+  ol.steps {
+    counter-reset: step;
+    list-style: none;
+    padding: 0;
+  }
+  ol.steps > li {
+    counter-increment: step;
+    position: relative;
+    padding: 12px 12px 12px 48px;
+    margin-bottom: 8px;
+    background: var(--bg);
+    border-radius: 6px;
+  }
+  ol.steps > li::before {
+    content: counter(step);
+    position: absolute;
+    left: 12px;
+    top: 12px;
+    width: 26px; height: 26px;
+    background: var(--black);
+    color: white;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+    font-size: 14px;
+  }
+  ol.steps strong { color: var(--black); }
+  ol.steps em { color: var(--gray); font-style: normal; font-size: 13px; }
+
+  /* Types grid (logística) */
+  .types {
+    display: grid;
+    gap: 10px;
+    margin: 14px 0;
+  }
+  .type-card {
+    padding: 14px;
+    border-radius: 8px;
+    background: var(--bg);
+    border-left: 4px solid var(--gray);
+  }
+  .type-card h4 { font-size: 15px; margin-bottom: 6px; }
+  .type-card .tag {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    background: var(--black);
+    color: white;
+    font-weight: bold;
+    margin-bottom: 8px;
+  }
+  .type-card.general .tag  { background: var(--info); }
+  .type-card.servicio .tag { background: var(--warn); }
+  .type-card.almacen .tag  { background: var(--accent); }
+  .type-card p { font-size: 13px; color: var(--gray); margin-bottom: 4px; }
+  .type-card ul { font-size: 13px; margin-left: 16px; color: var(--gray); }
+
+  /* Checklist */
+  .checklist {
+    list-style: none;
+    padding: 0;
+  }
+  .checklist li {
+    padding: 10px 12px 10px 36px;
+    background: var(--bg);
+    border-radius: 6px;
+    margin-bottom: 6px;
+    position: relative;
+    font-size: 14px;
+  }
+  .checklist li::before {
+    content: "☐";
+    position: absolute;
+    left: 12px;
+    top: 10px;
+    font-size: 18px;
+    color: var(--gray);
+  }
+
+  /* Table */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+    margin: 12px 0;
+  }
+  table th, table td {
+    padding: 10px 12px;
+    text-align: left;
+    border-bottom: 1px solid var(--gray-light);
+  }
+  table th {
+    background: var(--black);
+    color: white;
+    font-weight: 500;
+  }
+
+  /* Emoji badges */
+  .emoji-big { font-size: 36px; }
+
+  /* Footer */
+  .footer {
+    text-align: center;
+    color: var(--gray-text);
+    font-size: 13px;
+    padding: 24px 0;
+  }
+
+  @media (max-width: 480px) {
+    .hero h1 { font-size: 22px; }
+    .card { padding: 16px; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <!-- HERO -->
+  <div class="hero">
+    <div class="logo-bars">
+      <div></div><div></div><div></div><div></div>
+    </div>
+    <h1>👋 Bienvenido Luis</h1>
+    <p>Guía rápida del ERP de Metal Engineers</p>
+  </div>
+
+  <!-- QUÉ ES -->
+  <div class="card">
+    <h2>🤔 ¿Qué es esto en 30 segundos?</h2>
+    <p>Es un sistema que controla <strong>toda la plata y los materiales</strong> de Metal Engineers. Imagínalo como un WhatsApp pero para el dinero de la empresa: cada gasto, cada cobro, cada fierro que entra o sale del almacén queda registrado.</p>
+    <div class="callout info">
+      <strong>💡 Regla de oro del ERP</strong>
+      Un dato se carga <strong>UNA sola vez</strong>. Si Comercial ya puso al cliente, Finanzas lo lee del sistema, no se vuelve a tipear. Esto evita errores.
+    </div>
+  </div>
+
+  <!-- TU MISIÓN -->
+  <div class="card">
+    <h2>🎯 Tu misión</h2>
+    <p>Revisar 2 módulos en profundidad y dar tu opinión sincera:</p>
+    <div class="modules">
+      <div class="module-box focus">
+        <h4>🚚 LOGÍSTICA</h4>
+        <p>Todas las compras: gastos de oficina, gastos de proyectos, compra de insumos para almacén.</p>
+      </div>
+      <div class="module-box focus">
+        <h4>📋 ADMINISTRACIÓN</h4>
+        <p>Dashboard de cuánto se gasta en personal por mes y por proyecto.</p>
+      </div>
+    </div>
+    <p style="margin-top:12px;">Pero para entenderlos necesitas ver el <strong>mapa completo</strong> primero 👇</p>
+  </div>
+
+  <!-- CREDENCIALES -->
+  <div class="card">
+    <h2>🔐 Tus credenciales</h2>
+    <div class="creds">
+      <div><strong>🌐 URL:</strong> https://erp-pro-production-e4c0.up.railway.app</div>
+      <div><strong>📧 Email:</strong> luisramos@metalengineers.com.pe</div>
+      <div><strong>🔑 Clave:</strong> Ab1234@</div>
+    </div>
+    <div class="callout warn">
+      <strong>⚠️ Importante</strong>
+      Tu rol es <strong>USUARIO</strong> (no GERENTE). Podés hacer todo lo operativo pero no podés crear otros usuarios ni borrar datos. Si necesitás algo que no te deja, me avisas.
+    </div>
+  </div>
+
+  <!-- EL MAPA -->
+  <div class="card">
+    <h2>🗺️ El mapa completo del ERP</h2>
+    <p>Cuando un cliente pide algo, el dato viaja por 6 módulos. Así se conecta todo:</p>
+
+    <div class="flow">
+      <div class="flow-step" style="border-left-color: #1565c0;">
+        <div class="icon">💼</div>
+        <div class="text">
+          <strong>1. COMERCIAL</strong>
+          <span>Arma cotización para el cliente</span>
+        </div>
+      </div>
+      <div class="flow-arrow">↓ si la aprueban</div>
+      <div class="flow-step" style="border-left-color: #2e7d32;">
+        <div class="icon">💰</div>
+        <div class="text">
+          <strong>2. FINANZAS</strong>
+          <span>Genera orden de compra + controla cobranzas</span>
+        </div>
+      </div>
+      <div class="flow-arrow">↓ durante el proyecto</div>
+      <div class="flow-step" style="border-left-color: #e65100; background: #fff3e0;">
+        <div class="icon">🚚</div>
+        <div class="text">
+          <strong>3. LOGÍSTICA ← tu foco</strong>
+          <span>Registra gastos y compras</span>
+        </div>
+      </div>
+      <div class="flow-arrow">↓ compras llegan</div>
+      <div class="flow-step" style="border-left-color: #676767;">
+        <div class="icon">📦</div>
+        <div class="text">
+          <strong>4. ALMACÉN</strong>
+          <span>Recibe insumos, entrega a los proyectos</span>
+        </div>
+      </div>
+      <div class="flow-arrow">↓ mes a mes</div>
+      <div class="flow-step" style="border-left-color: #e65100; background: #fff3e0;">
+        <div class="icon">📋</div>
+        <div class="text">
+          <strong>5. ADMINISTRACIÓN ← tu foco</strong>
+          <span>Resume el gasto en personal</span>
+        </div>
+      </div>
+      <div class="flow-arrow">↓ todo suma aquí</div>
+      <div class="flow-step" style="border-left-color: #000;">
+        <div class="icon">📊</div>
+        <div class="text">
+          <strong>6. GERENCIA</strong>
+          <span>Dashboard con todo (solo lo ve Julio)</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- LOGÍSTICA DETALLE -->
+  <div class="card">
+    <h2>🚚 LOGÍSTICA — A fondo</h2>
+    <p>Este módulo registra <strong>todo lo que la empresa compra o gasta</strong>. Hay 3 tipos de gasto, y <strong>elegir bien el tipo es lo más importante</strong> porque define adónde va esa plata contablemente.</p>
+
+    <div class="types">
+      <div class="type-card general">
+        <span class="tag">TIPO 1</span>
+        <h4>🏢 Gasto GENERAL</h4>
+        <p><strong>Para qué:</strong> gastos fijos de la oficina que no pertenecen a ningún proyecto.</p>
+        <ul>
+          <li>Luz, agua, wifi, alquiler</li>
+          <li>Sueldos administrativos</li>
+          <li>Útiles de oficina</li>
+        </ul>
+        <p style="margin-top:6px;"><strong>Centro de costo:</strong> OFICINA CENTRAL</p>
+      </div>
+
+      <div class="type-card servicio">
+        <span class="tag">TIPO 2</span>
+        <h4>🔧 Gasto de SERVICIO</h4>
+        <p><strong>Para qué:</strong> gastos que van a un proyecto específico con un cliente.</p>
+        <ul>
+          <li>Pagar soldador por 3 días para obra de mina X</li>
+          <li>Viajes a planta del cliente</li>
+          <li>Materiales especiales para 1 servicio</li>
+        </ul>
+        <p style="margin-top:6px;"><strong>Especial:</strong> acá también se pagan honorarios a persona natural (con DNI, sin IGV).</p>
+      </div>
+
+      <div class="type-card almacen">
+        <span class="tag">TIPO 3</span>
+        <h4>📦 Compra para ALMACÉN</h4>
+        <p><strong>Para qué:</strong> comprar materiales que entran al stock y se usan después.</p>
+        <ul>
+          <li>Tornillos, fierros, brocas</li>
+          <li>Herramientas reutilizables</li>
+          <li>Insumos de fabricación</li>
+        </ul>
+        <p style="margin-top:6px;"><strong>Centro de costo:</strong> ALMACEN METAL. El precio queda guardado para cuando Almacén lo entrega a un proyecto.</p>
+      </div>
+    </div>
+
+    <h3>📝 Cómo registrar un gasto (paso a paso)</h3>
+    <ol class="steps">
+      <li><strong>Abrís Logística</strong> en el menú lateral.</li>
+      <li><strong>Clic en "Nuevo gasto"</strong> <em>(o similar según la UI)</em></li>
+      <li><strong>Elegís el TIPO</strong>: General, Servicio o Almacén. <em>Este es el paso crítico.</em></li>
+      <li><strong>Elegís el proveedor</strong> de la lista. Si no está, lo creás primero.</li>
+      <li><strong>Cargás el monto</strong>: moneda (PEN / USD), subtotal, ¿aplica IGV?</li>
+      <li><strong>Si es tipo SERVICIO</strong>, asociás a qué cotización / proyecto pertenece.</li>
+      <li><strong>Guardás.</strong> El sistema calcula automáticamente IGV y totales.</li>
+    </ol>
+
+    <div class="callout tip">
+      <strong>✨ Lo bueno</strong>
+      El proveedor guarda sus cuentas bancarias (Interbank, BCP, etc). Cuando lo elegís, el sistema ya sabe adónde pagarle — no lo tipeás cada vez.
+    </div>
+
+    <div class="callout warn">
+      <strong>⚠️ Cuidado con el tipo</strong>
+      Si te equivocás de tipo (ej: un gasto de proyecto lo marcás como General), la contabilidad del proyecto queda mal y Administración muestra números raros.
+    </div>
+  </div>
+
+  <!-- ADMINISTRACIÓN DETALLE -->
+  <div class="card">
+    <h2>📋 ADMINISTRACIÓN — A fondo</h2>
+    <p>Este módulo <strong>no tipea nada</strong>. Solo lee lo que Logística ya cargó y lo presenta en un dashboard de personal.</p>
+
+    <h3>¿Qué muestra?</h3>
+    <table>
+      <tr><th>Sección</th><th>Qué vas a ver</th></tr>
+      <tr><td>KPIs arriba</td><td>Total gastado en personal este mes, total año, promedio mensual</td></tr>
+      <tr><td>Resumen</td><td>Gasto en personal agrupado por proyecto</td></tr>
+      <tr><td>Detalle</td><td>Cada honorario pagado, a quién, en qué proyecto</td></tr>
+    </table>
+
+    <h3>¿De dónde saca los datos?</h3>
+    <p>De <strong>Logística</strong>, específicamente:</p>
+    <ul style="margin-left: 20px; margin-top: 6px;">
+      <li><strong>Gastos tipo SERVICIO</strong> marcados como "honorario persona natural"</li>
+      <li><strong>Gastos tipo GENERAL</strong> que sean sueldos</li>
+    </ul>
+
+    <div class="callout info">
+      <strong>💡 Por qué existe este módulo</strong>
+      En una empresa de servicios, el costo más grande suele ser la gente. Julio necesita saber rápido: "¿cuánto gasté en personal este mes?" sin tener que sumar gasto por gasto. Administración le da ese número en 1 click.
+    </div>
+  </div>
+
+  <!-- QUÉ EVALUAR -->
+  <div class="card">
+    <h2>🔍 Qué quiero que evalúes</h2>
+    <p>Navegá por los 2 módulos con ojo crítico. Anotá todo lo que veas raro.</p>
+
+    <h3>Preguntas para Logística</h3>
+    <ul class="checklist">
+      <li>¿Se entiende cuál es la diferencia entre los 3 tipos?</li>
+      <li>¿Los nombres de los campos son claros? (Ej: "centro de costo" vs "proyecto")</li>
+      <li>¿Podés crear un gasto sin que nada te confunda?</li>
+      <li>¿El formulario exige datos que no tiene sentido exigir?</li>
+      <li>¿La lista de proveedores es fácil de buscar?</li>
+      <li>¿Qué pasa si te equivocás y querés editar/anular?</li>
+    </ul>
+
+    <h3>Preguntas para Administración</h3>
+    <ul class="checklist">
+      <li>¿Entendés qué representa cada KPI?</li>
+      <li>¿Los montos que muestra coinciden con lo que esperás ver?</li>
+      <li>¿El detalle por proyecto es útil o sobra?</li>
+      <li>¿Te faltó algún indicador que te gustaría ver?</li>
+    </ul>
+
+    <h3>Preguntas generales</h3>
+    <ul class="checklist">
+      <li>¿La app se siente rápida o pesada?</li>
+      <li>¿Los colores y textos son legibles?</li>
+      <li>¿Funciona bien en tu celular?</li>
+      <li>¿Algún botón hace algo raro / inesperado?</li>
+      <li>Si tu abuela entrara al sistema, ¿podría cargar un gasto sola?</li>
+    </ul>
+  </div>
+
+  <!-- CÓMO REPORTAR -->
+  <div class="card">
+    <h2>🐛 Cómo reportar lo que encuentres</h2>
+    <p>Mandale a Julio un mensaje con este formato:</p>
+    <div class="creds" style="background:#e8f5e9; border-left-color:#2e7d32;">
+      <div><strong>📍 Dónde:</strong> Logística → Nuevo gasto</div>
+      <div><strong>🔎 Qué hice:</strong> seleccioné tipo SERVICIO</div>
+      <div><strong>❌ Qué pasó:</strong> me pidió RUC pero no había lista</div>
+      <div><strong>✅ Qué esperaba:</strong> que apareciera mi proveedor</div>
+      <div><strong>📱 Dispositivo:</strong> Chrome en celular</div>
+    </div>
+    <p style="margin-top:12px;">👍 Mejor si mandás <strong>screenshot</strong>. Si lo que encontraste es raro, también grabá video corto del celular.</p>
+  </div>
+
+  <!-- HEADS UP -->
+  <div class="card">
+    <h2>⚠️ Cosas que ya sabemos que están rotas</h2>
+    <p>No hace falta que las reportes, pero te aviso para que no te sorprendan:</p>
+    <table>
+      <tr><th>Dónde</th><th>Qué pasa</th></tr>
+      <tr>
+        <td>Finanzas → Libro Bancos</td>
+        <td>El KPI "Comisiones" puede mostrar S/ 0.00 aunque haya comisiones (bug conocido, fix pendiente de deploy)</td>
+      </tr>
+      <tr>
+        <td>Finanzas → importar EECC</td>
+        <td>Algunas líneas muestran el nro de operación duplicado (cosmético)</td>
+      </tr>
+      <tr>
+        <td>Logística — UI</td>
+        <td>Está en versión temprana. Parte de lo que querés evaluar es justamente qué le falta.</td>
+      </tr>
+    </table>
+  </div>
+
+  <!-- CIERRE -->
+  <div class="card" style="background: var(--black); color: white;">
+    <h2 style="color: white; border-bottom-color: var(--gray);">🙌 Gracias por ayudar</h2>
+    <p>Tu mirada fresca vale más que 10 horas de Julio probando lo mismo. Todo lo que digas — positivo o negativo — hace el sistema mejor.</p>
+    <p style="margin-top:8px; color: var(--gray-light);">Cualquier duda escribí a Julio. Cualquier hallazgo, también 😄</p>
+  </div>
+
+  <div class="footer">
+    Metal Engineers SAC · ERP-PRO · Tutorial generado 24/04/2026
+  </div>
+
+</div>
+</body>
+</html>

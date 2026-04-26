@@ -147,19 +147,62 @@ class CotizacionService {
        LIMIT 8`
     );
 
-    // Tendencia mensual últimos 6 meses
+    // Tendencia mensual últimos 12 meses (extendido de 6)
     const [tendencia] = await db.query(
       `SELECT DATE_FORMAT(fecha, '%Y-%m') AS mes,
               COUNT(*) AS cantidad,
               SUM(CASE WHEN moneda='PEN' THEN total ELSE 0 END) AS monto_pen,
               SUM(CASE WHEN moneda='USD' THEN total ELSE 0 END) AS monto_usd,
-              SUM(CASE WHEN estado='APROBADA' THEN 1 ELSE 0 END) AS aprobadas
+              SUM(CASE WHEN estado='APROBADA' THEN 1 ELSE 0 END) AS aprobadas,
+              SUM(CASE WHEN estado='APROBADA' AND moneda='PEN' THEN total ELSE 0 END) AS aprobadas_pen
        FROM Cotizaciones
        WHERE estado != 'ANULADA'
-         AND fecha >= DATE_SUB(CURDATE(), INTERVAL 6 MONTH)
+         AND fecha >= DATE_SUB(CURDATE(), INTERVAL 12 MONTH)
        GROUP BY DATE_FORMAT(fecha, '%Y-%m')
        ORDER BY mes ASC`
     );
+
+    // Comparativa anual: YTD año actual vs YTD año anterior
+    const ahora = new Date();
+    const anioActual   = ahora.getFullYear();
+    const anioAnterior = anioActual - 1;
+    const mesActual    = ahora.getMonth() + 1;
+    const mesAnterior  = mesActual === 1 ? 12 : mesActual - 1;
+    const anioMesPrev  = mesActual === 1 ? anioActual - 1 : anioActual;
+
+    const [ytdAct]: any = await db.query(`
+      SELECT
+        COUNT(*) AS cantidad,
+        COALESCE(SUM(CASE WHEN moneda='PEN' THEN total ELSE total * tipo_cambio END), 0) AS monto_pen_eq,
+        SUM(CASE WHEN estado='APROBADA' THEN 1 ELSE 0 END) AS aprobadas
+      FROM Cotizaciones
+      WHERE estado != 'ANULADA' AND YEAR(fecha) = ?
+    `, [anioActual]);
+
+    const [ytdPrev]: any = await db.query(`
+      SELECT
+        COUNT(*) AS cantidad,
+        COALESCE(SUM(CASE WHEN moneda='PEN' THEN total ELSE total * tipo_cambio END), 0) AS monto_pen_eq,
+        SUM(CASE WHEN estado='APROBADA' THEN 1 ELSE 0 END) AS aprobadas
+      FROM Cotizaciones
+      WHERE estado != 'ANULADA' AND YEAR(fecha) = ? AND MONTH(fecha) <= ?
+    `, [anioAnterior, mesActual]);
+
+    const [mesAct]: any = await db.query(`
+      SELECT
+        COUNT(*) AS cantidad,
+        COALESCE(SUM(CASE WHEN moneda='PEN' THEN total ELSE total * tipo_cambio END), 0) AS monto_pen_eq
+      FROM Cotizaciones
+      WHERE estado != 'ANULADA' AND YEAR(fecha) = ? AND MONTH(fecha) = ?
+    `, [anioActual, mesActual]);
+
+    const [mesPrev]: any = await db.query(`
+      SELECT
+        COUNT(*) AS cantidad,
+        COALESCE(SUM(CASE WHEN moneda='PEN' THEN total ELSE total * tipo_cambio END), 0) AS monto_pen_eq
+      FROM Cotizaciones
+      WHERE estado != 'ANULADA' AND YEAR(fecha) = ? AND MONTH(fecha) = ?
+    `, [anioMesPrev, mesAnterior]);
 
     // Tasa aprobación global
     const todos   = (porEstado as any[]).reduce((s: number, r: any) => s + Number(r.cantidad), 0);
@@ -193,6 +236,12 @@ class CotizacionService {
     const promedioUsd = usd && Number(usd.cantidad) > 0
       ? Number((Number(usd.monto) / Number(usd.cantidad)).toFixed(2)) : 0;
 
+    // Tasa aprobación YTD comparada
+    const tasaYtdAct  = Number(ytdAct[0]?.cantidad) > 0
+      ? Math.round((Number(ytdAct[0]?.aprobadas)  / Number(ytdAct[0]?.cantidad))  * 100) : 0;
+    const tasaYtdPrev = Number(ytdPrev[0]?.cantidad) > 0
+      ? Math.round((Number(ytdPrev[0]?.aprobadas) / Number(ytdPrev[0]?.cantidad)) * 100) : 0;
+
     return {
       totalesPorMoneda: totalesPorMoneda as any[],
       porEstado:        porEstado        as any[],
@@ -204,6 +253,31 @@ class CotizacionService {
       aprobado,
       promedioPen,
       promedioUsd,
+      comparativa: {
+        anio_actual:   anioActual,
+        anio_anterior: anioAnterior,
+        meses_transcurridos: mesActual,
+        ytd_actual: {
+          cantidad:    Number(ytdAct[0]?.cantidad)     || 0,
+          monto_pen:   Number(ytdAct[0]?.monto_pen_eq) || 0,
+          aprobadas:   Number(ytdAct[0]?.aprobadas)    || 0,
+          tasa:        tasaYtdAct,
+        },
+        ytd_anterior: {
+          cantidad:    Number(ytdPrev[0]?.cantidad)     || 0,
+          monto_pen:   Number(ytdPrev[0]?.monto_pen_eq) || 0,
+          aprobadas:   Number(ytdPrev[0]?.aprobadas)    || 0,
+          tasa:        tasaYtdPrev,
+        },
+        mes_actual: {
+          cantidad:  Number(mesAct[0]?.cantidad)     || 0,
+          monto_pen: Number(mesAct[0]?.monto_pen_eq) || 0,
+        },
+        mes_anterior: {
+          cantidad:  Number(mesPrev[0]?.cantidad)     || 0,
+          monto_pen: Number(mesPrev[0]?.monto_pen_eq) || 0,
+        },
+      },
     };
   }
 

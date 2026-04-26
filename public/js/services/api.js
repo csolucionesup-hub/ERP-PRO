@@ -125,6 +125,7 @@ export const api = {
   },
   inventory: {
     getInventario:        () => get('/inventario'),
+    getDashboard:         () => get('/inventario/dashboard'),
     getKardex:       (id)    => get(`/inventario/${id}/kardex`),
     createInventarioItem: (data) => post('/inventario', data),
     consumirInventario:   (data) => post('/inventario/consumo', data),
@@ -200,11 +201,18 @@ export const api = {
     getByMarca:    (marca)         => get(`/configuracion-marca/${marca}`),
     update:        (marca, data)   => put(`/configuracion-marca/${marca}`, data),
   },
+  alertas: {
+    list: () => get('/alertas'),
+  },
   administracion: {
     getGastoPersonal: (anio, mes) => {
       const params = new URLSearchParams({ anio });
       if (mes) params.append('mes', mes);
       return get(`/admin/gasto-personal?${params}`);
+    },
+    getDashboard: (anio) => {
+      const qs = anio ? `?anio=${anio}` : '';
+      return get(`/admin/dashboard${qs}`);
     },
   },
   usuarios: {
@@ -267,6 +275,13 @@ export const api = {
     get:              (id)    => get(`/facturas/${id}`),
     consultarEstado:  (id)    => post(`/facturas/${id}/consultar-estado`),
   },
+  centrosCosto: {
+    list:    (soloActivos = false) => get(`/centros-costo${soloActivos ? '?activos=1' : ''}`),
+    resumen: (anio)    => get(`/centros-costo/resumen${anio ? '?anio=' + anio : ''}`),
+    create:  (data)    => post('/centros-costo', data),
+    update:  (id, d)   => put(`/centros-costo/${id}`, d),
+    remove:  (id)      => del(`/centros-costo/${id}`),
+  },
   ordenesCompra: {
     list:       (filtros = {}) => {
       const p = new URLSearchParams();
@@ -290,6 +305,31 @@ export const api = {
       const nombre = r.headers.get('content-disposition')?.match(/filename="(.+)"/)?.[1] || `OC-${id}.pdf`;
       const url = URL.createObjectURL(blob);
       window.open(url, '_blank');
+      setTimeout(() => URL.revokeObjectURL(url), 30_000);
+      return { nombre };
+    },
+    /**
+     * Descarga el Reporte Semanal de Órdenes (ROC) en Excel.
+     * params: { centro_costo, anio, semana?, empresa? }
+     */
+    descargarROC: async (params) => {
+      const token = localStorage.getItem('erp_token');
+      const qs = new URLSearchParams();
+      Object.entries(params).forEach(([k, v]) => { if (v != null && v !== '') qs.append(k, v); });
+      const r = await fetch(`${API_BASE_URL}/ordenes-compra/roc?${qs.toString()}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!r.ok) throw new Error('Error generando ROC: HTTP ' + r.status);
+      const blob = await r.blob();
+      const nombre = r.headers.get('content-disposition')?.match(/filename="(.+)"/)?.[1]
+        || `ROC-${params.anio}-${params.centro_costo}.xlsx`;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = nombre;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
       setTimeout(() => URL.revokeObjectURL(url), 30_000);
       return { nombre };
     },

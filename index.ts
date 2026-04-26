@@ -23,6 +23,7 @@ import { GoogleDriveService } from './app/modules/comercial/GoogleDriveService';
 import multer from 'multer';
 import ConfiguracionMarcaService from './app/modules/comercial/ConfiguracionMarcaService';
 import AdminService from './app/modules/admin/AdminService';
+import AlertasService from './app/modules/admin/AlertasService';
 
 // Fase A — Capas transversales
 import ConfiguracionService from './app/modules/configuracion/ConfiguracionService';
@@ -35,7 +36,9 @@ import PLEExporter from './app/modules/facturacion/PLEExporter';
 import { FacturacionCron } from './app/modules/facturacion/FacturacionCron';
 import ImportadorService, { EntidadImportable } from './app/modules/importador/ImportadorService';
 import OrdenCompraService from './app/modules/compras/OrdenCompraService';
+import CentrosCostoService from './app/modules/compras/CentrosCostoService';
 import { OrdenCompraPDFService } from './app/modules/compras/OrdenCompraPDFService';
+import ROCService from './app/modules/compras/ROCService';
 import { auditLog } from './app/middlewares/auditLog';
 import { periodoGuard } from './app/middlewares/periodoGuard';
 
@@ -216,6 +219,10 @@ apiRouter.delete('/proveedores/:id', async (req: Request, res: Response) => {
 });
 
 apiRouter.use('/inventario', requireModulo('ALMACEN'));
+// Dashboard ANTES de /:id para que no sea capturado por validateIdParam
+apiRouter.get('/inventario/dashboard', async (req: Request, res: Response) => {
+  res.json(await InventoryService.getDashboard());
+});
 apiRouter.get('/inventario', async (req: Request, res: Response) => {
   res.json(await InventoryService.getInventario());
 });
@@ -588,6 +595,21 @@ apiRouter.get('/admin/gasto-personal', async (req: Request, res: Response) => {
   res.json(await AdminService.getGastoPersonal(anio, mes));
 });
 
+apiRouter.use('/admin/dashboard', requireModulo('ADMINISTRACION'));
+apiRouter.get('/admin/dashboard', async (req: Request, res: Response) => {
+  const anio = req.query.anio ? parseInt(req.query.anio as string) : undefined;
+  res.json(await AdminService.getDashboardAdmin(anio));
+});
+
+// ===== ALERTAS / NOTIFICACIONES =====
+apiRouter.get('/alertas', async (req: any, res: Response) => {
+  const modulos = req.user?.modulos || [];
+  const esGerente = req.user?.rol === 'GERENTE';
+  // Gerente ve TODO; usuario ve solo de sus módulos
+  const efectivos = esGerente ? ['GERENCIA', 'COMERCIAL', 'FINANZAS', 'LOGISTICA', 'ALMACEN', 'ADMINISTRACION'] : modulos;
+  res.json(await AlertasService.listar(efectivos));
+});
+
 // ===== AUTH: Rutas públicas (sin requireAuth) =====
 const authRouter = express.Router();
 
@@ -907,7 +929,35 @@ ocRouter.get('/', async (req: Request, res: Response) => {
     id_proveedor:  req.query.id_proveedor ? Number(req.query.id_proveedor) : undefined,
     empresa:       req.query.empresa as any,
     limit:         req.query.limit ? Number(req.query.limit) : undefined,
+    tipo_oc:       req.query.tipo_oc as any,
+    centro_costo:  req.query.centro_costo as string | undefined,
+    id_servicio:   req.query.id_servicio ? Number(req.query.id_servicio) : undefined,
   }));
+});
+
+// ROC — Reporte de Órdenes de Compra semanal (Excel).
+// DEBE ir ANTES de /:id para que no lo capture validateIdParam con "roc" como id.
+ocRouter.get('/roc', async (req: Request, res: Response) => {
+  const centro_costo = String(req.query.centro_costo || 'OFICINA CENTRAL');
+  const anio        = Number(req.query.anio) || new Date().getFullYear();
+  const semana      = req.query.semana ? Number(req.query.semana) : undefined;
+  const empresa     = (req.query.empresa as 'ME' | 'PT' | undefined) || undefined;
+
+  const buffer = await ROCService.generar({
+    centro_costo,
+    anio,
+    semana_corte: semana,
+    empresa,
+  });
+
+  const semanaTxt = String(semana || '').padStart(2, '0');
+  const filename = `ROC - SEMANA ${semanaTxt} - ${centro_costo}.xlsx`.replace(/[\\\/:"*?<>|]/g, ' ');
+  res.setHeader(
+    'Content-Type',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+  );
+  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+  res.send(buffer);
 });
 
 ocRouter.get('/:id', validateIdParam, async (req: Request, res: Response) => {
@@ -958,6 +1008,29 @@ ocRouter.get('/:id/pdf', validateIdParam, async (req: Request, res: Response) =>
 
 app.use('/api/ordenes-compra', ocRouter);
 
+// ===== CENTROS DE COSTO (maestro) — modulo LOGISTICA =====
+const ccRouter = express.Router();
+ccRouter.use(requireAuth);
+ccRouter.use(requireModulo('LOGISTICA'));
+ccRouter.get('/', async (req: Request, res: Response) => {
+  const soloActivos = req.query.activos === '1' || req.query.activos === 'true';
+  res.json(await CentrosCostoService.listar(soloActivos));
+});
+ccRouter.get('/resumen', async (req: Request, res: Response) => {
+  const anio = req.query.anio ? Number(req.query.anio) : undefined;
+  res.json(await CentrosCostoService.resumen(anio));
+});
+ccRouter.post('/', auditLog('CentroCosto', 'CREATE'), async (req: Request, res: Response) => {
+  res.json(await CentrosCostoService.crear(req.body));
+});
+ccRouter.put('/:id', validateIdParam, auditLog('CentroCosto', 'UPDATE'), async (req: Request, res: Response) => {
+  res.json(await CentrosCostoService.actualizar(Number(req.params.id), req.body));
+});
+ccRouter.delete('/:id', validateIdParam, auditLog('CentroCosto', 'DELETE'), async (req: Request, res: Response) => {
+  res.json(await CentrosCostoService.eliminar(Number(req.params.id)));
+});
+app.use('/api/centros-costo', ccRouter);
+
 // Anidamos el API controlada bajo la rama estándar /api
 app.use('/api', apiRouter);
 
@@ -969,16 +1042,148 @@ app.use('/api', apiRouter);
 app.use(errorHandler);
 
 
+/**
+ * Self-heal de DB en boot: si las tablas críticas no existen (ej. tras
+ * reset del volumen de MySQL en Railway), reinicializa schema+migraciones
+ * + gerente sin destruir datos preexistentes. Solo crea lo que falta.
+ */
+async function autoHealDatabase(): Promise<void> {
+  try {
+    const fs = require('fs');
+    const bcrypt = require('bcryptjs');
+
+    // 1) ¿Existen las tablas core? (Postgres — query a information_schema)
+    const checkTable = async (name: string): Promise<boolean> => {
+      const [rows]: any = await db.query(
+        `SELECT 1 FROM information_schema.tables
+          WHERE table_schema = 'public' AND lower(table_name) = lower(?) LIMIT 1`,
+        [name]
+      );
+      return (rows as any[]).length > 0;
+    };
+    const usuariosOk = await checkTable('usuarios');
+    const ocOk       = await checkTable('ordenescompra');
+    const migOk      = await checkTable('_migrations');
+
+    if (usuariosOk && ocOk && migOk) {
+      console.log('[BOOT] DB OK — tablas críticas presentes.');
+      return;
+    }
+
+    console.warn('[BOOT] ⚠ DB incompleta. Ejecutando self-heal...');
+    console.warn(`[BOOT]    Usuarios=${usuariosOk} OrdenesCompra=${ocOk} _migrations=${migOk}`);
+
+    // CASO ANÓMALO: _migrations existe (con N filas) pero las tablas que esas
+    // migraciones crearon NO existen. Significa que alguien hizo DROP TABLE
+    // selectivo. Limpiamos _migrations para que re-ejecuten todas las migraciones.
+    if (migOk && (!usuariosOk || !ocOk)) {
+      const [mCount]: any = await db.query('SELECT COUNT(*) AS n FROM _migrations');
+      if (mCount[0]?.n > 0) {
+        console.warn('[BOOT] _migrations dice que ya se aplicaron pero tablas faltan. Limpiando _migrations para re-ejecutar.');
+        await db.query('DELETE FROM _migrations');
+      }
+    }
+
+    // Path resolution: en prod compila a /dist/index.js, en dev corre desde raíz.
+    const baseDir = path.resolve(__dirname, __dirname.endsWith('dist') ? '..' : '.');
+    const dbDir = path.join(baseDir, 'database');
+
+    // 2) Aplicar schema.sql (con CREATE TABLE IF NOT EXISTS — no destructivo)
+    if (!usuariosOk) {
+      const schemaSQL = fs.readFileSync(path.join(dbDir, 'schema.sql'), 'utf8');
+      const delimIdx = schemaSQL.indexOf('DELIMITER //');
+      const tablasPart = delimIdx === -1 ? schemaSQL : schemaSQL.substring(0, delimIdx);
+      const stmts = tablasPart.replace(/--.*$/gm, '').split(/;\s*\n/).map((s: string) => s.trim()).filter((s: string) => s);
+      for (const s of stmts) { try { await db.query(s); } catch (e: any) { /* tablas ya existentes */ } }
+      // Triggers del schema.sql
+      if (delimIdx !== -1) {
+        const trigPart = schemaSQL.substring(delimIdx)
+          .replace(/^\s*DELIMITER\s+\/\/\s*$/gm, '')
+          .replace(/^\s*DELIMITER\s+;\s*$/gm, '');
+        const triggers = trigPart.match(/CREATE TRIGGER[\s\S]*?END\s*;/g) || [];
+        for (const t of triggers) { try { await db.query(t.replace(/;\s*$/, '')); } catch (_) {} }
+      }
+      // relations.sql (FKs)
+      try {
+        const rel = fs.readFileSync(path.join(dbDir, 'relations.sql'), 'utf8');
+        for (const s of rel.replace(/--.*$/gm, '').split(/;\s*\n/).map((s: string) => s.trim()).filter((s: string) => s)) {
+          try { await db.query(s); } catch (_) {}
+        }
+      } catch (_) {}
+      console.log('[BOOT] schema + relations aplicados.');
+    }
+
+    // 3) Aplicar migraciones pendientes (idempotente vía tabla _migrations)
+    await db.query(`CREATE TABLE IF NOT EXISTS _migrations (
+      name VARCHAR(190) PRIMARY KEY, applied_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )`);
+    const [appliedRows]: any = await db.query('SELECT name FROM _migrations');
+    const applied = new Set((appliedRows as any[]).map(r => r.name));
+    const SKIP = new Set(['001_multimoneda.sql', '006_indices_optimizacion.sql']);
+    const migDir = path.join(dbDir, 'migrations');
+    const files = fs.readdirSync(migDir).filter((f: string) => f.endsWith('.sql')).sort();
+    let migCount = 0;
+    for (const file of files) {
+      if (applied.has(file)) continue;
+      if (SKIP.has(file)) {
+        await db.query('INSERT IGNORE INTO _migrations (name) VALUES (?)', [file]);
+        continue;
+      }
+      try {
+        const raw = fs.readFileSync(path.join(migDir, file), 'utf8')
+          .replace(/ADD\s+COLUMN\s+IF\s+NOT\s+EXISTS\s+/gi, 'ADD COLUMN ')
+          .replace(/ADD\s+CONSTRAINT\s+IF\s+NOT\s+EXISTS\s+/gi, 'ADD CONSTRAINT ')
+          .replace(/CREATE\s+INDEX\s+IF\s+NOT\s+EXISTS\s+/gi, 'CREATE INDEX ');
+        if (raw.includes('DELIMITER')) {
+          const cleaned = raw.replace(/^\s*DELIMITER\s+\/\/\s*$/gm, '').replace(/^\s*DELIMITER\s+;\s*$/gm, '');
+          for (const block of cleaned.split(/\/\//).map((b: string) => b.trim()).filter((b: string) => b)) {
+            try { await db.query(block); } catch (_) {}
+          }
+        } else {
+          try { await db.query(raw); } catch (_) {}
+        }
+        await db.query('INSERT IGNORE INTO _migrations (name) VALUES (?)', [file]);
+        migCount++;
+      } catch (e: any) {
+        console.warn(`[BOOT] migración ${file} falló:`, e.message);
+      }
+    }
+    if (migCount) console.log(`[BOOT] ${migCount} migración(es) aplicadas.`);
+
+    // 4) Seed gerente si no hay ninguno
+    const [gers]: any = await db.query("SELECT id_usuario FROM Usuarios WHERE rol='GERENTE' LIMIT 1");
+    if (gers.length === 0) {
+      const hash = bcrypt.hashSync('Metal2026!', 10);
+      await db.query(
+        `INSERT INTO Usuarios (nombre, email, password_hash, rol, activo)
+         VALUES (?, ?, ?, 'GERENTE', TRUE)
+         ON CONFLICT (email) DO UPDATE SET
+           password_hash = EXCLUDED.password_hash,
+           activo = TRUE`,
+        ['Julio Rojas Cotrina', 'julio@metalengineers.com.pe', hash]
+      );
+      console.log('[BOOT] Gerente julio@ creado.');
+    }
+
+    // 5) Seed Cuentas 1 y 2
+    await db.query(`INSERT IGNORE INTO Cuentas (id_cuenta, nombre, tipo, moneda, saldo_actual, estado)
+                    VALUES (1, 'Caja General Soles', 'EFECTIVO', 'PEN', 0, 'ACTIVA'),
+                           (2, 'Caja General Dólares', 'EFECTIVO', 'USD', 0, 'ACTIVA')`);
+
+    console.log('[BOOT] ✅ Self-heal completado.');
+  } catch (err: any) {
+    console.error('[BOOT] ❌ Self-heal falló:', err.message);
+  }
+}
+
 // Levantar Máquina
 app.listen(PORT, async () => {
   console.log(`[SYS] ERP API Backend SECURE_LAYER Operativo y escuchando en puerto ${PORT}`);
   console.log(`[SYS] Entrar: http://localhost:${PORT}`);
-  // Garantizar cuenta base siempre existe (requerida por Transacciones)
-  const [rows] = await db.query('SELECT id_cuenta FROM Cuentas WHERE id_cuenta = ?', [DEFAULT_ACCOUNT_ID]);
-  if ((rows as any[]).length === 0) {
-    await db.query("INSERT INTO Cuentas (nombre, tipo, saldo_actual) VALUES ('Caja General Soles', 'EFECTIVO', 0.00)");
-    console.log('[SYS] Cuenta base recreada automáticamente.');
-  }
+
+  // Self-heal: detecta DB vacía/incompleta y la regenera (Railway free a veces resetea volumen)
+  await autoHealDatabase();
+
   // Cron de refresco estado SUNAT (solo activo en modo REAL)
   FacturacionCron.start();
 });

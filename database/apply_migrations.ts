@@ -43,10 +43,22 @@ async function getApplied(conn: mysql.Connection): Promise<Set<string>> {
 }
 
 /**
+ * Quita `IF NOT EXISTS` de sintaxis no soportada por MySQL (sí por MariaDB).
+ * Preserva `CREATE TABLE IF NOT EXISTS` que sí es estándar MySQL.
+ */
+function preprocessSql(sql: string): string {
+  return sql
+    .replace(/ADD\s+COLUMN\s+IF\s+NOT\s+EXISTS\s+/gi, 'ADD COLUMN ')
+    .replace(/ADD\s+CONSTRAINT\s+IF\s+NOT\s+EXISTS\s+/gi, 'ADD CONSTRAINT ')
+    .replace(/CREATE\s+INDEX\s+IF\s+NOT\s+EXISTS\s+/gi, 'CREATE INDEX ')
+    .replace(/CREATE\s+UNIQUE\s+INDEX\s+IF\s+NOT\s+EXISTS\s+/gi, 'CREATE UNIQUE INDEX ');
+}
+
+/**
  * Ejecuta el SQL de un archivo. Si contiene DELIMITER //, divide los bloques.
  */
 async function runSqlFile(conn: mysql.Connection, fullPath: string) {
-  const raw = fs.readFileSync(fullPath, 'utf8');
+  const raw = preprocessSql(fs.readFileSync(fullPath, 'utf8'));
 
   if (!raw.includes('DELIMITER')) {
     // SQL plano — multipleStatements habilitado en la conexión

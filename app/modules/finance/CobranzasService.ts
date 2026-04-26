@@ -437,7 +437,12 @@ class CobranzasService {
         FROM Cuentas
        WHERE estado = 'ACTIVA'
        ORDER BY
-         FIELD(tipo,'DETRACCION','BANCO','EFECTIVO'),
+         CASE tipo
+           WHEN 'DETRACCION' THEN 1
+           WHEN 'BANCO' THEN 2
+           WHEN 'EFECTIVO' THEN 3
+           ELSE 99
+         END,
          moneda, nombre
     `);
     return rows;
