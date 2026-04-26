@@ -122,13 +122,17 @@ a {
 .main-content {
   flex: 1;
   min-width: 0;             /* clave para que flex:1 no crezca por contenido */
-  max-width: calc(100vw - 260px); /* nunca pasar del viewport menos sidebar */
   margin-left: 260px;       /* Offset for fixed sidebar */
   padding: 30px;
   display: flex;
   flex-direction: column;
   box-sizing: border-box;
   overflow-x: hidden;       /* contenido interno se ajusta o scrollea localmente */
+}
+/* Solo en desktop el sidebar está ocupando 260px reales — en mobile está
+   oculto/slide-in, así que la regla de max-width restringida sería incorrecta. */
+@media (min-width: 769px) {
+  .main-content { max-width: calc(100vw - 260px); }
 }
 
 /* =========================================
