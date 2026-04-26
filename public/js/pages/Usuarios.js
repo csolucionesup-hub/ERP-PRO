@@ -176,8 +176,8 @@ export const Usuarios = async () => {
     window.toggleUsuario = async (id) => {
       try {
         await api.usuarios.toggleActivo(id);
-        window.location.hash = '/dashboard';
-        setTimeout(() => { window.location.hash = '/usuarios'; }, 50);
+        window.location.hash = 'dashboard';
+        setTimeout(() => { window.location.hash = 'usuarios'; }, 50);
       } catch (e) {
         alert('Error: ' + e.message);
       }
@@ -205,8 +205,8 @@ export const Usuarios = async () => {
           await api.usuarios.createUsuario(data);
         }
         window.cerrarModal();
-        window.location.hash = '/dashboard';
-        setTimeout(() => { window.location.hash = '/usuarios'; }, 50);
+        window.location.hash = 'dashboard';
+        setTimeout(() => { window.location.hash = 'usuarios'; }, 50);
       } catch (err) {
         errEl.textContent = err.message || 'Error al guardar.';
         errEl.style.display = 'block';

@@ -557,7 +557,7 @@ export const Dashboard = async () => {
            <span style="color:var(--text-secondary)">Panel de control unificado: Liquidez, rentabilidad y alertas operativas.</span>
         </div>
         ${esGerente ? `
-        <button onclick="window.location.hash='/usuarios'" style="
+        <button onclick="window.location.hash='usuarios'" style="
           padding: 10px 20px; background: #676767; color: #fff; border: none;
           border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer;
           white-space: nowrap; transition: background 0.2s;"
