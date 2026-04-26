@@ -1853,7 +1853,7 @@ export const Finanzas = async () => {
   setTimeout(() => bindHandlers(cuentas, dashboard), 50);
 
   return `
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+    <header class="header" style="margin-bottom:14px">
       <div>
         <h2 style="margin:0;font-size:20px">Finanzas — Cobranzas</h2>
         <div style="font-size:12px;color:var(--text-secondary)">
@@ -1877,7 +1877,7 @@ export const Finanzas = async () => {
           🏦 Gestionar cuentas
         </button>
       </div>
-    </div>
+    </header>
 
     ${renderDashboard(dashboard)}
 
