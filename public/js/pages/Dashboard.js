@@ -4,8 +4,6 @@ import { kpiGrid } from '../components/KpiCard.js';
 import { lineChart, barChart, donutChart, chartColors, destroyChart } from '../components/charts.js';
 
 export const Dashboard = async () => {
-  const erpUser = JSON.parse(localStorage.getItem('erp_user') || '{}');
-  const esGerente = erpUser.rol === 'GERENTE';
   try {
     const [dataMaster, dataOperativa, dataBN, dataIGV, prestamosTotales, prestamosTomados, prestamosOtorgados, tcHoy,
            hist_cotizaciones, hist_gastos, hist_compras] = await Promise.all([
@@ -556,15 +554,6 @@ export const Dashboard = async () => {
            <h1>Dashboard Gerencial</h1>
            <span style="color:var(--text-secondary)">Panel de control unificado: Liquidez, rentabilidad y alertas operativas.</span>
         </div>
-        ${esGerente ? `
-        <button onclick="window.location.hash='usuarios'" style="
-          padding: 10px 20px; background: #676767; color: #fff; border: none;
-          border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer;
-          white-space: nowrap; transition: background 0.2s;"
-          onmouseover="this.style.background='#000'"
-          onmouseout="this.style.background='#676767'">
-          ⚙ Gestionar Usuarios
-        </button>` : ''}
       </header>
 
       <div id="dashboard-tabbar" style="margin-bottom:10px"></div>
