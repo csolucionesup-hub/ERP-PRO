@@ -25,7 +25,23 @@ async function fetchAPI(url, options = {}) {
     }
     if (!response.ok) {
       const errData = await response.json().catch(() => null);
-      throw new Error(errData?.error || `Error HTTP: ${response.status}`);
+      const msg = errData?.error || `Error HTTP: ${response.status}`;
+      const err = new Error(msg);
+      // Marca semántica para que las páginas puedan reaccionar al setup pendiente
+      if (typeof msg === 'string' && msg.includes('ConfiguracionEmpresa vacía')) {
+        err.code = 'CONFIG_VACIA';
+        // Si es Gerente y aún no está en el wizard, redirigirlo automáticamente.
+        try {
+          const u = JSON.parse(localStorage.getItem('erp_user') || '{}');
+          if (u.rol === 'GERENTE' && window.location.hash !== '#configuracion') {
+            err.message = 'Necesitas completar la configuración inicial. Te llevamos al wizard…';
+            setTimeout(() => { window.location.hash = 'configuracion'; }, 600);
+          } else if (u.rol !== 'GERENTE') {
+            err.message = 'El sistema aún no está configurado. Pídele al Gerente que complete el setup inicial.';
+          }
+        } catch { /* noop */ }
+      }
+      throw err;
     }
 
     const contentType = response.headers.get('content-type') || '';

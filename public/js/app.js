@@ -146,7 +146,23 @@ async function navigate(page) {
   }
 }
 
-function init() {
+// ── ¿Existe ya la ConfiguracionEmpresa? ──────────────────────
+// Si NO existe y el usuario es GERENTE, forzamos #configuracion para ejecutar
+// el wizard antes de que se topen con errores en Contabilidad / OCs / Facturas.
+async function configEmpresaExiste() {
+  try {
+    const r = await fetch('/api/config/existe', {
+      headers: { 'Authorization': 'Bearer ' + (localStorage.getItem('erp_token') || '') }
+    });
+    if (!r.ok) return true; // ante cualquier duda no bloqueamos al usuario
+    const data = await r.json();
+    return !!data?.existe;
+  } catch {
+    return true;
+  }
+}
+
+async function init() {
   if (!localStorage.getItem('erp_token')) {
     window.location.replace('/login.html');
     return;
@@ -188,6 +204,16 @@ function init() {
     renderSidebar(null);
     document.getElementById('main-content').innerHTML = paginaSinModulos();
     return;
+  }
+
+  // Si el GERENTE entra y aún no existe ConfiguracionEmpresa, llevarlo directo
+  // al wizard de setup. Cualquier otro destino fallaría en backend.
+  if (user.rol === 'GERENTE') {
+    const existe = await configEmpresaExiste();
+    if (!existe) {
+      navigate('configuracion');
+      return;
+    }
   }
 
   const destino = hashPage && PAGES[hashPage] ? hashPage : paginaInicio;

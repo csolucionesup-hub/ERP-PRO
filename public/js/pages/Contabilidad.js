@@ -8,7 +8,7 @@
  */
 
 import { api } from '../services/api.js';
-import { showSuccess, showError } from '../services/ui.js';
+import { showSuccess, showError, setupPendienteBanner, esErrorConfigVacia } from '../services/ui.js';
 import { TabBar } from '../components/TabBar.js';
 import { kpiGrid } from '../components/KpiCard.js';
 
@@ -171,6 +171,13 @@ async function actualizarPreviews() {
       { label: 'Periodo', value: `${MESES[mes-1]} ${anio}`, icon: '📅' },
     ], 3);
   } catch (e) {
+    if (esErrorConfigVacia(e)) {
+      // Si la empresa aún no fue configurada, no tiene sentido mostrar previews:
+      // reemplazamos el panel completo por un banner accionable.
+      const panel = document.getElementById('tab-libros');
+      if (panel) panel.innerHTML = setupPendienteBanner('los libros electrónicos PLE');
+      return;
+    }
     showError('Error cargando previews: ' + e.message);
   }
 }
