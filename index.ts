@@ -966,7 +966,7 @@ importadorRouter.post('/preview-xlsx', uploadImportXlsx.single('archivo'), async
     const headerMap: Record<string, string> = {
       'nombre / razón social': 'nombre',
       'ruc (11 dígitos)': 'ruc',
-      'tipo': 'tipo',
+      'tipo persona': 'tipo',
       'dni (8 dígitos)': 'dni',
       'teléfono': 'telefono',
       'email': 'email',
@@ -989,7 +989,7 @@ importadorRouter.post('/preview-xlsx', uploadImportXlsx.single('archivo'), async
       'monto base': 'monto_base',
       'igv': 'igv_base',
       'centro de costo': 'centro_costo',
-      'tipo': 'tipo_gasto_logistica',
+      'tipo logística': 'tipo_gasto_logistica',
       'id servicio': 'id_servicio',
       'n° factura proveedor': 'nro_factura_proveedor',
       'id proveedor': 'id_proveedor',

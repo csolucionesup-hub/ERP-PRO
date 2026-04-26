@@ -52,7 +52,7 @@ const TEMPLATES: Record<EntidadImportable, TemplateConfig> = {
       { key: 'ruc',       titulo: 'RUC (11 dígitos)',        width: 16, requerido: false, formato: 'Numérico 11 dígitos',
         desc: 'Solo para EMPRESA. Vacío si es persona natural.',
         ejemplo1: '20123456789', ejemplo2: '' },
-      { key: 'tipo',      titulo: 'Tipo',                    width: 14, requerido: false, formato: 'JURIDICO o NATURAL',
+      { key: 'tipo',      titulo: 'Tipo Persona',            width: 14, requerido: false, formato: 'JURIDICO o NATURAL',
         desc: 'JURIDICO = empresa con RUC, NATURAL = persona con DNI.',
         ejemplo1: 'JURIDICO', ejemplo2: 'NATURAL' },
       { key: 'dni',       titulo: 'DNI (8 dígitos)',         width: 12, requerido: false, formato: 'Numérico 8 dígitos',
@@ -147,7 +147,7 @@ const TEMPLATES: Record<EntidadImportable, TemplateConfig> = {
       { key: 'centro_costo',     titulo: 'Centro de Costo',      width: 22, requerido: false, formato: 'Texto',
         desc: 'OFICINA CENTRAL, ALMACEN METAL, o nombre del proyecto.',
         ejemplo1: 'OFICINA CENTRAL', ejemplo2: 'SERVICIO Toromocho' },
-      { key: 'tipo_gasto_logistica', titulo: 'Tipo',             width: 14, requerido: false, formato: 'GENERAL / SERVICIO / ALMACEN',
+      { key: 'tipo_gasto_logistica', titulo: 'Tipo Logística',   width: 16, requerido: false, formato: 'GENERAL / SERVICIO / ALMACEN',
         desc: 'Clasificación logística.',
         ejemplo1: 'GENERAL', ejemplo2: 'SERVICIO' },
       { key: 'id_servicio',      titulo: 'ID Servicio',          width: 12, requerido: false, formato: 'Numérico',
@@ -415,5 +415,7 @@ export async function generarTemplateXLSX(entidad: EntidadImportable): Promise<B
   footerRow.getCell(1).alignment = { wrapText: true };
   footerRow.height = 36;
 
-  return await wb.xlsx.writeBuffer() as Buffer;
+  // exceljs devuelve un Buffer compatible con ArrayBuffer; lo convertimos a Buffer Node
+  const buf = await wb.xlsx.writeBuffer();
+  return Buffer.from(buf as ArrayBuffer);
 }
