@@ -609,6 +609,25 @@ tr:last-child td {
     grid-template-columns: 1fr !important;
     gap: 8px !important;
   }
+
+  /* Layouts flex de página (table+form, 2-col side-by-side) → stack en mobile.
+     La firma 'align-items:flex-start' + 'gap:20px' es el patrón que el ERP usa
+     para layouts (no para botones inline). */
+  div[style*="display:flex"][style*="align-items:flex-start"][style*="gap:20px"],
+  div[style*="display: flex"][style*="align-items: flex-start"][style*="gap: 20px"],
+  div[style*="display:flex"][style*="align-items:flex-start"][style*="gap:16px"],
+  div[style*="display: flex"][style*="align-items: flex-start"][style*="gap: 16px"] {
+    flex-direction: column !important;
+    gap: 12px !important;
+  }
+  /* Sus hijos con flex:N (1, 2, 3) → ocupan ancho completo apilados */
+  div[style*="display:flex"][style*="align-items:flex-start"] > [style*="flex:"],
+  div[style*="display: flex"][style*="align-items: flex-start"] > [style*="flex:"],
+  div[style*="display:flex"][style*="align-items:flex-start"] > [style*="flex: "],
+  div[style*="display: flex"][style*="align-items: flex-start"] > [style*="flex: "] {
+    flex: 1 1 100% !important;
+    width: 100% !important;
+  }
   /* KPI grids: 2 columnas en mobile (no 1, los KPIs son chicos) */
   .kpi-grid {
     grid-template-columns: repeat(2, minmax(0,1fr)) !important;
