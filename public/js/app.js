@@ -265,34 +265,36 @@ document.addEventListener('DOMContentLoaded', init);
     if (!box) return;
     overlay.dataset.fcInjected = '1';
 
-    // Posicionar el contenedor relativo para que el ✕ se ancle al box
-    if (getComputedStyle(box).position === 'static') box.style.position = 'relative';
-
     const x = document.createElement('button');
     x.type = 'button';
     x.setAttribute('aria-label', 'Cerrar');
     x.textContent = '✕';
     x.style.cssText = [
-      'position:absolute', 'top:8px', 'right:8px',
-      'width:32px', 'height:32px',
+      // Pegado al overlay (fixed position), NO al box (que tiene overflow:auto)
+      // así el ✕ no se va con el scroll del contenido del modal.
+      'position:absolute', 'top:14px', 'right:14px',
+      'width:40px', 'height:40px',
       'border:none', 'border-radius:50%',
-      'background:#f3f4f6', 'color:#111',
-      'font-size:18px', 'font-weight:700',
-      'cursor:pointer', 'z-index:10',
+      'background:#000', 'color:#fff',
+      'font-size:20px', 'font-weight:700',
+      'line-height:1',
+      'cursor:pointer', 'z-index:10001',
       'display:flex', 'align-items:center', 'justify-content:center',
-      'box-shadow:0 1px 3px rgba(0,0,0,.12)',
+      'box-shadow:0 2px 8px rgba(0,0,0,.35)',
+      '-webkit-tap-highlight-color:transparent',
+      'padding:0',
     ].join(';');
-    x.onmouseenter = () => { x.style.background = '#e5e7eb'; };
-    x.onmouseleave = () => { x.style.background = '#f3f4f6'; };
     x.onclick = (ev) => {
       ev.stopPropagation();
+      ev.preventDefault();
       // Si hay un botón "Cerrar" existente, dispará su handler (mantiene reglas
       // de negocio si el modal hace algo extra al cerrar).
       const cerrarExistente = box.querySelector('button[id^="close-"], button[data-close]');
       if (cerrarExistente) cerrarExistente.click();
       else overlay.remove();
     };
-    box.appendChild(x);
+    // Append al overlay (position:fixed) para que el ✕ siempre esté visible
+    overlay.appendChild(x);
   };
 
   // Procesar overlays ya existentes
