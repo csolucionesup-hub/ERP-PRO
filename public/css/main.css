@@ -840,4 +840,48 @@ tr:last-child td {
     padding: 12px !important;
     font-size: 14px !important;
   }
+
+  /* ==========================================
+     Tablas .table-container → cards apilados en mobile
+     Cada fila se muestra como una tarjeta con celdas en bloque,
+     ocultando el thead que en mobile no cabe.
+     ========================================== */
+  .table-container { overflow: visible !important; }
+  .table-container table,
+  .table-container thead,
+  .table-container tbody,
+  .table-container tr,
+  .table-container th,
+  .table-container td {
+    display: block !important;
+    width: 100% !important;
+    box-sizing: border-box;
+  }
+  .table-container thead { display: none !important; }
+  .table-container tr {
+    border: 1px solid #e5e7eb !important;
+    border-radius: 8px !important;
+    margin-bottom: 10px !important;
+    padding: 12px !important;
+    background: #fff;
+  }
+  .table-container td {
+    padding: 4px 0 !important;
+    border: none !important;
+    text-align: left !important;
+    word-break: break-word;
+  }
+  /* Celda con colspan (empty state) — preservar centrado y full width */
+  .table-container td[colspan] {
+    text-align: center !important;
+    padding: 20px !important;
+    color: var(--text-secondary);
+  }
+  .table-container td:empty { display: none !important; }
+  /* Acciones (último td con botones) — separador visual arriba */
+  .table-container tr td:last-child {
+    margin-top: 6px;
+    padding-top: 8px !important;
+    border-top: 1px dashed #e5e7eb !important;
+  }
 }
