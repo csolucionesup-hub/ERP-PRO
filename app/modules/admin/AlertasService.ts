@@ -13,8 +13,11 @@ import { db } from '../../../database/connection';
  * para evitar dependencia del adapter MySQL→Postgres.
  */
 
+export type ModuloAlerta = 'ALMACEN' | 'COMERCIAL' | 'FINANZAS' | 'LOGISTICA' | 'ADMINISTRACION';
+
 export interface Alerta {
   id: string;          // hash único para que cliente no duplique
+  modulo: ModuloAlerta;
   tipo:
     | 'STOCK' | 'OC_VENCIDA' | 'COBRANZA_VENCIDA' | 'CUENTA_PAGAR_VENCIDA'
     | 'COTIZACION_PENDIENTE' | 'DETRACCION_PENDIENTE'
@@ -31,16 +34,29 @@ export interface Alerta {
 
 class AlertasService {
 
+  /**
+   * Devuelve las alertas filtradas según el rol y los módulos del usuario.
+   * Internamente computa SIEMPRE todas las alertas (para mantener un snapshot
+   * histórico fidedigno) y luego filtra el resultado.
+   */
   async listar(modulosUsuario: string[] = [], rol: string = 'USUARIO'): Promise<Alerta[]> {
-    const alertas: Alerta[] = [];
-    // El GERENTE ve TODO sin importar sus módulos asignados
-    const esGerente = rol === 'GERENTE';
-    const tieneModulo = (m: string) => esGerente || modulosUsuario.includes(m);
+    const todas = await this._computeAll();
+    // Snapshot best-effort (no falla si la migración aún no aplicó)
+    await this.snapshot(todas);
 
-    const tieneAlmacen        = tieneModulo('ALMACEN');
-    const tieneFinanzas       = tieneModulo('FINANZAS');
-    const tieneComercial      = tieneModulo('COMERCIAL');
-    const tieneLogistica      = tieneModulo('LOGISTICA');
+    const esGerente = rol === 'GERENTE';
+    if (esGerente) return todas;
+    return todas.filter(a => modulosUsuario.includes(a.modulo));
+  }
+
+  /** Cómputo completo de todas las alertas activas, sin filtrar por usuario. */
+  private async _computeAll(): Promise<Alerta[]> {
+    const alertas: Alerta[] = [];
+    // Computamos SIEMPRE todas; el filtro por permisos lo hace listar()
+    const tieneAlmacen   = true;
+    const tieneFinanzas  = true;
+    const tieneComercial = true;
+    const tieneLogistica = true;
 
     // ═══════════════════════════════════════════════════════════
     // ALMACEN
@@ -59,6 +75,7 @@ class AlertasService {
         const sinStock = Number(r.stock_actual) === 0;
         alertas.push({
           id: `stock-${r.id_item}`,
+          modulo: 'ALMACEN',
           tipo: 'STOCK',
           severidad: sinStock ? 'danger' : 'warn',
           titulo: sinStock ? `🚫 ${r.nombre} sin stock` : `⚠️ Stock bajo: ${r.nombre}`,
@@ -85,6 +102,7 @@ class AlertasService {
           const valor = Number(r.stock_actual) * Number(r.costo_promedio_unitario);
           alertas.push({
             id: `muerto-${r.id_item}`,
+            modulo: 'ALMACEN',
             tipo: 'INVENTARIO_MUERTO',
             severidad: 'info',
             titulo: `📦 Inventario sin rotar: ${r.nombre}`,
@@ -112,6 +130,7 @@ class AlertasService {
       for (const r of (cotizPend as any[])) {
         alertas.push({
           id: `cot-${r.id_cotizacion}`,
+          modulo: 'COMERCIAL',
           tipo: 'COTIZACION_PENDIENTE',
           severidad: 'warn',
           titulo: `📋 Cotización sin definir: ${r.nro_cotizacion}`,
@@ -136,6 +155,7 @@ class AlertasService {
         const moneda = r.moneda === 'USD' ? '$' : 'S/';
         alertas.push({
           id: `cotsf-${r.id_cotizacion}`,
+          modulo: 'COMERCIAL',
           tipo: 'COTIZACION_SIN_FACTURAR',
           severidad: 'warn',
           titulo: `🧾 Aprobada sin facturar: ${r.nro_cotizacion}`,
@@ -158,6 +178,7 @@ class AlertasService {
       for (const r of (trabajos as any[])) {
         alertas.push({
           id: `trab-${r.id_cotizacion}`,
+          modulo: 'COMERCIAL',
           tipo: 'TRABAJO_NO_INICIADO',
           severidad: 'info',
           titulo: `🔧 Trabajo sin iniciar: ${r.nro_cotizacion}`,
@@ -186,6 +207,7 @@ class AlertasService {
         const dias = Math.floor((Date.now() - new Date(r.fecha_vencimiento).getTime()) / 86400000);
         alertas.push({
           id: `cobv-${r.id_servicio}`,
+          modulo: 'FINANZAS',
           tipo: 'COBRANZA_VENCIDA',
           severidad: dias > 30 ? 'danger' : 'warn',
           titulo: `💰 Cobranza vencida: ${r.codigo}`,
@@ -208,6 +230,7 @@ class AlertasService {
         for (const r of (detPend as any[])) {
           alertas.push({
             id: `det-${r.id_detraccion}`,
+            modulo: 'FINANZAS',
             tipo: 'DETRACCION_PENDIENTE',
             severidad: 'warn',
             titulo: `📦 Detracción pendiente: ${r.cliente}`,
@@ -234,6 +257,7 @@ class AlertasService {
           const moneda = r.moneda === 'USD' ? '$' : 'S/';
           alertas.push({
             id: `presto-${r.id_prestamo}`,
+            modulo: 'FINANZAS',
             tipo: 'PRESTAMO_OTORGADO_VENCIDO',
             severidad: dias > 30 ? 'danger' : 'warn',
             titulo: `💳 Cobro vencido: ${r.deudor}`,
@@ -261,6 +285,7 @@ class AlertasService {
           const moneda = r.moneda === 'USD' ? '$' : 'S/';
           alertas.push({
             id: `prestt-${r.id_prestamo}`,
+            modulo: 'FINANZAS',
             tipo: 'PRESTAMO_TOMADO_PROXIMO',
             severidad: dias <= 2 ? 'danger' : 'warn',
             titulo: `💳 Préstamo a pagar pronto: ${r.acreedor}`,
@@ -289,6 +314,7 @@ class AlertasService {
           const limite = r.moneda === 'USD' ? 300 : 1000;
           alertas.push({
             id: `caja-${r.id_cuenta}`,
+            modulo: 'FINANZAS',
             tipo: 'CAJA_BAJA',
             severidad: saldo < limite / 2 ? 'danger' : 'warn',
             titulo: `🏦 Saldo bajo: ${r.nombre}`,
@@ -325,6 +351,7 @@ class AlertasService {
               : `Vence el 15 · ${diasParaVencer} día(s) restantes`;
             alertas.push({
               id: `igv-${periodoStr}`,
+              modulo: 'FINANZAS',
               tipo: 'IGV_PROXIMO',
               severidad: sev,
               titulo,
@@ -353,6 +380,7 @@ class AlertasService {
       for (const r of (ocPend as any[])) {
         alertas.push({
           id: `oc-${r.id_oc}`,
+          modulo: 'LOGISTICA',
           tipo: 'OC_VENCIDA',
           severidad: 'info',
           titulo: `📋 OC sin facturar: ${r.nro_oc}`,
@@ -374,6 +402,7 @@ class AlertasService {
         const sym = r.moneda === 'USD' ? '$' : 'S/';
         alertas.push({
           id: `ocbor-${r.id_oc}`,
+          modulo: 'LOGISTICA',
           tipo: 'OC_BORRADOR_OLVIDADA',
           severidad: 'info',
           titulo: `📝 OC en borrador: ${r.nro_oc}`,
@@ -384,6 +413,191 @@ class AlertasService {
     }
 
     return alertas;
+  }
+
+  /**
+   * Persiste el ciclo de vida de las alertas en AlertasHistorial.
+   * Llamado desde listar() después de calcular las activas.
+   * - Inserta nuevas (alerta_id que no estaba activa)
+   * - Cierra resueltas (estaban activas y ya no aparecen)
+   *
+   * Importante: el log es GLOBAL, no por usuario. La consulta de historial
+   * filtra después por módulo según los permisos del usuario.
+   */
+  async snapshot(activasGlobal: Alerta[]): Promise<void> {
+    try {
+      // 1. ¿Cuáles están actualmente abiertas en BD?
+      const [abiertas]: any = await db.query(
+        `SELECT alerta_id FROM AlertasHistorial WHERE fecha_resuelta IS NULL`
+      );
+      const abiertasSet = new Set((abiertas as any[]).map(r => r.alerta_id));
+      const activasSet  = new Set(activasGlobal.map(a => a.id));
+
+      // 2. Las que están activas ahora pero NO en BD → INSERT
+      for (const a of activasGlobal) {
+        if (!abiertasSet.has(a.id)) {
+          await db.query(
+            `INSERT INTO AlertasHistorial
+              (alerta_id, modulo, tipo, severidad, titulo, detalle, link, fecha_aparicion)
+             VALUES (?, ?, ?, ?, ?, ?, ?, NOW())`,
+            [a.id, a.modulo, a.tipo, a.severidad, a.titulo, a.detalle ?? null, a.link ?? null]
+          );
+        }
+      }
+
+      // 3. Las que están abiertas en BD pero ya no aparecen → UPDATE resuelta
+      for (const idAbierta of abiertasSet) {
+        if (!activasSet.has(idAbierta)) {
+          await db.query(
+            `UPDATE AlertasHistorial SET fecha_resuelta = NOW()
+             WHERE alerta_id = ? AND fecha_resuelta IS NULL`,
+            [idAbierta]
+          );
+        }
+      }
+    } catch (e) {
+      // El snapshot es best-effort. Si la tabla aún no existe, no rompemos /alertas
+      console.warn('[AlertasService] snapshot falló (migración 035 aplicada?):', (e as Error).message);
+    }
+  }
+
+  /**
+   * Listado para el endpoint /alertas/historial — incluye resueltas y activas.
+   * Filtra por módulos del usuario (GERENTE ve todos los módulos).
+   * Devuelve hasta `limite` registros ordenados por fecha_aparicion DESC.
+   */
+  async historial(modulosUsuario: string[], rol: string, limite = 100): Promise<any[]> {
+    const esGerente = rol === 'GERENTE';
+    const modulosPermitidos: string[] = esGerente
+      ? ['ALMACEN', 'COMERCIAL', 'FINANZAS', 'LOGISTICA', 'ADMINISTRACION']
+      : modulosUsuario.filter(m => ['ALMACEN', 'COMERCIAL', 'FINANZAS', 'LOGISTICA', 'ADMINISTRACION'].includes(m));
+
+      if (modulosPermitidos.length === 0) return [];
+
+      const placeholders = modulosPermitidos.map(() => '?').join(',');
+      try {
+        const [rows]: any = await db.query(
+          `SELECT id_log, alerta_id, modulo, tipo, severidad, titulo, detalle, link,
+                  fecha_aparicion, fecha_resuelta,
+                  CASE WHEN fecha_resuelta IS NULL THEN 1 ELSE 0 END AS activa
+            FROM AlertasHistorial
+            WHERE modulo IN (${placeholders})
+            ORDER BY fecha_aparicion DESC
+            LIMIT ?`,
+          [...modulosPermitidos, limite]
+        );
+        return rows as any[];
+      } catch (e) {
+        console.warn('[AlertasService] historial falló:', (e as Error).message);
+        return [];
+      }
+  }
+
+  /**
+   * KPIs y agregados para el dashboard de alertas.
+   * Filtra por módulos del usuario.
+   */
+  async dashboard(modulosUsuario: string[], rol: string): Promise<any> {
+    const esGerente = rol === 'GERENTE';
+    const modulosPermitidos: string[] = esGerente
+      ? ['ALMACEN', 'COMERCIAL', 'FINANZAS', 'LOGISTICA', 'ADMINISTRACION']
+      : modulosUsuario.filter(m => ['ALMACEN', 'COMERCIAL', 'FINANZAS', 'LOGISTICA', 'ADMINISTRACION'].includes(m));
+
+      if (modulosPermitidos.length === 0) {
+        return {
+          totales: { activas: 0, resueltas: 0, total_historico: 0 },
+          por_severidad: { info: 0, warn: 0, danger: 0 },
+          por_modulo: [],
+          por_tipo: [],
+          tendencia_30d: [],
+          tiempo_promedio_resolucion_dias: null,
+        };
+      }
+
+      const ph = modulosPermitidos.map(() => '?').join(',');
+
+      try {
+        // Totales
+        const [totRows]: any = await db.query(
+          `SELECT
+              COUNT(*) FILTER (WHERE fecha_resuelta IS NULL)::int AS activas,
+              COUNT(*) FILTER (WHERE fecha_resuelta IS NOT NULL)::int AS resueltas,
+              COUNT(*)::int AS total
+           FROM AlertasHistorial WHERE modulo IN (${ph})`,
+          modulosPermitidos
+        );
+        const tot = (totRows as any[])[0] || { activas: 0, resueltas: 0, total: 0 };
+
+        // Por severidad (solo activas)
+        const [sevRows]: any = await db.query(
+          `SELECT severidad, COUNT(*)::int AS n
+            FROM AlertasHistorial
+            WHERE fecha_resuelta IS NULL AND modulo IN (${ph})
+            GROUP BY severidad`,
+          modulosPermitidos
+        );
+        const por_severidad: any = { info: 0, warn: 0, danger: 0 };
+        for (const r of (sevRows as any[])) por_severidad[r.severidad] = Number(r.n);
+
+        // Por módulo (activas)
+        const [modRows]: any = await db.query(
+          `SELECT modulo, COUNT(*)::int AS n
+            FROM AlertasHistorial
+            WHERE fecha_resuelta IS NULL AND modulo IN (${ph})
+            GROUP BY modulo
+            ORDER BY n DESC`,
+          modulosPermitidos
+        );
+
+        // Top tipos (totalidad histórica)
+        const [tipoRows]: any = await db.query(
+          `SELECT tipo, COUNT(*)::int AS total,
+                  COUNT(*) FILTER (WHERE fecha_resuelta IS NULL)::int AS activas
+            FROM AlertasHistorial
+            WHERE modulo IN (${ph})
+            GROUP BY tipo
+            ORDER BY total DESC
+            LIMIT 10`,
+          modulosPermitidos
+        );
+
+        // Tendencia últimos 30 días (alertas nuevas por día)
+        const [tendRows]: any = await db.query(
+          `SELECT DATE(fecha_aparicion)::text AS dia, COUNT(*)::int AS n
+            FROM AlertasHistorial
+            WHERE fecha_aparicion >= (CURRENT_DATE - INTERVAL '30 days')
+              AND modulo IN (${ph})
+            GROUP BY DATE(fecha_aparicion)
+            ORDER BY dia ASC`,
+          modulosPermitidos
+        );
+
+        // Tiempo promedio de resolución
+        const [tprRows]: any = await db.query(
+          `SELECT AVG(EXTRACT(EPOCH FROM (fecha_resuelta - fecha_aparicion)) / 86400.0) AS dias_prom
+            FROM AlertasHistorial
+            WHERE fecha_resuelta IS NOT NULL AND modulo IN (${ph})`,
+          modulosPermitidos
+        );
+
+        return {
+          totales: {
+            activas: Number(tot.activas || 0),
+            resueltas: Number(tot.resueltas || 0),
+            total_historico: Number(tot.total || 0),
+          },
+          por_severidad,
+          por_modulo: modRows,
+          por_tipo: tipoRows,
+          tendencia_30d: tendRows,
+          tiempo_promedio_resolucion_dias: tprRows[0]?.dias_prom != null
+            ? Number(Number(tprRows[0].dias_prom).toFixed(1))
+            : null,
+        };
+      } catch (e) {
+        console.warn('[AlertasService] dashboard falló:', (e as Error).message);
+        return null;
+      }
   }
 }
 

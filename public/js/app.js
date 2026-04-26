@@ -15,6 +15,7 @@ import { Configuracion }  from './pages/Configuracion.js';
 import { Contabilidad }   from './pages/Contabilidad.js';
 import { Importador }     from './pages/Importador.js';
 import { OrdenesCompra }  from './pages/OrdenesCompra.js';
+import { Alertas }        from './pages/Alertas.js';
 
 // ── Módulos en orden de preferencia para redirección inicial ──
 const MODULE_ORDER = ['GERENCIA', 'COMERCIAL', 'FINANZAS', 'LOGISTICA', 'ALMACEN', 'ADMINISTRACION'];
@@ -42,6 +43,7 @@ const PAGE_MODULE = {
   contabilidad:   null, // GERENTE o CONTADOR — chequeo aparte
   importador:     null, // solo GERENTE
   'ordenes-compra': 'LOGISTICA',
+  alertas:        null, // accesible a todos; el contenido se filtra server-side
 };
 
 const PAGES = {
@@ -61,6 +63,7 @@ const PAGES = {
   contabilidad:   Contabilidad,
   importador:     Importador,
   'ordenes-compra': OrdenesCompra,
+  alertas:        Alertas,
 };
 
 // ── Auth helpers ──────────────────────────────────────────────

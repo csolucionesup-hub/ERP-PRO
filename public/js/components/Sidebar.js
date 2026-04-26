@@ -64,9 +64,10 @@ export function renderSidebar(activePage) {
       ${navItems}
       ${contabilidadItem}
       ${usuariosItem}
-      <div class="nav-item" id="nav-alertas" onclick="window.toggleAlertas && window.toggleAlertas()" style="position:relative;cursor:pointer">
+      <div class="nav-item ${activePage === 'alertas' ? 'active' : ''}" id="nav-alertas"
+           data-page="alertas" style="position:relative">
         🔔 Alertas
-        <span id="badge-alertas" style="display:none;position:absolute;top:8px;right:14px;background:#dc2626;color:white;border-radius:10px;font-size:10px;font-weight:700;min-width:18px;height:18px;display:none;align-items:center;justify-content:center;padding:0 5px"></span>
+        <span id="badge-alertas" style="display:none;position:absolute;top:8px;right:14px;background:#dc2626;color:white;border-radius:10px;font-size:10px;font-weight:700;min-width:18px;height:18px;align-items:center;justify-content:center;padding:0 5px"></span>
       </div>
     </nav>
     <div class="sidebar-footer">

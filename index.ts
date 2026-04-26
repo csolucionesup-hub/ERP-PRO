@@ -609,6 +609,21 @@ apiRouter.get('/alertas', async (req: any, res: Response) => {
   res.json(await AlertasService.listar(modulos, rol));
 });
 
+// Historial completo con filtro por módulo según permisos del usuario
+apiRouter.get('/alertas/historial', async (req: any, res: Response) => {
+  const modulos = req.user?.modulos || [];
+  const rol = req.user?.rol || 'USUARIO';
+  const limite = req.query.limit ? Math.min(parseInt(req.query.limit as string), 500) : 100;
+  res.json(await AlertasService.historial(modulos, rol, limite));
+});
+
+// Dashboard de KPIs sobre alertas (filtrado por permisos)
+apiRouter.get('/alertas/dashboard', async (req: any, res: Response) => {
+  const modulos = req.user?.modulos || [];
+  const rol = req.user?.rol || 'USUARIO';
+  res.json(await AlertasService.dashboard(modulos, rol));
+});
+
 // ===== AUTH: Rutas públicas (sin requireAuth) =====
 const authRouter = express.Router();
 

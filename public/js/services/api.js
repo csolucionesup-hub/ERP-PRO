@@ -202,7 +202,9 @@ export const api = {
     update:        (marca, data)   => put(`/configuracion-marca/${marca}`, data),
   },
   alertas: {
-    list: () => get('/alertas'),
+    list:      ()        => get('/alertas'),
+    historial: (limit=100) => get(`/alertas/historial?limit=${limit}`),
+    dashboard: ()        => get('/alertas/dashboard'),
   },
   administracion: {
     getGastoPersonal: (anio, mes) => {
