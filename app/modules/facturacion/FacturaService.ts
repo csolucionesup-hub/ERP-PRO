@@ -220,9 +220,10 @@ class FacturaService {
       where.push('cliente_numero_doc = ?');
       vals.push(filtros.cliente_numero_doc);
     }
+    // LPAD en Postgres exige text como primer argumento → cast explícito.
     const sql = `
       SELECT id_factura, tipo, serie, numero,
-        CONCAT(serie, '-', LPAD(numero, 6, '0')) AS numero_formateado,
+        CONCAT(serie, '-', LPAD(numero::text, 6, '0')) AS numero_formateado,
         fecha_emision, cliente_numero_doc, cliente_razon_social,
         moneda, total, estado_sunat, pdf_url, cdr_url,
         id_cotizacion

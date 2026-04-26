@@ -140,6 +140,12 @@ function doSimpleReplaces(sql: string): string {
       (_, expr, n, unit) => `(${expr.trim()} + INTERVAL '${n} ${unit.toLowerCase()}')`)
     // INSERT IGNORE → INSERT ... ON CONFLICT DO NOTHING (manejo en parte 2 del adapter)
     .replace(/\bINSERT\s+IGNORE\b/gi, 'INSERT')
+    // LPAD(x, n, '0') donde x es identificador simple sin cast → x::text
+    // (Postgres exige primer arg de LPAD/RPAD como text). Si ya tiene ::, lo respetamos.
+    .replace(/\bLPAD\s*\(\s*([a-zA-Z_][a-zA-Z0-9_.]*)\s*,/gi,
+      (m, expr) => /::/.test(expr) ? m : `LPAD(${expr}::text,`)
+    .replace(/\bRPAD\s*\(\s*([a-zA-Z_][a-zA-Z0-9_.]*)\s*,/gi,
+      (m, expr) => /::/.test(expr) ? m : `RPAD(${expr}::text,`)
     // BIT_OR/BIT_AND, CONCAT, NOW son iguales en Postgres
     ;
 }
