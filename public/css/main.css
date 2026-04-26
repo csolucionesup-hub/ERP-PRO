@@ -43,7 +43,9 @@ body {
   color: var(--text-primary);
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;       /* nunca permitir scroll horizontal a nivel de página */
 }
+html { overflow-x: hidden; }
 
 a {
   text-decoration: none;
@@ -119,10 +121,14 @@ a {
 
 .main-content {
   flex: 1;
-  margin-left: 260px; /* Offset for fixed sidebar */
+  min-width: 0;             /* clave para que flex:1 no crezca por contenido */
+  max-width: calc(100vw - 260px); /* nunca pasar del viewport menos sidebar */
+  margin-left: 260px;       /* Offset for fixed sidebar */
   padding: 30px;
   display: flex;
   flex-direction: column;
+  box-sizing: border-box;
+  overflow-x: hidden;       /* contenido interno se ajusta o scrollea localmente */
 }
 
 /* =========================================
