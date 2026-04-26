@@ -596,15 +596,13 @@ tr:last-child td {
 
   header.header h1 { font-size: 18px !important; }
 
-  /* Grids → 1 o 2 columnas en mobile */
-  div[style*="grid-template-columns:1.2fr 1fr"],
-  div[style*="grid-template-columns:1.3fr 1fr"],
-  div[style*="grid-template-columns:1.5fr 1fr"],
-  div[style*="grid-template-columns: 1.5fr 1fr"],
-  div[style*="grid-template-columns:1fr 1fr"],
-  div[style*="grid-template-columns:repeat(3,1fr)"],
-  div[style*="grid-template-columns:repeat(4,1fr)"] {
+  /* Grids inline → 1 columna en mobile (regla universal, cubre TODAS las
+     variantes con/sin espacios y cualquier número de columnas).
+     Excepciones por opt-out: .kpi-grid (siempre 2 cols) y [data-keep-cols] */
+  div[style*="grid-template-columns"]:not(.kpi-grid):not([data-keep-cols]),
+  form[style*="grid-template-columns"]:not([data-keep-cols]) {
     grid-template-columns: 1fr !important;
+    gap: 8px !important;
   }
   /* KPI grids: 2 columnas en mobile (no 1, los KPIs son chicos) */
   .kpi-grid {
