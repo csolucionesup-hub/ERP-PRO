@@ -135,11 +135,20 @@ export const Usuarios = async () => {
       window._modalMode = 'nuevo';
       window._modalUserId = null;
       document.getElementById('modal-titulo').textContent = 'Nuevo Usuario';
-      document.getElementById('u-nombre').value = '';
-      document.getElementById('u-email').value = '';
-      document.getElementById('u-password').value = '';
-      document.getElementById('u-password').required = true;
-      document.getElementById('u-rol').value = 'USUARIO';
+      const nombreEl = document.getElementById('u-nombre');
+      nombreEl.value = '';
+      nombreEl.disabled = false;
+      const emailEl = document.getElementById('u-email');
+      emailEl.value = '';
+      emailEl.style.display = '';
+      emailEl.required = true;
+      const pwdEl = document.getElementById('u-password');
+      pwdEl.value = '';
+      pwdEl.style.display = '';
+      pwdEl.required = true;
+      const rolEl = document.getElementById('u-rol');
+      rolEl.style.display = '';
+      rolEl.value = 'USUARIO';
       document.querySelectorAll('#modulos-check input[type=checkbox]').forEach(cb => cb.checked = false);
       document.getElementById('modal-error').style.display = 'none';
       const m = document.getElementById('modal-usuario');
@@ -152,9 +161,15 @@ export const Usuarios = async () => {
       document.getElementById('modal-titulo').textContent = `Módulos — ${nombre}`;
       document.getElementById('u-nombre').value = nombre;
       document.getElementById('u-nombre').disabled = true;
-      document.getElementById('u-email').style.display = 'none';
-      document.getElementById('u-password').style.display = 'none';
-      document.getElementById('u-password').required = false;
+      // ⚠ los inputs ocultos siguen validándose por HTML5: si están 'required'
+      // y vacíos, el botón submit falla silenciosamente. Quitamos required al
+      // ocultarlos en modo módulos.
+      const emailEl = document.getElementById('u-email');
+      emailEl.style.display = 'none';
+      emailEl.required = false;
+      const pwdEl = document.getElementById('u-password');
+      pwdEl.style.display = 'none';
+      pwdEl.required = false;
       document.getElementById('u-rol').style.display = 'none';
       document.querySelectorAll('#modulos-check input[type=checkbox]').forEach(cb => {
         cb.checked = modulos.includes(cb.value);
