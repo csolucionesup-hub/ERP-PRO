@@ -254,6 +254,21 @@ async function init() {
 
 document.addEventListener('DOMContentLoaded', init);
 
+// ── Tooltips .tip — soporte tap-to-show en mobile ─────────────
+// En desktop con `:hover` el tooltip aparece solo. En mobile no hay hover,
+// así que cualquier click en un .tip lo activa, y un click fuera lo cierra.
+document.addEventListener('click', (e) => {
+  const tipEl = e.target.closest?.('.tip');
+  // Cerrar todos los tooltips activos primero
+  document.querySelectorAll('.tip.tip-active').forEach(t => {
+    if (t !== tipEl) t.classList.remove('tip-active');
+  });
+  if (tipEl) {
+    tipEl.classList.toggle('tip-active');
+    e.stopPropagation();
+  }
+}, true);
+
 // ── Auto-cierre flotante para modales ─────────────────────────
 // En el ERP los modales son divs con `position:fixed; inset:0;` y un hijo box.
 // El botón "Cerrar" suele estar al final → en mobile queda fuera del viewport

@@ -9,7 +9,7 @@
  */
 
 import { api } from '../services/api.js';
-import { showSuccess, showError } from '../services/ui.js';
+import { showSuccess, showError, tip } from '../services/ui.js';
 import { TabBar } from '../components/TabBar.js';
 import { kpiGrid } from '../components/KpiCard.js';
 
@@ -524,24 +524,24 @@ function nuevaOC() {
       <div style="background:white;border-radius:12px;width:900px;max-width:95vw;max-height:90vh;overflow:auto;padding:24px">
         <h2 style="margin-bottom:16px">➕ Nueva Orden de Compra</h2>
         <form id="form-oc" style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px">
-          <div><label>Fecha emisión</label><input type="date" name="fecha_emision" value="${hoy}" required></div>
-          <div><label>Entrega esperada</label><input type="date" name="fecha_entrega_esperada"></div>
-          <div><label>Empresa</label>
+          <div><label>Fecha emisión ${tip('Fecha en la que emitís esta OC al proveedor.')}</label><input type="date" name="fecha_emision" value="${hoy}" required></div>
+          <div><label>Entrega esperada ${tip('Cuándo necesitás recibir el material o servicio. Se usa para alertas de OC vencida.')}</label><input type="date" name="fecha_entrega_esperada"></div>
+          <div><label>Empresa ${tip('ME = Metal Engineers (factura en PEN). PT = Perfotools (factura en USD). Define la marca/empresa que emite la OC.')}</label>
             <select name="empresa"><option value="ME">Metal Engineers (PEN)</option><option value="PT">Perfotools (USD)</option></select>
           </div>
-          <div style="grid-column:span 2"><label>Proveedor *</label><select name="id_proveedor" required><option value="">— Selecciona —</option>${provOpts}</select></div>
-          <div><label>Tipo</label>
+          <div style="grid-column:span 2"><label>Proveedor * ${tip('Maestro de proveedores. Si no lo encontrás, creálo primero en Logística → Proveedores.')}</label><select name="id_proveedor" required><option value="">— Selecciona —</option>${provOpts}</select></div>
+          <div><label>Tipo ${tip('GENERAL: oficina (luz, agua, internet).\nSERVICIO: vinculado a un proyecto/obra (honorarios, fletes).\nALMACÉN: insumos que entran al inventario valorizado.')}</label>
             <select name="tipo_oc"><option value="GENERAL">General (oficina)</option><option value="SERVICIO">Servicio (proyecto)</option><option value="ALMACEN">Almacén (stock)</option></select>
           </div>
-          <div style="grid-column:span 3"><label>Servicio/Proyecto (si tipo=SERVICIO)</label><select name="id_servicio"><option value="">—</option>${servOpts}</select></div>
-          <div><label>Moneda</label><select name="moneda"><option value="PEN">PEN</option><option value="USD">USD</option></select></div>
-          <div><label>Tipo cambio</label><input type="number" step="0.0001" name="tipo_cambio" value="1.0000"></div>
-          <div><label>Forma pago</label>
+          <div style="grid-column:span 3"><label>Servicio/Proyecto (si tipo=SERVICIO) ${tip('Solo si tipo=SERVICIO. Vincula la OC al proyecto/obra para que el costo aparezca en su rentabilidad.')}</label><select name="id_servicio"><option value="">—</option>${servOpts}</select></div>
+          <div><label>Moneda ${tip('PEN = Soles. USD = Dólares. Si elegís USD, el tipo de cambio se usa para convertir todo a PEN para totales y reportes.')}</label><select name="moneda"><option value="PEN">PEN</option><option value="USD">USD</option></select></div>
+          <div><label>Tipo cambio ${tip('TC del día (USD a PEN). Solo se aplica si moneda=USD. Ej: 3.85 significa 1 USD = S/ 3.85.')}</label><input type="number" step="0.0001" name="tipo_cambio" value="1.0000"></div>
+          <div><label>Forma pago ${tip('CONTADO: pago al recibir factura.\nCRÉDITO: pago a N días después de la factura.')}</label>
             <select name="forma_pago"><option value="CONTADO">Contado</option><option value="CREDITO">Crédito</option></select>
           </div>
-          <div><label>Días crédito</label><input type="number" name="dias_credito" value="0"></div>
-          <div style="grid-column:span 2"><label>Centro de costo</label><input name="centro_costo" value="OFICINA CENTRAL"></div>
-          <div style="grid-column:span 3"><label>Observaciones</label><input name="observaciones" placeholder="Ej: Urgente, entrega en obra Toromocho"></div>
+          <div><label>Días crédito ${tip('Solo aplica si Forma pago = CRÉDITO. Cantidad de días para pagar después de recibir la factura del proveedor.')}</label><input type="number" name="dias_credito" value="0"></div>
+          <div style="grid-column:span 2"><label>Centro de costo ${tip('Categoría contable del gasto. Ej: OFICINA CENTRAL para gastos generales, ALMACEN METAL para insumos, o el nombre del proyecto para gastos de servicio.')}</label><input name="centro_costo" value="OFICINA CENTRAL"></div>
+          <div style="grid-column:span 3"><label>Observaciones ${tip('Comentario libre para el proveedor o nota interna. Aparece en el PDF de la OC.')}</label><input name="observaciones" placeholder="Ej: Urgente, entrega en obra Toromocho"></div>
           <div style="grid-column:span 3">
             <label style="font-size:13px;font-weight:700;margin-top:10px;display:block">Líneas</label>
             <div id="oc-lineas" style="display:flex;flex-direction:column;gap:6px"></div>

@@ -1,5 +1,5 @@
 import { api } from '../services/api.js';
-import { showSuccess, showError } from '../services/ui.js';
+import { showSuccess, showError, tip } from '../services/ui.js';
 import { kpiGrid } from '../components/KpiCard.js';
 import { TabBar } from '../components/TabBar.js';
 import { lineChart, barChart, donutChart, chartColors, destroyChart } from '../components/charts.js';
@@ -143,6 +143,7 @@ function renderCatalogo(panel) {
         <div class="card">
           <h3 style="margin-bottom:15px;font-weight:600;font-size:15px">➕ Añadir Insumo Base</h3>
           <form id="form-insumo" style="display:flex;flex-direction:column;gap:10px">
+            <label style="font-size:12px;color:var(--text-secondary)">Categoría ${tip('Tipo de ítem.\n• Material: insumo que se consume (acero, soldadura).\n• Consumible: gasto recurrente (guantes, lijas).\n• Herramienta: durable, se reutiliza.\n• Equipo: maquinaria registrable.\n• EPP: protección personal.')}</label>
             <select name="categoria" required style="padding:10px;border-radius:6px;border:1px solid #d1d5db">
               <option value="Material">Material</option>
               <option value="Consumible">Consumible</option>
@@ -150,13 +151,15 @@ function renderCatalogo(panel) {
               <option value="Equipo">Equipo</option>
               <option value="EPP">EPP</option>
             </select>
+            <label style="font-size:12px;color:var(--text-secondary)">Nombre comercial ${tip('Cómo lo identificás en tu día a día. Ej: Plancha acero A36 1/4, Soldadura 6011.')}</label>
             <input name="nombre" placeholder="Nombre Comercial" required style="padding:10px;border-radius:6px;border:1px solid #d1d5db">
+            <label style="font-size:12px;color:var(--text-secondary)">Unidad de medida ${tip('Cómo lo medís. UND=unidad, KG=kilo, M=metro lineal, M2=m², M3=m³, PAR=par, LOTE=lote, HRA=hora, DIA=día, NIU=no aplica.')}</label>
             <select name="unidad" required style="padding:10px;border-radius:6px;border:1px solid #d1d5db">
               <option value="UND">UND</option><option value="KG">KG</option><option value="M">M</option>
               <option value="M2">M2</option><option value="M3">M3</option><option value="PAR">PAR</option>
               <option value="LOTE">LOTE</option><option value="HRA">HRA</option><option value="DIA">DIA</option><option value="NIU">NIU</option>
             </select>
-            <label style="font-size:12px;color:var(--text-secondary)">Alerta de Stock Mínimo</label>
+            <label style="font-size:12px;color:var(--text-secondary)">Alerta de Stock Mínimo ${tip('Cuando el stock baje a este número, te llegará una alerta para reponer. Ej: si tu mínimo es 10 y bajás a 8, ⚠️ alerta de stock bajo. Si llega a 0, 🚫 sin stock.')}</label>
             <input name="stock_minimo" type="number" step="0.01" value="10" required style="padding:10px;border-radius:6px;border:1px solid #d1d5db">
             <p style="font-size:11px;color:var(--text-secondary);margin:0">El SKU se genera automáticamente según categoría.</p>
             <button type="submit" style="padding:10px;border:none;background:var(--bg-sidebar);border-radius:6px;cursor:pointer;font-weight:bold;color:black">Crear Catálogo</button>

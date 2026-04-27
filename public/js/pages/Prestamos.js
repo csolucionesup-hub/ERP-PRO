@@ -1,5 +1,5 @@
 import { api } from '../services/api.js';
-import { showSuccess, showError } from '../services/ui.js';
+import { showSuccess, showError, tip } from '../services/ui.js';
 import { kpiGrid } from '../components/KpiCard.js';
 import { lineChart, barChart, chartColors, destroyChart } from '../components/charts.js';
 
@@ -111,35 +111,35 @@ const formCrear = (tipo, tcVenta = 1, tcFecha = '') => {
           <input name="fecha_emision" type="date" required style="${inputStyle}">
         </div>
         <div>
-          <label style="font-size:11px;color:var(--text-secondary)">Fecha Vencimiento</label>
+          <label style="font-size:11px;color:var(--text-secondary)">Fecha Vencimiento ${tip('Cuándo deberías ' + (esTomado ? 'devolver' : 'cobrar') + ' el préstamo. Se usa para generar alertas de vencimiento (próximo a vencer / vencido).')}</label>
           <input name="fecha_vencimiento" type="date" style="${inputStyle}">
         </div>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
         <div>
-          <label style="font-size:11px;color:var(--text-secondary)">Moneda</label>
+          <label style="font-size:11px;color:var(--text-secondary)">Moneda ${tip('PEN o USD. Si el préstamo está en dólares, debés también ingresar el tipo de cambio.')}</label>
           <select name="moneda" id="prest-moneda-${tipo}" style="${inputStyle}" onchange="window.toggleMonedaPrestamo(this,'${tipo}')">
             <option value="PEN">S/. Soles (PEN)</option>
             <option value="USD">$ Dólares (USD)</option>
           </select>
         </div>
         <div id="div-tc-${tipo}" style="display:none; flex:1;">
-          <label style="font-size:11px;color:var(--text-secondary)">Tipo de Cambio</label>
+          <label style="font-size:11px;color:var(--text-secondary)">Tipo de Cambio ${tip('Tipo de cambio venta SBS para convertir USD a PEN. Auto-completado con el TC oficial del día.')}</label>
           <input name="tipo_cambio" type="number" step="0.0001" value="${tcVenta}" style="${inputStyle}">
           <span style="font-size:10px;color:var(--text-secondary)">SBS ${tcFecha || 'sin datos'}: ${tcVenta}</span>
         </div>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">
         <div>
-          <label style="font-size:11px;color:var(--text-secondary)">Capital</label>
+          <label style="font-size:11px;color:var(--text-secondary)">Capital ${tip('Monto principal del préstamo (sin intereses).')}</label>
           <input name="monto_capital" type="number" step="0.01" min="0.01" required placeholder="0.00" style="${inputStyle}" oninput="window.calcTotal_${tipo}(this.form)">
         </div>
         <div>
-          <label style="font-size:11px;color:var(--text-secondary)">Interés</label>
+          <label style="font-size:11px;color:var(--text-secondary)">Interés ${tip('Monto total de intereses sobre el capital. Si el préstamo es a S/ 10.000 con S/ 1.200 de intereses, va 1200 acá. 0 si no hay intereses.')}</label>
           <input name="monto_interes" type="number" step="0.01" value="0" style="${inputStyle}" oninput="window.calcTotal_${tipo}(this.form)">
         </div>
         <div>
-          <label style="font-size:11px;color:var(--text-secondary)">Total</label>
+          <label style="font-size:11px;color:var(--text-secondary)">Total ${tip('Capital + Intereses. Se calcula automáticamente. Es la deuda total a pagar/cobrar.')}</label>
           <input name="monto_total_display" readonly placeholder="0.00" style="${inputStyle};background:#f8f9fa;font-weight:bold">
         </div>
       </div>

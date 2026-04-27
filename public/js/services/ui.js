@@ -85,3 +85,25 @@ export function esErrorConfigVacia(err) {
   return err?.code === 'CONFIG_VACIA' ||
          (typeof err?.message === 'string' && err.message.includes('ConfiguracionEmpresa vacía'));
 }
+
+/**
+ * Genera un icono ⓘ con tooltip explicativo. Estilizado por la clase
+ * .tip de main.css. Funciona on hover en desktop y tap en mobile (gestionado
+ * por un click handler global en app.js).
+ *
+ * @param {string} texto — Mensaje explicativo (puede tener saltos de línea \n).
+ * @returns {string} HTML del icono.
+ *
+ * Ejemplo:
+ *   import { tip } from '../services/ui.js';
+ *   `<th>N° piezas ${tip('Cuántas piezas idénticas tiene cada conjunto.')}</th>`
+ */
+export function tip(texto) {
+  // Escape de comillas dobles y < > para meter en atributo data-tip
+  const safe = String(texto || '')
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+  return `<span class="tip" tabindex="0" role="img" aria-label="Ayuda" data-tip="${safe}">ⓘ</span>`;
+}

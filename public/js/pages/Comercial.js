@@ -1,4 +1,5 @@
 import { api } from '../services/api.js';
+import { tip } from '../services/ui.js';
 
 // ── Marca config (UI): logo, color, moneda por defecto ──────────
 const MARCAS = {
@@ -196,7 +197,7 @@ function formNueva(marca, tcHoy, opts = {}) {
           </div>
           ${esUSD ? `
           <div>
-            <label style="font-size:11px;color:var(--text-secondary)">Tipo de Cambio</label>
+            <label style="font-size:11px;color:var(--text-secondary)">Tipo de Cambio ${tip('Tipo de cambio venta SBS del día. Convierte el monto USD a PEN para cálculos internos. Auto-completado con el TC oficial pero podés editarlo.')}</label>
             <input name="tipo_cambio" id="tc-${idp}" type="number" step="0.0001"
               value="${tcHoy.valor_venta || 1}"
               style="width:100%;padding:9px;border-radius:var(--radius-sm);border:1px solid var(--border-light)">
@@ -209,6 +210,7 @@ function formNueva(marca, tcHoy, opts = {}) {
         <div style="background:var(--bg-app);padding:9px;border-radius:4px">
           <label style="font-size:12px;font-weight:bold;display:flex;gap:8px;align-items:center">
             <input type="checkbox" name="aplica_igv" id="igv-${idp}"> + 18% IGV Tributario
+            ${tip('Sumá 18% al monto base si la cotización lleva IGV. Para Régimen RMT/General típicamente sí. Para NRUS no aplica.')}
           </label>
         </div>
 
@@ -229,12 +231,12 @@ function formNueva(marca, tcHoy, opts = {}) {
                 style="width:100%;padding:8px;border-radius:var(--radius-sm);border:1px solid var(--border-light);font-size:12px">
             </div>
             <div>
-              <label style="font-size:11px;color:var(--text-secondary);display:block;margin-bottom:3px">Validez de la Oferta</label>
+              <label style="font-size:11px;color:var(--text-secondary);display:block;margin-bottom:3px">Validez de la Oferta ${tip('Cuánto tiempo se mantienen los precios cotizados. Pasado este plazo, la oferta debería re-cotizarse. Aparece en el PDF.')}</label>
               <input name="validez_oferta" placeholder="7 (siete) días calendarios"
                 style="width:100%;padding:8px;border-radius:var(--radius-sm);border:1px solid var(--border-light);font-size:12px">
             </div>
             <div>
-              <label style="font-size:11px;color:var(--text-secondary);display:block;margin-bottom:3px">Plazo de Entrega</label>
+              <label style="font-size:11px;color:var(--text-secondary);display:block;margin-bottom:3px">Plazo de Entrega ${tip('Cuánto demora la entrega del trabajo/herramienta desde la aprobación. Aparece en el PDF.')}</label>
               <input name="plazo_entrega" placeholder="16 Días hábiles"
                 style="width:100%;padding:8px;border-radius:var(--radius-sm);border:1px solid var(--border-light);font-size:12px">
             </div>
