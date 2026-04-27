@@ -28,9 +28,10 @@ export function renderSidebar(activePage) {
       </div>
     `).join('');
 
-  const esContador = user.rol === 'CONTADOR';
-  const verContabilidad = esGerente || esContador;
-  const verImportador   = esGerente || esContador;  // CONTADOR carga data histórica contable
+  // Acceso a Contabilidad e Importar: por flags granulares por usuario
+  // (GERENTE siempre los tiene en true desde AuthService.login).
+  const verContabilidad = esGerente || !!user.puede_contabilidad;
+  const verImportador   = esGerente || !!user.puede_importar;
 
   const contabilidadItem = verContabilidad ? `
     <div class="nav-item ${activePage === 'contabilidad' ? 'active' : ''}"

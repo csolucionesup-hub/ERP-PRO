@@ -2,7 +2,12 @@ import { api } from '../services/api.js';
 import { showSuccess, showError } from '../services/ui.js';
 
 const MODULOS = ['GERENCIA', 'COMERCIAL', 'FINANZAS', 'LOGISTICA', 'ALMACEN', 'ADMINISTRACION'];
-const ROLES = ['USUARIO', 'CONTADOR', 'GERENTE'];
+// El rol es un label libre; estas opciones aparecen como sugerencias en el datalist
+const ROLES_SUGERIDOS = [
+  'GERENTE', 'CONTADOR', 'USUARIO',
+  'ALMACENERO', 'COMERCIAL', 'ADMINISTRADOR',
+  'OPERARIO', 'CAJA', 'APROBADOR'
+];
 
 export const Usuarios = async () => {
   const erpUser = JSON.parse(localStorage.getItem('erp_user') || '{}');
@@ -27,7 +32,18 @@ export const Usuarios = async () => {
   const rolColor = (rol) => {
     if (rol === 'GERENTE')  return '#000';
     if (rol === 'CONTADOR') return '#0ea5e9';
+    if (rol === 'ALMACENERO') return '#16a34a';
+    if (rol === 'COMERCIAL')  return '#7c3aed';
+    if (rol === 'ADMINISTRADOR') return '#d97706';
     return '#676767';
+  };
+
+  const accesosBadges = (u) => {
+    if (u.rol === 'GERENTE') return '';
+    const items = [];
+    if (u.puede_contabilidad) items.push('<span style="background:#dbeafe;color:#1e40af;padding:1px 6px;border-radius:4px;font-size:10px;margin:1px">📘 Contab.</span>');
+    if (u.puede_importar)     items.push('<span style="background:#fef3c7;color:#92400e;padding:1px 6px;border-radius:4px;font-size:10px;margin:1px">📥 Import.</span>');
+    return items.length ? `<div style="margin-top:4px">${items.join('')}</div>` : '';
   };
 
   const rows = usuarios.map(u => `
@@ -38,7 +54,10 @@ export const Usuarios = async () => {
         <span style="padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600;
           background:${rolColor(u.rol)};color:#fff;">${u.rol}</span>
       </td>
-      <td style="padding:12px 16px;">${renderModulos(u.modulos || [], u.rol)}</td>
+      <td style="padding:12px 16px;">
+        ${renderModulos(u.modulos || [], u.rol)}
+        ${accesosBadges(u)}
+      </td>
       <td style="padding:12px 16px;">
         <span style="padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600;
           background:${u.activo ? '#05cd99' : '#ee5d50'};color:#fff;">
@@ -120,16 +139,31 @@ export const Usuarios = async () => {
               style="width:100%;padding:10px 14px;border:1.5px solid var(--border-light);border-radius:8px;font-size:14px;outline:none;box-sizing:border-box" />
           </div>
           <div>
-            <label style="font-size:12px;color:var(--text-secondary);font-weight:600;display:block;margin-bottom:4px">Rol</label>
-            <select id="u-rol" style="width:100%;padding:10px 14px;border:1.5px solid var(--border-light);border-radius:8px;font-size:14px;outline:none;box-sizing:border-box;background:#fff">
-              ${ROLES.map(r => `<option value="${r}">${r}</option>`).join('')}
-            </select>
+            <label style="font-size:12px;color:var(--text-secondary);font-weight:600;display:block;margin-bottom:4px">Rol / Cargo</label>
+            <input id="u-rol" list="roles-sugeridos" placeholder="Ej. ALMACENERO, COMERCIAL, ADMINISTRADOR..."
+              style="width:100%;padding:10px 14px;border:1.5px solid var(--border-light);border-radius:8px;font-size:14px;outline:none;box-sizing:border-box;text-transform:uppercase" />
+            <datalist id="roles-sugeridos">
+              ${ROLES_SUGERIDOS.map(r => `<option value="${r}">`).join('')}
+            </datalist>
             <p id="u-rol-help" style="font-size:11px;color:var(--text-secondary);margin:4px 0 0;line-height:1.4">
-              <strong>GERENTE:</strong> acceso total · <strong>CONTADOR:</strong> + Contabilidad · <strong>USUARIO:</strong> solo módulos asignados
+              <strong>GERENTE</strong> tiene acceso total automáticamente. Para los demás cargos (CONTADOR, ALMACENERO, COMERCIAL, ADMINISTRADOR...) elegí abajo qué accesos darles.
             </p>
           </div>
+
+          <div id="u-permisos-wrap">
+            <label style="font-size:12px;color:var(--text-secondary);font-weight:600;display:block;margin-bottom:6px">Accesos especiales</label>
+            <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;padding:8px 10px;border:1px solid var(--border-light);border-radius:6px;margin-bottom:6px">
+              <input type="checkbox" id="u-puede-contabilidad" />
+              📘 Acceso a <strong>Contabilidad</strong> <span style="color:var(--text-secondary);font-size:11px">(Libros PLE, Facturas Emitidas, Pack Contable)</span>
+            </label>
+            <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;padding:8px 10px;border:1px solid var(--border-light);border-radius:6px">
+              <input type="checkbox" id="u-puede-importar" />
+              📥 Acceso a <strong>Importar Histórico</strong> <span style="color:var(--text-secondary);font-size:11px">(carga masiva de data antigua)</span>
+            </label>
+          </div>
+
           <div id="u-modulos-wrap">
-            <label style="font-size:12px;color:var(--text-secondary);font-weight:600;display:block;margin-bottom:6px">Módulos de acceso</label>
+            <label style="font-size:12px;color:var(--text-secondary);font-weight:600;display:block;margin-bottom:6px">Módulos de acceso (operativos)</label>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;" id="modulos-check">
               ${MODULOS.map(m => `
                 <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;padding:6px 10px;border:1px solid var(--border-light);border-radius:6px;">
@@ -138,7 +172,7 @@ export const Usuarios = async () => {
                 </label>
               `).join('')}
             </div>
-            <p style="font-size:11px;color:var(--text-secondary);margin:4px 0 0">Si el rol es GERENTE, los módulos se ignoran (tiene todo).</p>
+            <p style="font-size:11px;color:var(--text-secondary);margin:4px 0 0">Si el rol es GERENTE, los módulos y accesos especiales se ignoran (tiene todo).</p>
           </div>
           <p id="modal-error" style="color:var(--danger);font-size:13px;display:none;margin:0"></p>
           <div style="display:flex;gap:10px;margin-top:6px;">
@@ -180,9 +214,12 @@ export const Usuarios = async () => {
       document.getElementById('u-password-hint').style.display = 'none';
       document.getElementById('u-rol').value = 'USUARIO';
       document.getElementById('u-rol').disabled = false;
+      document.getElementById('u-puede-contabilidad').checked = false;
+      document.getElementById('u-puede-importar').checked = false;
       document.querySelectorAll('#modulos-check input[type=checkbox]').forEach(cb => cb.checked = false);
       document.getElementById('btn-reset-password').style.display = 'none';
       document.getElementById('modal-error').style.display = 'none';
+      togglePermisosVisibility();
     }
 
     function setModoEditar(u) {
@@ -201,13 +238,31 @@ export const Usuarios = async () => {
       document.getElementById('u-rol').value = u.rol || 'USUARIO';
       // El GERENTE no puede demoterse a sí mismo
       document.getElementById('u-rol').disabled = (u.id_usuario === erpUserId);
+      document.getElementById('u-puede-contabilidad').checked = !!u.puede_contabilidad;
+      document.getElementById('u-puede-importar').checked     = !!u.puede_importar;
       const userMods = u.modulos || [];
       document.querySelectorAll('#modulos-check input[type=checkbox]').forEach(cb => {
         cb.checked = userMods.includes(cb.value);
       });
       document.getElementById('btn-reset-password').style.display = '';
       document.getElementById('modal-error').style.display = 'none';
+      togglePermisosVisibility();
     }
+
+    /**
+     * Si el rol es GERENTE oculta los checkboxes de accesos especiales y
+     * los módulos (tiene todo automáticamente). Caso contrario los muestra.
+     */
+    function togglePermisosVisibility() {
+      const rol = (document.getElementById('u-rol').value || '').trim().toUpperCase();
+      const permWrap = document.getElementById('u-permisos-wrap');
+      const modWrap  = document.getElementById('u-modulos-wrap');
+      const isGerente = rol === 'GERENTE';
+      permWrap.style.display = isGerente ? 'none' : '';
+      modWrap.style.display  = isGerente ? 'none' : '';
+    }
+    document.getElementById('u-rol').addEventListener('input', togglePermisosVisibility);
+    document.getElementById('u-rol').addEventListener('change', togglePermisosVisibility);
 
     window.abrirModalNuevoUsuario = () => {
       setModoNuevo();
@@ -249,15 +304,19 @@ export const Usuarios = async () => {
       const nombre   = document.getElementById('u-nombre').value.trim();
       const email    = document.getElementById('u-email').value.trim();
       const password = document.getElementById('u-password').value;
-      const rol      = document.getElementById('u-rol').value;
+      const rol      = (document.getElementById('u-rol').value || '').trim().toUpperCase();
+      const puede_contabilidad = document.getElementById('u-puede-contabilidad').checked;
+      const puede_importar     = document.getElementById('u-puede-importar').checked;
+
+      if (!rol) { errEl.textContent = 'El rol no puede estar vacío.'; errEl.style.display = 'block'; btn.disabled = false; return; }
 
       try {
         if (window._modalMode === 'nuevo') {
-          await api.usuarios.createUsuario({ nombre, email, password, rol, modulos });
+          await api.usuarios.createUsuario({ nombre, email, password, rol, modulos, puede_contabilidad, puede_importar });
           showSuccess('Usuario creado');
         } else {
-          // Editar: actualizar datos + módulos
-          await api.usuarios.updateUsuario(window._modalUserId, { nombre, email, rol, modulos });
+          // Editar: actualizar datos + módulos + flags
+          await api.usuarios.updateUsuario(window._modalUserId, { nombre, email, rol, modulos, puede_contabilidad, puede_importar });
           // Si pusieron contraseña nueva, resetear también
           if (password && password.length > 0) {
             await api.usuarios.resetPassword(window._modalUserId, password);

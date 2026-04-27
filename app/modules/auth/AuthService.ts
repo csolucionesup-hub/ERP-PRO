@@ -8,7 +8,7 @@ const JWT_EXPIRES = '8h';
 class AuthService {
   async login(email: string, password: string) {
     const [rows] = await db.query(
-      'SELECT id_usuario, nombre, email, password_hash, rol, activo FROM Usuarios WHERE email = ?',
+      'SELECT id_usuario, nombre, email, password_hash, rol, activo, puede_contabilidad, puede_importar FROM Usuarios WHERE email = ?',
       [email]
     );
     const user = (rows as any)[0];
@@ -31,24 +31,41 @@ class AuthService {
       nombre: user.nombre,
       email: user.email,
       rol: user.rol,
-      modulos
+      modulos,
+      // Permisos granulares: GERENTE siempre tiene todo, los demás según los flags
+      puede_contabilidad: user.rol === 'GERENTE' || !!user.puede_contabilidad,
+      puede_importar:     user.rol === 'GERENTE' || !!user.puede_importar,
     };
     const token = jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRES });
     return { token, usuario: payload };
   }
 
-  async crearUsuario(data: { nombre: string; email: string; password: string; rol?: string; modulos?: string[] }, actorRol: string) {
+  async crearUsuario(
+    data: {
+      nombre: string;
+      email: string;
+      password: string;
+      rol?: string;
+      modulos?: string[];
+      puede_contabilidad?: boolean;
+      puede_importar?: boolean;
+    },
+    actorRol: string
+  ) {
     if (actorRol !== 'GERENTE') throw new Error('Solo el GERENTE puede crear usuarios.');
 
     const [existing] = await db.query('SELECT id_usuario FROM Usuarios WHERE email = ?', [data.email]);
     if ((existing as any[]).length > 0) throw new Error('Ya existe un usuario con ese email.');
 
     const password_hash = await bcrypt.hash(data.password, 10);
-    const rol = data.rol || 'USUARIO';
+    const rol = (data.rol || 'USUARIO').trim() || 'USUARIO';
+    // GERENTE siempre tiene todos los flags activos
+    const pcont = rol === 'GERENTE' ? true : !!data.puede_contabilidad;
+    const pimp  = rol === 'GERENTE' ? true : !!data.puede_importar;
 
     const [res] = await db.query(
-      'INSERT INTO Usuarios (nombre, email, password_hash, rol) VALUES (?, ?, ?, ?)',
-      [data.nombre, data.email, password_hash, rol]
+      'INSERT INTO Usuarios (nombre, email, password_hash, rol, puede_contabilidad, puede_importar) VALUES (?, ?, ?, ?, ?, ?)',
+      [data.nombre, data.email, password_hash, rol, pcont, pimp]
     );
     const id_usuario = (res as any).insertId;
 
@@ -63,7 +80,8 @@ class AuthService {
     // Portable a MySQL y Postgres: dos queries en lugar de GROUP_CONCAT con
     // ORDER BY interno (que el adapter Postgres no traduce correctamente).
     const [users] = await db.query(`
-      SELECT id_usuario, nombre, email, rol, activo, ultimo_acceso, created_at
+      SELECT id_usuario, nombre, email, rol, activo, ultimo_acceso, created_at,
+             puede_contabilidad, puede_importar
       FROM Usuarios
       ORDER BY nombre ASC
     `);
@@ -124,7 +142,14 @@ class AuthService {
    */
   async actualizar(
     id_usuario: number,
-    data: { nombre?: string; email?: string; rol?: string; modulos?: string[] },
+    data: {
+      nombre?: string;
+      email?: string;
+      rol?: string;
+      modulos?: string[];
+      puede_contabilidad?: boolean;
+      puede_importar?: boolean;
+    },
     actorRol: string,
     actorId: number
   ) {
@@ -135,9 +160,13 @@ class AuthService {
       throw new Error('No podés cambiar tu propio rol. Pedí a otro GERENTE que lo haga.');
     }
 
-    // Validar rol válido
-    if (data.rol && !['GERENTE', 'CONTADOR', 'USUARIO'].includes(data.rol)) {
-      throw new Error('Rol inválido. Valores permitidos: GERENTE, CONTADOR, USUARIO.');
+    // El rol pasa a ser un label libre (Almacenero, Comercial, Administrador, etc.)
+    // Solo validamos que no sea string vacío ni demasiado largo.
+    if (data.rol !== undefined) {
+      const r = String(data.rol).trim();
+      if (!r) throw new Error('El rol no puede estar vacío.');
+      if (r.length > 30) throw new Error('El rol no puede exceder 30 caracteres.');
+      data.rol = r;
     }
 
     // Validar email único si cambia
@@ -150,8 +179,10 @@ class AuthService {
     }
 
     // Verificar que el usuario existe
-    const [check] = await db.query('SELECT id_usuario FROM Usuarios WHERE id_usuario = ?', [id_usuario]);
+    const [check] = await db.query('SELECT id_usuario, rol FROM Usuarios WHERE id_usuario = ?', [id_usuario]);
     if ((check as any[]).length === 0) throw new Error('Usuario no encontrado.');
+    const rolActual = (check as any[])[0].rol;
+    const rolFinal = data.rol !== undefined ? data.rol : rolActual;
 
     const conn = await db.getConnection();
     await conn.beginTransaction();
@@ -161,6 +192,21 @@ class AuthService {
       if (data.nombre !== undefined) { updates.push('nombre = ?'); vals.push(data.nombre); }
       if (data.email !== undefined)  { updates.push('email = ?');  vals.push(data.email); }
       if (data.rol !== undefined)    { updates.push('rol = ?');    vals.push(data.rol); }
+
+      // Flags de permisos: si el rol final es GERENTE, ambos = TRUE forzado.
+      // Si no, se respeta lo que mandó el cliente; si no mandó nada, se deja
+      // como estaba.
+      if (rolFinal === 'GERENTE') {
+        updates.push('puede_contabilidad = TRUE');
+        updates.push('puede_importar = TRUE');
+      } else {
+        if (data.puede_contabilidad !== undefined) {
+          updates.push('puede_contabilidad = ?'); vals.push(!!data.puede_contabilidad);
+        }
+        if (data.puede_importar !== undefined) {
+          updates.push('puede_importar = ?');     vals.push(!!data.puede_importar);
+        }
+      }
 
       if (updates.length > 0) {
         vals.push(id_usuario);

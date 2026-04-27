@@ -946,11 +946,13 @@ importadorRouter.get('/template-xlsx/:entidad', async (req: Request, res: Respon
  * Sube un CSV y devuelve preview + errores sin persistir.
  * Body: { entidad, csv_texto }
  */
-// Importador: GERENTE y CONTADOR pueden importar histórico (data administrativa).
-const puedeImportar = (rol: string) => rol === 'GERENTE' || rol === 'CONTADOR';
+// Importador: usa el flag por usuario `puede_importar`. GERENTE siempre tiene
+// el flag activo (lo asegura AuthService al login). Otros roles (CONTADOR,
+// ALMACENERO, etc.) lo ven solo si el GERENTE les habilitó el permiso.
+const puedeImportar = (u: any) => u?.rol === 'GERENTE' || !!u?.puede_importar;
 
 importadorRouter.post('/preview', async (req: any, res: Response) => {
-  if (!puedeImportar(req.user!.rol)) return res.status(403).json({ error: 'Solo GERENTE o CONTADOR' });
+  if (!puedeImportar(req.user)) return res.status(403).json({ error: 'No tenés permiso para importar histórico' });
   const { entidad, csv_texto } = req.body;
   if (!entidad || !csv_texto) return res.status(400).json({ error: 'entidad y csv_texto requeridos' });
   const result = await ImportadorService.parsear(entidad, csv_texto);
@@ -966,7 +968,7 @@ const uploadImportXlsx = multer({
   limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB
 });
 importadorRouter.post('/preview-xlsx', uploadImportXlsx.single('archivo'), async (req: any, res: Response) => {
-  if (!puedeImportar(req.user!.rol)) return res.status(403).json({ error: 'Solo GERENTE o CONTADOR' });
+  if (!puedeImportar(req.user)) return res.status(403).json({ error: 'No tenés permiso para importar histórico' });
   const entidad = req.body.entidad as EntidadImportable;
   if (!entidad || !req.file) return res.status(400).json({ error: 'entidad y archivo requeridos' });
   try {
@@ -1052,7 +1054,7 @@ importadorRouter.post('/preview-xlsx', uploadImportXlsx.single('archivo'), async
  * Body: { entidad, datos }
  */
 importadorRouter.post('/commit', auditLog('Importador', 'CREATE'), async (req: any, res: Response) => {
-  if (!puedeImportar(req.user!.rol)) return res.status(403).json({ error: 'Solo GERENTE o CONTADOR' });
+  if (!puedeImportar(req.user)) return res.status(403).json({ error: 'No tenés permiso para importar histórico' });
   const { entidad, datos } = req.body;
   if (!entidad || !Array.isArray(datos)) return res.status(400).json({ error: 'entidad y datos[] requeridos' });
   const result = await ImportadorService.commit(entidad, datos);
