@@ -111,7 +111,7 @@ export const Servicios = async () => {
          try {
              await api.services.createServicio(data);
              showSuccess('Servicio creado exitosamente');
-             window.location.reload();
+             window.navigate('servicios');
          } catch(err) {
              showError(err.detalles?.[0] || err.error || 'Error al crear servicio');
          }
@@ -128,7 +128,7 @@ export const Servicios = async () => {
              try {
                  const res = await api.services.cobrarServicio(id, Number(monto));
                  showSuccess(res.estado_actualizado === 'COBRADO' ? '¡Factura 100% cobrada!' : 'Adelanto registrado (PARCIAL)');
-                 window.location.reload();
+                 window.navigate('servicios');
              } catch (e) { showError(e.detalles?.[0] || e.error || 'Error al registrar cobro'); }
          }
      };
@@ -214,7 +214,7 @@ export const Servicios = async () => {
                      retencion_porcentaje: Number(f.retencion_porcentaje.value)
                  });
                  showSuccess('Servicio actualizado');
-                 window.location.reload();
+                 window.navigate('servicios');
              } catch(err) { showError(err.detalles?.[0] || err.error || 'Error al actualizar'); }
          };
      };
@@ -224,7 +224,7 @@ export const Servicios = async () => {
              try {
                  await api.services.terminarServicio(id);
                  showSuccess('Servicio marcado como terminado');
-                 window.location.reload();
+                 window.navigate('servicios');
              } catch(e) { showError(e.error || e.message || 'Error al terminar'); }
          }
      };
@@ -234,7 +234,7 @@ export const Servicios = async () => {
              try {
                  await api.services.depositarDetraccion(idServicio, {});
                  showSuccess('Detracción marcada como depositada');
-                 window.location.reload();
+                 window.navigate('servicios');
              } catch(e) { showError(e.error || e.message || 'Error al registrar depósito'); }
          }
      };
@@ -244,7 +244,7 @@ export const Servicios = async () => {
              try {
                  await api.services.deleteServicio(id);
                  showSuccess('Servicio eliminado');
-                 window.location.reload();
+                 window.navigate('servicios');
              } catch(e) { showError(e.detalles?.[0] || e.error || e.message || 'Error al eliminar'); }
          }
      };
@@ -254,7 +254,7 @@ export const Servicios = async () => {
             try {
                await api.services.anularServicio(id);
                showSuccess('Servicio anulado y stock reintegrado');
-               window.location.reload();
+               window.navigate('servicios');
             } catch (e) {
                showError(e.error || e.message || 'Error al anular');
             }

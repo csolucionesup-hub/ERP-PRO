@@ -166,7 +166,7 @@ export const Dashboard = async () => {
           const data = await res.json();
           if (!res.ok) throw new Error(data.error || 'Error desconocido');
           alert('✅ Base de datos reseteada correctamente.');
-          window.location.reload();
+          window.navigate('dashboard');
         } catch (e) {
           alert('Error al resetear: ' + e.message);
         }
@@ -221,7 +221,7 @@ export const Dashboard = async () => {
           });
           const data = await res.json();
           if (!res.ok) throw new Error(data.error || 'Error desconocido');
-          window.location.reload();
+          window.navigate('dashboard');
         } catch (e) {
           if (btn) { btn.textContent = 'Aplicar'; btn.disabled = false; }
           alert('Error: ' + e.message);
@@ -246,7 +246,7 @@ export const Dashboard = async () => {
         try {
           await api.tributario.marcarDeposito(idDetraccion, { monto_depositado: Number(monto), fecha_deposito: fecha });
           alert('Depósito registrado correctamente');
-          window.location.reload();
+          window.navigate('dashboard');
         } catch (e) { alert('Error: ' + JSON.stringify(e.error || e)); }
       };
     }, 100);

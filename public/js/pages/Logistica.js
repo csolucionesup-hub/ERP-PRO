@@ -235,7 +235,7 @@ async function renderTabCentros(panel) {
         descripcion: f.descripcion.value || undefined,
       });
       showSuccess('Centro de costo creado');
-      window.location.reload();
+      window.navigate('logistica');
     } catch (err) {
       showError(err?.error || err?.message || 'Error al crear');
     }
@@ -282,7 +282,7 @@ async function editarCC(id) {
         descripcion: f.descripcion.value || null,
       });
       showSuccess('Actualizado');
-      window.location.reload();
+      window.navigate('logistica');
     } catch (err) { showError(err?.error || 'Error'); }
   };
 }
@@ -291,7 +291,7 @@ async function toggleCC(id, activo) {
   try {
     await api.centrosCosto.update(id, { activo: !activo });
     showSuccess(activo ? 'Desactivado' : 'Activado');
-    window.location.reload();
+    window.navigate('logistica');
   } catch (e) { showError(e?.error || 'Error'); }
 }
 
@@ -300,7 +300,7 @@ async function eliminarCC(id, nombre) {
   try {
     const r = await api.centrosCosto.remove(id);
     showSuccess(r.desactivado ? `Desactivado (tiene ${r.registros_asociados} OCs asociadas)` : 'Eliminado');
-    window.location.reload();
+    window.navigate('logistica');
   } catch (e) { showError(e?.error || 'Error'); }
 }
 

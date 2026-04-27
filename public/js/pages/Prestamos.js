@@ -481,7 +481,7 @@ export const Prestamos = async () => {
           tasa_interes: 0
         });
         showSuccess('Préstamo tomado registrado');
-        window.location.reload();
+        window.navigate('prestamos');
       } catch(err) { showError(err.error || 'Error al registrar préstamo'); }
     };
 
@@ -506,7 +506,7 @@ export const Prestamos = async () => {
           tasa_interes: 0
         });
         showSuccess('Préstamo otorgado registrado');
-        window.location.reload();
+        window.navigate('prestamos');
       } catch(err) { showError(err.error || 'Error al registrar préstamo'); }
     };
 
@@ -519,7 +519,7 @@ export const Prestamos = async () => {
           ? await api.prestamos.pagarTomado(id, Number(monto))
           : await api.prestamos.cobrarOtorgado(id, Number(monto));
         showSuccess('Registrado. Estado: ' + res.estado);
-        window.location.reload();
+        window.navigate('prestamos');
       } catch(err) { showError(err.error || 'Error al registrar pago'); }
     };
 
@@ -528,7 +528,7 @@ export const Prestamos = async () => {
       if (!confirm('¿Eliminar este préstamo? Solo es posible si no tiene pagos.')) return;
       try {
         tipo === 'tomado' ? await api.prestamos.deleteTomado(id) : await api.prestamos.deleteOtorgado(id);
-        window.location.reload();
+        window.navigate('prestamos');
       } catch(err) { showError(err.error || err.message || 'Error al eliminar préstamo'); }
     };
 
@@ -537,7 +537,7 @@ export const Prestamos = async () => {
       if (!confirm('¿Anular este préstamo?')) return;
       try {
         tipo === 'tomado' ? await api.prestamos.anularTomado(id) : await api.prestamos.anularOtorgado(id);
-        window.location.reload();
+        window.navigate('prestamos');
       } catch(err) { showError(err.error || 'Error al anular'); }
     };
 
@@ -584,7 +584,7 @@ export const Prestamos = async () => {
       try {
         tipo === 'tomado' ? await api.prestamos.updateTomado(id, data) : await api.prestamos.updateOtorgado(id, data);
         showSuccess('Actualizado correctamente');
-        window.location.reload();
+        window.navigate('prestamos');
       } catch(err) { showError(err.error || 'Error al actualizar'); }
     };
 

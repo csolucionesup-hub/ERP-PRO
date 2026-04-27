@@ -212,7 +212,7 @@ export const Proveedores = async () => {
         try {
           await api.purchases.createProveedor(collectForm(form));
           showSuccess('Proveedor registrado correctamente');
-          window.location.reload();
+          window.navigate('proveedores');
         } catch (err) {
           showError(err.detalles?.[0] || err.error || 'Error al registrar proveedor');
         }
@@ -243,7 +243,7 @@ export const Proveedores = async () => {
         try {
           await api.purchases.updateProveedor(id, collectForm(editForm));
           showSuccess('Proveedor actualizado');
-          window.location.reload();
+          window.navigate('proveedores');
         } catch (err) {
           showError(err.detalles?.[0] || err.error || 'Error al actualizar');
         }
@@ -255,7 +255,7 @@ export const Proveedores = async () => {
       try {
         await api.purchases.deleteProveedor(id);
         showSuccess('Proveedor eliminado');
-        window.location.reload();
+        window.navigate('proveedores');
       } catch (err) {
         showError(err.error || err.message || 'Error al eliminar');
       }

@@ -167,7 +167,7 @@ export const Compras = async () => {
          try {
              await api.purchases.createCompra(data);
              showSuccess('Compra procesada y stock actualizado');
-             window.location.reload();
+             window.navigate('compras');
          } catch(err) {
              showError(err.detalles?.[0] || err.error || 'Error al registrar compra');
          }
@@ -340,7 +340,7 @@ export const Compras = async () => {
            await api.purchases.updateCompra(id, data);
            showSuccess('Compra actualizada correctamente');
            overlay.remove();
-           window.location.reload();
+           window.navigate('compras');
          } catch(err) {
            showError(err.detalles?.[0] || err.error || 'Error al actualizar');
          }
@@ -352,7 +352,7 @@ export const Compras = async () => {
             try {
                await api.purchases.anularCompra(id);
                showSuccess('Compra anulada y stock revertido');
-               window.location.reload();
+               window.navigate('compras');
             } catch (e) {
                showError(e.error || e.message || 'No se pudo anular');
             }
@@ -363,7 +363,8 @@ export const Compras = async () => {
        if (!confirm(`¿Eliminar permanentemente la compra ${doc}?\nEsta acción no se puede deshacer.`)) return;
        try {
          await api.purchases.deleteCompra(id);
-         window.location.reload();
+         showSuccess('Compra eliminada');
+         window.navigate('compras');
        } catch(e) { showError(e.error || e.message || 'Error al eliminar'); }
      };
      // Namespace por módulo

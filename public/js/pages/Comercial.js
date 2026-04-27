@@ -328,7 +328,7 @@ function bindForm(marca, opts = {}) {
   const curSym  = esUSD ? '$' : 'S/';
   const fCur    = esUSD ? fUSD : fPEN;
   const editData = opts.editData || null;
-  const onDone   = opts.onDone || (() => setTimeout(() => window.location.reload(), 1200));
+  const onDone   = opts.onDone || (() => setTimeout(() => window.navigate('comercial'), 1200));
   const lineas  = editData?.detalles
     ? editData.detalles.map(d => ({
         descripcion:     d.descripcion,
@@ -1022,7 +1022,7 @@ export const Comercial = async () => {
           if (!estado) return;
           try {
             await api.cotizaciones.updateEstado(id, estado);
-            window.location.reload();
+            window.navigate('comercial');
           } catch (err) {
             window.showError?.('Error: ' + (err.message || JSON.stringify(err)));
             sel.value = '';
@@ -1065,7 +1065,7 @@ export const Comercial = async () => {
       try {
         const r = await api.cotizaciones.resetTodo();
         window.showSuccess?.(`✔ Se eliminaron ${r.eliminadas} cotizaciones. Módulo reseteado.`);
-        setTimeout(() => window.location.reload(), 1500);
+        setTimeout(() => window.navigate('comercial'), 1500);
       } catch (err) {
         window.showError?.('Error reseteando: ' + (err.message || JSON.stringify(err)));
       }
@@ -1083,7 +1083,7 @@ export const Comercial = async () => {
       try {
         await api.cotizaciones.anularCotizacion(id);
         window.showSuccess?.(`Cotización ${nro} anulada.`);
-        setTimeout(() => window.location.reload(), 1200);
+        setTimeout(() => window.navigate('comercial'), 1200);
       } catch (err) {
         window.showError?.('Error: ' + (err.message || JSON.stringify(err)));
       }
@@ -1113,7 +1113,7 @@ export const Comercial = async () => {
           // En modo REAL abrir el PDF SUNAT
           setTimeout(() => window.open(r.pdf_url, '_blank'), 600);
         }
-        setTimeout(() => window.location.reload(), 1500);
+        setTimeout(() => window.navigate('comercial'), 1500);
       } catch (err) {
         const msg = err?.debugging || err?.error || err?.message || JSON.stringify(err);
         window.showError?.('Error al emitir: ' + msg);
@@ -1155,7 +1155,7 @@ export const Comercial = async () => {
       bindForm(marca, {
         editData: data,
         idp: idpEdit,
-        onDone: () => { close(); setTimeout(() => window.location.reload(), 600); },
+        onDone: () => { close(); setTimeout(() => window.navigate('comercial'), 600); },
       });
     };
 

@@ -211,7 +211,7 @@ function renderCatalogo(panel) {
     try {
       const res = await api.inventory.createInventarioItem(data);
       showSuccess('Insumo registrado con SKU: ' + res.sku);
-      window.location.reload();
+      window.navigate('inventario');
     } catch (err) {
       showError(err.detalles?.[0] || err.error || 'Error al registrar insumo');
     }
@@ -228,7 +228,7 @@ function renderCatalogo(panel) {
     try {
       await api.inventory.consumirInventario(data);
       showSuccess('Almacén rebajado y costo transferido al servicio');
-      window.location.reload();
+      window.navigate('inventario');
     } catch (err) {
       showError(err.detalles?.[0] || err.error || 'Error al registrar consumo');
     }
@@ -448,7 +448,7 @@ async function eliminarItem(id, nombre) {
   if (!confirm(`¿Eliminar permanentemente "${nombre}"?\nEsta acción no se puede deshacer.`)) return;
   try {
     await api.inventory.deleteInventarioItem(id);
-    window.location.reload();
+    window.navigate('inventario');
   } catch (e) {
     showError(e.error || e.message || 'Error al eliminar');
   }
