@@ -92,8 +92,11 @@ function getPaginaInicio(user) {
 
 function tieneAcceso(user, page) {
   if (user.rol === 'GERENTE') return true;
-  if (page === 'usuarios' || page === 'configuracion' || page === 'importador') return false;
-  if (page === 'contabilidad') return user.rol === 'CONTADOR';
+  // Solo GERENTE puede gestionar usuarios y configuración del sistema
+  if (page === 'usuarios' || page === 'configuracion') return false;
+  // CONTADOR ve Contabilidad e Importar Histórico (necesita cargar data
+  // contable y libros). Los demás roles no.
+  if (page === 'contabilidad' || page === 'importador') return user.rol === 'CONTADOR';
   const moduloRequerido = PAGE_MODULE[page];
   if (!moduloRequerido) return true; // páginas sin módulo requerido
   return (user.modulos || []).includes(moduloRequerido);

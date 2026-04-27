@@ -30,6 +30,7 @@ export function renderSidebar(activePage) {
 
   const esContador = user.rol === 'CONTADOR';
   const verContabilidad = esGerente || esContador;
+  const verImportador   = esGerente || esContador;  // CONTADOR carga data histórica contable
 
   const contabilidadItem = verContabilidad ? `
     <div class="nav-item ${activePage === 'contabilidad' ? 'active' : ''}"
@@ -38,11 +39,16 @@ export function renderSidebar(activePage) {
     </div>
   ` : '';
 
-  const usuariosItem = esGerente ? `
+  // Importar Histórico es accesible a GERENTE y CONTADOR
+  const importadorItem = verImportador ? `
     <div class="nav-item ${activePage === 'importador' ? 'active' : ''}"
          data-page="importador">
       📥 Importar Histórico
     </div>
+  ` : '';
+
+  // Usuarios y Configuración SOLO para GERENTE
+  const usuariosItem = esGerente ? `
     <div class="nav-item ${activePage === 'usuarios' ? 'active' : ''}"
          data-page="usuarios">
       Usuarios
@@ -63,6 +69,7 @@ export function renderSidebar(activePage) {
     <nav class="sidebar-nav">
       ${navItems}
       ${contabilidadItem}
+      ${importadorItem}
       ${usuariosItem}
       <div class="nav-item ${activePage === 'alertas' ? 'active' : ''}" id="nav-alertas"
            data-page="alertas" style="position:relative">
