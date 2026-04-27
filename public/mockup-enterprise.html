@@ -1,0 +1,749 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ERP Pro · Mockup Enterprise · Metal Engineers</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    /* ═══════════════════════════════════════════════════════════════
+       DESIGN TOKENS — Enterprise palette adaptada a Metal Engineers
+       Negro profundo en sidebar (mantiene marca) + slate en accesorios
+       ═══════════════════════════════════════════════════════════════ */
+    :root {
+      --bg-app: #F8FAFC;
+      --bg-sidebar: #0F172A;       /* Slate-950 — más cálido que negro puro */
+      --bg-card: #FFFFFF;
+      --border: #E2E8F0;
+      --border-strong: #CBD5E1;
+      --text: #0F172A;
+      --text-muted: #64748B;
+      --text-subtle: #94A3B8;
+
+      --primary: #0F172A;
+      --primary-hover: #1E293B;
+
+      --success: #059669;          --success-bg: #ECFDF5;
+      --danger: #DC2626;           --danger-bg:  #FEF2F2;
+      --warning: #D97706;          --warning-bg: #FFFBEB;
+      --info: #0284C7;             --info-bg:    #F0F9FF;
+
+      --shadow-sm: 0 1px 2px 0 rgb(15 23 42 / 0.04);
+      --shadow:    0 1px 3px 0 rgb(15 23 42 / 0.06), 0 1px 2px -1px rgb(15 23 42 / 0.04);
+      --radius: 8px;
+      --radius-lg: 12px;
+    }
+
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0; padding: 0;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: var(--bg-app);
+      color: var(--text);
+      font-size: 14px;
+      line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* Tabular nums para todos los datos numéricos */
+    .num, td.num, .stat-value, .amount, .currency {
+      font-variant-numeric: tabular-nums;
+      font-feature-settings: 'tnum' 1, 'cv11' 1;
+    }
+
+    /* ═══════════════════════════════════════════════════════════════
+       LAYOUT PRINCIPAL
+       ═══════════════════════════════════════════════════════════════ */
+    .app {
+      display: grid;
+      grid-template-columns: 240px 1fr;
+      min-height: 100vh;
+    }
+
+    /* SIDEBAR ────────────────────────────────────────────────────── */
+    .sidebar {
+      background: var(--bg-sidebar);
+      color: #CBD5E1;
+      padding: 16px 0;
+      display: flex;
+      flex-direction: column;
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      overflow-y: auto;
+    }
+    .sidebar::-webkit-scrollbar { width: 4px; }
+    .sidebar::-webkit-scrollbar-thumb { background: rgba(255,255,255,.1); }
+
+    .sidebar-brand {
+      padding: 4px 18px 24px;
+      display: flex; align-items: center; gap: 10px;
+    }
+    .sidebar-brand-text {
+      font-weight: 700; font-size: 13px; color: white; letter-spacing: 0.4px;
+    }
+    .sidebar-brand-sub {
+      font-size: 10px; color: var(--text-subtle); margin-top: -2px;
+      text-transform: uppercase; letter-spacing: 0.6px;
+    }
+
+    .nav-section { padding: 0 8px; }
+    .nav-section-label {
+      font-size: 10px; font-weight: 600; color: var(--text-subtle);
+      text-transform: uppercase; letter-spacing: 0.7px;
+      padding: 16px 12px 8px;
+    }
+    .nav-item {
+      display: flex; align-items: center; gap: 10px;
+      padding: 8px 12px;
+      border-radius: 6px;
+      color: #CBD5E1;
+      font-size: 13px; font-weight: 500;
+      cursor: pointer;
+      transition: background .12s, color .12s;
+      margin-bottom: 1px;
+    }
+    .nav-item:hover { background: rgba(255,255,255,.06); color: white; }
+    .nav-item.active {
+      background: rgba(255,255,255,.10);
+      color: white; font-weight: 600;
+    }
+    .nav-item .ico { width: 17px; height: 17px; flex-shrink: 0; opacity: .85; }
+    .nav-item.active .ico { opacity: 1; }
+    .nav-item .badge {
+      margin-left: auto;
+      background: var(--danger);
+      color: white; font-size: 10px; font-weight: 700;
+      padding: 1px 6px; border-radius: 10px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .sidebar-footer {
+      margin-top: auto;
+      padding: 12px 16px;
+      border-top: 1px solid rgba(255,255,255,.06);
+      display: flex; align-items: center; gap: 10px;
+    }
+    .avatar {
+      width: 32px; height: 32px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #475569, #64748B);
+      display: flex; align-items: center; justify-content: center;
+      color: white; font-weight: 700; font-size: 12px;
+    }
+    .user-info { font-size: 12px; line-height: 1.3; }
+    .user-name { color: white; font-weight: 600; }
+    .user-role { color: var(--text-subtle); font-size: 11px; }
+
+    /* MAIN ───────────────────────────────────────────────────────── */
+    .main {
+      padding: 28px 36px 64px;
+      min-width: 0;
+    }
+
+    .page-header {
+      display: flex; justify-content: space-between; align-items: flex-end;
+      gap: 16px; margin-bottom: 24px;
+      padding-bottom: 18px; border-bottom: 1px solid var(--border);
+    }
+    .page-title {
+      font-size: 22px; font-weight: 700;
+      letter-spacing: -0.3px; margin: 0;
+    }
+    .page-subtitle {
+      font-size: 13px; color: var(--text-muted); margin-top: 3px;
+    }
+    .header-actions { display: flex; gap: 8px; }
+
+    /* Botones ─────────────────────────────────────────────────── */
+    .btn {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 7px 14px; border-radius: 6px;
+      font-size: 13px; font-weight: 600;
+      border: 1px solid var(--border); background: white; color: var(--text);
+      cursor: pointer; transition: all .12s;
+      font-family: inherit;
+    }
+    .btn:hover { border-color: var(--border-strong); background: #F8FAFC; }
+    .btn-primary {
+      background: var(--primary); color: white; border-color: var(--primary);
+    }
+    .btn-primary:hover {
+      background: var(--primary-hover); border-color: var(--primary-hover);
+    }
+    .btn .ico { width: 15px; height: 15px; }
+
+    /* ═══════════════════════════════════════════════════════════════
+       BENTO BOX — KPIs principales
+       ═══════════════════════════════════════════════════════════════ */
+    .kpi-grid {
+      display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px;
+      margin-bottom: 16px;
+    }
+    .kpi-card {
+      background: white;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 18px 20px;
+      transition: border-color .15s, box-shadow .15s;
+    }
+    .kpi-card:hover {
+      border-color: var(--border-strong);
+      box-shadow: var(--shadow);
+    }
+    .kpi-label {
+      font-size: 11px; color: var(--text-muted);
+      font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;
+      margin-bottom: 10px;
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    .kpi-icon {
+      width: 16px; height: 16px;
+      color: var(--text-subtle);
+      stroke-width: 2;
+    }
+    .kpi-value {
+      font-size: 26px; font-weight: 700;
+      letter-spacing: -0.5px; color: var(--text);
+      line-height: 1.1; margin-bottom: 6px;
+    }
+    .kpi-value .currency {
+      font-size: 15px; font-weight: 600;
+      color: var(--text-muted); margin-right: 3px;
+    }
+    .kpi-delta {
+      font-size: 12px; font-weight: 500;
+      color: var(--text-muted);
+      display: flex; align-items: center; gap: 4px;
+    }
+    .kpi-delta.up { color: var(--success); }
+    .kpi-delta.down { color: var(--danger); }
+
+    /* ═══════════════════════════════════════════════════════════════
+       BENTO double — Chart + Alerts
+       ═══════════════════════════════════════════════════════════════ */
+    .bento {
+      display: grid;
+      grid-template-columns: 1.6fr 1fr;
+      gap: 16px;
+      margin-bottom: 16px;
+    }
+
+    .card {
+      background: white;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      overflow: hidden;
+    }
+    .card-header {
+      padding: 14px 20px;
+      border-bottom: 1px solid var(--border);
+      display: flex; justify-content: space-between; align-items: center;
+      gap: 12px;
+    }
+    .card-title { font-size: 14px; font-weight: 600; color: var(--text); }
+    .card-action {
+      font-size: 12px; color: var(--text-muted);
+      cursor: pointer; user-select: none;
+    }
+    .card-action:hover { color: var(--text); }
+    .card-body { padding: 20px; }
+
+    /* Chart placeholder */
+    .chart-placeholder {
+      height: 220px;
+      display: flex; align-items: end; gap: 5px;
+    }
+    .chart-bar {
+      flex: 1;
+      background: linear-gradient(to top, #1E293B, #475569);
+      border-radius: 3px 3px 0 0;
+      min-height: 6%;
+      transition: opacity .2s;
+      position: relative;
+    }
+    .chart-bar:hover { opacity: .85; }
+    .chart-bar.current {
+      background: linear-gradient(to top, #047857, #10B981);
+    }
+    .chart-axis {
+      display: flex; justify-content: space-between;
+      font-size: 10px; color: var(--text-subtle);
+      margin-top: 8px; padding: 0 2px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* Alert items ─────────────────────────────────────────────── */
+    .alert-list { display: flex; flex-direction: column; }
+    .alert-row {
+      padding: 12px 20px;
+      border-bottom: 1px solid var(--border);
+      display: flex; align-items: flex-start; gap: 12px;
+      cursor: pointer; transition: background .12s;
+    }
+    .alert-row:hover { background: #F8FAFC; }
+    .alert-row:last-child { border-bottom: none; }
+    .alert-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%; margin-top: 6px; flex-shrink: 0;
+    }
+    .alert-dot.danger  { background: var(--danger); }
+    .alert-dot.warning { background: var(--warning); }
+    .alert-dot.info    { background: var(--info); }
+    .alert-content { flex: 1; min-width: 0; }
+    .alert-title {
+      font-size: 13px; font-weight: 600; color: var(--text);
+      margin-bottom: 2px;
+    }
+    .alert-meta {
+      font-size: 11px; color: var(--text-muted);
+    }
+
+    /* ═══════════════════════════════════════════════════════════════
+       DATA TABLE — densa, monoespaciada, sticky header
+       ═══════════════════════════════════════════════════════════════ */
+    .data-table {
+      width: 100%; border-collapse: separate; border-spacing: 0;
+      font-size: 13px;
+    }
+    .data-table thead th {
+      background: #F8FAFC; color: var(--text-muted);
+      font-weight: 600; font-size: 11px;
+      text-transform: uppercase; letter-spacing: 0.5px;
+      padding: 11px 16px; text-align: left;
+      border-bottom: 1px solid var(--border);
+      position: sticky; top: 0; z-index: 1;
+    }
+    .data-table tbody tr { transition: background .1s; }
+    .data-table tbody tr:hover { background: #F8FAFC; }
+    .data-table td {
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border);
+      color: var(--text);
+    }
+    .data-table tbody tr:last-child td { border-bottom: none; }
+    .data-table td.right { text-align: right; }
+    .data-table td .amount { font-weight: 600; }
+
+    /* Status pill ─────────────────────────────────────────────── */
+    .pill {
+      display: inline-flex; align-items: center; gap: 4px;
+      padding: 2px 8px; border-radius: 4px;
+      font-size: 11px; font-weight: 600;
+      letter-spacing: 0.2px;
+    }
+    .pill.success { background: var(--success-bg); color: var(--success); }
+    .pill.danger  { background: var(--danger-bg);  color: var(--danger); }
+    .pill.warning { background: var(--warning-bg); color: var(--warning); }
+    .pill.info    { background: var(--info-bg);    color: var(--info); }
+    .pill.neutral { background: #F1F5F9; color: var(--text-muted); }
+    .pill .dot {
+      width: 6px; height: 6px; border-radius: 50%; background: currentColor;
+    }
+
+    /* Empty state ─────────────────────────────────────────────── */
+    .empty-state {
+      text-align: center; padding: 56px 24px;
+      color: var(--text-muted);
+    }
+    .empty-state svg {
+      width: 44px; height: 44px;
+      color: var(--text-subtle); margin-bottom: 12px;
+      stroke-width: 1.5;
+    }
+    .empty-state-title {
+      font-size: 14px; font-weight: 600; color: var(--text);
+      margin-bottom: 4px;
+    }
+    .empty-state-text {
+      font-size: 13px; max-width: 400px; margin: 0 auto;
+      line-height: 1.55;
+    }
+
+    /* Demo banner ─────────────────────────────────────────────── */
+    .demo-banner {
+      background: linear-gradient(90deg, #0F172A, #334155);
+      color: white; padding: 9px 16px;
+      font-size: 12px; text-align: center; font-weight: 500;
+      letter-spacing: 0.2px;
+    }
+    .demo-banner b { color: #FCD34D; }
+    .demo-banner a { color: #FCD34D; text-decoration: underline; }
+
+    /* ═══════════════════════════════════════════════════════════════
+       Responsive
+       ═══════════════════════════════════════════════════════════════ */
+    @media (max-width: 1100px) {
+      .kpi-grid { grid-template-columns: repeat(2, 1fr); }
+      .bento { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 768px) {
+      .app { grid-template-columns: 1fr; }
+      .sidebar { display: none; }
+      .main { padding: 20px 16px 64px; }
+      .kpi-grid { grid-template-columns: repeat(2, 1fr); gap: 12px; }
+      .kpi-value { font-size: 22px; }
+      .data-table thead { display: none; }
+      .data-table tbody, .data-table tr, .data-table td { display: block; width: 100%; }
+      .data-table tr {
+        border: 1px solid var(--border); border-radius: 8px;
+        margin-bottom: 8px; padding: 12px;
+      }
+      .data-table td { padding: 4px 0; border: none; }
+      .page-header { flex-direction: column; align-items: stretch; }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="demo-banner">
+    📐 <b>MOCKUP ENTERPRISE</b> — Vista previa del rediseño UI/UX para discusión · datos ficticios ·
+    <a href="/">Volver al ERP real</a>
+  </div>
+
+  <div class="app">
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         SIDEBAR (slate-950 + Lucide-style icons)
+         ═══════════════════════════════════════════════════════════════ -->
+    <aside class="sidebar">
+      <div class="sidebar-brand">
+        <svg width="32" height="32" viewBox="0 0 32 32">
+          <rect x="2" y="6"  width="28" height="3" fill="#94A3B8"/>
+          <rect x="2" y="11" width="28" height="3" fill="#64748B"/>
+          <rect x="2" y="16" width="28" height="3" fill="#475569"/>
+          <rect x="2" y="21" width="28" height="3" fill="#334155"/>
+        </svg>
+        <div>
+          <div class="sidebar-brand-text">METAL ENGINEERS</div>
+          <div class="sidebar-brand-sub">ERP Pro · v2.0</div>
+        </div>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-label">Operación</div>
+
+        <div class="nav-item active">
+          <svg class="ico" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>
+          Dashboard
+        </div>
+        <div class="nav-item">
+          <svg class="ico" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M9 11l3 3L22 4M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+          Comercial
+          <span class="badge">3</span>
+        </div>
+        <div class="nav-item">
+          <svg class="ico" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+          Finanzas
+        </div>
+        <div class="nav-item">
+          <svg class="ico" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="12" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/><circle cx="6" cy="14" r="1.2"/></svg>
+          Préstamos
+        </div>
+        <div class="nav-item">
+          <svg class="ico" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 8L12 3 3 8v8l9 5 9-5z"/><path d="M3 8l9 5 9-5"/><path d="M12 13v8"/></svg>
+          Logística
+        </div>
+        <div class="nav-item">
+          <svg class="ico" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 7h18M3 12h18M3 17h18"/></svg>
+          Inventario
+        </div>
+        <div class="nav-item">
+          <svg class="ico" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          Administración
+        </div>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-label">Administrativo</div>
+        <div class="nav-item">
+          <svg class="ico" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2zM22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+          Contabilidad
+        </div>
+        <div class="nav-item">
+          <svg class="ico" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+          Importar Histórico
+        </div>
+        <div class="nav-item">
+          <svg class="ico" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="9" cy="7" r="4"/><path d="M3 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2M16 3.13a4 4 0 0 1 0 7.75M22 21v-2a4 4 0 0 0-3-3.87"/></svg>
+          Usuarios
+        </div>
+        <div class="nav-item">
+          <svg class="ico" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09c0 .67.39 1.27 1 1.51a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82c.24.61.84 1 1.51 1H21a2 2 0 1 1 0 4h-.09c-.67 0-1.27.39-1.51 1z"/></svg>
+          Configuración
+        </div>
+        <div class="nav-item">
+          <svg class="ico" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+          Alertas
+          <span class="badge">3</span>
+        </div>
+      </div>
+
+      <div class="sidebar-footer">
+        <div class="avatar">JR</div>
+        <div class="user-info">
+          <div class="user-name">Julio Rojas</div>
+          <div class="user-role">Gerente</div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         MAIN CONTENT — Dashboard Gerencial
+         ═══════════════════════════════════════════════════════════════ -->
+    <main class="main">
+
+      <div class="page-header">
+        <div>
+          <h1 class="page-title">Dashboard Gerencial</h1>
+          <div class="page-subtitle">Panel ejecutivo unificado · 26 de abril, 2026</div>
+        </div>
+        <div class="header-actions">
+          <button class="btn">
+            <svg class="ico" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+            Exportar
+          </button>
+          <button class="btn btn-primary">
+            <svg class="ico" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Nueva acción
+          </button>
+        </div>
+      </div>
+
+      <!-- KPIs Bento ─────────────────────────────────────── -->
+      <div class="kpi-grid">
+
+        <div class="kpi-card">
+          <div class="kpi-label">
+            Saldo en caja
+            <svg class="kpi-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="12" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
+          </div>
+          <div class="kpi-value num"><span class="currency">S/</span>45,230.00</div>
+          <div class="kpi-delta up">
+            <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><polyline points="18 15 12 9 6 15"/></svg>
+            +12.4% vs marzo
+          </div>
+        </div>
+
+        <div class="kpi-card">
+          <div class="kpi-label">
+            Cuentas por cobrar
+            <svg class="kpi-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><polyline points="17 11 19 13 23 9"/></svg>
+          </div>
+          <div class="kpi-value num"><span class="currency">S/</span>128,450.00</div>
+          <div class="kpi-delta down">
+            <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+            8 facturas vencen esta semana
+          </div>
+        </div>
+
+        <div class="kpi-card">
+          <div class="kpi-label">
+            Cuentas por pagar
+            <svg class="kpi-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3z"/></svg>
+          </div>
+          <div class="kpi-value num"><span class="currency">S/</span>32,180.00</div>
+          <div class="kpi-delta">
+            <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            3 vencen hoy
+          </div>
+        </div>
+
+        <div class="kpi-card">
+          <div class="kpi-label">
+            Margen mensual
+            <svg class="kpi-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/></svg>
+          </div>
+          <div class="kpi-value num">18.5<span class="currency">%</span></div>
+          <div class="kpi-delta down">
+            <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+            -2.1 pp vs marzo
+          </div>
+        </div>
+      </div>
+
+      <!-- Bento double: Chart + Alerts ────────────────────── -->
+      <div class="bento">
+
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <div class="card-title">Tendencia de ingresos · 12 meses</div>
+              <div style="font-size:11px; color: var(--text-muted); margin-top:2px;" class="num">
+                Total acumulado: S/ 1,243,450.00
+              </div>
+            </div>
+            <div class="card-action">Ver detalle →</div>
+          </div>
+          <div class="card-body">
+            <div class="chart-placeholder">
+              <div class="chart-bar" style="height: 32%"></div>
+              <div class="chart-bar" style="height: 45%"></div>
+              <div class="chart-bar" style="height: 38%"></div>
+              <div class="chart-bar" style="height: 55%"></div>
+              <div class="chart-bar" style="height: 48%"></div>
+              <div class="chart-bar" style="height: 62%"></div>
+              <div class="chart-bar" style="height: 58%"></div>
+              <div class="chart-bar" style="height: 75%"></div>
+              <div class="chart-bar" style="height: 68%"></div>
+              <div class="chart-bar" style="height: 82%"></div>
+              <div class="chart-bar" style="height: 78%"></div>
+              <div class="chart-bar current" style="height: 90%"></div>
+            </div>
+            <div class="chart-axis">
+              <span>May</span><span>Jun</span><span>Jul</span><span>Ago</span><span>Sep</span><span>Oct</span><span>Nov</span><span>Dic</span><span>Ene</span><span>Feb</span><span>Mar</span><span style="color: var(--success); font-weight: 700">Abr</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">Pendientes urgentes</div>
+            <span class="pill danger"><span class="dot"></span>4 activos</span>
+          </div>
+          <div class="alert-list">
+            <div class="alert-row">
+              <div class="alert-dot danger"></div>
+              <div class="alert-content">
+                <div class="alert-title">OC PLUZ Energía vence hoy</div>
+                <div class="alert-meta num">S/ 1,250.00 · OC 042-2026</div>
+              </div>
+            </div>
+            <div class="alert-row">
+              <div class="alert-dot warning"></div>
+              <div class="alert-content">
+                <div class="alert-title">Cobranza DCC con mora</div>
+                <div class="alert-meta num">S/ 8,540.00 · 3 días tarde</div>
+              </div>
+            </div>
+            <div class="alert-row">
+              <div class="alert-dot warning"></div>
+              <div class="alert-content">
+                <div class="alert-title">Cotización 2026-014 sin enviar</div>
+                <div class="alert-meta">VENTURO · creada hace 5 días</div>
+              </div>
+            </div>
+            <div class="alert-row">
+              <div class="alert-dot info"></div>
+              <div class="alert-content">
+                <div class="alert-title">IGV abril vence el 15 de mayo</div>
+                <div class="alert-meta num">Aprox. S/ 4,210 a pagar</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tabla operativa ────────────────────────────────────── -->
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">Últimas operaciones</div>
+          <div style="display:flex; gap:8px;">
+            <button class="btn" style="padding: 5px 10px; font-size: 12px;">
+              <svg class="ico" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+              Filtrar
+            </button>
+            <button class="btn" style="padding: 5px 10px; font-size: 12px;">Ver todas →</button>
+          </div>
+        </div>
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th style="width: 110px">Fecha</th>
+              <th style="width: 110px">Tipo</th>
+              <th>Descripción</th>
+              <th>Cliente / Proveedor</th>
+              <th class="right" style="width: 130px">Monto</th>
+              <th style="width: 110px">Estado</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="num">26/04/2026</td>
+              <td><span class="pill neutral">OC</span></td>
+              <td>OC 042-2026 · Recibo Luz Marzo</td>
+              <td>PLUZ Energía SAA</td>
+              <td class="right num"><span class="amount">S/ 1,250.00</span></td>
+              <td><span class="pill warning">Pendiente</span></td>
+            </tr>
+            <tr>
+              <td class="num">25/04/2026</td>
+              <td><span class="pill info">Cobranza</span></td>
+              <td>Servicio S-2026-008 · Fabricación pórticos</td>
+              <td>DCC Ingeniería SAC</td>
+              <td class="right num"><span class="amount">S/ 3,200.00</span></td>
+              <td><span class="pill success">Cobrado</span></td>
+            </tr>
+            <tr>
+              <td class="num">25/04/2026</td>
+              <td><span class="pill info">Cotización</span></td>
+              <td>COT 2026-014 · Tools cimentación profunda</td>
+              <td>SAMAYCA SAC</td>
+              <td class="right num"><span class="amount">S/ 18,900.00</span></td>
+              <td><span class="pill success">Aprobada</span></td>
+            </tr>
+            <tr>
+              <td class="num">24/04/2026</td>
+              <td><span class="pill neutral">OC</span></td>
+              <td>OC 041-2026 · Material acero A36</td>
+              <td>GROUP MAVED SAC</td>
+              <td class="right num"><span class="amount">S/ 8,500.00</span></td>
+              <td><span class="pill success">Pagado</span></td>
+            </tr>
+            <tr>
+              <td class="num">23/04/2026</td>
+              <td><span class="pill info">Cobranza</span></td>
+              <td>Servicio S-2026-007 · Soldadura especial</td>
+              <td>OTOYA SAC</td>
+              <td class="right num"><span class="amount">S/ 5,400.00</span></td>
+              <td><span class="pill success">Cobrado</span></td>
+            </tr>
+            <tr>
+              <td class="num">22/04/2026</td>
+              <td><span class="pill danger">Anulación</span></td>
+              <td>Cot 2026-013 · Modificación de diseño</td>
+              <td>PSV SAC</td>
+              <td class="right" style="color: var(--text-subtle)">—</td>
+              <td><span class="pill neutral">Anulada</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Empty state demo ─────────────────────────────────────── -->
+      <div class="card" style="margin-top:16px;">
+        <div class="card-header">
+          <div class="card-title">Producción · próximamente</div>
+          <span class="pill neutral">Fase E del plan maestro</span>
+        </div>
+        <div class="empty-state">
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M14 11h-4M14 15h-4M9 19h6a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2H9a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2zM4 9V7a2 2 0 0 1 2-2h2M4 15v-2"/></svg>
+          <div class="empty-state-title">Módulo Producción aún no disponible</div>
+          <div class="empty-state-text">
+            Órdenes de Trabajo, BOM, Work Centers y trazabilidad de remanentes — el diferenciador metalmecánico llega en mes 4 del plan maestro de 5 meses.
+          </div>
+        </div>
+      </div>
+
+      <!-- Comparativa actual vs propuesto ───────────────────────────── -->
+      <div class="card" style="margin-top: 32px; border: 2px dashed var(--border-strong); background: #FFFBEB;">
+        <div class="card-body" style="padding: 24px;">
+          <div style="font-size:11px; font-weight:700; color:#B45309; text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 6px;">📐 Notas para Julio</div>
+          <div style="font-size: 13px; line-height: 1.6; color: var(--text);">
+            <strong>Lo que estás viendo</strong>: aplicación de los principios del documento de redesign — tipografía Inter, números con tabular-nums (alineación vertical perfecta de S/), paleta slate <em>en lugar</em> de negro puro, cards con borde sutil sin sombras pesadas, iconos Lucide-style con stroke 2px, status pills con colores semánticos, tabla densa con sticky header, empty state diseñado.
+            <br><br>
+            <strong>Lo que mantengo de Metal Engineers</strong>: el sidebar sigue siendo dark (slate-950), las barras del logo en miniatura, paleta sin azules vibrantes, primary color cercano al gris original.
+            <br><br>
+            <strong>Lo que NO está en el mockup</strong>: dark mode, floating labels, prototipo de formulario nuevo, animaciones, mobile menu hamburger.
+            <br><br>
+            <strong>Tu decisión</strong>: ¿te gusta esta dirección? Si decís que sí, en mes 4 (después de Fase B y Rentabilidad por Servicio) hacemos el refactor completo. Si querés ajustes — más oscuro, más calor, distintos colores, mantener emojis — me decís y los aplico al mockup primero antes de tocar el ERP real.
+          </div>
+        </div>
+      </div>
+
+    </main>
+  </div>
+</body>
+</html>
