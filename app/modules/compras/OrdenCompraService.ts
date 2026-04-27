@@ -47,7 +47,7 @@ export interface CrearOCParams {
   empresa?: 'ME' | 'PT';
   moneda?: 'PEN' | 'USD';
   tipo_cambio?: number;
-  aplica_igv?: boolean;
+  aplica_igv?: boolean | number | string;
   descuento?: number;
   forma_pago?: 'CONTADO' | 'CREDITO';
   dias_credito?: number;
@@ -69,16 +69,18 @@ export interface CrearOCParams {
 
 class OrdenCompraService {
   /**
-   * Siguiente correlativo por empresa. Formato: "NNN - YYYY"
-   * Replica el formato real del PDF de Metal Engineers: "Nº 001 - 2026"
-   * Secuencias separadas ME y PT (cada empresa lleva su propia numeración).
+   * Siguiente correlativo por (empresa + centro_costo + año). Formato: "NNN - YYYY"
+   * Cada centro de costo lleva su propia numeración desde 001.
+   * Ejemplo: con CC "ALMACEN METAL" → "001 - 2026", "002 - 2026"...
+   *          con CC "OFICINA CENTRAL" → "001 - 2026", "002 - 2026"... (independiente)
+   * El UNIQUE constraint en BD es (nro_oc, empresa, centro_costo) para permitir esto.
    */
-  private async proximoNumero(empresa: 'ME' | 'PT', anio: number): Promise<string> {
+  private async proximoNumero(empresa: 'ME' | 'PT', centro_costo: string, anio: number): Promise<string> {
     const [rows]: any = await db.query(
-      `SELECT nro_oc FROM OrdenesCompra WHERE empresa = ?
-         AND nro_oc LIKE ?
+      `SELECT nro_oc FROM OrdenesCompra
+       WHERE empresa = ? AND centro_costo = ? AND nro_oc LIKE ?
        ORDER BY id_oc DESC LIMIT 1`,
-      [empresa, `%- ${anio}`]
+      [empresa, centro_costo, `%- ${anio}`]
     );
     const ultimo = rows[0];
     let siguiente = 1;
@@ -103,8 +105,14 @@ class OrdenCompraService {
     const subtotal = params.lineas.reduce((s, l) => s + l.cantidad * l.precio_unitario, 0);
     const descuento = Number(params.descuento) || 0;
     const baseImponible = Math.max(subtotal - descuento, 0);
-    const aplicaIgv = params.aplica_igv !== false && cfg.aplica_igv === 1;
-    const igv = aplicaIgv ? Number((baseImponible * (cfg.tasa_igv / 100)).toFixed(2)) : 0;
+    // El usuario decide en la UI si aplica IGV (checkbox). La config global solo
+    // dicta el default visual del checkbox. Aceptamos true/1/'on'/'true' por
+    // tolerancia entre payloads JSON, FormData y drivers de BD.
+    const aplicaIgv = params.aplica_igv === true
+                   || params.aplica_igv === 1
+                   || params.aplica_igv === 'on'
+                   || params.aplica_igv === 'true';
+    const igv = aplicaIgv ? Number((baseImponible * (Number(cfg.tasa_igv) / 100)).toFixed(2)) : 0;
     const total = Number((baseImponible + igv).toFixed(2));
 
     // Conversión a PEN para validación contra el umbral
@@ -115,7 +123,8 @@ class OrdenCompraService {
     const conn = await db.getConnection();
     await conn.beginTransaction();
     try {
-      const nro_oc = await this.proximoNumero(empresa, anio);
+      const cc = params.centro_costo || 'OFICINA CENTRAL';
+      const nro_oc = await this.proximoNumero(empresa, cc, anio);
       const estado: EstadoOC = autoAprobar ? 'APROBADA' : 'BORRADOR';
 
       // Auto-fill defaults de firmas/contacto desde ConfiguracionEmpresa
@@ -138,7 +147,7 @@ class OrdenCompraService {
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [nro_oc, params.fecha_emision, params.fecha_entrega_esperada || null,
          params.id_proveedor, params.id_servicio || null,
-         params.centro_costo || 'OFICINA CENTRAL', params.tipo_oc || 'GENERAL',
+         cc, params.tipo_oc || 'GENERAL',
          empresa, moneda, tc,
          subtotal, descuento, aplicaIgv ? 1 : 0, igv, total,
          params.forma_pago || 'CONTADO', params.dias_credito || 0,
