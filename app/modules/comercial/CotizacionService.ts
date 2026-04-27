@@ -53,25 +53,35 @@ interface CotizacionInput {
 class CotizacionService {
 
   /**
-   * Correlativo independiente por marca dentro del año — ATÓMICO.
+   * Correlativo independiente por marca dentro del año.
    * COT 2026-001-MN (Metal), COT 2026-001-ME (Perfotools) — secuencias separadas.
    *
-   * Usa tabla Correlativos con INSERT ... ON DUPLICATE KEY UPDATE para
-   * garantizar que dos inserts concurrentes no obtengan el mismo número.
-   * Corre dentro de la transacción de createCotizacion (conn opcional).
+   * Patrón UPDATE-first: si la fila ya existe se incrementa, si no, se inserta
+   * con valor inicial 1. Funciona en MySQL y Postgres sin sintaxis específica
+   * de upsert (evita ON DUPLICATE KEY UPDATE / ON CONFLICT que difieren por motor).
+   * Corre dentro de la transacción de createCotizacion (conn opcional) para
+   * evitar race conditions concurrentes.
    */
   private async generarCorrelativo(marca: Marca, conn?: any): Promise<string> {
     const anio = new Date().getFullYear();
     const sufijo = SUFIJO_MARCA[marca];
     const runner = conn || db;
 
-    await runner.query(
-      `INSERT INTO Correlativos (anio, marca, ultimo)
-       VALUES (?, ?, 1)
-       ON DUPLICATE KEY UPDATE ultimo = ultimo + 1`,
+    // 1. Intentar incrementar si existe la fila
+    const [updRes]: any = await runner.query(
+      `UPDATE Correlativos SET ultimo = ultimo + 1 WHERE anio = ? AND marca = ?`,
       [anio, marca]
     );
 
+    // 2. Si no existía (primer correlativo del año/marca), insertar con valor 1
+    if (!updRes || !updRes.affectedRows) {
+      await runner.query(
+        `INSERT INTO Correlativos (anio, marca, ultimo) VALUES (?, ?, 1)`,
+        [anio, marca]
+      );
+    }
+
+    // 3. Leer el valor final
     const [rows] = await runner.query(
       `SELECT ultimo FROM Correlativos WHERE anio = ? AND marca = ?`,
       [anio, marca]
