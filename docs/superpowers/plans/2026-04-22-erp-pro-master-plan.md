@@ -39,8 +39,9 @@ Al terminar este plan, ERP-PRO será:
 | **D** | Contabilidad — Asientos + Estados Financieros + Pack Contable | 3 semanas | Relación con contador | Fases A, B |
 | **E** | Diferenciación metalmecánica — Producción + BOM + Work Centers + QC | 5 semanas | Ventaja competitiva única | Fase C |
 | **F** | Go-to-market — Multi-tenancy + Onboarding + Pricing | 2 semanas | Vender como SaaS | Fases A-E |
+| **G** | Rediseño UI/UX Enterprise (mockup ya validado 26/04/2026) | 3 semanas | Producto vendible premium | Sin dependencia técnica — recomendado después de C |
 
-**Total: 21 semanas ≈ 5 meses** (las fases C y D pueden solaparse parcialmente — plan realista 20 semanas).
+**Total: 21+3 semanas ≈ 5-6 meses** (las fases C y D pueden solaparse parcialmente). La Fase G se ejecuta on-demand cuando Julio dé green light — plan detallado en `2026-04-26-redesign-enterprise.md`.
 
 ---
 
