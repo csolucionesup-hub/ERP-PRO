@@ -665,6 +665,25 @@ usuariosRouter.put('/:id/toggle', async (req: Request, res: Response) => {
   res.json(await AuthService.toggleActivo(parseInt(req.params.id as string)));
 });
 
+// Edición unificada (nombre, email, rol, módulos en un solo PUT)
+usuariosRouter.put('/:id', async (req: any, res: Response) => {
+  if (req.user!.rol !== 'GERENTE') return res.status(403).json({ error: 'Solo el GERENTE puede editar usuarios.' });
+  const result = await AuthService.actualizar(
+    parseInt(req.params.id as string),
+    req.body,
+    req.user!.rol,
+    req.user!.id_usuario
+  );
+  res.json(result);
+});
+
+// Reset de contraseña (solo GERENTE; no requiere clave antigua)
+usuariosRouter.put('/:id/password', async (req: any, res: Response) => {
+  if (req.user!.rol !== 'GERENTE') return res.status(403).json({ error: 'Solo el GERENTE puede resetear contraseñas.' });
+  const { password } = req.body;
+  res.json(await AuthService.resetearPassword(parseInt(req.params.id as string), password, req.user!.rol));
+});
+
 app.use('/api/usuarios', usuariosRouter);
 
 // ==========================================

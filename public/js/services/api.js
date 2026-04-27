@@ -222,6 +222,8 @@ export const api = {
     createUsuario:  (data)    => fetchAPI('/api/usuarios', { method: 'POST', body: JSON.stringify(data) }),
     asignarModulos: (id, m)   => fetchAPI(`/api/usuarios/${id}/modulos`, { method: 'PUT', body: JSON.stringify({ modulos: m }) }),
     toggleActivo:   (id)      => fetchAPI(`/api/usuarios/${id}/toggle`, { method: 'PUT' }),
+    updateUsuario:  (id, data) => fetchAPI(`/api/usuarios/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+    resetPassword:  (id, password) => fetchAPI(`/api/usuarios/${id}/password`, { method: 'PUT', body: JSON.stringify({ password }) }),
   },
 
   // Fase A — Capas transversales

@@ -115,6 +115,101 @@ class AuthService {
     }
   }
 
+  /**
+   * Actualiza nombre / email / rol / módulos de un usuario existente.
+   * Solo GERENTE puede llamarla. Anti-lockout: el GERENTE no puede demoter
+   * su propio rol (eso evita que se quede sin admin).
+   *
+   * Acepta updates parciales — solo los campos enviados se actualizan.
+   */
+  async actualizar(
+    id_usuario: number,
+    data: { nombre?: string; email?: string; rol?: string; modulos?: string[] },
+    actorRol: string,
+    actorId: number
+  ) {
+    if (actorRol !== 'GERENTE') throw new Error('Solo el GERENTE puede editar usuarios.');
+
+    // Anti-lockout: el GERENTE actual no puede demoterarse a sí mismo.
+    if (id_usuario === actorId && data.rol && data.rol !== 'GERENTE') {
+      throw new Error('No podés cambiar tu propio rol. Pedí a otro GERENTE que lo haga.');
+    }
+
+    // Validar rol válido
+    if (data.rol && !['GERENTE', 'CONTADOR', 'USUARIO'].includes(data.rol)) {
+      throw new Error('Rol inválido. Valores permitidos: GERENTE, CONTADOR, USUARIO.');
+    }
+
+    // Validar email único si cambia
+    if (data.email) {
+      const [exist] = await db.query(
+        'SELECT id_usuario FROM Usuarios WHERE email = ? AND id_usuario != ?',
+        [data.email, id_usuario]
+      );
+      if ((exist as any[])[0]) throw new Error('Ese email ya está en uso por otro usuario.');
+    }
+
+    // Verificar que el usuario existe
+    const [check] = await db.query('SELECT id_usuario FROM Usuarios WHERE id_usuario = ?', [id_usuario]);
+    if ((check as any[]).length === 0) throw new Error('Usuario no encontrado.');
+
+    const conn = await db.getConnection();
+    await conn.beginTransaction();
+    try {
+      const updates: string[] = [];
+      const vals: any[] = [];
+      if (data.nombre !== undefined) { updates.push('nombre = ?'); vals.push(data.nombre); }
+      if (data.email !== undefined)  { updates.push('email = ?');  vals.push(data.email); }
+      if (data.rol !== undefined)    { updates.push('rol = ?');    vals.push(data.rol); }
+
+      if (updates.length > 0) {
+        vals.push(id_usuario);
+        await conn.query(`UPDATE Usuarios SET ${updates.join(', ')} WHERE id_usuario = ?`, vals);
+      }
+
+      // Actualizar módulos si vienen (replace completo del set)
+      if (data.modulos !== undefined) {
+        await conn.query('DELETE FROM UsuarioModulos WHERE id_usuario = ?', [id_usuario]);
+        if (Array.isArray(data.modulos) && data.modulos.length > 0) {
+          for (const m of data.modulos) {
+            await conn.query(
+              'INSERT INTO UsuarioModulos (id_usuario, modulo) VALUES (?, ?)',
+              [id_usuario, m]
+            );
+          }
+        }
+      }
+
+      await conn.commit();
+      return { success: true };
+    } catch (e) {
+      await conn.rollback();
+      throw e;
+    } finally {
+      conn.release();
+    }
+  }
+
+  /**
+   * Resetea la contraseña de un usuario. Solo GERENTE puede hacerlo.
+   * No requiere la contraseña antigua (es un override admin).
+   */
+  async resetearPassword(id_usuario: number, nuevaPassword: string, actorRol: string) {
+    if (actorRol !== 'GERENTE') throw new Error('Solo el GERENTE puede resetear contraseñas.');
+    if (!nuevaPassword || nuevaPassword.length < 6) {
+      throw new Error('La contraseña debe tener al menos 6 caracteres.');
+    }
+    const [check] = await db.query('SELECT id_usuario FROM Usuarios WHERE id_usuario = ?', [id_usuario]);
+    if ((check as any[]).length === 0) throw new Error('Usuario no encontrado.');
+
+    const password_hash = await bcrypt.hash(nuevaPassword, 10);
+    await db.query(
+      'UPDATE Usuarios SET password_hash = ? WHERE id_usuario = ?',
+      [password_hash, id_usuario]
+    );
+    return { success: true };
+  }
+
   async toggleActivo(id_usuario: number) {
     const [rows] = await db.query('SELECT activo FROM Usuarios WHERE id_usuario = ?', [id_usuario]);
     const user = (rows as any)[0];
