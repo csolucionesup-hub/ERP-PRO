@@ -45,6 +45,91 @@ const fUSD = (v) => new Intl.NumberFormat('en-US', { style: 'currency', currency
 
 const ESTADOS_EDITABLES = ['EN_PROCESO', 'A_ESPERA_RESPUESTA'];
 
+// ── Multiline field helpers (Condiciones Generales) ──────────────
+// Cada campo permite agregar/quitar líneas. Al submit se concatenan
+// con \n y se guardan en el input hidden con name="<field>".
+function _multilineLineHTML(value = '', placeholder = '') {
+  const safeVal = String(value || '').replace(/"/g, '&quot;');
+  return `
+    <div class="multiline-line" style="display:flex;gap:6px;align-items:center;margin-bottom:4px">
+      <input class="multiline-input" value="${safeVal}" placeholder="${placeholder}"
+        style="flex:1;padding:8px;border-radius:var(--radius-sm);border:1px solid var(--border-light);font-size:12px">
+      <button type="button" class="multiline-remove" title="Quitar línea"
+        style="width:28px;height:32px;background:transparent;border:1px solid var(--border-light);border-radius:6px;cursor:pointer;color:#999;font-size:14px;line-height:1;display:flex;align-items:center;justify-content:center">×</button>
+    </div>
+  `;
+}
+
+function multilineAddLine(fieldEl, value = '') {
+  const linesEl = fieldEl.querySelector('.multiline-lines');
+  const placeholder = fieldEl.querySelector('.multiline-add')?.dataset.placeholder || '';
+  linesEl.insertAdjacentHTML('beforeend', _multilineLineHTML(value, placeholder));
+  multilineSync(fieldEl);
+}
+
+function multilineSync(fieldEl) {
+  const inputs = fieldEl.querySelectorAll('.multiline-input');
+  const values = Array.from(inputs).map(i => i.value).filter(v => v.trim() !== '');
+  fieldEl.querySelector('input[type=hidden]').value = values.join('\n');
+}
+
+function multilinePrefill(fieldEl, rawValue) {
+  const linesEl = fieldEl.querySelector('.multiline-lines');
+  linesEl.innerHTML = '';
+  const placeholder = fieldEl.querySelector('.multiline-add')?.dataset.placeholder || '';
+  const lines = String(rawValue || '').split('\n').map(s => s.trim()).filter(Boolean);
+  if (lines.length === 0) {
+    linesEl.insertAdjacentHTML('beforeend', _multilineLineHTML('', placeholder));
+  } else {
+    lines.forEach(v => linesEl.insertAdjacentHTML('beforeend', _multilineLineHTML(v, placeholder)));
+  }
+  multilineSync(fieldEl);
+}
+
+// Wire global de eventos para todos los multiline-field del form.
+// Se llama una sola vez por form al render.
+function setupMultilineHandlers(formEl) {
+  // Inicializar cada field con 1 línea vacía por default
+  formEl.querySelectorAll('.multiline-field').forEach(field => {
+    if (field.querySelectorAll('.multiline-line').length === 0) {
+      multilineAddLine(field);
+    }
+  });
+
+  // Click en + agrega línea
+  formEl.addEventListener('click', (e) => {
+    const addBtn = e.target.closest('.multiline-add');
+    if (addBtn) {
+      const field = addBtn.closest('.multiline-field');
+      multilineAddLine(field);
+      // foco en la nueva línea
+      const lines = field.querySelectorAll('.multiline-input');
+      lines[lines.length - 1]?.focus();
+      return;
+    }
+    const removeBtn = e.target.closest('.multiline-remove');
+    if (removeBtn) {
+      const field = removeBtn.closest('.multiline-field');
+      const allLines = field.querySelectorAll('.multiline-line');
+      // Si solo queda 1, no permitir borrar — vaciar el input
+      if (allLines.length === 1) {
+        field.querySelector('.multiline-input').value = '';
+      } else {
+        removeBtn.closest('.multiline-line').remove();
+      }
+      multilineSync(field);
+    }
+  });
+
+  // Cualquier cambio en inputs de multiline → sync
+  formEl.addEventListener('input', (e) => {
+    if (e.target.classList?.contains('multiline-input')) {
+      const field = e.target.closest('.multiline-field');
+      multilineSync(field);
+    }
+  });
+}
+
 // ── Modal de confirmación reutilizable ──────────────────────────
 function confirmarAccion({ titulo, mensaje, confirmLabel = 'Confirmar', cancelLabel = 'Cancelar', tipo = 'warning' }) {
   return new Promise((resolve) => {
@@ -224,13 +309,21 @@ function formNueva(marca, tcHoy, opts = {}) {
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
             <div>
               <label style="font-size:11px;color:var(--text-secondary);display:block;margin-bottom:3px">Los precios incluyen</label>
-              <input name="precios_incluyen" placeholder="Mano de obra, materiales…"
-                style="width:100%;padding:8px;border-radius:var(--radius-sm);border:1px solid var(--border-light);font-size:12px">
+              <div class="multiline-field" data-field="precios_incluyen" data-idp="${idp}">
+                <input type="hidden" name="precios_incluyen">
+                <div class="multiline-lines"></div>
+                <button type="button" class="multiline-add" data-placeholder="Mano de obra, materiales…"
+                  style="margin-top:4px;font-size:11px;padding:4px 10px;background:transparent;border:1px dashed var(--border-light);border-radius:6px;cursor:pointer;color:var(--text-secondary)">+ Agregar línea</button>
+              </div>
             </div>
             <div>
               <label style="font-size:11px;color:var(--text-secondary);display:block;margin-bottom:3px">Forma de Pago</label>
-              <input name="forma_pago" placeholder="100% adelanto con OC…"
-                style="width:100%;padding:8px;border-radius:var(--radius-sm);border:1px solid var(--border-light);font-size:12px">
+              <div class="multiline-field" data-field="forma_pago" data-idp="${idp}">
+                <input type="hidden" name="forma_pago">
+                <div class="multiline-lines"></div>
+                <button type="button" class="multiline-add" data-placeholder="100% adelanto con OC…"
+                  style="margin-top:4px;font-size:11px;padding:4px 10px;background:transparent;border:1px dashed var(--border-light);border-radius:6px;cursor:pointer;color:var(--text-secondary)">+ Agregar línea</button>
+              </div>
             </div>
             <div>
               <label style="font-size:11px;color:var(--text-secondary);display:block;margin-bottom:3px">Validez de la Oferta ${tip('Cuánto tiempo se mantienen los precios cotizados. Pasado este plazo, la oferta debería re-cotizarse. Aparece en el PDF.')}</label>
@@ -462,10 +555,19 @@ function bindForm(marca, opts = {}) {
 
   // Prefill en modo edición
   const form = el(`form-cot-${idp}`);
+
+  // Inicializar campos multilínea (precios_incluyen, forma_pago) siempre,
+  // independiente de si es nueva o edición. Crea 1 línea vacía por default.
+  if (form) setupMultilineHandlers(form);
+
   if (editData && form) {
     const setVal = (name, val) => {
       const f = form.querySelector(`[name="${name}"]`);
       if (f != null && val != null) f.value = val;
+    };
+    const prefillML = (fieldName, val) => {
+      const fieldEl = form.querySelector(`.multiline-field[data-field="${fieldName}"]`);
+      if (fieldEl) multilinePrefill(fieldEl, val);
     };
     setVal('cliente',          editData.cliente);
     setVal('atencion',         editData.atencion);
@@ -473,12 +575,12 @@ function bindForm(marca, opts = {}) {
     setVal('correo',           editData.correo);
     setVal('proyecto',         editData.proyecto);
     setVal('ref',              editData.ref);
-    setVal('forma_pago',       editData.forma_pago);
+    prefillML('forma_pago',       editData.forma_pago);
     setVal('validez_oferta',   editData.validez_oferta);
     setVal('plazo_entrega',    editData.plazo_entrega);
     setVal('lugar_entrega',    editData.lugar_entrega);
     setVal('lugar_trabajo',    editData.lugar_trabajo);
-    setVal('precios_incluyen', editData.precios_incluyen);
+    prefillML('precios_incluyen', editData.precios_incluyen);
     setVal('comentarios',      editData.comentarios);
     if (esUSD) setVal('tipo_cambio', editData.tipo_cambio);
     const chkIgv = el(`igv-${idp}`);

@@ -317,10 +317,18 @@ class CotizacionPDFService {
       ) + 3;
     };
 
+    // Si un valor tiene 2+ líneas (separadas por \n), renderiza cada línea con bullet "• ".
+    const formatMultiline = (value: any): string => {
+      const v = String(value || '');
+      const lines = v.split('\n').map(s => s.trim()).filter(Boolean);
+      if (lines.length <= 1) return v;
+      return lines.map(l => `• ${l}`).join('\n');
+    };
+
     condLine(`Los precios han sido expresados en ${curWord}`);
-    if (cot.precios_incluyen) condLine(`Los precios incluyen:  ${cot.precios_incluyen}`);
+    if (cot.precios_incluyen) condPar('Los precios incluyen:', formatMultiline(cot.precios_incluyen));
     condLine('No incluye aquello que no sea explícitamente mencionado en la presente cotización.');
-    condPar('Forma de Pago:',        cot.forma_pago);
+    condPar('Forma de Pago:',        formatMultiline(cot.forma_pago));
     condPar('Validez de la Oferta:', cot.validez_oferta);
     condPar('Plazo de entrega:',     cot.plazo_entrega);
     condPar('Lugar de Entrega de herramientas:', cot.lugar_entrega);
