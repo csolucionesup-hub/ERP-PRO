@@ -2,11 +2,12 @@
 
 > **LEER PRIMERO.** Este documento es la fuente de verdad sobre qué está hecho, qué falta y dónde estamos parados. Se actualiza al cierre de cada sesión de trabajo.
 
-**Última actualización:** 2026-04-27 (sesión Rediseño Enterprise UI completo)
+**Última actualización:** 2026-04-28 (sesión Cotizaciones: fotos + edit ítem + delete físico)
 **Rama activa:** `main`
-**Último commit:** `b48ade5 feat(ui): hints contextuales en formulario Configuración Empresa`
+**Último commit:** `90bedbf feat(cotizaciones): editar ítem existente con foto inline`
 **Servidor dev:** `npx ts-node index.ts` en `D:\proyectos\ERP-PRO` → `http://localhost:3000`
 **Producción:** `erp-pro-production-e4c0.up.railway.app` — Railway (deploy automático desde main)
+**Cache buster JS actual:** `v=20260428r1` (bumpear este número si se cambia algo en `public/js/`)
 
 ---
 
@@ -72,6 +73,11 @@ Railway desplegado y operativo con 24 tablas (migraciones 001-019 aplicadas via 
 - [x] ~~Hacer commit del trabajo sin commitear~~ → `122b0ea`
 - [x] ~~Push a `origin/main`~~ → pusheado + Railway desplegado
 - [x] ~~Rediseño Enterprise UI~~ → 10 commits desplegados al 27/04 (ver sección abajo)
+- [x] ~~Fotos Cloudinary funcionando~~ → 7 commits 27-28/04 (CSP + pre-fetch + env vars Railway)
+- [x] ~~Eliminar cotización física (duplicados)~~ → botón solo GERENTE en EN_PROCESO/A_ESPERA
+- [x] ~~Editar ítem existente dentro de cotización~~ → botón ✎ con banner ámbar
+- [ ] **Verificar end-to-end** (Julio, próxima sesión): subir foto + editar ítem + generar PDF con foto bajo subtotal
+- [ ] Rotar `CLOUDINARY_API_SECRET` (memoria dice que fue expuesto en chats anteriores)
 - [ ] Investigar y limpiar los 2 registros `COT 0000-000-MN`
 - [ ] Resolver hallazgos de auditoría V3 (prioridad: F01, F06, A02, A06)
 - [ ] Eliminar worktrees basura en `.claude/worktrees/`
@@ -99,6 +105,26 @@ Railway desplegado y operativo con 24 tablas (migraciones 001-019 aplicadas via 
 | `6142046` | G14/G15/G16 — pills en Finanzas/OC/Administración |
 | `70ec1bd` | Dashboard B+D + KPIs Comercial/Finanzas/Logística enterprise + 2 empty states |
 | `b48ade5` | Hints contextuales en Configuración Empresa (piloto del patrón `.app-form-hint`) |
+
+## Cotizaciones — fotos y edit ítem (27-28/04/2026)
+
+**7 commits adicionales** sobre el módulo Comercial. Fixes y features pedidos por Julio tras desplegar el rediseño.
+
+| Commit | Cambio |
+|---|---|
+| `af1f17b` | Multilínea en `precios_incluyen` y `forma_pago` (botones +/× para agregar líneas, bullets `•` en PDF si 2+ líneas) |
+| `4652644` | CSP `index.html` permite Cloudinary + pre-fetch fotos URL→Buffer en PDF (pdfkit no bajaba HTTPS) + foto debajo del subtotal + header tabla con color de marca |
+| `c517771` | Cache buster JS bumpeado `v=20260427r5` + `window.showSuccess/Error/Toast` expuestos en app.js + botón "🗑 Eliminar" físico para duplicados (solo GERENTE, EN_PROCESO/A_ESPERA, doble confirmación con texto) |
+| `efc2941` | Mensaje claro 503 cuando Cloudinary no está configurado (en lugar del críptico "Must supply api_key") |
+| `adce913` | Cloudinary acepta `CLOUDINARY_URL` único O las 3 vars separadas |
+| `cdfa4a5` | Límite foto 5MB → 10MB (fotos celulares modernos) |
+| `6a56765` | Fix crítico `idpEdit`: guion → underscore. El guion en `onclick="window.__removeLinea_perfotools-edit(0)"` rompía con "edit is not defined" (pantalla roja) |
+| `90bedbf` | Editar ítem existente inline: botones ✎/✕, banner ámbar, btnAdd → "Guardar cambios" en modo edit, ítem marcado con borde ámbar al editar |
+
+**Configuración Railway (hecha por Julio el 27/04 23:25):**
+- `CLOUDINARY_CLOUD_NAME=dyvzfg6sx`
+- `CLOUDINARY_API_KEY=331187149616955`
+- `CLOUDINARY_API_SECRET=<el secret de la API key Root>`
 
 **Archivos nuevos clave:**
 - `public/css/tokens.css` — variables `--app-*`
@@ -145,9 +171,19 @@ Railway desplegado y operativo con 24 tablas (migraciones 001-019 aplicadas via 
 
 ---
 
-## Snapshot de `git status` (al 2026-04-27)
+## Snapshot de `git status` (al 2026-04-28 madrugada)
 
-**Working tree limpio.** Último commit del rediseño: `b48ade5`. Todo pusheado a `origin/main`. Branch local activa: `redesign-enterprise` en worktree `brave-ishizaka-a6823a`.
+**Working tree limpio.** Último commit: `90bedbf` (editar ítem inline). Todo pusheado a `origin/main`. Branch local activa: `redesign-enterprise` en worktree `brave-ishizaka-a6823a`.
+
+**Total acumulado en `redesign-enterprise` desde 27/04:** 17 commits (10 del rediseño + 7 de cotizaciones).
+
+## Para Claude (próxima sesión)
+
+Si Julio dice "sigamos con cotizaciones" o reporta un bug del módulo Comercial:
+1. **Leer primero** `~/.claude/projects/D--proyectos-ERP-PRO/memory/project_cotizaciones_fotos_y_edit.md` — ahí están todas las decisiones críticas no obvias.
+2. **Si reporta "no me deja subir foto"**: verificar primero (a) cache del navegador, (b) que Railway tenga las env vars Cloudinary, (c) que el cache buster JS esté bumpeado en `index.html`.
+3. **Si reporta error "edit is not defined" o pantalla roja al editar/borrar**: el `idp` con guion rompe HTML inline. Cambiar a underscore.
+4. **Cuando se commitea cambios en `public/js/`**: SIEMPRE bumpear el cache buster del script en `index.html` (`?v=YYYYMMDDr#`). Sin esto, los navegadores cargan el JS viejo y los fixes no se ven.
 
 ### Basura a limpiar (aún en disco, no commiteada)
 ```
