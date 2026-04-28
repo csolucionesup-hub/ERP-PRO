@@ -539,7 +539,7 @@ async function aprobar(id) {
   try {
     await api.ordenesCompra.aprobar(id, { comentario: c });
     showSuccess('OC aprobada');
-    setTimeout(() => location.reload(), 600);
+    setTimeout(() => window.navigate('ordenes-compra'), 600);
   } catch (e) { showError(e.message); }
 }
 
@@ -555,7 +555,7 @@ async function enviar(id) {
   try {
     await api.ordenesCompra.enviar(id);
     showSuccess('OC marcada como enviada');
-    setTimeout(() => location.reload(), 600);
+    setTimeout(() => window.navigate('ordenes-compra'), 600);
   } catch (e) { showError(e.message); }
 }
 
@@ -585,7 +585,7 @@ async function recibir(id) {
   try {
     const r = await api.ordenesCompra.recibir(id, lineas);
     showSuccess(`Recepción registrada · Estado: ${r.estado}`);
-    setTimeout(() => location.reload(), 600);
+    setTimeout(() => window.navigate('ordenes-compra'), 600);
   } catch (e) { showError(e.message); }
 }
 
@@ -605,7 +605,7 @@ async function facturar(id) {
   try {
     await api.ordenesCompra.facturar(id, { nro_factura_proveedor: nro, fecha_factura: fecha });
     showSuccess('OC facturada — se creó registro en Compras');
-    setTimeout(() => location.reload(), 800);
+    setTimeout(() => window.navigate('ordenes-compra'), 800);
   } catch (e) { showError(e.message); }
 }
 
@@ -615,7 +615,7 @@ async function anular(id) {
   try {
     await api.ordenesCompra.anular(id, motivo);
     showSuccess('OC anulada');
-    setTimeout(() => location.reload(), 600);
+    setTimeout(() => window.navigate('ordenes-compra'), 600);
   } catch (e) { showError(e.message); }
 }
 
@@ -641,7 +641,7 @@ async function eliminarOC(id, nro) {
   try {
     await api.ordenesCompra.eliminar(id);
     showSuccess('OC eliminada');
-    setTimeout(() => location.reload(), 600);
+    setTimeout(() => window.navigate('ordenes-compra'), 600);
   } catch (e) { showError(e.message); }
 }
 
@@ -803,7 +803,7 @@ function nuevaOC(editData) {
         const r = await api.ordenesCompra.create(payload);
         showSuccess(`OC ${r.nro_oc} creada · ${r.autoAprobada ? '✓ Auto-aprobada' : 'Pendiente aprobación'}`);
       }
-      setTimeout(() => location.reload(), 800);
+      setTimeout(() => window.navigate('ordenes-compra'), 800);
     } catch (err) {
       showError(err.message || (esEdit ? 'Error actualizando OC' : 'Error creando OC'));
     }
