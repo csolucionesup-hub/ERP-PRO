@@ -477,8 +477,25 @@ const uploadFoto = multer({
 
 apiRouter.post('/cotizaciones/upload-foto', uploadFoto.single('foto'), async (req: Request, res: Response) => {
   if (!req.file) return res.status(400).json({ error: 'No se recibió archivo (campo "foto")' });
-  const result = await CloudinaryService.subirFotoCotizacion(req.file.buffer, req.file.originalname);
-  res.json(result);
+
+  // Pre-check de credenciales — error claro en lugar del críptico "Must supply api_key"
+  if (!process.env.CLOUDINARY_CLOUD_NAME || !process.env.CLOUDINARY_API_KEY || !process.env.CLOUDINARY_API_SECRET) {
+    return res.status(503).json({
+      error: 'El servicio de subida de fotos (Cloudinary) no está configurado en este servidor. ' +
+             'Pide al administrador que configure CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY y CLOUDINARY_API_SECRET en las variables de entorno.',
+      code: 'CLOUDINARY_NOT_CONFIGURED',
+    });
+  }
+
+  try {
+    const result = await CloudinaryService.subirFotoCotizacion(req.file.buffer, req.file.originalname);
+    res.json(result);
+  } catch (err: any) {
+    res.status(500).json({
+      error: `Error subiendo a Cloudinary: ${err?.message || 'desconocido'}`,
+      code: 'CLOUDINARY_UPLOAD_FAILED',
+    });
+  }
 });
 
 apiRouter.get('/cotizaciones/anuladas', async (_req: Request, res: Response) => {
