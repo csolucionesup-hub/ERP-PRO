@@ -1,0 +1,168 @@
+/* ═══════════════════════════════════════════════════════════════════════
+   tokens.css — Sistema de design tokens Enterprise (Metal Engineers)
+   ───────────────────────────────────────────────────────────────────────
+   Filosofía: "Densidad con Claridad" — referencias SAP S/4HANA, Stripe,
+   Ant Design, Odoo 17. Mantiene identidad Metal Engineers (slate-950 en
+   sidebar, sin azul Stripe).
+
+   Convención: prefijo --app-* para evitar colisión con variables legacy
+   en main.css. Conforme cada módulo se refactoriza, salta del legacy al
+   nuevo de forma controlada.
+
+   Mockup de referencia: public/mockup-enterprise.html
+   Plan: docs/superpowers/plans/2026-04-26-redesign-enterprise.md
+   ═══════════════════════════════════════════════════════════════════════ */
+
+:root {
+  /* ─── Backgrounds ───────────────────────────────────────────────── */
+  --app-bg:           #F8FAFC;   /* fondo app — gris azulado ultra claro */
+  --app-bg-sidebar:   #0F172A;   /* slate-950 — más cálido que negro puro */
+  --app-bg-card:      #FFFFFF;
+  --app-bg-subtle:    #F1F5F9;   /* hover rows, secciones, headers tabla */
+  --app-bg-muted:     #E2E8F0;   /* skeletons, placeholders */
+
+  /* ─── Borders ───────────────────────────────────────────────────── */
+  --app-border:        #E2E8F0;
+  --app-border-strong: #CBD5E1;
+  --app-border-focus:  #0F172A;
+
+  /* ─── Text ──────────────────────────────────────────────────────── */
+  --app-text:         #0F172A;   /* texto principal */
+  --app-text-muted:   #64748B;   /* labels, metadata */
+  --app-text-subtle:  #94A3B8;   /* placeholders, disabled */
+  --app-text-inverse: #FFFFFF;   /* sobre fondos oscuros */
+
+  /* ─── Brand / Primary ───────────────────────────────────────────── */
+  --app-primary:       #0F172A;
+  --app-primary-hover: #1E293B;
+
+  /* ─── Semantic (mate / pastel oscuro, nunca neón) ───────────────── */
+  --app-success:    #059669;   --app-success-bg: #ECFDF5;
+  --app-danger:     #DC2626;   --app-danger-bg:  #FEF2F2;
+  --app-warning:    #D97706;   --app-warning-bg: #FFFBEB;
+  --app-info:       #0284C7;   --app-info-bg:    #F0F9FF;
+  --app-neutral:    #475569;   --app-neutral-bg: #F1F5F9;
+
+  /* ─── Elevation ─────────────────────────────────────────────────── */
+  --app-shadow-sm: 0 1px 2px 0 rgb(15 23 42 / 0.04);
+  --app-shadow:    0 1px 3px 0 rgb(15 23 42 / 0.06),
+                   0 1px 2px -1px rgb(15 23 42 / 0.04);
+  --app-shadow-lg: 0 4px 12px 0 rgb(15 23 42 / 0.08),
+                   0 2px 4px -2px rgb(15 23 42 / 0.04);
+
+  /* ─── Radius ────────────────────────────────────────────────────── */
+  --app-radius-sm: 6px;
+  --app-radius:    8px;
+  --app-radius-lg: 12px;
+  --app-radius-pill: 999px;
+
+  /* ─── Spacing (4px scale) ───────────────────────────────────────── */
+  --app-space-1: 0.25rem;   /*  4px */
+  --app-space-2: 0.5rem;    /*  8px */
+  --app-space-3: 0.75rem;   /* 12px */
+  --app-space-4: 1rem;      /* 16px */
+  --app-space-5: 1.25rem;   /* 20px */
+  --app-space-6: 1.5rem;    /* 24px */
+  --app-space-8: 2rem;      /* 32px */
+  --app-space-10: 2.5rem;   /* 40px */
+
+  /* ─── Typography ────────────────────────────────────────────────── */
+  --app-font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+
+  --app-text-xs:    11px;
+  --app-text-sm:    13px;
+  --app-text-base:  14px;
+  --app-text-md:    15px;
+  --app-text-lg:    18px;
+  --app-text-xl:    24px;
+  --app-text-2xl:   30px;
+
+  --app-leading-tight:  1.25;
+  --app-leading-normal: 1.5;
+  --app-leading-loose:  1.75;
+
+  --app-weight-regular: 400;
+  --app-weight-medium:  500;
+  --app-weight-semibold:600;
+  --app-weight-bold:    700;
+
+  /* ─── Motion ────────────────────────────────────────────────────── */
+  --app-transition-fast: 0.12s ease;
+  --app-transition:      0.2s ease;
+
+  /* ─── Z-index scale ─────────────────────────────────────────────── */
+  --app-z-sidebar:  100;
+  --app-z-header:   200;
+  --app-z-dropdown: 500;
+  --app-z-modal:    9000;
+  --app-z-toast:    9500;
+}
+
+/* ───────────────────────────────────────────────────────────────────────
+   Tabular numerics — alineación vertical perfecta de S/ y montos
+   ─────────────────────────────────────────────────────────────────────── */
+
+/* Global: TODOS los números (en cards, tablas, KPIs, fechas, totales) heredan
+   tabular-nums. 'cv11' aplica la variante estilística "1 con serifa" de Inter,
+   más legible en columnas de cifras. */
+html,
+body {
+  font-feature-settings: 'tnum' 1, 'cv11' 1;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Helpers explícitos — útil para forzar tabular en elementos descendientes
+   de contextos que opt-out (ej. componentes con feature-settings propios). */
+.tabular,
+.num,
+td.num,
+.stat-value,
+.amount,
+.currency,
+[data-tabular] {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1, 'cv11' 1;
+}
+
+/* ───────────────────────────────────────────────────────────────────────
+   Focus visible accesible — WCAG AA
+   ─────────────────────────────────────────────────────────────────────── */
+.app-focus-ring:focus-visible,
+button.app-btn:focus-visible,
+.app-input:focus-visible {
+  outline: 2px solid var(--app-border-focus);
+  outline-offset: 2px;
+}
+
+/* ───────────────────────────────────────────────────────────────────────
+   Reduced motion — respetar preferencia del sistema
+   ─────────────────────────────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.001ms !important;
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ───────────────────────────────────────────────────────────────────────
+   Dark mode — variables preparadas pero NO activadas en este sprint
+   Cuando se decida activar, descomentar el bloque @media completo.
+   ─────────────────────────────────────────────────────────────────────── */
+/*
+@media (prefers-color-scheme: dark) {
+  :root {
+    --app-bg:           #0F172A;
+    --app-bg-sidebar:   #020617;
+    --app-bg-card:      #1E293B;
+    --app-bg-subtle:    #334155;
+    --app-border:       #334155;
+    --app-text:         #F8FAFC;
+    --app-text-muted:   #94A3B8;
+    --app-text-subtle:  #64748B;
+  }
+}
+*/

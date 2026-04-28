@@ -1,95 +1,151 @@
+/**
+ * Sidebar.js — Enterprise edition (slate-950 + Lucide icons + sections + footer avatar)
+ * Refactor del rediseño Enterprise (G5).
+ * Mantiene compatibilidad con app.js: id="sidebar", data-page por item, mobile-open class.
+ */
+
+import { icon } from '../services/ui.js';
+
+/* ─── Mapping pagina → icono Lucide del sprite /lib/icons.svg ─────── */
+const ICON_MAP = {
+  dashboard:      'layout-dashboard',
+  comercial:      'clipboard-check',
+  finanzas:       'dollar-sign',
+  prestamos:      'credit-card',
+  logistica:      'truck',
+  inventario:     'archive',
+  administracion: 'users',
+  contabilidad:   'book-open',
+  importador:     'download',
+  usuarios:       'user',
+  configuracion:  'settings',
+  alertas:        'bell',
+};
+
+/* ─── Definición de items por sección ─────────────────────────────── */
 const MODULE_NAV = [
-  { modulo: 'GERENCIA',       label: 'Dashboard',          page: 'dashboard'    },
-  { modulo: 'COMERCIAL',      label: 'Comercial',          page: 'comercial'    },
-  { modulo: 'FINANZAS',       label: 'Finanzas y Flujo',   page: 'finanzas'     },
-  { modulo: 'FINANZAS',       label: '💳 Préstamos',        page: 'prestamos'    },
-  { modulo: 'LOGISTICA',      label: 'Logística',          page: 'logistica'    },
-  // Proveedores y Órdenes de Compra ahora son sub-pestañas DENTRO de Logística (módulo unificado)
-  { modulo: 'ALMACEN',        label: 'Inventario',         page: 'inventario'   },
-  { modulo: 'ADMINISTRACION', label: 'Administración',     page: 'administracion' },
+  { modulo: 'GERENCIA',       label: 'Dashboard',        page: 'dashboard',     section: 'general' },
+  { modulo: 'COMERCIAL',      label: 'Comercial',        page: 'comercial',     section: 'general' },
+  { modulo: 'FINANZAS',       label: 'Finanzas y Flujo', page: 'finanzas',      section: 'operaciones' },
+  { modulo: 'FINANZAS',       label: 'Préstamos',        page: 'prestamos',     section: 'operaciones' },
+  { modulo: 'LOGISTICA',      label: 'Logística',        page: 'logistica',     section: 'operaciones' },
+  { modulo: 'ALMACEN',        label: 'Inventario',       page: 'inventario',    section: 'operaciones' },
+  { modulo: 'ADMINISTRACION', label: 'Administración',   page: 'administracion',section: 'operaciones' },
 ];
 
+/* ─── Helpers ─────────────────────────────────────────────────────── */
 function getUser() {
   try { return JSON.parse(localStorage.getItem('erp_user') || '{}'); }
   catch { return {}; }
 }
 
+function navItem({ page, label, active }) {
+  const ico = ICON_MAP[page] || 'layout-dashboard';
+  return `
+    <div class="app-nav-item ${active ? 'active' : ''}" data-page="${page}">
+      ${icon(ico, { size: 17 })}
+      <span>${label}</span>
+    </div>
+  `;
+}
+
+function section(title, htmlBody) {
+  if (!htmlBody) return '';
+  return `
+    <div class="app-nav-section">
+      <div class="app-nav-section-label">${title}</div>
+      ${htmlBody}
+    </div>
+  `;
+}
+
+function getInitials(nombre) {
+  const parts = String(nombre || 'U').trim().split(/\s+/);
+  return (parts[0]?.[0] || 'U').toUpperCase() +
+         (parts[1]?.[0] || '').toUpperCase();
+}
+
+/* ─── Render principal ────────────────────────────────────────────── */
 export function renderSidebar(activePage) {
-  const user = getUser();
+  const user      = getUser();
   const esGerente = user.rol === 'GERENTE';
-  const modulos = user.modulos || [];
+  const modulos   = user.modulos || [];
 
-  const navItems = MODULE_NAV
-    .filter(item => esGerente || modulos.includes(item.modulo))
-    .map(item => `
-      <div class="nav-item ${activePage === item.page ? 'active' : ''}"
-           data-page="${item.page}">
-        ${item.label}
-      </div>
-    `).join('');
+  // Items accesibles según rol/módulos
+  const accesibles = MODULE_NAV.filter(item => esGerente || modulos.includes(item.modulo));
 
-  // Acceso a Contabilidad e Importar: por flags granulares por usuario
-  // (GERENTE siempre los tiene en true desde AuthService.login).
+  // Construir cada sección
+  const generalHTML = accesibles
+    .filter(i => i.section === 'general')
+    .map(i => navItem({ page: i.page, label: i.label, active: activePage === i.page }))
+    .join('');
+
+  const operacionesHTML = accesibles
+    .filter(i => i.section === 'operaciones')
+    .map(i => navItem({ page: i.page, label: i.label, active: activePage === i.page }))
+    .join('');
+
+  // Sección Gestión: depende de flags granulares + rol GERENTE
   const verContabilidad = esGerente || !!user.puede_contabilidad;
   const verImportador   = esGerente || !!user.puede_importar;
 
-  const contabilidadItem = verContabilidad ? `
-    <div class="nav-item ${activePage === 'contabilidad' ? 'active' : ''}"
-         data-page="contabilidad">
-      📘 Contabilidad
-    </div>
-  ` : '';
+  const gestionItems = [];
+  if (verContabilidad) gestionItems.push({ page: 'contabilidad',  label: 'Contabilidad' });
+  if (verImportador)   gestionItems.push({ page: 'importador',    label: 'Importar Histórico' });
+  if (esGerente) {
+    gestionItems.push({ page: 'usuarios',      label: 'Usuarios' });
+    gestionItems.push({ page: 'configuracion', label: 'Configuración' });
+  }
+  const gestionHTML = gestionItems
+    .map(i => navItem({ page: i.page, label: i.label, active: activePage === i.page }))
+    .join('');
 
-  // Importar Histórico es accesible a GERENTE y CONTADOR
-  const importadorItem = verImportador ? `
-    <div class="nav-item ${activePage === 'importador' ? 'active' : ''}"
-         data-page="importador">
-      📥 Importar Histórico
+  // Alertas (sistema) — mantiene id="nav-alertas" y badge id="badge-alertas" por compat
+  const alertasHTML = `
+    <div class="app-nav-item ${activePage === 'alertas' ? 'active' : ''}"
+         id="nav-alertas" data-page="alertas">
+      ${icon('bell', { size: 17 })}
+      <span>Alertas</span>
+      <span id="badge-alertas" class="app-nav-item__badge"></span>
     </div>
-  ` : '';
+  `;
 
-  // Usuarios y Configuración SOLO para GERENTE
-  const usuariosItem = esGerente ? `
-    <div class="nav-item ${activePage === 'usuarios' ? 'active' : ''}"
-         data-page="usuarios">
-      Usuarios
-    </div>
-    <div class="nav-item ${activePage === 'configuracion' ? 'active' : ''}"
-         data-page="configuracion">
-      ⚙️ Configuración
-    </div>
-  ` : '';
-
+  // Footer
+  const initials = getInitials(user.nombre);
   const rolLabel = esGerente ? 'Gerente' : (user.rol || 'Usuario');
 
   document.getElementById('sidebar').innerHTML = `
-    <div class="sidebar-logo">
-      <img src="/img/logo-metal.png" alt="Metal Engineers"
-           style="max-width: 180px; height: auto;" />
+    <div class="app-sidebar-brand">
+      <img src="/img/logo-metal.png" alt="Metal Engineers" />
     </div>
-    <nav class="sidebar-nav">
-      ${navItems}
-      ${contabilidadItem}
-      ${importadorItem}
-      ${usuariosItem}
-      <div class="nav-item ${activePage === 'alertas' ? 'active' : ''}" id="nav-alertas"
-           data-page="alertas" style="position:relative">
-        🔔 Alertas
-        <span id="badge-alertas" style="display:none;position:absolute;top:8px;right:14px;background:#dc2626;color:white;border-radius:10px;font-size:10px;font-weight:700;min-width:18px;height:18px;align-items:center;justify-content:center;padding:0 5px"></span>
-      </div>
+
+    <nav class="app-nav">
+      ${section('Visión general', generalHTML)}
+      ${section('Operaciones',    operacionesHTML)}
+      ${section('Gestión',        gestionHTML)}
+      ${section('Sistema',        alertasHTML)}
     </nav>
-    <div class="sidebar-footer">
-      <div class="user-info">
-        <span class="user-name">${user.nombre || 'Usuario'}</span>
-        <span class="user-role">${rolLabel}</span>
+
+    <div class="app-sidebar-footer">
+      <div class="app-sidebar-user">
+        <div class="app-sidebar-avatar" aria-hidden="true">${initials}</div>
+        <div class="app-sidebar-user__info">
+          <span class="app-sidebar-user__name">${user.nombre || 'Usuario'}</span>
+          <span class="app-sidebar-user__role">${rolLabel}</span>
+        </div>
       </div>
-      <button class="btn-logout" onclick="logout()">Cerrar sesión</button>
+      <button class="app-sidebar-logout" onclick="logout()" type="button">
+        ${icon('log-out', { size: 14 })}
+        <span>Cerrar sesión</span>
+      </button>
     </div>
   `;
-  // Cargar alertas asíncronamente
+
+  // Cargar alertas async
   setTimeout(() => loadAlertas(), 200);
 }
 
+/* ─── Alertas (sin cambios funcionales, solo CSS class para badge) ── */
 let _alertasCache = [];
 async function loadAlertas() {
   try {
@@ -101,7 +157,7 @@ async function loadAlertas() {
     const badge = document.getElementById('badge-alertas');
     if (badge && _alertasCache.length > 0) {
       badge.textContent = _alertasCache.length > 9 ? '9+' : String(_alertasCache.length);
-      badge.style.display = 'flex';
+      badge.classList.add('is-visible');
     }
   } catch (_) { /* silencioso */ }
 }
@@ -114,7 +170,7 @@ window.toggleAlertas = () => {
   const sevBg    = { info: '#f0f9ff', warn: '#fef3c7', danger: '#fef2f2' };
 
   const items = _alertasCache.length === 0
-    ? '<div style="padding:30px;text-align:center;color:var(--text-secondary);font-size:13px">✅ No hay alertas activas</div>'
+    ? '<div style="padding:30px;text-align:center;color:var(--app-text-muted);font-size:13px">✅ No hay alertas activas</div>'
     : _alertasCache.map(a => `
         <div onclick="window.location.hash='${a.link || ''}';document.getElementById('alertas-panel')?.remove()"
              style="padding:10px 12px;border-bottom:1px solid #e5e7eb;cursor:pointer;background:${sevBg[a.severidad] || '#f9fafb'};border-left:3px solid ${sevColor[a.severidad] || '#6b7280'}">
@@ -134,7 +190,6 @@ window.toggleAlertas = () => {
     ${items}
   `;
   document.body.appendChild(panel);
-  // Cierra al hacer clic afuera
   setTimeout(() => {
     document.addEventListener('click', function once(e) {
       if (!panel.contains(e.target) && !document.getElementById('nav-alertas')?.contains(e.target)) {

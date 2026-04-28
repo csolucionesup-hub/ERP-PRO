@@ -107,3 +107,30 @@ export function tip(texto) {
     .replace(/>/g, '&gt;');
   return `<span class="tip" tabindex="0" role="img" aria-label="Ayuda" data-tip="${safe}">ⓘ</span>`;
 }
+
+/**
+ * Genera el HTML de un icono Lucide del sprite local /lib/icons.svg
+ *
+ * Uso:
+ *   import { icon } from '../services/ui.js';
+ *   `<button>${icon('plus', { size: 14 })} Nueva cotización</button>`
+ *   `<a class="nav-item">${icon('bell', { label: 'Alertas' })} Alertas</a>`
+ *
+ * @param {string} name — id del símbolo (ej. 'plus', 'layout-dashboard', 'bell')
+ * @param {object} [opts]
+ *   @param {number} [opts.size=16]    — tamaño en px (aplica a width y height)
+ *   @param {string} [opts.cls='ico']  — clase CSS adicional/override
+ *   @param {string} [opts.label]      — aria-label si el icono comunica info
+ *   @param {number} [opts.stroke]     — stroke-width override (default: 2)
+ * @returns {string} HTML del <svg>
+ */
+export function icon(name, opts = {}) {
+  const { size = 16, cls = 'ico', label, stroke } = opts;
+  const safeName = String(name || '').replace(/[^\w-]/g, '');
+  const aria = label
+    ? `role="img" aria-label="${String(label).replace(/"/g, '&quot;')}"`
+    : 'aria-hidden="true" focusable="false"';
+  const strokeAttr = stroke != null ? ` stroke-width="${Number(stroke)}"` : '';
+  const w = Number(size) || 16;
+  return `<svg class="${cls}" width="${w}" height="${w}" ${aria}${strokeAttr}><use href="/lib/icons.svg#${safeName}"></use></svg>`;
+}

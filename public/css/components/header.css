@@ -1,0 +1,192 @@
+/* ═══════════════════════════════════════════════════════════════════════
+   header.css — Header global de cada página (Enterprise edition)
+   Refactor G6: redefine .header, .header h1, .header .badge sin tocar HTML
+   Carga DESPUÉS de main.css → gana por orden de cascada.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* ─── Page header container ─────────────────────────────────────────── */
+.header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 24px;
+  padding: 0 0 18px;
+  background: transparent;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  border-bottom: 1px solid var(--app-border);
+}
+
+/* Cuando el header tiene un wrapper interno con título + subtítulo */
+.header > div:first-child {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+/* Título principal */
+.header h1 {
+  font-family: var(--app-font);
+  font-size: 22px;
+  font-weight: var(--app-weight-bold);
+  color: var(--app-text);
+  letter-spacing: -0.3px;
+  line-height: var(--app-leading-tight);
+  margin: 0;
+}
+
+/* Subtítulo (cuando se usa <span> al lado del h1) */
+.header span,
+.header .page-subtitle {
+  font-size: var(--app-text-sm);
+  color: var(--app-text-muted);
+  font-weight: var(--app-weight-regular);
+  line-height: var(--app-leading-normal);
+}
+
+/* h2 dentro del header: para casos con título + segunda línea */
+.header h2 {
+  font-family: var(--app-font);
+  font-size: var(--app-text-md);
+  font-weight: var(--app-weight-medium);
+  color: var(--app-text-muted);
+  margin: 2px 0 0;
+  letter-spacing: 0;
+}
+
+/* ─── Badge antiguo en header (ej. counts, fechas) ──────────────────── */
+.header .badge {
+  background: var(--app-bg-card);
+  border: 1px solid var(--app-border);
+  padding: 5px 11px;
+  border-radius: var(--app-radius-pill);
+  box-shadow: none;
+  font-size: 12px;
+  font-weight: var(--app-weight-semibold);
+  color: var(--app-text-muted);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.2px;
+}
+
+/* ─── Header actions container ──────────────────────────────────────── */
+.header-actions,
+.header > .actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* ─── Botones nuevos (.app-btn / .app-btn-primary / .app-btn-ghost) ── */
+.app-btn,
+.app-btn-primary,
+.app-btn-ghost {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 7px 14px;
+  border-radius: var(--app-radius-sm);
+  font-family: var(--app-font);
+  font-size: 13px;
+  font-weight: var(--app-weight-semibold);
+  line-height: 1;
+  cursor: pointer;
+  transition: background var(--app-transition-fast),
+              border-color var(--app-transition-fast),
+              color var(--app-transition-fast);
+  white-space: nowrap;
+  text-decoration: none;
+}
+.app-btn .ico,
+.app-btn-primary .ico,
+.app-btn-ghost .ico {
+  width: 14px;
+  height: 14px;
+}
+
+.app-btn {
+  background: var(--app-bg-card);
+  border: 1px solid var(--app-border);
+  color: var(--app-text);
+}
+.app-btn:hover:not(:disabled) {
+  border-color: var(--app-border-strong);
+  background: var(--app-bg-subtle);
+}
+
+.app-btn-primary {
+  background: var(--app-primary);
+  border: 1px solid var(--app-primary);
+  color: var(--app-text-inverse);
+}
+.app-btn-primary:hover:not(:disabled) {
+  background: var(--app-primary-hover);
+  border-color: var(--app-primary-hover);
+}
+
+.app-btn-ghost {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--app-text-muted);
+}
+.app-btn-ghost:hover:not(:disabled) {
+  background: var(--app-bg-subtle);
+  color: var(--app-text);
+}
+
+.app-btn:disabled,
+.app-btn-primary:disabled,
+.app-btn-ghost:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.app-btn:focus-visible,
+.app-btn-primary:focus-visible,
+.app-btn-ghost:focus-visible {
+  outline: 2px solid var(--app-border-focus);
+  outline-offset: 2px;
+}
+
+/* ─── Variante danger (acciones destructivas) ───────────────────────── */
+.app-btn-danger {
+  background: var(--app-danger-bg);
+  border: 1px solid var(--app-danger);
+  color: var(--app-danger);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 7px 14px;
+  border-radius: var(--app-radius-sm);
+  font-family: var(--app-font);
+  font-size: 13px;
+  font-weight: var(--app-weight-semibold);
+  cursor: pointer;
+  transition: background var(--app-transition-fast);
+}
+.app-btn-danger:hover:not(:disabled) {
+  background: var(--app-danger);
+  color: var(--app-text-inverse);
+}
+
+/* ─── Mobile (≤ 768px): stack vertical ──────────────────────────────── */
+@media (max-width: 768px) {
+  .header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+    padding-bottom: 14px;
+    margin-bottom: 18px;
+  }
+  .header h1 {
+    font-size: 19px;
+  }
+  .header-actions,
+  .header > .actions {
+    width: 100%;
+  }
+}
