@@ -1,5 +1,6 @@
 import { api } from '../services/api.js';
 import { tip } from '../services/ui.js';
+import { pillCotizacionEstado } from '../components/Pill.js';
 
 // ── Marca config (UI): logo, color, moneda por defecto ──────────
 const MARCAS = {
@@ -33,10 +34,10 @@ const ESTADOS_COLOR = {
   ANULADA:            { bg: '#374151', label: 'ANULADA' },
 };
 
-const estadoBadge = (estado) => {
-  const c = ESTADOS_COLOR[estado] || { bg: '#9ca3af', label: estado };
-  return `<span style="display:inline-block;padding:3px 9px;border-radius:20px;font-size:11px;font-weight:600;background:${c.bg};color:#fff">${c.label}</span>`;
-};
+// Pill semántico enterprise (delegado al helper Pill.js)
+// La constante ESTADOS_COLOR sigue usándose en el dashboard interno
+// (barras horizontales por estado) — no se borra.
+const estadoBadge = (estado) => pillCotizacionEstado(estado);
 
 const fPEN = (v) => new Intl.NumberFormat('es-PE', { style: 'currency', currency: 'PEN' }).format(Number(v) || 0);
 const fUSD = (v) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(Number(v) || 0);
