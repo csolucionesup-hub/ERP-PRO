@@ -235,14 +235,20 @@ async function init() {
     navigate(page);
   });
 
-  // Navegación por hash (links internos tipo <a href="#pagina"> o window.location.hash=)
+  // Navegación por hash (links internos tipo <a href="#pagina">). Tomamos
+  // sólo el primer segmento porque algunos módulos usan sub-rutas internas
+  // (#logistica/general, #logistica/almacen) y no queremos re-navegar al
+  // módulo cada vez que cambia la pestaña interna.
   window.addEventListener('hashchange', () => {
-    const page = window.location.hash.replace('#', '').trim();
-    if (page) navigate(page);
+    const page = window.location.hash.replace('#', '').trim().split('/')[0];
+    if (page && PAGES[page] && page !== currentPage) navigate(page);
   });
 
-  // Página inicial
-  const hashPage = window.location.hash.replace('#', '').trim();
+  // Página inicial — primer segmento del hash (algunos módulos usan
+  // sub-rutas internas tipo #logistica/general para sus pestañas, así
+  // que partimos por '/' y nos quedamos con el módulo).
+  const hashRaw  = window.location.hash.replace('#', '').trim();
+  const hashPage = hashRaw.split('/')[0];
   const paginaInicio = getPaginaInicio(user);
 
   if (!paginaInicio) {
