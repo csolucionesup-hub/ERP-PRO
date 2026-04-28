@@ -29,6 +29,75 @@ const fPEN = (v) => new Intl.NumberFormat('es-PE', { style: 'currency', currency
 const fUSD = (v) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(Number(v) || 0);
 const fmtDate = (d) => d ? String(d).split('T')[0] : '—';
 
+// ─────────── Modales reutilizables (mismos del módulo Comercial) ───────────
+// Confirmación con tipo (warning/danger/info). Solo cierra con botón explícito.
+function confirmarAccion({ titulo, mensaje, tipo = 'warning', textoBoton = 'Confirmar' }) {
+  return new Promise((resolve) => {
+    const stylesPorTipo = {
+      warning: { icono: '⚠️', boton: '#d97706' },
+      danger:  { icono: '🛑', boton: '#dc2626' },
+      info:    { icono: 'ℹ️',  boton: '#2563eb' },
+    };
+    const { icono, boton } = stylesPorTipo[tipo] || stylesPorTipo.warning;
+    const ov = document.createElement('div');
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
+    ov.innerHTML = `
+      <div style="background:white;border-radius:12px;width:480px;max-width:95vw;padding:24px">
+        <div style="display:flex;align-items:flex-start;gap:14px;margin-bottom:16px">
+          <div style="font-size:32px;line-height:1">${icono}</div>
+          <div style="flex:1">
+            <h3 style="margin:0 0 8px;font-size:17px">${titulo}</h3>
+            <div style="color:#555;font-size:14px;line-height:1.5">${mensaje}</div>
+          </div>
+        </div>
+        <div style="display:flex;gap:10px;justify-content:flex-end">
+          <button data-c style="padding:9px 18px;background:#f3f4f6;border:none;border-radius:6px;cursor:pointer;font-weight:600">Cancelar</button>
+          <button data-ok style="padding:9px 18px;background:${boton};color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">${textoBoton}</button>
+        </div>
+      </div>`;
+    ov.querySelector('[data-c]').onclick = () => { ov.remove(); resolve(false); };
+    ov.querySelector('[data-ok]').onclick = () => { ov.remove(); resolve(true); };
+    document.body.appendChild(ov);
+  });
+}
+
+// Confirmación destructiva: requiere tipear texto exacto para habilitar el botón.
+function confirmarTexto({ titulo, mensaje, textoRequerido }) {
+  return new Promise((resolve) => {
+    const ov = document.createElement('div');
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
+    ov.innerHTML = `
+      <div style="background:white;border-radius:12px;width:480px;max-width:95vw;padding:24px">
+        <div style="display:flex;align-items:flex-start;gap:14px;margin-bottom:14px">
+          <div style="font-size:32px;line-height:1">🛑</div>
+          <div style="flex:1">
+            <h3 style="margin:0 0 8px;font-size:17px;color:#dc2626">${titulo}</h3>
+            <div style="color:#555;font-size:14px;line-height:1.5;margin-bottom:14px">${mensaje}</div>
+            <div style="font-size:13px;color:#374151;margin-bottom:6px">Para confirmar, escribí exactamente: <strong>${textoRequerido}</strong></div>
+            <input type="text" data-input
+                   style="width:100%;padding:9px 11px;border:1px solid #d0d0d0;border-radius:5px;font-size:14px;box-sizing:border-box">
+          </div>
+        </div>
+        <div style="display:flex;gap:10px;justify-content:flex-end">
+          <button data-c style="padding:9px 18px;background:#f3f4f6;border:none;border-radius:6px;cursor:pointer;font-weight:600">Cancelar</button>
+          <button data-ok disabled style="padding:9px 18px;background:#fca5a5;color:white;border:none;border-radius:6px;cursor:not-allowed;font-weight:600">Eliminar</button>
+        </div>
+      </div>`;
+    const input = ov.querySelector('[data-input]');
+    const btnOk = ov.querySelector('[data-ok]');
+    input.addEventListener('input', () => {
+      const ok = input.value === textoRequerido;
+      btnOk.disabled = !ok;
+      btnOk.style.background = ok ? '#dc2626' : '#fca5a5';
+      btnOk.style.cursor = ok ? 'pointer' : 'not-allowed';
+    });
+    ov.querySelector('[data-c]').onclick = () => { ov.remove(); resolve(false); };
+    btnOk.onclick = () => { if (input.value === textoRequerido) { ov.remove(); resolve(true); } };
+    document.body.appendChild(ov);
+    setTimeout(() => input.focus(), 60);
+  });
+}
+
 let _ocs = [];
 let _proveedores = [];
 let _servicios = [];
@@ -90,7 +159,13 @@ function init() {
     },
   });
 
-  window.OC = { nuevaOC, verOC, aprobar, enviar, recibir, facturar, anular, descargarPDF, reporteROC };
+  window.OC = { nuevaOC, verOC, aprobar, enviar, recibir, facturar, anular, eliminarOC, editar, descargarPDF, reporteROC };
+}
+
+// Helper local: rol del usuario logueado (para mostrar botón Eliminar solo a GERENTE).
+function getUserRol() {
+  try { return JSON.parse(localStorage.getItem('erp_user') || '{}').rol || ''; }
+  catch { return ''; }
 }
 
 // ──────── Reporte Semanal ROC (Excel) ────────
@@ -427,6 +502,7 @@ async function verOC(id_oc) {
 
 function accionesSegunEstado(oc) {
   const btns = [];
+  const esGerente = getUserRol() === 'GERENTE';
   // PDF siempre disponible — botón principal
   btns.push(`<button onclick="OC.descargarPDF(${oc.id_oc})" style="padding:10px 18px;background:#dc2626;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">📄 Descargar PDF</button>`);
   if (oc.estado === 'BORRADOR') {
@@ -440,6 +516,15 @@ function accionesSegunEstado(oc) {
   }
   if (['RECIBIDA', 'RECIBIDA_PARCIAL'].includes(oc.estado)) {
     btns.push(`<button onclick="OC.facturar(${oc.id_oc})" style="padding:10px 18px;background:#7c3aed;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">🧾 Recibí factura</button>`);
+  }
+  // Editar — hasta ENVIADA inclusive (después la mercadería ya fue recibida).
+  if (['BORRADOR', 'APROBADA', 'ENVIADA'].includes(oc.estado)) {
+    btns.push(`<button onclick="OC.editar(${oc.id_oc})" style="padding:10px 18px;background:#f59e0b;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">✎ Editar</button>`);
+  }
+  // Eliminar físico — hasta APROBADA inclusive, solo GERENTE.
+  if (['BORRADOR', 'APROBADA'].includes(oc.estado) && esGerente) {
+    const nroSafe = String(oc.nro_oc).replace(/'/g, "\\'");
+    btns.push(`<button onclick="OC.eliminarOC(${oc.id_oc}, '${nroSafe}')" style="padding:10px 18px;background:transparent;color:#7f1d1d;border:1px solid #7f1d1d;border-radius:6px;cursor:pointer;font-weight:600">🗑 Eliminar</button>`);
   }
   if (!['FACTURADA', 'PAGADA', 'ANULADA'].includes(oc.estado)) {
     btns.push(`<button onclick="OC.anular(${oc.id_oc})" style="padding:10px 18px;background:transparent;color:#dc2626;border:1px solid #dc2626;border-radius:6px;cursor:pointer;font-weight:600">Anular</button>`);
@@ -459,7 +544,14 @@ async function aprobar(id) {
 }
 
 async function enviar(id) {
-  if (!confirm('¿Marcar como enviada al proveedor?')) return;
+  // Una vez ENVIADA la OC ya no se puede eliminar: el PDF ya salió al proveedor.
+  const ok = await confirmarAccion({
+    titulo: '📤 Marcar como Enviada',
+    mensaje: 'Una vez marcada como <strong>ENVIADA</strong>, esta OC <strong style="color:#dc2626">ya no podrá eliminarse</strong>. Solo podrás editarla o anularla. ¿Estás seguro?',
+    tipo: 'warning',
+    textoBoton: 'Sí, marcar como Enviada',
+  });
+  if (!ok) return;
   try {
     await api.ordenesCompra.enviar(id);
     showSuccess('OC marcada como enviada');
@@ -469,6 +561,18 @@ async function enviar(id) {
 
 async function recibir(id) {
   const oc = await api.ordenesCompra.get(id);
+  // Solo alertamos en la PRIMERA recepción (cuando aún no es RECIBIDA_PARCIAL).
+  // En recepciones siguientes ya pasamos el punto donde se podía editar, así que
+  // mostrar otra vez la alerta sería ruido.
+  if (['APROBADA', 'ENVIADA'].includes(oc.estado)) {
+    const ok = await confirmarAccion({
+      titulo: '📦 Registrar primera recepción',
+      mensaje: 'Una vez registres recepción (parcial o total), esta OC <strong style="color:#dc2626">ya no podrá editarse</strong>. ¿Estás seguro de continuar?',
+      tipo: 'warning',
+      textoBoton: 'Sí, registrar recepción',
+    });
+    if (!ok) return;
+  }
   const lineas = (oc.detalle || []).map(l => {
     const rest = Number(l.cantidad) - Number(l.cantidad_recibida);
     const r = prompt(`${l.descripcion}\nPedido: ${l.cantidad} · Ya recibido: ${l.cantidad_recibida} · Falta: ${rest}\n¿Cuánto llegó ahora?`, rest);
@@ -486,6 +590,14 @@ async function recibir(id) {
 }
 
 async function facturar(id) {
+  // Una vez FACTURADA, ya no se puede anular (debe usarse Nota de Crédito).
+  const ok = await confirmarAccion({
+    titulo: '🧾 Registrar factura del proveedor',
+    mensaje: 'Una vez facturada, esta OC <strong style="color:#dc2626">ya no podrá anularse</strong> — para revertirla deberás emitir una Nota de Crédito. ¿Estás seguro?',
+    tipo: 'warning',
+    textoBoton: 'Sí, continuar',
+  });
+  if (!ok) return;
   const nro = prompt('N° factura del proveedor (ej. F001-00123):');
   if (!nro) return;
   const fecha = prompt('Fecha de la factura (YYYY-MM-DD):', new Date().toISOString().slice(0, 10));
@@ -507,6 +619,32 @@ async function anular(id) {
   } catch (e) { showError(e.message); }
 }
 
+// Editar OC: trae los datos completos y abre el modal de Nueva OC en modo edición.
+async function editar(id) {
+  try {
+    const oc = await api.ordenesCompra.get(id);
+    if (!['BORRADOR', 'APROBADA', 'ENVIADA'].includes(oc.estado)) {
+      return showError(`No se puede editar una OC en estado ${oc.estado}`);
+    }
+    nuevaOC(oc);
+  } catch (e) { showError('Error cargando OC: ' + (e.message || e)); }
+}
+
+// Eliminar OC físicamente. Solo GERENTE en BORRADOR/APROBADA. Requiere tipear el N° de OC.
+async function eliminarOC(id, nro) {
+  const ok = await confirmarTexto({
+    titulo: '🗑 Eliminar OC permanentemente',
+    mensaje: `Estás por eliminar la OC <strong>${nro}</strong> de la base de datos junto con todas sus líneas y aprobaciones. Esta acción es <strong>irreversible</strong> y libera el correlativo para reuso.`,
+    textoRequerido: nro,
+  });
+  if (!ok) return;
+  try {
+    await api.ordenesCompra.eliminar(id);
+    showSuccess('OC eliminada');
+    setTimeout(() => location.reload(), 600);
+  } catch (e) { showError(e.message); }
+}
+
 async function descargarPDF(id) {
   try {
     const r = await api.ordenesCompra.descargarPDF(id);
@@ -514,35 +652,69 @@ async function descargarPDF(id) {
   } catch (e) { showError('Error generando PDF: ' + e.message); }
 }
 
-// ──────── Modal: Nueva OC ────────
-function nuevaOC() {
+// ──────── Modal: Nueva / Editar OC ────────
+// Si recibe `editData` (objeto OC con .detalle), abre en modo edición y al
+// guardar llama a `actualizar` en lugar de `create`. Sin argumentos = creación.
+function nuevaOC(editData) {
+  const esEdit = !!editData;
   const hoy = new Date().toISOString().slice(0, 10);
-  const provOpts = _proveedores.map(p => `<option value="${p.id_proveedor}">${p.razon_social} (RUC ${p.ruc || '—'})</option>`).join('');
-  const servOpts = _servicios.map(s => `<option value="${s.id_servicio}">${s.codigo || ('SRV-' + s.id_servicio)} · ${s.nombre || s.cliente || ''}</option>`).join('');
+  const sel = (current, value) => current === value ? 'selected' : '';
+  // Helper para prellenar inputs en modo edit (escapa comillas dobles)
+  const v = (x) => x == null ? '' : String(x).replace(/"/g, '&quot;');
+
+  const provOpts = _proveedores.map(p =>
+    `<option value="${p.id_proveedor}" ${sel(editData?.id_proveedor, p.id_proveedor)}>${p.razon_social} (RUC ${p.ruc || '—'})</option>`
+  ).join('');
+  const servOpts = _servicios.map(s =>
+    `<option value="${s.id_servicio}" ${sel(editData?.id_servicio, s.id_servicio)}>${s.codigo || ('SRV-' + s.id_servicio)} · ${s.nombre || s.cliente || ''}</option>`
+  ).join('');
+
+  const fechaEmision   = esEdit ? String(editData.fecha_emision || '').slice(0, 10) : hoy;
+  const fechaEntrega   = esEdit ? String(editData.fecha_entrega_esperada || '').slice(0, 10) : '';
+  const empresa        = esEdit ? (editData.empresa || 'ME') : 'ME';
+  const tipoOC         = esEdit ? (editData.tipo_oc || 'GENERAL') : 'GENERAL';
+  const moneda         = esEdit ? (editData.moneda || 'PEN') : 'PEN';
+  const tipoCambio     = esEdit ? Number(editData.tipo_cambio || 1).toFixed(4) : '1.0000';
+  const formaPago      = esEdit ? (editData.forma_pago || 'CONTADO') : 'CONTADO';
+  const diasCredito    = esEdit ? (editData.dias_credito || 0) : 0;
+  const centroCosto    = esEdit ? (editData.centro_costo || 'OFICINA CENTRAL') : 'OFICINA CENTRAL';
+  const observaciones  = esEdit ? (editData.observaciones || '') : '';
+  const aplicaIgv      = esEdit ? !!Number(editData.aplica_igv) : !!_cfg.aplica_igv;
+  const tituloModal    = esEdit ? `✎ Editar OC ${editData.nro_oc}` : '➕ Nueva Orden de Compra';
+  const textoBotonOk   = esEdit ? 'Guardar cambios' : 'Crear OC';
 
   document.getElementById('oc-modal').innerHTML = `
     <div style="position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:2000;display:flex;align-items:center;justify-content:center;padding:20px">
       <div style="background:white;border-radius:12px;width:900px;max-width:95vw;max-height:90vh;overflow:auto;padding:24px">
-        <h2 style="margin-bottom:16px">➕ Nueva Orden de Compra</h2>
+        <h2 style="margin-bottom:16px">${tituloModal}</h2>
+        ${esEdit ? `<div style="background:#fef3c7;border:1px solid #fbbf24;color:#92400e;padding:10px 14px;border-radius:6px;margin-bottom:14px;font-size:13px">
+          Estás editando una OC existente. Los totales se recalculan al guardar. Estado actual: <strong>${editData.estado}</strong>.
+        </div>` : ''}
         <form id="form-oc" style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px">
-          <div><label>Fecha emisión ${tip('Fecha en la que emitís esta OC al proveedor.')}</label><input type="date" name="fecha_emision" value="${hoy}" required></div>
-          <div><label>Entrega esperada ${tip('Cuándo necesitás recibir el material o servicio. Se usa para alertas de OC vencida.')}</label><input type="date" name="fecha_entrega_esperada"></div>
+          <div><label>Fecha emisión ${tip('Fecha en la que emitís esta OC al proveedor.')}</label><input type="date" name="fecha_emision" value="${fechaEmision}" required></div>
+          <div><label>Entrega esperada ${tip('Cuándo necesitás recibir el material o servicio. Se usa para alertas de OC vencida.')}</label><input type="date" name="fecha_entrega_esperada" value="${fechaEntrega}"></div>
           <div><label>Empresa ${tip('ME = Metal Engineers (factura en PEN). PT = Perfotools (factura en USD). Define la marca/empresa que emite la OC.')}</label>
-            <select name="empresa"><option value="ME">Metal Engineers (PEN)</option><option value="PT">Perfotools (USD)</option></select>
+            <select name="empresa"><option value="ME" ${sel(empresa,'ME')}>Metal Engineers (PEN)</option><option value="PT" ${sel(empresa,'PT')}>Perfotools (USD)</option></select>
           </div>
           <div style="grid-column:span 2"><label>Proveedor * ${tip('Maestro de proveedores. Si no lo encontrás, creálo primero en Logística → Proveedores.')}</label><select name="id_proveedor" required><option value="">— Selecciona —</option>${provOpts}</select></div>
           <div><label>Tipo ${tip('GENERAL: oficina (luz, agua, internet).\nSERVICIO: vinculado a un proyecto/obra (honorarios, fletes).\nALMACÉN: insumos que entran al inventario valorizado.')}</label>
-            <select name="tipo_oc"><option value="GENERAL">General (oficina)</option><option value="SERVICIO">Servicio (proyecto)</option><option value="ALMACEN">Almacén (stock)</option></select>
+            <select name="tipo_oc">
+              <option value="GENERAL" ${sel(tipoOC,'GENERAL')}>General (oficina)</option>
+              <option value="SERVICIO" ${sel(tipoOC,'SERVICIO')}>Servicio (proyecto)</option>
+              <option value="ALMACEN" ${sel(tipoOC,'ALMACEN')}>Almacén (stock)</option>
+            </select>
           </div>
           <div style="grid-column:span 3"><label>Servicio/Proyecto (si tipo=SERVICIO) ${tip('Solo si tipo=SERVICIO. Vincula la OC al proyecto/obra para que el costo aparezca en su rentabilidad.')}</label><select name="id_servicio"><option value="">—</option>${servOpts}</select></div>
-          <div><label>Moneda ${tip('PEN = Soles. USD = Dólares. Si elegís USD, el tipo de cambio se usa para convertir todo a PEN para totales y reportes.')}</label><select name="moneda"><option value="PEN">PEN</option><option value="USD">USD</option></select></div>
-          <div><label>Tipo cambio ${tip('TC del día (USD a PEN). Solo se aplica si moneda=USD. Ej: 3.85 significa 1 USD = S/ 3.85.')}</label><input type="number" step="0.0001" name="tipo_cambio" value="1.0000"></div>
-          <div><label>Forma pago ${tip('CONTADO: pago al recibir factura.\nCRÉDITO: pago a N días después de la factura.')}</label>
-            <select name="forma_pago"><option value="CONTADO">Contado</option><option value="CREDITO">Crédito</option></select>
+          <div><label>Moneda ${tip('PEN = Soles. USD = Dólares. Si elegís USD, el tipo de cambio se usa para convertir todo a PEN para totales y reportes.')}</label>
+            <select name="moneda"><option value="PEN" ${sel(moneda,'PEN')}>PEN</option><option value="USD" ${sel(moneda,'USD')}>USD</option></select>
           </div>
-          <div><label>Días crédito ${tip('Solo aplica si Forma pago = CRÉDITO. Cantidad de días para pagar después de recibir la factura del proveedor.')}</label><input type="number" name="dias_credito" value="0"></div>
-          <div style="grid-column:span 2"><label>Centro de costo ${tip('Categoría contable del gasto. Ej: OFICINA CENTRAL para gastos generales, ALMACEN METAL para insumos, o el nombre del proyecto para gastos de servicio.')}</label><input name="centro_costo" value="OFICINA CENTRAL"></div>
-          <div style="grid-column:span 3"><label>Observaciones ${tip('Comentario libre para el proveedor o nota interna. Aparece en el PDF de la OC.')}</label><input name="observaciones" placeholder="Ej: Urgente, entrega en obra Toromocho"></div>
+          <div><label>Tipo cambio ${tip('TC del día (USD a PEN). Solo se aplica si moneda=USD. Ej: 3.85 significa 1 USD = S/ 3.85.')}</label><input type="number" step="0.0001" name="tipo_cambio" value="${tipoCambio}"></div>
+          <div><label>Forma pago ${tip('CONTADO: pago al recibir factura.\nCRÉDITO: pago a N días después de la factura.')}</label>
+            <select name="forma_pago"><option value="CONTADO" ${sel(formaPago,'CONTADO')}>Contado</option><option value="CREDITO" ${sel(formaPago,'CREDITO')}>Crédito</option></select>
+          </div>
+          <div><label>Días crédito ${tip('Solo aplica si Forma pago = CRÉDITO. Cantidad de días para pagar después de recibir la factura del proveedor.')}</label><input type="number" name="dias_credito" value="${diasCredito}"></div>
+          <div style="grid-column:span 2"><label>Centro de costo ${tip('Categoría contable del gasto. Ej: OFICINA CENTRAL para gastos generales, ALMACEN METAL para insumos, o el nombre del proyecto para gastos de servicio.')}</label><input name="centro_costo" value="${v(centroCosto)}"></div>
+          <div style="grid-column:span 3"><label>Observaciones ${tip('Comentario libre para el proveedor o nota interna. Aparece en el PDF de la OC.')}</label><input name="observaciones" placeholder="Ej: Urgente, entrega en obra Toromocho" value="${v(observaciones)}"></div>
           <div style="grid-column:span 3">
             <label style="font-size:13px;font-weight:700;margin-top:10px;display:block">Líneas</label>
             <div id="oc-lineas" style="display:flex;flex-direction:column;gap:6px"></div>
@@ -550,16 +722,16 @@ function nuevaOC() {
           </div>
           <div style="grid-column:span 3">
             <label style="display:flex;gap:6px;align-items:center;font-size:12px">
-              <input type="checkbox" name="aplica_igv" ${_cfg.aplica_igv ? 'checked' : ''}> Aplica IGV 18%
+              <input type="checkbox" name="aplica_igv" ${aplicaIgv ? 'checked' : ''}> Aplica IGV 18%
             </label>
           </div>
           <div style="grid-column:span 3;display:flex;justify-content:space-between;align-items:center;margin-top:8px">
             <span style="font-size:13px;color:var(--text-secondary)">
-              📌 OCs ≤ <strong>${fPEN(_cfg.monto_limite_sin_aprobacion)}</strong> se auto-aprueban
+              ${esEdit ? '✎ Modo edición — los totales se recalculan al guardar' : `📌 OCs ≤ <strong>${fPEN(_cfg.monto_limite_sin_aprobacion)}</strong> se auto-aprueban`}
             </span>
             <div style="display:flex;gap:10px">
               <button type="button" onclick="document.getElementById('oc-modal').innerHTML=''" style="padding:10px 18px;background:transparent;border:1px solid #d9dad9;border-radius:6px;cursor:pointer">Cancelar</button>
-              <button type="submit" style="padding:10px 24px;background:var(--primary-color);color:white;border:none;border-radius:6px;cursor:pointer;font-weight:700">Crear OC</button>
+              <button type="submit" style="padding:10px 24px;background:var(--primary-color);color:white;border:none;border-radius:6px;cursor:pointer;font-weight:700">${textoBotonOk}</button>
             </div>
           </div>
         </form>
@@ -567,7 +739,17 @@ function nuevaOC() {
     </div>
   `;
 
-  const lineas = [];
+  // Inicializar líneas: si es edit, copiar las del detalle existente
+  const lineas = esEdit
+    ? (editData.detalle || []).map(d => ({
+        descripcion:     d.descripcion || '',
+        unidad:          d.unidad || 'UND',
+        cantidad:        Number(d.cantidad) || 0,
+        precio_unitario: Number(d.precio_unitario) || 0,
+        id_item:         d.id_item || null,
+        codigo:          d.codigo || null,
+      }))
+    : [];
   window.OC._addLinea = () => {
     lineas.push({ descripcion: '', unidad: 'UND', cantidad: 1, precio_unitario: 0 });
     renderLineas();
@@ -586,7 +768,10 @@ function nuevaOC() {
   }
   window.OC._setL = (i, k, v) => { lineas[i][k] = v; };
   window.OC._delL = (i) => { lineas.splice(i, 1); renderLineas(); };
-  window.OC._addLinea(); // primera línea
+  // En modo edit ya tenemos las líneas del detalle, solo renderizamos.
+  // En modo create arrancamos con una línea vacía.
+  if (esEdit) renderLineas();
+  else        window.OC._addLinea();
 
   document.getElementById('form-oc').onsubmit = async (e) => {
     e.preventDefault();
@@ -594,27 +779,33 @@ function nuevaOC() {
       return showError('Agrega al menos una línea con descripción y cantidad > 0');
     }
     const fd = new FormData(e.target);
+    const payload = {
+      fecha_emision: fd.get('fecha_emision'),
+      fecha_entrega_esperada: fd.get('fecha_entrega_esperada') || null,
+      id_proveedor: Number(fd.get('id_proveedor')),
+      id_servicio: fd.get('id_servicio') ? Number(fd.get('id_servicio')) : null,
+      centro_costo: fd.get('centro_costo'),
+      tipo_oc: fd.get('tipo_oc'),
+      empresa: fd.get('empresa'),
+      moneda: fd.get('moneda'),
+      tipo_cambio: Number(fd.get('tipo_cambio')),
+      aplica_igv: fd.get('aplica_igv') === 'on',
+      forma_pago: fd.get('forma_pago'),
+      dias_credito: Number(fd.get('dias_credito')),
+      observaciones: fd.get('observaciones'),
+      lineas,
+    };
     try {
-      const r = await api.ordenesCompra.create({
-        fecha_emision: fd.get('fecha_emision'),
-        fecha_entrega_esperada: fd.get('fecha_entrega_esperada') || null,
-        id_proveedor: Number(fd.get('id_proveedor')),
-        id_servicio: fd.get('id_servicio') ? Number(fd.get('id_servicio')) : null,
-        centro_costo: fd.get('centro_costo'),
-        tipo_oc: fd.get('tipo_oc'),
-        empresa: fd.get('empresa'),
-        moneda: fd.get('moneda'),
-        tipo_cambio: Number(fd.get('tipo_cambio')),
-        aplica_igv: fd.get('aplica_igv') === 'on',
-        forma_pago: fd.get('forma_pago'),
-        dias_credito: Number(fd.get('dias_credito')),
-        observaciones: fd.get('observaciones'),
-        lineas,
-      });
-      showSuccess(`OC ${r.nro_oc} creada · ${r.autoAprobada ? '✓ Auto-aprobada' : 'Pendiente aprobación'}`);
-      setTimeout(() => location.reload(), 1000);
+      if (esEdit) {
+        await api.ordenesCompra.actualizar(editData.id_oc, payload);
+        showSuccess(`OC ${editData.nro_oc} actualizada`);
+      } else {
+        const r = await api.ordenesCompra.create(payload);
+        showSuccess(`OC ${r.nro_oc} creada · ${r.autoAprobada ? '✓ Auto-aprobada' : 'Pendiente aprobación'}`);
+      }
+      setTimeout(() => location.reload(), 800);
     } catch (err) {
-      showError(err.message || 'Error creando OC');
+      showError(err.message || (esEdit ? 'Error actualizando OC' : 'Error creando OC'));
     }
   };
 }

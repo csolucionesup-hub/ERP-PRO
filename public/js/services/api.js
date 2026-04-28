@@ -310,6 +310,8 @@ export const api = {
     },
     get:        (id)         => get(`/ordenes-compra/${id}`),
     create:     (data)       => post('/ordenes-compra', data),
+    actualizar: (id, data)   => put(`/ordenes-compra/${id}`, data),
+    eliminar:   (id)         => del(`/ordenes-compra/${id}`),
     aprobar:    (id, data)   => post(`/ordenes-compra/${id}/aprobar`, data || {}),
     enviar:     (id)         => post(`/ordenes-compra/${id}/enviar`, {}),
     recibir:    (id, lineas) => post(`/ordenes-compra/${id}/recibir`, { lineas }),

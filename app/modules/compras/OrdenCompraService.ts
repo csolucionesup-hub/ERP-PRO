@@ -301,6 +301,112 @@ class OrdenCompraService {
     }
   }
 
+  /**
+   * Elimina físicamente una OC. Solo permitido en BORRADOR o APROBADA — en
+   * estados posteriores ya hay compromiso operativo (PDF enviado al proveedor,
+   * mercadería entrante, factura recibida) y debe usarse `anular()`.
+   *
+   * BD: tanto DetalleOrdenCompra como AprobacionesOC tienen FK con ON DELETE
+   * CASCADE, así que un solo DELETE limpia el árbol entero. Como no permitimos
+   * eliminar después de APROBADA, garantiza que `id_compra_generada` es NULL
+   * (recién se setea al facturar) — no hay nada que revertir en Compras.
+   */
+  async eliminar(id_oc: number) {
+    const [rows]: any = await db.query('SELECT estado FROM OrdenesCompra WHERE id_oc = ?', [id_oc]);
+    if (!rows[0]) throw new Error('OC no encontrada');
+    const estado: EstadoOC = rows[0].estado;
+    if (!['BORRADOR', 'APROBADA'].includes(estado)) {
+      throw new Error(
+        `Solo se puede eliminar una OC en BORRADOR o APROBADA (actual: ${estado}). ` +
+        `Para estados posteriores, usá Anular.`
+      );
+    }
+    await db.query('DELETE FROM OrdenesCompra WHERE id_oc = ?', [id_oc]);
+    return { success: true };
+  }
+
+  /**
+   * Actualiza una OC existente. Permitido en BORRADOR / APROBADA / ENVIADA —
+   * después la mercadería ya fue recibida y editar cambiaría datos contables.
+   *
+   * Recalcula totales desde las líneas, usa transacción y reemplaza el detalle
+   * (DELETE + INSERT) — mismo patrón que `updateCotizacion`.
+   */
+  async actualizar(id_oc: number, params: CrearOCParams) {
+    const [rows]: any = await db.query('SELECT estado FROM OrdenesCompra WHERE id_oc = ?', [id_oc]);
+    if (!rows[0]) throw new Error('OC no encontrada');
+    const estado: EstadoOC = rows[0].estado;
+    if (!['BORRADOR', 'APROBADA', 'ENVIADA'].includes(estado)) {
+      throw new Error(
+        `Solo se puede editar una OC en BORRADOR, APROBADA o ENVIADA (actual: ${estado}). ` +
+        `Para estados posteriores, anulá y creá una nueva.`
+      );
+    }
+
+    const cfg = await ConfiguracionService.getActual();
+    const moneda = params.moneda || 'PEN';
+    const tc = Number(params.tipo_cambio) || 1;
+    const subtotal = params.lineas.reduce((s, l) => s + l.cantidad * l.precio_unitario, 0);
+    const descuento = Number(params.descuento) || 0;
+    const baseImponible = Math.max(subtotal - descuento, 0);
+    const aplicaIgv = params.aplica_igv === true
+                   || params.aplica_igv === 1
+                   || params.aplica_igv === 'on'
+                   || params.aplica_igv === 'true';
+    const igv = aplicaIgv ? Number((baseImponible * (Number(cfg.tasa_igv) / 100)).toFixed(2)) : 0;
+    const total = Number((baseImponible + igv).toFixed(2));
+
+    const conn = await db.getConnection();
+    await conn.beginTransaction();
+    try {
+      await conn.query(
+        `UPDATE OrdenesCompra SET
+           fecha_emision = ?, fecha_entrega_esperada = ?,
+           id_proveedor = ?, id_servicio = ?, centro_costo = ?, tipo_oc = ?,
+           empresa = ?, moneda = ?, tipo_cambio = ?,
+           subtotal = ?, descuento = ?, aplica_igv = ?, igv = ?, total = ?,
+           forma_pago = ?, dias_credito = ?, condiciones_entrega = ?, observaciones = ?,
+           atencion = ?, contacto_interno = ?, contacto_telefono = ?,
+           solicitado_por = ?, revisado_por = ?, autorizado_por = ?,
+           cuenta_bancaria_pago = ?, lugar_entrega = ?
+         WHERE id_oc = ?`,
+        [params.fecha_emision, params.fecha_entrega_esperada || null,
+         params.id_proveedor, params.id_servicio || null,
+         params.centro_costo || 'OFICINA CENTRAL', params.tipo_oc || 'GENERAL',
+         params.empresa || 'ME', moneda, tc,
+         subtotal, descuento, aplicaIgv ? 1 : 0, igv, total,
+         params.forma_pago || 'CONTADO', params.dias_credito || 0,
+         params.condiciones_entrega || null, params.observaciones || null,
+         params.atencion || null, params.contacto_interno || null, params.contacto_telefono || null,
+         params.solicitado_por || null, params.revisado_por || null, params.autorizado_por || null,
+         params.cuenta_bancaria_pago || null, params.lugar_entrega || 'Lima',
+         id_oc]
+      );
+
+      // Reemplazar detalle: el FK con CASCADE simplifica esto a un DELETE + N inserts.
+      await conn.query('DELETE FROM DetalleOrdenCompra WHERE id_oc = ?', [id_oc]);
+      for (let i = 0; i < params.lineas.length; i++) {
+        const l = params.lineas[i];
+        const lineSub = Number((l.cantidad * l.precio_unitario).toFixed(2));
+        await conn.query(
+          `INSERT INTO DetalleOrdenCompra
+            (id_oc, orden, id_item, codigo, descripcion, unidad, cantidad, precio_unitario, subtotal)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [id_oc, l.orden || (i + 1), l.id_item || null, l.codigo || null,
+           l.descripcion, l.unidad || 'UND', l.cantidad, l.precio_unitario, lineSub]
+        );
+      }
+
+      await conn.commit();
+      return { success: true, id_oc, estado, total, moneda };
+    } catch (e) {
+      await conn.rollback();
+      throw e;
+    } finally {
+      conn.release();
+    }
+  }
+
   async anular(id_oc: number, motivo: string) {
     const [rows]: any = await db.query('SELECT estado FROM OrdenesCompra WHERE id_oc = ?', [id_oc]);
     if (!rows[0]) throw new Error('OC no encontrada');

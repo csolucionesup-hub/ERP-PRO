@@ -1234,6 +1234,21 @@ ocRouter.post('/:id/anular', validateIdParam, auditLog('OrdenCompra', 'ANULAR'),
   res.json(await OrdenCompraService.anular(Number(req.params.id), req.body?.motivo || 'Sin motivo'));
 });
 
+// EDITAR OC — permitido hasta ENVIADA (el Service valida el estado).
+ocRouter.put('/:id', validateIdParam, auditLog('OrdenCompra', 'UPDATE'), async (req: any, res: Response) => {
+  req.body.id_usuario = req.user!.id_usuario;
+  res.json(await OrdenCompraService.actualizar(Number(req.params.id), req.body));
+});
+
+// ELIMINAR OC físico — permitido hasta APROBADA, solo GERENTE.
+// El Service también valida el estado; este check de rol es la barrera primaria.
+ocRouter.delete('/:id', validateIdParam, auditLog('OrdenCompra', 'DELETE'), async (req: any, res: Response) => {
+  if (req.user?.rol !== 'GERENTE') {
+    return res.status(403).json({ error: 'Solo el GERENTE puede eliminar una OC' });
+  }
+  res.json(await OrdenCompraService.eliminar(Number(req.params.id)));
+});
+
 ocRouter.get('/:id/pdf', validateIdParam, async (req: Request, res: Response) => {
   const oc = await OrdenCompraService.obtener(Number(req.params.id));
   const cfg = await ConfiguracionService.getActual();
