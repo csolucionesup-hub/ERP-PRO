@@ -1251,12 +1251,31 @@ export const Comercial = async () => {
       });
     };
 
+    // Helper compartido: hace fetch del PDF con auth, y si falla extrae el
+    // mensaje real del body JSON ({ error: "..." }) del backend en vez de
+    // mostrar solo "HTTP 500" — clave para diagnosticar problemas de
+    // generación (campos NULL en config de marca, fotos rotas, etc).
+    const fetchPDFCotizacion = async (id) => {
+      const token = localStorage.getItem('erp_token');
+      const r = await fetch(`/api/cotizaciones/${id}/pdf`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!r.ok) {
+        let detalle = '';
+        try {
+          const data = await r.json();
+          detalle = data?.error || JSON.stringify(data);
+        } catch {
+          try { detalle = await r.text(); } catch {}
+        }
+        throw new Error(`HTTP ${r.status}${detalle ? ' — ' + detalle : ''}`);
+      }
+      return await r.blob();
+    };
+
     window.descargarPDFCotizacion = async (id, nro) => {
       try {
-        const token = localStorage.getItem('erp_token');
-        const r = await fetch(`/api/cotizaciones/${id}/pdf`, { headers: { Authorization: `Bearer ${token}` } });
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        const blob = await r.blob();
+        const blob = await fetchPDFCotizacion(id);
         const url  = URL.createObjectURL(blob);
         window.open(url, '_blank');
         setTimeout(() => URL.revokeObjectURL(url), 60_000);
@@ -1272,10 +1291,7 @@ export const Comercial = async () => {
       let blobUrl = null;
       let overlay = null;
       try {
-        const token = localStorage.getItem('erp_token');
-        const r = await fetch(`/api/cotizaciones/${id}/pdf`, { headers: { Authorization: `Bearer ${token}` } });
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        const blob = await r.blob();
+        const blob = await fetchPDFCotizacion(id);
         blobUrl = URL.createObjectURL(blob);
 
         const filename = `${String(nro).replace(/\s+/g, '_')}.pdf`;
