@@ -4,9 +4,12 @@ import CotizacionService from './CotizacionService';
 import ConfiguracionMarcaService from './ConfiguracionMarcaService';
 
 // Logo y color sí son visuales y se mantienen en código.
+// Usamos process.cwd() (no __dirname) porque tras `tsc` el __dirname queda en
+// dist/app/modules/comercial y ../../../public no existe en producción —
+// process.cwd() apunta a /app (raíz del proyecto) tanto en dev como en Railway.
 const MARCA_VISUAL = {
-  METAL:      { logo: path.join(__dirname, '../../../public/img/logo-metal.png'),      color: '#000000' },
-  PERFOTOOLS: { logo: path.join(__dirname, '../../../public/img/logo-perfotools.png'), color: '#dc2626' },
+  METAL:      { logo: path.join(process.cwd(), 'public/img/logo-metal.png'),      color: '#000000' },
+  PERFOTOOLS: { logo: path.join(process.cwd(), 'public/img/logo-perfotools.png'), color: '#dc2626' },
 } as const;
 
 type Marca = keyof typeof MARCA_VISUAL;
