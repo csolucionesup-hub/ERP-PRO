@@ -50,7 +50,7 @@
 | # | Pendiente | Bloquea | Acción |
 |---|---|---|---|
 | 1 | Confirmar con contador si sigue en RER (ritmo Sept = ~800K/año, sobre tope RER 525K) | Cálculo correcto en Fase A | Julio pregunta al contador. Si MYPE, cambiar tasa en `ConfiguracionEmpresa`. |
-| 2 | Conseguir TXT SIRE de referencia del contador (idealmente Jul, Ago, Sep 2025: RVIE + RCE + No Dom) | **Fase B completa** | Julio pide al contador o descarga del portal SIRE con su SOL clave. |
+| 2 | ⚠️ PARCIAL 28/04: Jorge pasó **Excel oficiales RV+RC Sept 2025** del contador. Guardados en `D:\proyectos\ERP-PRO\sunat-golden-files\2025-09\` (fuera de Git). Cubren ~95% del ground truth. Falta el TXT puro para 5% final. | Fase B-1/B-2/B-3 ya pueden arrancar | Cuando el contador comparta los TXT, se afina el último 5%. No urgente. |
 | 3 | Crear Usuario Secundario SOL específico para el ERP (rol: SIRE + declaraciones, nada más) | Fase B-3 en adelante | Julio entra a SUNAT portal → Usuarios secundarios → crear. |
 | 4 | Validar que Metal Engineers efectivamente NO tiene débito automático afiliado a Interbank para SUNAT | Diseño cadena pagos | Julio confirma con su banco. |
 

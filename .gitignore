@@ -51,3 +51,6 @@ auditoria_erp_pro.pdf
 # Directorios accidentales
 /cd/
 
+
+# Golden files SUNAT (datos comerciales — NO commitear)
+sunat-golden-files/
