@@ -498,8 +498,8 @@ function bindForm(marca, opts = {}) {
     inpFoto.onchange = async () => {
       const file = inpFoto.files?.[0];
       if (!file) return;
-      if (file.size > 5 * 1024 * 1024) {
-        window.showError?.('La foto no debe pesar más de 5 MB.');
+      if (file.size > 10 * 1024 * 1024) {
+        window.showError?.('La foto no debe pesar más de 10 MB. Si es una foto de celular muy pesada, podés reducirla con cualquier app de compresión.');
         inpFoto.value = '';
         return;
       }

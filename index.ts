@@ -467,7 +467,7 @@ apiRouter.delete('/cotizaciones/reset', async (req: Request, res: Response) => {
 // Upload de fotos (multer en memoria → Cloudinary)
 const uploadFoto = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 5 * 1024 * 1024 }, // 5 MB
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB (ampliado: las fotos de celular modernos pesan 5-8 MB)
   fileFilter: (_req, file, cb) => {
     const ok = ['image/jpeg', 'image/png', 'image/webp'].includes(file.mimetype);
     if (!ok) return cb(new Error('Solo se aceptan JPG, PNG o WebP'));
