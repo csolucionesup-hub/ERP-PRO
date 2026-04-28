@@ -7,7 +7,12 @@ Sistema ERP para empresa de servicios peruana. Backend Node.js/TypeScript con l�
 **Cliente actual:** Metal Engineers SAC — RUC: 20610071962
 **Rubro:** Fabricación metalmecánica, herramientas para cimentaciones profundas
 **Web:** www.metalengineers.com.pe
-**Dirección:** Calle Rio Cenepa Mz D Lote 5 - Urb. El Cascajal - La Molina - Lima
+**Dirección oficial (cotizaciones, OC, facturas):** Av. San Juan 500-598, Asoc. Independencia, Puente Piedra, Lima, Perú
+**Email comercial:** proyectos@metalengineers.com.pe
+**Teléfono Gerente Comercial (Julio Rojas):** 984 327 588
+**Marcas operativas (mismo RUC, dos cuentas bancarias):**
+- `METAL` (Metal Engineers S.A.C.) — opera en **PEN**, factura en soles
+- `PERFOTOOLS` (Perfotools — Metal Engineers S.A.C.) — opera en **USD**, factura en dólares
 
 ---
 
@@ -43,10 +48,14 @@ Variables de entorno requeridas: `DB_HOST`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`,
 
 **Logo:** `public/img/logo-metal.png` — PNG con 4 barras grises + "METAL ENGINEERS" + "EL ARTE DE LA PRECISIÓN"
 
-**Datos bancarios fijos de Metal Engineers (para OC y cotizaciones):**
-- Cta. Soles Interbank: 200-3004523324 / CCI: 003-200-003004523324-31
-- Cta. Dólares Interbank: 200-3007027785 / CCI: 003-200-003007027785-37
-- Email facturación: administracion@metalengineers.com.pe
+**Datos bancarios por marca (cargados en tabla `ConfiguracionMarca`, NO hardcodeados en código):**
+
+| Marca | Moneda | Banco | Cuenta | CCI |
+|---|---|---|---|---|
+| METAL | PEN (Soles) | Interbank | 200-3004523324 | 003-200-003004523324-31 |
+| PERFOTOOLS | USD (Dólares) | Interbank | 200-3007027785 | 003-200-003007027785-37 |
+
+Cada marca tiene **solo una cuenta** (la de su moneda nativa) — los campos de la otra moneda quedan en NULL en la BD. Si necesitás editar estos datos, ir a **Comercial → Configuración PDF** (UI), no tocar el código.
 
 ---
 

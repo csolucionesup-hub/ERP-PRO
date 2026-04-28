@@ -2,12 +2,13 @@
 
 > **LEER PRIMERO.** Este documento es la fuente de verdad sobre qué está hecho, qué falta y dónde estamos parados. Se actualiza al cierre de cada sesión de trabajo.
 
-**Última actualización:** 2026-04-28 (sesión Cotizaciones: fotos + edit ítem + delete físico)
+**Última actualización:** 2026-04-28 tarde (sesión sidebar mobile + uploads HEIC + preview PDF + seed ConfiguracionMarca)
 **Rama activa:** `main`
-**Último commit:** `90bedbf feat(cotizaciones): editar ítem existente con foto inline`
+**Último commit pusheado:** `3c351b3 chore(cotizaciones): surface backend error message en toast del PDF`
+**Pendiente de commit (esta sesión):** sync de migración 011 + hardening PDF service + ESTADO.md + CLAUDE.md
 **Servidor dev:** `npx ts-node index.ts` en `D:\proyectos\ERP-PRO` → `http://localhost:3000`
 **Producción:** `erp-pro-production-e4c0.up.railway.app` — Railway (deploy automático desde main)
-**Cache buster JS actual:** `v=20260428r1` (bumpear este número si se cambia algo en `public/js/`)
+**Cache buster JS actual:** `v=20260428r3` (bumpear este número si se cambia algo en `public/js/`)
 
 ---
 
@@ -76,7 +77,12 @@ Railway desplegado y operativo con 24 tablas (migraciones 001-019 aplicadas via 
 - [x] ~~Fotos Cloudinary funcionando~~ → 7 commits 27-28/04 (CSP + pre-fetch + env vars Railway)
 - [x] ~~Eliminar cotización física (duplicados)~~ → botón solo GERENTE en EN_PROCESO/A_ESPERA
 - [x] ~~Editar ítem existente dentro de cotización~~ → botón ✎ con banner ámbar
-- [ ] **Verificar end-to-end** (Julio, próxima sesión): subir foto + editar ítem + generar PDF con foto bajo subtotal
+- [x] ~~Sidebar mobile no abre módulos al tap~~ → fix z-index en `sidebar.css` (`6025290`)
+- [x] ~~Subir foto HEIC desde iPhone (rebotaba con "solo JPG/PNG/WebP")~~ → filtro `image/*` + extension fallback (`5ebf77e..61fa07b`)
+- [x] ~~Botón 👁️ Ver para previsualizar PDF antes de descargar~~ → modal con iframe (`f4a88ac`)
+- [x] ~~Seed faltante de `ConfiguracionMarca` en producción~~ → INSERT vía Supabase MCP, 28/04 mediodía
+- [ ] **Verificar end-to-end PDF** (Julio, próxima sesión): clickear `👁️ Ver` y `📄 PDF` en cotizaciones METAL y PERFOTOOLS — debe abrir / bajar sin 500
+- [ ] **Verificar end-to-end fotos** (Julio, próxima sesión): subir foto HEIC desde iPhone y desde PC → debe llegar a Cloudinary y aparecer en preview + PDF con foto bajo subtotal
 - [ ] Rotar `CLOUDINARY_API_SECRET` (memoria dice que fue expuesto en chats anteriores)
 - [ ] Investigar y limpiar los 2 registros `COT 0000-000-MN`
 - [ ] Resolver hallazgos de auditoría V3 (prioridad: F01, F06, A02, A06)
@@ -146,6 +152,43 @@ Railway desplegado y operativo con 24 tablas (migraciones 001-019 aplicadas via 
 
 ---
 
+## Sesión 28/04 tarde — sidebar mobile + uploads HEIC + preview PDF + seed ConfiguracionMarca
+
+Sesión de bugfixes UX reportados por Julio probando en producción. Mezcla de mobile, uploads y data fix. **6 commits pusheados a `main`** (`6025290..3c351b3`) + 1 commit de housekeeping pendiente.
+
+| Commit | Cambio |
+|---|---|
+| `6025290` | Fix sidebar mobile no abría módulos al tap. Causa: `sidebar.css` se carga después de `main.css` y su regla base (`z-index: var(--app-z-sidebar) = 100`) anulaba la intención mobile (`z-index: 1000` de main). El overlay (`z-index: 999`) quedaba sobre el sidebar y capturaba todos los taps, ejecutando solo `closeMobileSidebar()`. **Fix:** `z-index: 1000` explícito en el `@media (max-width:768px)` de `sidebar.css`. Bump cache buster a `v=20260428r2`. |
+| `5ebf77e` | Upload de fotos: extender whitelist de mimetypes para aceptar HEIC/HEIF/AVIF/GIF (además de los 3 originales JPG/PNG/WebP). Caso real: cliente manda foto por WhatsApp desde iPhone, llega a la PC en HEIC. |
+| `85439c3` | Refactor del filtro a `image/*` (más permisivo) + `accept="image/*"` en el `<input>`. Mensaje de error nuevo incluye el MIME real recibido para diagnóstico. |
+| `61fa07b` | **Fix crítico HEIC en Chrome Windows:** Chrome sin la extensión HEIF/HEVC instalada manda los `.HEIC` con mimetype `application/octet-stream`, no `image/heic`. El filtro miraba solo el MIME y rebotaba. Solución: aceptar si MIME es `image/*` **O** la extensión del nombre matchea `\.(jpe?g|png|webp|heic|heif|avif|gif|bmp|tiff?|svg|ico)$`. |
+| `f4a88ac` | Feature 👁️ Ver para preview de PDF antes de descargar. Botón nuevo abre modal centrado con iframe que renderiza el PDF en el visor nativo del navegador. Botones internos: 📥 Descargar (genera `<a download>` con blob URL) y Cerrar (revoca el blob URL). El ✕ flotante de `app.js:285` también funciona porque el botón Cerrar tiene `data-close`. |
+| `3c351b3` | Surface del error real del backend en el toast del PDF (antes solo mostraba "HTTP 500"). Helper compartido `fetchPDFCotizacion(id)` extrae `body.error` cuando `!r.ok` y lo concatena al mensaje. Esto permitió diagnosticar el bug de seed faltante. |
+
+**Bug fix de data en producción (vía Supabase MCP, NO commit):**
+- `ConfiguracionMarca` estaba **completamente vacía** en Supabase Postgres (project `fhlrxlsscerfiuuyiejw`) — METAL y PERFOTOOLS faltantes. Por eso `getByMarca()` tiraba `Configuración no encontrada` y el PDF respondía 500.
+- INSERT directo en Supabase con valores reales actualizados. Brand-account split: METAL solo PEN, PERFOTOOLS solo USD. Confirmado vía SELECT que ambos rows quedaron OK.
+
+**Datos empresa actualizados (Julio confirmó al 28/04 mediodía):**
+- Dirección oficial nueva: `Av. San Juan 500-598, Asoc. Independencia, Puente Piedra, Lima, Perú` (reemplaza la vieja "Calle Rio Cenepa, La Molina")
+- Email empresa: `proyectos@metalengineers.com.pe` (era `administracion@metalengineers.com.pe`)
+- Teléfono Julio: `984 327 588` (era `933 440 483`)
+- Cuentas Interbank: METAL=PEN 200-3004523324, PERFOTOOLS=USD 200-3007027785 (sin cuenta cruzada)
+- Mismo RUC para las 2 marcas: 20610071962
+
+**Housekeeping commiteado en esta sesión (al final):**
+- `database/migrations/011_configuracion_marca.sql` — seed sincronizado con producción para que un bootstrap futuro de BD desde cero use la dirección/teléfono/email correctos.
+- `app/modules/comercial/CotizacionPDFService.ts` — defaults hardcoded de fallback si `ConfiguracionMarca` se vacía otra vez. `try/catch` alrededor de `getByMarca()` y un `DEFAULT_CFG_BY_MARCA` con los datos reales.
+- `CLAUDE.md` — sección "Datos empresa" actualizada + tabla bancaria por marca + clarificación del brand-account split.
+- `ESTADO.md` — este bloque + bump del header.
+
+**Pendiente de verificación end-to-end (Julio próxima sesión):**
+- Confirmar que `👁️ Ver` muestra el PDF en modal sin error.
+- Confirmar que `📄 PDF` baja el archivo OK.
+- Probar las DOS marcas (Metal y Perfotools) — el bug del seed afectaba a las dos pero las síntomas aparecieron solo en Perfotools.
+
+---
+
 ## Para Claude (contexto rápido en cada sesión nueva)
 
 **Al arrancar una sesión, LEER este archivo completo antes de actuar.** Evita re-descubrir estado.
@@ -171,19 +214,23 @@ Railway desplegado y operativo con 24 tablas (migraciones 001-019 aplicadas via 
 
 ---
 
-## Snapshot de `git status` (al 2026-04-28 madrugada)
+## Snapshot de `git status` (al 2026-04-28 tarde)
 
-**Working tree limpio.** Último commit: `90bedbf` (editar ítem inline). Todo pusheado a `origin/main`. Branch local activa: `redesign-enterprise` en worktree `brave-ishizaka-a6823a`.
+**Worktree activo:** `.claude/worktrees/youthful-fermat-1f2932/` (rama `claude/youthful-fermat-1f2932`).
+**Pusheados a `main`:** 6 commits de la sesión 28/04 tarde (`6025290..3c351b3`).
+**Pendiente de commit en este worktree:** seed migración 011 + hardening PDF service + CLAUDE.md + ESTADO.md (este archivo). Se commitea como cierre de sesión.
 
-**Total acumulado en `redesign-enterprise` desde 27/04:** 17 commits (10 del rediseño + 7 de cotizaciones).
+**Total acumulado desde 27/04:** 23 commits (10 rediseño + 7 cotizaciones AM + 6 sesión tarde).
 
 ## Para Claude (próxima sesión)
 
 Si Julio dice "sigamos con cotizaciones" o reporta un bug del módulo Comercial:
 1. **Leer primero** `~/.claude/projects/D--proyectos-ERP-PRO/memory/project_cotizaciones_fotos_y_edit.md` — ahí están todas las decisiones críticas no obvias.
-2. **Si reporta "no me deja subir foto"**: verificar primero (a) cache del navegador, (b) que Railway tenga las env vars Cloudinary, (c) que el cache buster JS esté bumpeado en `index.html`.
+2. **Si reporta "no me deja subir foto"**: verificar primero (a) cache del navegador, (b) que Railway tenga las env vars Cloudinary, (c) que el cache buster JS esté bumpeado en `index.html`. **Para HEIC en Chrome Windows:** ya está resuelto (commit `61fa07b`) — acepta por extensión cuando Chrome no reconoce el MIME.
 3. **Si reporta error "edit is not defined" o pantalla roja al editar/borrar**: el `idp` con guion rompe HTML inline. Cambiar a underscore.
-4. **Cuando se commitea cambios en `public/js/`**: SIEMPRE bumpear el cache buster del script en `index.html` (`?v=YYYYMMDDr#`). Sin esto, los navegadores cargan el JS viejo y los fixes no se ven.
+4. **Si reporta "PDF da HTTP 500" o "Configuración no encontrada"**: la tabla `ConfiguracionMarca` (lowercase en Postgres) debe tener filas para METAL y PERFOTOOLS. Verificar con `SELECT marca FROM configuracionmarca;` vía Supabase MCP en project `fhlrxlsscerfiuuyiejw`. Si faltan, ya hay defaults hardcoded en `CotizacionPDFService.ts` que evitan el 500, pero el ideal es re-insertar las filas.
+5. **Cuando se commitea cambios en `public/js/`**: SIEMPRE bumpear el cache buster del script en `index.html` (`?v=YYYYMMDDr#`). Sin esto, los navegadores cargan el JS viejo y los fixes no se ven.
+6. **Para hacer push a producción desde un worktree**: la rama `main` está checkout en `D:/proyectos/ERP-PRO`, así que NO se puede `git checkout main` desde el worktree. Usar `git push origin <branch-actual>:main` para empujar el commit como nuevo `main` (solo si es fast-forward).
 
 ### Basura a limpiar (aún en disco, no commiteada)
 ```

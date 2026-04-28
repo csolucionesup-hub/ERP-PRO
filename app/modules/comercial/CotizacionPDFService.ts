@@ -61,13 +61,50 @@ function numeroALetras(n: number): string {
   return `${partes.join(' ')} CON ${String(cent).padStart(2,'0')}/100`;
 }
 
+// Defaults usados cuando la fila de ConfiguracionMarca falta (no debería
+// pasar en producción, pero si pasa no queremos que el PDF tire 500). Mantienen
+// los datos reales de Metal Engineers al 2026-04-28; si cambian, actualizar
+// también la migración 011 y el row en producción.
+const DEFAULT_CFG_BY_MARCA = {
+  METAL: {
+    razon_social: 'METAL ENGINEERS S.A.C.',
+    ruc: '20610071962',
+    direccion: 'Av. San Juan 500-598, Asoc. Independencia, Puente Piedra, Lima, Perú',
+    web: 'www.metalengineers.com.pe',
+    email: 'proyectos@metalengineers.com.pe',
+    cta_pen_banco: 'Interbank', cta_pen_numero: '200-3004523324', cta_pen_cci: '003-200-003004523324-31',
+    cta_usd_banco: null, cta_usd_numero: null, cta_usd_cci: null,
+    firma_nombre: 'JULIO ROJAS COTRINA', firma_cargo: 'Gerente Comercial',
+    firma_telefono: '984 327 588', firma_email: 'proyectos@metalengineers.com.pe',
+    firma_direccion: 'Av. San Juan 500-598, Asoc. Independencia, Puente Piedra',
+  },
+  PERFOTOOLS: {
+    razon_social: 'PERFOTOOLS — METAL ENGINEERS S.A.C.',
+    ruc: '20610071962',
+    direccion: 'Av. San Juan 500-598, Asoc. Independencia, Puente Piedra, Lima, Perú',
+    web: 'www.metalengineers.com.pe',
+    email: 'proyectos@metalengineers.com.pe',
+    cta_pen_banco: null, cta_pen_numero: null, cta_pen_cci: null,
+    cta_usd_banco: 'Interbank', cta_usd_numero: '200-3007027785', cta_usd_cci: '003-200-003007027785-37',
+    firma_nombre: 'JULIO ROJAS COTRINA', firma_cargo: 'Gerente Comercial',
+    firma_telefono: '984 327 588', firma_email: 'proyectos@metalengineers.com.pe',
+    firma_direccion: 'Av. San Juan 500-598, Asoc. Independencia, Puente Piedra',
+  },
+} as const;
+
 // ─────────────────────────────────────────────────────────────────
 class CotizacionPDFService {
   async generar(idCotizacion: number): Promise<Buffer> {
     const cot = await CotizacionService.getCotizacionById(idCotizacion);
     const marca: Marca = (cot.marca || 'METAL') as Marca;
     const visual = MARCA_VISUAL[marca];
-    const cfg    = await ConfiguracionMarcaService.getByMarca(marca);
+    let cfg: any;
+    try {
+      cfg = await ConfiguracionMarcaService.getByMarca(marca);
+    } catch (err) {
+      console.warn(`[PDF] ConfiguracionMarca falta para ${marca} — usando defaults hardcoded:`, err);
+      cfg = DEFAULT_CFG_BY_MARCA[marca];
+    }
     const meta   = {
       razon:     cfg.razon_social,
       ruc:       cfg.ruc,

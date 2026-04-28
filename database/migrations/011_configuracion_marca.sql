@@ -31,7 +31,9 @@ CREATE TABLE IF NOT EXISTS ConfiguracionMarca (
   updated_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
--- Seed con los valores actuales hardcodeados en CotizacionPDFService.ts
+-- Seed con los valores reales de Metal Engineers (sincronizado con producción
+-- el 2026-04-28: Av. San Juan, brand-account split, email proyectos@, fono 984).
+-- METAL solo tiene cuenta PEN; PERFOTOOLS solo cuenta USD.
 INSERT INTO ConfiguracionMarca
   (marca, razon_social, ruc, direccion, web, email,
    cta_pen_banco, cta_pen_numero, cta_pen_cci,
@@ -40,20 +42,20 @@ INSERT INTO ConfiguracionMarca
 VALUES
   ('METAL',
    'METAL ENGINEERS S.A.C.', '20610071962',
-   'Av. Javier Prado Este Nº 2813 Oficina 502 – San Borja, Lima, Perú',
-   'www.metalengineers.com.pe', 'administracion@metalengineers.com.pe',
+   'Av. San Juan 500-598, Asoc. Independencia, Puente Piedra, Lima, Perú',
+   'www.metalengineers.com.pe', 'proyectos@metalengineers.com.pe',
    'Interbank', '200-3004523324', '003-200-003004523324-31',
-   'Interbank', '200-3007027785', '003-200-003007027785-37',
+   NULL, NULL, NULL,
    'JULIO ROJAS COTRINA', 'Gerente Comercial',
-   '933 440 483', 'juliorojas@metalengineers.com.pe',
-   'Av. Javier Prado Este Nº 2813 Oficina 502 – San Borja'),
+   '984 327 588', 'proyectos@metalengineers.com.pe',
+   'Av. San Juan 500-598, Asoc. Independencia, Puente Piedra'),
   ('PERFOTOOLS',
    'PERFOTOOLS — METAL ENGINEERS S.A.C.', '20610071962',
-   'Av. Javier Prado Este Nº 2813 Oficina 502 – San Borja, Lima, Perú',
-   'www.metalengineers.com.pe', 'administracion@metalengineers.com.pe',
-   'Interbank', '200-3004523324', '003-200-003004523324-31',
+   'Av. San Juan 500-598, Asoc. Independencia, Puente Piedra, Lima, Perú',
+   'www.metalengineers.com.pe', 'proyectos@metalengineers.com.pe',
+   NULL, NULL, NULL,
    'Interbank', '200-3007027785', '003-200-003007027785-37',
    'JULIO ROJAS COTRINA', 'Gerente Comercial',
-   '933 440 483', 'juliorojas@metalengineers.com.pe',
-   'Av. Javier Prado Este Nº 2813 Oficina 502 – San Borja')
+   '984 327 588', 'proyectos@metalengineers.com.pe',
+   'Av. San Juan 500-598, Asoc. Independencia, Puente Piedra')
 ON DUPLICATE KEY UPDATE marca = VALUES(marca);
