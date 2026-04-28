@@ -131,18 +131,22 @@ function renderTabEmpresa(panel, cfg) {
         <div>
           <label>RUC</label>
           <input name="ruc" value="${cfg.ruc || ''}" readonly style="background:#f5f5f5" maxlength="11">
+          <div class="app-form-hint">11 dígitos. No editable después de la configuración inicial.</div>
         </div>
         <div>
           <label>Razón Social *</label>
           <input name="razon_social" value="${cfg.razon_social || ''}" required>
+          <div class="app-form-hint">Nombre legal exacto según SUNAT (con S.A.C., S.A., E.I.R.L., etc.).</div>
         </div>
         <div>
           <label>Nombre Comercial</label>
           <input name="nombre_comercial" value="${cfg.nombre_comercial || ''}">
+          <div class="app-form-hint">Nombre con el que te conocen los clientes (puede diferir de la razón social).</div>
         </div>
         <div>
           <label>Email Facturación</label>
           <input type="email" name="email_facturacion" value="${cfg.email_facturacion || ''}">
+          <div class="app-form-hint">Aparece en cotizaciones y OCs como contacto de pagos.</div>
         </div>
         <div>
           <label>Teléfono</label>
@@ -151,14 +155,17 @@ function renderTabEmpresa(panel, cfg) {
         <div>
           <label>Web</label>
           <input name="web" value="${cfg.web || ''}">
+          <div class="app-form-hint">Sin "https://". Ej: www.metalengineers.com.pe</div>
         </div>
         <div style="grid-column:span 2">
           <label>Dirección Fiscal</label>
           <input name="direccion_fiscal" value="${cfg.direccion_fiscal || ''}">
+          <div class="app-form-hint">Dirección registrada en SUNAT. Aparece en facturas y comprobantes.</div>
         </div>
         <div style="grid-column:span 2">
           <label>Logo URL</label>
           <input name="logo_url" value="${cfg.logo_url || ''}">
+          <div class="app-form-hint">URL pública de la imagen del logo. Recomendado: PNG con fondo transparente, máx. 800px ancho.</div>
         </div>
         <div style="grid-column:span 2;display:flex;justify-content:flex-end">
           <button type="submit" class="btn-primary" style="padding:10px 24px;background:var(--primary-color);color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:600">
