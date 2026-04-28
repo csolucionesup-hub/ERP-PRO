@@ -86,6 +86,7 @@ window.navigate = (page) => navigate(page);
 window.logout = function () {
   localStorage.removeItem('erp_token');
   localStorage.removeItem('erp_user');
+  localStorage.removeItem('erp_last_page');
   window.location.replace('/login.html');
 };
 
@@ -144,6 +145,10 @@ async function navigate(page) {
   currentPage = page;
   renderSidebar(page);
   history.pushState({ page }, '', `#${page}`);
+  // Persistimos la última página visitada para que un Ctrl+Shift+R o
+  // un cierre/apertura de pestaña re-aterrice al usuario donde estaba,
+  // incluso si el hash se pierde por algún motivo (cache, redirect, etc.).
+  try { localStorage.setItem('erp_last_page', page); } catch {}
 
   const mainContent = document.getElementById('main-content');
   mainContent.innerHTML = '<div style="padding:50px;text-align:center;color:var(--text-secondary);">Cargando módulo...</div>';
@@ -256,7 +261,22 @@ async function init() {
     }
   }
 
-  const destino = hashPage && PAGES[hashPage] ? hashPage : paginaInicio;
+  // Resolver destino con fallback en cascada para que un Ctrl+Shift+R
+  // mantenga al usuario en el módulo donde estaba (clave: muchos usuarios
+  // no son GERENTE y no tienen acceso al dashboard, así que recargar y
+  // caer ahí los mete en "Acceso restringido").
+  // 1) hash explícito en la URL (#finanzas) — top priority
+  // 2) última página guardada en localStorage (sobrevive a reloads)
+  // 3) página de inicio según rol/módulos (último recurso)
+  let lastPage = null;
+  try { lastPage = localStorage.getItem('erp_last_page'); } catch {}
+
+  let destino = paginaInicio;
+  if (hashPage && PAGES[hashPage] && tieneAcceso(user, hashPage)) {
+    destino = hashPage;
+  } else if (lastPage && PAGES[lastPage] && tieneAcceso(user, lastPage)) {
+    destino = lastPage;
+  }
   navigate(destino);
 }
 
