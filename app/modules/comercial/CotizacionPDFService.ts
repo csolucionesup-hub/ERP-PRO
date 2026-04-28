@@ -212,18 +212,24 @@ class CotizacionPDFService {
     const cST = L + 386,  wST = R - (L + 386); // = 109pt
 
     const drawTableHeader = () => {
-      // Header con fondo de color de marca (rojo Perfotools / negro Metal)
-      // Banda 26pt (antes 22pt) para que el texto respire arriba/abajo.
-      doc.rect(L, y, pageW, 26).fillColor(visual.color).fill();
+      // Header con fondo de color de marca (rojo Perfotools / negro Metal).
+      // Banda 32pt: título en línea 1 y moneda (S/ o US$) en línea 2 para
+      // que "Precio Unit. US$" no se corte en Perfotools y todo respire.
+      doc.rect(L, y, pageW, 32).fillColor(visual.color).fill();
       doc.fontSize(9).font('Helvetica-Bold').fillColor('#FFFFFF');
-      const hY = y + 9;
+      // Columnas sin moneda: centradas verticalmente en la banda
+      const hY = y + 11;
       doc.text('Ítem',        cIT, hY, { width: wIT, align: 'center' });
       doc.text('Descripción', cDE + 4, hY, { width: wDE - 4, align: 'left' });
       doc.text('Unidad',      cUN, hY, { width: wUN, align: 'center' });
       doc.text('Cantidad',    cCA, hY, { width: wCA, align: 'center' });
-      doc.text(`Precio Unit. ${curSym}`, cPU, hY, { width: wPU - 4, align: 'right' });
-      doc.text(`Sub Total ${curSym}`,    cST, hY, { width: wST - 4, align: 'right' });
-      y += 26;
+      // Columnas con moneda: dos líneas (label + moneda)
+      const hY1 = y + 5, hY2 = y + 18;
+      doc.text('Precio Unit.', cPU, hY1, { width: wPU - 4, align: 'right' });
+      doc.text(curSym,         cPU, hY2, { width: wPU - 4, align: 'right' });
+      doc.text('Sub Total',    cST, hY1, { width: wST - 4, align: 'right' });
+      doc.text(curSym,         cST, hY2, { width: wST - 4, align: 'right' });
+      y += 32 + 4; // banda + 4pt de aire antes de la primera fila
       doc.fillColor('#000');
     };
 
