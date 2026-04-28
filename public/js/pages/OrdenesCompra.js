@@ -61,6 +61,78 @@ function confirmarAccion({ titulo, mensaje, tipo = 'warning', textoBoton = 'Conf
   });
 }
 
+// ─────────── Preview de PDF de OC en modal con iframe ───────────
+// Helper compartido — Logistica.js también lo usa via window.previewPDFOC.
+// Se declara al top-level para que esté disponible apenas se carga el módulo
+// OrdenesCompra (importado en app.js), no solo cuando el usuario entra a OC.
+async function fetchPDFOC(id) {
+  const token = localStorage.getItem('erp_token');
+  const r = await fetch(`/api/ordenes-compra/${id}/pdf`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!r.ok) {
+    const errBody = await r.json().catch(() => ({}));
+    throw new Error(errBody.error || `HTTP ${r.status}`);
+  }
+  return r.blob();
+}
+
+window.previewPDFOC = async (id, nro) => {
+  let blobUrl = null;
+  let overlay = null;
+  try {
+    const blob = await fetchPDFOC(id);
+    blobUrl = URL.createObjectURL(blob);
+    const filename = `OC-${String(nro).replace(/\s+/g, '_')}.pdf`;
+
+    overlay = document.createElement('div');
+    overlay.style.cssText =
+      'position:fixed;inset:0;background:rgba(0,0,0,0.65);z-index:9000;' +
+      'display:flex;align-items:center;justify-content:center;padding:20px';
+    overlay.innerHTML = `
+      <div style="background:#fff;border-radius:8px;width:min(960px,95vw);height:min(92vh,1200px);display:flex;flex-direction:column;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.4)">
+        <div style="padding:12px 16px;border-bottom:1px solid #e5e7eb;display:flex;justify-content:space-between;align-items:center;background:#f9fafb;flex-wrap:wrap;gap:8px">
+          <div>
+            <strong style="font-size:14px;color:#111">📄 Vista previa</strong>
+            <span style="font-size:12px;color:#6b7280;margin-left:10px">OC ${nro}</span>
+          </div>
+          <div style="display:flex;gap:8px">
+            <button data-dl type="button"
+              style="padding:7px 14px;background:#dc2626;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:12px;font-weight:600">
+              📥 Descargar
+            </button>
+            <button data-close type="button"
+              style="padding:7px 14px;background:#fff;color:#374151;border:1px solid #d1d5db;border-radius:4px;cursor:pointer;font-size:12px">
+              Cerrar
+            </button>
+          </div>
+        </div>
+        <iframe src="${blobUrl}" style="flex:1;border:none;width:100%;background:#525659" title="Preview OC ${nro}"></iframe>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+
+    const cleanup = () => {
+      if (overlay && overlay.parentNode) overlay.remove();
+      if (blobUrl) { URL.revokeObjectURL(blobUrl); blobUrl = null; }
+    };
+    overlay.querySelector('[data-dl]').onclick = () => {
+      const a = document.createElement('a');
+      a.href = blobUrl;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    };
+    overlay.querySelector('[data-close]').onclick = cleanup;
+  } catch (err) {
+    if (overlay && overlay.parentNode) overlay.remove();
+    if (blobUrl) URL.revokeObjectURL(blobUrl);
+    if (window.showError) window.showError('Error abriendo vista previa: ' + (err.message || err));
+    else alert('Error abriendo vista previa: ' + (err.message || err));
+  }
+};
+
 // Confirmación destructiva: requiere tipear texto exacto para habilitar el botón.
 function confirmarTexto({ titulo, mensaje, textoRequerido }) {
   return new Promise((resolve) => {
@@ -503,7 +575,9 @@ async function verOC(id_oc) {
 function accionesSegunEstado(oc) {
   const btns = [];
   const esGerente = getUserRol() === 'GERENTE';
-  // PDF siempre disponible — botón principal
+  const nroSafe = String(oc.nro_oc).replace(/'/g, "\\'");
+  // Ver (preview en modal) + Descargar PDF — siempre disponibles.
+  btns.push(`<button onclick="window.previewPDFOC(${oc.id_oc}, '${nroSafe}')" style="padding:10px 18px;background:#fff;color:#374151;border:1px solid #d1d5db;border-radius:6px;cursor:pointer;font-weight:600">👁️ Ver</button>`);
   btns.push(`<button onclick="OC.descargarPDF(${oc.id_oc})" style="padding:10px 18px;background:#dc2626;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">📄 Descargar PDF</button>`);
   if (oc.estado === 'BORRADOR') {
     btns.push(`<button onclick="OC.aprobar(${oc.id_oc})" style="padding:10px 18px;background:#16a34a;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">✓ Aprobar</button>`);
@@ -523,7 +597,6 @@ function accionesSegunEstado(oc) {
   }
   // Eliminar físico — hasta APROBADA inclusive, solo GERENTE.
   if (['BORRADOR', 'APROBADA'].includes(oc.estado) && esGerente) {
-    const nroSafe = String(oc.nro_oc).replace(/'/g, "\\'");
     btns.push(`<button onclick="OC.eliminarOC(${oc.id_oc}, '${nroSafe}')" style="padding:10px 18px;background:transparent;color:#7f1d1d;border:1px solid #7f1d1d;border-radius:6px;cursor:pointer;font-weight:600">🗑 Eliminar</button>`);
   }
   if (!['FACTURADA', 'PAGADA', 'ANULADA'].includes(oc.estado)) {

@@ -471,6 +471,7 @@ function renderTablaOCs(ocs, opts = {}) {
               <td style="padding:8px;text-align:right;font-weight:700">${fmtMoney(o.total, o.moneda)}</td>
               <td style="padding:8px;text-align:center">${estadoBadgeOC(o.estado)}</td>
               <td style="padding:8px;text-align:center;white-space:nowrap">
+                <button onclick="window.previewPDFOC(${o.id_oc}, '${String(o.nro_oc).replace(/'/g, "\\'")}')" style="padding:3px 8px;border:1px solid #d1d5db;background:transparent;color:#374151;border-radius:4px;cursor:pointer;font-size:11px;margin-right:4px">👁️ Ver</button>
                 <button onclick="Logistica.descargarPDF(${o.id_oc})" style="padding:3px 8px;border:1px solid var(--primary-color);background:transparent;color:var(--primary-color);border-radius:4px;cursor:pointer;font-size:11px">📄 PDF</button>
                 ${o.estado !== 'ANULADA' && o.estado !== 'PAGADA' ? `<button onclick="Logistica.anularOC(${o.id_oc})" style="padding:3px 8px;border:1px solid #dc2626;background:transparent;color:#dc2626;border-radius:4px;cursor:pointer;font-size:11px;margin-left:4px">✕</button>` : ''}
               </td>

@@ -126,7 +126,11 @@ export class OrdenCompraPDFService {
     const contentW = pageW - marginL - marginR;
 
     // ── 1. Logo (arriba izquierda) ─────────────────────────
-    const logoPath = path.join(__dirname, '..', '..', '..', 'public', 'img', 'logo-metal.png');
+    // process.cwd() (no __dirname) porque tras `tsc` el __dirname queda en
+    // dist/app/modules/compras y ../../../public no existe en producción.
+    // Marca PT usa logo Perfotools, marca ME (default) usa Metal Engineers.
+    const logoFile = oc.empresa === 'PT' ? 'logo-perfotools.png' : 'logo-metal.png';
+    const logoPath = path.join(process.cwd(), 'public', 'img', logoFile);
     try {
       if (fs.existsSync(logoPath)) {
         doc.image(logoPath, marginL, 35, { width: 140 });
@@ -175,66 +179,93 @@ export class OrdenCompraPDFService {
     y += 18;
 
     // ── 5. Tabla de ítems ──────────────────────────────────
+    // Columnas dinámicas: si la OC no aplica IGV, omitimos las columnas IGV
+    // y Total (Sub Total = Total efectivo) para que el grid no quede con
+    // una columna vacía visualmente confusa. Total content width = 505pt.
+    const aplicaIgv = !!Number(oc.aplica_igv);
+    const totLabel = 'Total ' + (oc.moneda === 'USD' ? '$' : 'S/');
+    type Cell = { x: number; w: number; label: string };
+    const col: { item: Cell; desc: Cell; und: Cell; cant: Cell; pu: Cell; sub: Cell; igv?: Cell; tot?: Cell } = aplicaIgv
+      ? {
+          item: { x: marginL,        w: 30,  label: 'Item' },
+          desc: { x: marginL + 30,   w: 200, label: 'Descripción' },
+          und:  { x: marginL + 230,  w: 35,  label: 'Und' },
+          cant: { x: marginL + 265,  w: 40,  label: 'Cant' },
+          pu:   { x: marginL + 305,  w: 50,  label: 'P/U' },
+          sub:  { x: marginL + 355,  w: 55,  label: 'Sub Total' },
+          igv:  { x: marginL + 410,  w: 40,  label: 'IGV' },
+          tot:  { x: marginL + 450,  w: 55,  label: totLabel },
+        }
+      : {
+          item: { x: marginL,        w: 30,  label: 'Item' },
+          desc: { x: marginL + 30,   w: 250, label: 'Descripción' },
+          und:  { x: marginL + 280,  w: 40,  label: 'Und' },
+          cant: { x: marginL + 320,  w: 50,  label: 'Cant' },
+          pu:   { x: marginL + 370,  w: 60,  label: 'P/U' },
+          sub:  { x: marginL + 430,  w: 75,  label: totLabel },
+        };
+    const cols: Cell[] = Object.values(col).filter(Boolean) as Cell[];
+    const headerH = 18;
+    const rowMin  = 18;
     const tableTop = y;
-    const col = {
-      item:  { x: marginL,          w: 36,  label: 'Item' },
-      desc:  { x: marginL + 36,     w: 230, label: 'Descripción' },
-      und:   { x: marginL + 266,    w: 40,  label: 'Und' },
-      cant:  { x: marginL + 306,    w: 48,  label: 'Cant' },
-      pu:    { x: marginL + 354,    w: 48,  label: 'P/U' },
-      sub:   { x: marginL + 402,    w: 58,  label: 'Sub Total' },
-      igv:   { x: marginL + 460,    w: 38,  label: 'IGV' },
-      tot:   { x: marginL + 498,    w: 54,  label: 'Total ' + (oc.moneda === 'USD' ? '$' : 'S/') },
-    };
-    const rowH = 18;
 
-    // Header
+    // Header con altura fija
     doc.font('Helvetica-Bold').fontSize(9);
-    Object.values(col).forEach(c => {
-      doc.rect(c.x, tableTop, c.w, rowH).stroke();
-      const align = (c.label === 'Descripción') ? 'center' : (c.label === 'Item' || c.label.startsWith('Und') || c.label.startsWith('Cant') ? 'center' : 'center');
-      doc.text(c.label, c.x + 2, tableTop + 5, { width: c.w - 4, align });
+    cols.forEach(c => {
+      doc.rect(c.x, tableTop, c.w, headerH).stroke();
+      doc.text(c.label, c.x + 2, tableTop + 5, { width: c.w - 4, align: 'center' });
     });
 
-    // Rows
-    y = tableTop + rowH;
+    // Filas con altura dinámica según el largo de la descripción
+    y = tableTop + headerH;
     doc.font('Helvetica').fontSize(8.5);
     const maxLineas = Math.max(oc.detalle.length, 2); // mínimo 2 filas visibles
     for (let i = 0; i < maxLineas; i++) {
       const l = oc.detalle[i];
-      Object.values(col).forEach(c => doc.rect(c.x, y, c.w, rowH).stroke());
+      doc.font('Helvetica').fontSize(8.5);
+      const descTexto = l ? (l.descripcion || '') : '';
+      const descH = descTexto ? doc.heightOfString(descTexto, { width: col.desc.w - 6 }) : 0;
+      const rowH = Math.max(rowMin, descH + 10); // 5pt padding top + 5pt bottom
+
+      // Bordes con la altura calculada
+      cols.forEach(c => doc.rect(c.x, y, c.w, rowH).stroke());
+
       if (l) {
         const sub = Number(l.subtotal) || 0;
         const cant = Number(l.cantidad) || 0;
         const pu = Number(l.precio_unitario) || 0;
         doc.text(String(l.orden || (i + 1)), col.item.x + 2, y + 5, { width: col.item.w - 4, align: 'center' });
-        doc.text(l.descripcion || '', col.desc.x + 3, y + 5, { width: col.desc.w - 6 });
+        doc.text(descTexto, col.desc.x + 3, y + 5, { width: col.desc.w - 6 });
         doc.text(l.unidad || '', col.und.x + 2, y + 5, { width: col.und.w - 4, align: 'center' });
         doc.text(cant.toFixed(2), col.cant.x + 2, y + 5, { width: col.cant.w - 6, align: 'right' });
         doc.text(pu.toFixed(2), col.pu.x + 2, y + 5, { width: col.pu.w - 6, align: 'right' });
         doc.text(sub.toFixed(2), col.sub.x + 2, y + 5, { width: col.sub.w - 6, align: 'right' });
-        const igvL = oc.aplica_igv ? Number((sub * (cfg.tasa_igv || 18) / 100).toFixed(2)) : 0;
-        if (igvL > 0) doc.text(igvL.toFixed(2), col.igv.x + 2, y + 5, { width: col.igv.w - 6, align: 'right' });
-        const totalL = Number((sub + igvL).toFixed(2));
-        doc.text(totalL.toFixed(2), col.tot.x + 2, y + 5, { width: col.tot.w - 6, align: 'right' });
+        if (aplicaIgv && col.igv && col.tot) {
+          const igvL = Number((sub * (cfg.tasa_igv || 18) / 100).toFixed(2));
+          doc.text(igvL.toFixed(2), col.igv.x + 2, y + 5, { width: col.igv.w - 6, align: 'right' });
+          const totalL = Number((sub + igvL).toFixed(2));
+          doc.text(totalL.toFixed(2), col.tot.x + 2, y + 5, { width: col.tot.w - 6, align: 'right' });
+        }
       }
       y += rowH;
     }
 
-    // Total row
+    // Fila de Total general — la última columna numérica recibe el monto.
     doc.font('Helvetica-Bold').fontSize(10);
     const simbolo = oc.moneda === 'USD' ? '$' : 'S/.';
-    doc.rect(col.item.x, y, col.igv.x + col.igv.w - col.item.x, rowH).stroke();
-    doc.rect(col.tot.x, y, col.tot.w, rowH).stroke();
-    doc.text(simbolo, col.igv.x, y + 5, { width: col.igv.w - 4, align: 'right' });
-    doc.text(Number(oc.total).toFixed(2), col.tot.x + 2, y + 5, { width: col.tot.w - 6, align: 'right' });
-    y += rowH;
+    const totalCell = aplicaIgv ? col.tot! : col.sub;
+    const labelEnd = totalCell.x; // hasta donde llega la celda de etiqueta
+    doc.rect(col.item.x, y, labelEnd - col.item.x, rowMin).stroke();
+    doc.rect(totalCell.x, y, totalCell.w, rowMin).stroke();
+    doc.text(simbolo, totalCell.x - 60, y + 5, { width: 56, align: 'right' });
+    doc.text(Number(oc.total).toFixed(2), totalCell.x + 2, y + 5, { width: totalCell.w - 6, align: 'right' });
+    y += rowMin;
 
     // "SON: ..."
-    doc.rect(col.item.x, y, contentW, rowH).stroke();
+    doc.rect(col.item.x, y, contentW, rowMin).stroke();
     doc.font('Helvetica').fontSize(9);
     doc.text(`SON: ${numeroALetras(oc.total, oc.moneda)}`, col.item.x + 5, y + 5, { width: contentW - 10 });
-    y += rowH + 18;
+    y += rowMin + 18;
 
     // ── 6. Condiciones y Forma de Pago ─────────────────────
     doc.font('Helvetica-Bold').fontSize(10);
