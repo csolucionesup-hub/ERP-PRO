@@ -388,7 +388,7 @@ function formNueva(marca, tcHoy, opts = {}) {
                   style="padding:7px 12px;background:#fff;border:1px solid #d1d5db;border-radius:4px;cursor:pointer;font-size:12px;display:flex;align-items:center;gap:6px">
                   📷 Subir foto
                 </button>
-                <input type="file" id="file-foto-${idp}" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,image/avif,image/gif,.heic,.heif,.avif" style="display:none">
+                <input type="file" id="file-foto-${idp}" accept="image/*" style="display:none">
                 <span id="foto-status-${idp}" style="font-size:11px;color:var(--text-secondary)">Ninguna foto seleccionada</span>
                 <img id="foto-preview-${idp}" style="display:none;width:36px;height:36px;object-fit:cover;border-radius:4px;border:1px solid #e5e7eb">
                 <button type="button" id="foto-clear-${idp}" style="display:none;background:none;border:none;color:#dc2626;cursor:pointer;font-size:14px">✕</button>
