@@ -191,37 +191,39 @@ class CotizacionPDFService {
     if (cot.correo) lineField('Correo', cot.correo, false, `mailto:${cot.correo}`);
     lineField('Proyecto', cot.proyecto, true);
     lineField('Ref.',     cot.ref,      true);
-    y += 6;
+    y += 16;
 
     // ── Saludo ──────────────────────────────────────────────────
     doc.font('Helvetica').fontSize(10).fillColor('#000')
-      .text('Estimados señores:', L, y); y += 13;
-    doc.text('En atención a su solicitud, nos es grato cotizarle:', L, y); y += 18;
+      .text('Estimados señores:', L, y); y += 14;
+    doc.text('En atención a su solicitud, nos es grato cotizarle:', L, y); y += 24;
 
     // ── Tabla de ítems ──────────────────────────────────────────
     // Columnas (A4 = 595pt, L=50, R=545, pageW=495)
     // Ítem | Descripción | Unidad | Cantidad | P.Unit | SubTotal+Foto
-    //   28 |         220 |     38 |       45 |     55 |        109 = 495 ✓
+    //   28 |         205 |     38 |       45 |     70 |        109 = 495 ✓
+    // wPU 55→70 para que "Precio Unit. S/" no quede apiñado contra el borde.
     // La foto va DEBAJO del precio en la columna SubTotal (estilo PDF Excel referencia).
     const cIT = L,        wIT = 28;
-    const cDE = L + 28,   wDE = 220;
-    const cUN = L + 248,  wUN = 38;
-    const cCA = L + 286,  wCA = 45;
-    const cPU = L + 331,  wPU = 55;
+    const cDE = L + 28,   wDE = 205;
+    const cUN = L + 233,  wUN = 38;
+    const cCA = L + 271,  wCA = 45;
+    const cPU = L + 316,  wPU = 70;
     const cST = L + 386,  wST = R - (L + 386); // = 109pt
 
     const drawTableHeader = () => {
       // Header con fondo de color de marca (rojo Perfotools / negro Metal)
-      doc.rect(L, y, pageW, 22).fillColor(visual.color).fill();
+      // Banda 26pt (antes 22pt) para que el texto respire arriba/abajo.
+      doc.rect(L, y, pageW, 26).fillColor(visual.color).fill();
       doc.fontSize(9).font('Helvetica-Bold').fillColor('#FFFFFF');
-      const hY = y + 6;
-      doc.text('Ítem',        cIT, hY, { width: wIT, align: 'left' });
-      doc.text('Descripción', cDE, hY, { width: wDE, align: 'left' });
+      const hY = y + 9;
+      doc.text('Ítem',        cIT, hY, { width: wIT, align: 'center' });
+      doc.text('Descripción', cDE + 4, hY, { width: wDE - 4, align: 'left' });
       doc.text('Unidad',      cUN, hY, { width: wUN, align: 'center' });
       doc.text('Cantidad',    cCA, hY, { width: wCA, align: 'center' });
-      doc.text(`Precio Unit. ${curSym}`, cPU, hY, { width: wPU, align: 'right' });
-      doc.text(`Sub Total ${curSym}`,    cST, hY, { width: wST, align: 'right' });
-      y += 22;
+      doc.text(`Precio Unit. ${curSym}`, cPU, hY, { width: wPU - 4, align: 'right' });
+      doc.text(`Sub Total ${curSym}`,    cST, hY, { width: wST - 4, align: 'right' });
+      y += 26;
       doc.fillColor('#000');
     };
 
@@ -341,10 +343,10 @@ class CotizacionPDFService {
       const igvOrig = esUSD ? Number(cot.igv) / tc : Number(cot.igv);
       tot('IGV', igvOrig.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }), false, '18%');
     }
-    doc.moveTo(cUN, y).lineTo(R, y).lineWidth(0.8).strokeColor('#000').stroke(); y += 3;
+    doc.moveTo(cUN, y).lineTo(R, y).lineWidth(0.8).strokeColor('#000').stroke(); y += 5;
     const totalOrig = esUSD ? Number(cot.total) / tc : Number(cot.total);
     tot(`Total ${curSym}`, totalOrig.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }), true);
-    y += 6;
+    y += 16;
 
     // ── "SON: ..." ──────────────────────────────────────────────
     ensureSpace(30);
@@ -352,7 +354,7 @@ class CotizacionPDFService {
     doc.font('Helvetica-Bold').fontSize(10).fillColor('#000')
       .text(`SON: ${letras} ${curWord}${aplicaIGV ? ' INCLUIDO IGV' : ''}`,
             L, y, { width: pageW, align: 'center' });
-    y += 20;
+    y += 26;
 
     // ── Condiciones generales ───────────────────────────────────
     ensureSpace(140);
