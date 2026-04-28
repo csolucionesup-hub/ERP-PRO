@@ -547,6 +547,17 @@ apiRouter.post('/cotizaciones/:id/anular', validateIdParam, auditLog('Cotizacion
   res.json({ success: true });
 });
 
+// DELETE físico — solo GERENTE, solo para EN_PROCESO/A_ESPERA_RESPUESTA.
+// Caso de uso: borrar duplicados antes de que circulen a clientes.
+apiRouter.delete('/cotizaciones/:id', validateIdParam, auditLog('Cotizacion', 'DELETE'), async (req: Request, res: Response) => {
+  const user = (req as any).user;
+  if (!user || user.rol !== 'GERENTE') {
+    return res.status(403).json({ error: 'Solo el GERENTE puede eliminar cotizaciones' });
+  }
+  const result = await CotizacionService.deleteCotizacion(parseInt(req.params.id as string));
+  res.json({ success: true, ...result });
+});
+
 apiRouter.get('/cotizaciones/:id/pdf', validateIdParam, async (req: Request, res: Response) => {
   const id = parseInt(req.params.id as string);
   const buffer = await CotizacionPDFService.generar(id);

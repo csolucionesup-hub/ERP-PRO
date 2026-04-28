@@ -16,6 +16,14 @@ import { Contabilidad }   from './pages/Contabilidad.js';
 import { Importador }     from './pages/Importador.js';
 import { OrdenesCompra }  from './pages/OrdenesCompra.js';
 import { Alertas }        from './pages/Alertas.js';
+import { showSuccess, showError, showToast } from './services/ui.js';
+
+// Exponer helpers de toast globalmente (los modules ES no tienen acceso
+// directo desde otros modules sin import; varios usan window.showSuccess?.()
+// con optional chaining, que sin esto falla silenciosamente).
+window.showSuccess = showSuccess;
+window.showError   = showError;
+window.showToast   = showToast;
 
 // ── Módulos en orden de preferencia para redirección inicial ──
 const MODULE_ORDER = ['GERENCIA', 'COMERCIAL', 'FINANZAS', 'LOGISTICA', 'ALMACEN', 'ADMINISTRACION'];

@@ -140,6 +140,7 @@ export const api = {
     updateCotizacion: (id, d)  => put(`/cotizaciones/${id}`, d),
     updateEstado:     (id, e)  => put(`/cotizaciones/${id}/estado`, { estado: e }),
     anularCotizacion: (id)     => post(`/cotizaciones/${id}/anular`),
+    deleteCotizacion: (id)     => del(`/cotizaciones/${id}`),
     resetTodo:        ()       => del('/cotizaciones/reset'),
     uploadFoto: async (file) => {
       const token = localStorage.getItem('erp_token');

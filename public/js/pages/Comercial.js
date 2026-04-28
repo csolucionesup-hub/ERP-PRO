@@ -704,6 +704,18 @@ function archivoTable(cotizaciones, filtroMarca) {
             <button class="action-btn action-btn-anular"
               onclick="window.anularCotizacion(${c.id_cotizacion},'${c.nro_cotizacion.replace(/'/g, "\\'")}')">Anular</button>
             ` : `<span style="font-size:11px;color:var(--text-secondary)">Anulada</span>`}
+            ${(() => {
+              try {
+                const u = JSON.parse(localStorage.getItem('erp_user') || '{}');
+                if (u.rol === 'GERENTE' && ESTADOS_EDITABLES.includes(c.estado)) {
+                  return `<button class="action-btn"
+                    style="background:#fff;color:#dc2626;border:1px solid #fca5a5;font-size:11px"
+                    title="Eliminar definitivamente (solo duplicados)"
+                    onclick="window.eliminarCotizacion(${c.id_cotizacion},'${c.nro_cotizacion.replace(/'/g, "\\'")}')">🗑 Eliminar</button>`;
+                }
+              } catch {}
+              return '';
+            })()}
           </div>
         </td>
       </tr>`;
@@ -1200,6 +1212,26 @@ export const Comercial = async () => {
       try {
         await api.cotizaciones.anularCotizacion(id);
         window.showSuccess?.(`Cotización ${nro} anulada.`);
+        setTimeout(() => window.navigate('comercial'), 1200);
+      } catch (err) {
+        window.showError?.('Error: ' + (err.message || JSON.stringify(err)));
+      }
+    };
+
+    window.eliminarCotizacion = async (id, nro) => {
+      // Eliminación física de duplicados — solo GERENTE, solo EN_PROCESO/A_ESPERA.
+      // Doble barrera: 1) advertencia explícita, 2) tipear el número exacto.
+      const ok = await confirmarTexto({
+        titulo: '🗑 Eliminar cotización definitivamente',
+        mensaje: `Vas a ELIMINAR DEFINITIVAMENTE la cotización ${nro}.\n\nEsta acción NO se puede deshacer. La cotización y sus ítems se borrarán de la base de datos. El número correlativo quedará liberado (puede reutilizarse).\n\nUsá esto SOLO para duplicados creados por error que aún no circulan a clientes. Para todo lo demás, usá Anular.\n\nPara confirmar, escribí el número de cotización exacto:`,
+        textoRequerido: nro,
+        confirmLabel: 'Sí, eliminar',
+        tipo: 'danger',
+      });
+      if (!ok) return;
+      try {
+        await api.cotizaciones.deleteCotizacion(id);
+        window.showSuccess?.(`Cotización ${nro} eliminada definitivamente.`);
         setTimeout(() => window.navigate('comercial'), 1200);
       } catch (err) {
         window.showError?.('Error: ' + (err.message || JSON.stringify(err)));

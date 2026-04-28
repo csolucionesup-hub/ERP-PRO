@@ -606,6 +606,49 @@ class CotizacionService {
       conn.release();
     }
   }
+
+  /**
+   * Elimina FÍSICAMENTE una cotización (DELETE de BD).
+   * Caso de uso: cotización duplicada por error que el GERENTE quiere borrar
+   * antes de que circule a clientes. Libera el correlativo (puede reutilizarse).
+   *
+   * Reglas:
+   * - Solo cotizaciones en estado EN_PROCESO o A_ESPERA_RESPUESTA pueden borrarse.
+   *   El resto (ENVIADA / APROBADA / etc.) requiere ANULAR.
+   * - El control de rol GERENTE se hace en la ruta (index.ts).
+   * - Borra primero DetalleCotizacion (FK), después Cotizaciones.
+   */
+  async deleteCotizacion(id: number) {
+    const conn = await db.getConnection();
+    await conn.beginTransaction();
+    try {
+      const [rows] = await conn.query(
+        `SELECT estado, nro_cotizacion FROM Cotizaciones WHERE id_cotizacion = ? FOR UPDATE`,
+        [id]
+      );
+      const cot = (rows as any)[0];
+      if (!cot) throw new Error('Cotización no encontrada');
+
+      const ESTADOS_BORRABLES = ['EN_PROCESO', 'A_ESPERA_RESPUESTA'];
+      if (!ESTADOS_BORRABLES.includes(cot.estado)) {
+        throw new Error(
+          `Solo se pueden eliminar cotizaciones en estado EN_PROCESO o A_ESPERA_RESPUESTA. ` +
+          `Esta cotización está en ${cot.estado} — usá Anular en su lugar.`
+        );
+      }
+
+      await conn.query(`DELETE FROM DetalleCotizacion WHERE id_cotizacion = ?`, [id]);
+      await conn.query(`DELETE FROM Cotizaciones WHERE id_cotizacion = ?`, [id]);
+
+      await conn.commit();
+      return { id, nro_cotizacion: cot.nro_cotizacion };
+    } catch (e) {
+      await conn.rollback();
+      throw e;
+    } finally {
+      conn.release();
+    }
+  }
 }
 
 export default new CotizacionService();
