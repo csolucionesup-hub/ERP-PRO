@@ -366,6 +366,15 @@ function formNueva(marca, tcHoy, opts = {}) {
 
           <div style="border:1px dashed #d1d5db;padding:10px;border-radius:6px;background:#fff">
             <div style="font-size:11px;font-weight:600;color:var(--text-secondary);margin-bottom:6px">Agregar ítem</div>
+            <div id="edit-banner-${idp}" style="display:none;align-items:center;justify-content:space-between;gap:8px;padding:8px 10px;background:#fffbeb;border:1px solid #f59e0b;border-radius:5px;margin-bottom:8px">
+              <div style="font-size:12px;color:#92400e;font-weight:600">
+                ✎ Estás editando un ítem existente
+              </div>
+              <button type="button" onclick="window.__cancelarEdit_${idp}()"
+                style="padding:4px 10px;font-size:11px;background:#fff;border:1px solid #f59e0b;color:#92400e;border-radius:4px;cursor:pointer;font-weight:600">
+                Cancelar edición
+              </button>
+            </div>
             <div id="form-linea-${idp}" style="display:flex;flex-direction:column;gap:6px">
               <input name="descripcion" placeholder="Descripción (obligatoria)*"
                 style="padding:7px;border:1px solid #ddd;border-radius:4px;font-size:12px">
@@ -446,20 +455,25 @@ function bindForm(marca, opts = {}) {
     } else {
       box.innerHTML = lineas.map((l, i) => {
         const s = Number(l.cantidad) * Number(l.precio_unitario);
+        const editing = editingItemIdx === i;
         return `
-          <div style="display:grid;grid-template-columns:auto 1fr auto auto;gap:8px;padding:8px;background:#fff;border:1px solid #e5e7eb;border-radius:5px;align-items:center">
+          <div style="display:grid;grid-template-columns:auto 1fr auto auto auto;gap:8px;padding:8px;background:${editing ? '#fffbeb' : '#fff'};border:1px solid ${editing ? '#f59e0b' : '#e5e7eb'};border-radius:5px;align-items:center">
             ${l.foto_url
               ? `<img src="${l.foto_url}" style="width:42px;height:42px;object-fit:cover;border-radius:4px;border:1px solid #e5e7eb" onerror="this.style.display='none'">`
               : `<div style="width:42px;height:42px;background:#f3f4f6;border-radius:4px;display:flex;align-items:center;justify-content:center;color:#9ca3af;font-size:10px">sin foto</div>`}
             <div style="min-width:0">
-              <div style="font-size:12px;font-weight:600">${l.descripcion}</div>
+              <div style="font-size:12px;font-weight:600">${l.descripcion}${editing ? ' <span style="color:#d97706;font-weight:600">· editando…</span>' : ''}</div>
               ${l.subdescripcion ? `<div style="font-size:11px;color:#4b5563;white-space:pre-wrap">${l.subdescripcion}</div>` : ''}
               ${l.notas ? `<div style="font-size:10px;color:#b45309;font-style:italic;white-space:pre-wrap">${l.notas}</div>` : ''}
               <div style="font-size:10px;color:var(--text-secondary)">${l.cantidad} ${l.unidad || ''} × ${fCur(l.precio_unitario)}</div>
             </div>
             <div style="font-weight:700;font-size:12px">${fCur(s)}</div>
+            <button type="button" onclick="window.__editLinea_${idp}(${i})"
+              title="Editar este ítem"
+              style="background:none;border:1px solid #d1d5db;color:#3b82f6;cursor:pointer;font-size:12px;padding:2px 7px;border-radius:4px">✎</button>
             <button type="button" onclick="window.__removeLinea_${idp}(${i})"
-              style="background:none;border:none;color:#dc2626;cursor:pointer;font-size:14px">✕</button>
+              title="Quitar este ítem"
+              style="background:none;border:1px solid #fca5a5;color:#dc2626;cursor:pointer;font-size:12px;padding:2px 7px;border-radius:4px">✕</button>
           </div>`;
       }).join('');
     }
@@ -474,7 +488,68 @@ function bindForm(marca, opts = {}) {
     if (el(`res-total-${idp}`)) el(`res-total-${idp}`).textContent = fPEN(subPEN + igv);
   };
 
-  window[`__removeLinea_${idp}`] = (i) => { lineas.splice(i, 1); renderItems(); };
+  // Estado de edición del item dentro del form de "Agregar ítem".
+  // null = modo "agregar nuevo". Número = índice del ítem que se está editando.
+  let editingItemIdx = null;
+
+  window[`__removeLinea_${idp}`] = (i) => {
+    // Si estaba editando este mismo, salir del modo edit
+    if (editingItemIdx === i) cancelarEdicionItem();
+    else if (editingItemIdx !== null && i < editingItemIdx) editingItemIdx--; // ajustar índice
+    lineas.splice(i, 1);
+    renderItems();
+  };
+
+  // Setea el form de "Agregar ítem" en modo edit con los datos del item i
+  window[`__editLinea_${idp}`] = (i) => {
+    const l = lineas[i];
+    if (!l) return;
+    const formLinea = el(`form-linea-${idp}`);
+    if (!formLinea) return;
+    const q = (name) => formLinea.querySelector(`[name="${name}"]`);
+
+    if (q('descripcion'))     q('descripcion').value     = l.descripcion     || '';
+    if (q('subdescripcion'))  q('subdescripcion').value  = l.subdescripcion  || '';
+    if (q('notas'))           q('notas').value           = l.notas           || '';
+    if (q('unidad'))          q('unidad').value          = l.unidad          || '';
+    if (q('cantidad'))        q('cantidad').value        = l.cantidad        ?? '';
+    if (q('precio_unitario')) q('precio_unitario').value = l.precio_unitario ?? '';
+    if (q('foto_url'))        q('foto_url').value        = l.foto_url        || '';
+
+    // Si tenía foto, preview
+    if (l.foto_url) {
+      if (prevFoto)   { prevFoto.src = l.foto_url; prevFoto.style.display = 'inline-block'; }
+      if (clearFoto)  { clearFoto.style.display = 'inline-block'; }
+      if (statusFoto) { statusFoto.textContent = '✓ Foto cargada'; statusFoto.style.color = '#16a34a'; }
+      if (btnFoto)    { btnFoto.innerHTML = '📷 Cambiar'; }
+    } else {
+      resetFoto();
+    }
+
+    editingItemIdx = i;
+    if (btnAdd)     btnAdd.innerHTML = '💾 Guardar cambios';
+    const banner = el(`edit-banner-${idp}`);
+    if (banner) banner.style.display = 'flex';
+
+    renderItems();
+    // Llevar el form a la vista
+    formLinea.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  };
+
+  const cancelarEdicionItem = () => {
+    editingItemIdx = null;
+    const formLinea = el(`form-linea-${idp}`);
+    if (formLinea) {
+      ['descripcion','subdescripcion','notas','unidad','cantidad','precio_unitario','foto_url']
+        .forEach(n => { const e = formLinea.querySelector(`[name="${n}"]`); if (e) e.value = ''; });
+    }
+    resetFoto();
+    if (btnAdd) btnAdd.innerHTML = '+ Agregar';
+    const banner = el(`edit-banner-${idp}`);
+    if (banner) banner.style.display = 'none';
+    renderItems();
+  };
+  window[`__cancelarEdit_${idp}`] = cancelarEdicionItem;
 
   // Upload de foto a Cloudinary
   const btnFoto    = el(`btn-foto-${idp}`);
@@ -523,7 +598,7 @@ function bindForm(marca, opts = {}) {
   }
   if (clearFoto) clearFoto.onclick = resetFoto;
 
-  // Add línea
+  // Add o Guardar cambios (mismo botón, según editingItemIdx)
   const btnAdd = el(`btn-add-${idp}`);
   const divL   = el(`form-linea-${idp}`);
   if (btnAdd && divL) {
@@ -533,7 +608,7 @@ function bindForm(marca, opts = {}) {
       if (!desc.value || !cant.value || !prec.value) {
         return window.showError?.('Descripción, cantidad y precio son obligatorios.');
       }
-      lineas.push({
+      const datos = {
         descripcion:     desc.value,
         subdescripcion:  q('subdescripcion').value || undefined,
         notas:           q('notas').value          || undefined,
@@ -541,11 +616,21 @@ function bindForm(marca, opts = {}) {
         unidad:          q('unidad').value         || undefined,
         cantidad:        Number(cant.value),
         precio_unitario: Number(prec.value),
-      });
-      ['descripcion','subdescripcion','notas','unidad','cantidad','precio_unitario']
-        .forEach(n => { const e = q(n); if (e) e.value = ''; });
-      resetFoto(); // limpiar también la foto subida
-      renderItems();
+      };
+
+      if (editingItemIdx !== null) {
+        // Modo edit: reemplazar el ítem en su posición original
+        lineas[editingItemIdx] = datos;
+        window.showSuccess?.('Ítem actualizado.');
+        cancelarEdicionItem();
+      } else {
+        // Modo agregar nuevo
+        lineas.push(datos);
+        ['descripcion','subdescripcion','notas','unidad','cantidad','precio_unitario']
+          .forEach(n => { const e = q(n); if (e) e.value = ''; });
+        resetFoto();
+        renderItems();
+      }
     });
   }
 
