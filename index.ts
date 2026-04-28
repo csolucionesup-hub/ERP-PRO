@@ -478,11 +478,21 @@ const uploadFoto = multer({
 apiRouter.post('/cotizaciones/upload-foto', uploadFoto.single('foto'), async (req: Request, res: Response) => {
   if (!req.file) return res.status(400).json({ error: 'No se recibió archivo (campo "foto")' });
 
-  // Pre-check de credenciales — error claro en lugar del críptico "Must supply api_key"
-  if (!process.env.CLOUDINARY_CLOUD_NAME || !process.env.CLOUDINARY_API_KEY || !process.env.CLOUDINARY_API_SECRET) {
+  // Pre-check de credenciales — error claro en lugar del críptico "Must supply api_key".
+  // Acepta CUALQUIERA de los 2 formatos que Cloudinary soporta:
+  //   A) Las 3 variables separadas: CLOUDINARY_CLOUD_NAME / API_KEY / API_SECRET
+  //   B) La variable única CLOUDINARY_URL=cloudinary://API_KEY:API_SECRET@CLOUD_NAME
+  const tieneSeparadas = !!(
+    process.env.CLOUDINARY_CLOUD_NAME &&
+    process.env.CLOUDINARY_API_KEY &&
+    process.env.CLOUDINARY_API_SECRET
+  );
+  const tieneURL = !!(process.env.CLOUDINARY_URL && /^cloudinary:\/\/[^:]+:[^@]+@\S+/.test(process.env.CLOUDINARY_URL));
+  if (!tieneSeparadas && !tieneURL) {
     return res.status(503).json({
       error: 'El servicio de subida de fotos (Cloudinary) no está configurado en este servidor. ' +
-             'Pide al administrador que configure CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY y CLOUDINARY_API_SECRET en las variables de entorno.',
+             'Pide al administrador que configure CLOUDINARY_CLOUD_NAME + CLOUDINARY_API_KEY + CLOUDINARY_API_SECRET, ' +
+             'o alternativamente la variable única CLOUDINARY_URL.',
       code: 'CLOUDINARY_NOT_CONFIGURED',
     });
   }

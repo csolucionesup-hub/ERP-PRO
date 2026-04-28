@@ -1,22 +1,31 @@
 /**
  * Cloudinary Service — Upload de fotos de cotizaciones
  *
- * Las credenciales viven en .env:
- *   CLOUDINARY_CLOUD_NAME
- *   CLOUDINARY_API_KEY
- *   CLOUDINARY_API_SECRET
+ * Las credenciales pueden venir en cualquiera de los 2 formatos en .env:
+ *   A) CLOUDINARY_CLOUD_NAME + CLOUDINARY_API_KEY + CLOUDINARY_API_SECRET
+ *   B) CLOUDINARY_URL=cloudinary://API_KEY:API_SECRET@CLOUD_NAME
+ *
+ * Si están las 3 separadas, las usamos explícitamente. Si no, dejamos que
+ * el SDK auto-detecte de CLOUDINARY_URL (su comportamiento por default).
  *
  * Carpeta destino: metalengineers/cotizaciones/
  */
 
 import { v2 as cloudinary } from 'cloudinary';
 
-cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-  api_key:    process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET,
-  secure:     true,
-});
+if (process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY && process.env.CLOUDINARY_API_SECRET) {
+  cloudinary.config({
+    cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+    api_key:    process.env.CLOUDINARY_API_KEY,
+    api_secret: process.env.CLOUDINARY_API_SECRET,
+    secure:     true,
+  });
+} else if (process.env.CLOUDINARY_URL) {
+  // El SDK lee CLOUDINARY_URL automáticamente. Solo forzamos secure:true.
+  cloudinary.config({ secure: true });
+}
+// Si NO hay credenciales: el SDK queda sin config y el endpoint
+// /cotizaciones/upload-foto devolverá 503 antes de llamarlo.
 
 export const CloudinaryService = {
   async subirFotoCotizacion(buffer: Buffer, originalName: string) {
