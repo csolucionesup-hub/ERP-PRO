@@ -187,6 +187,9 @@
     transform: translateX(-100%);
     transition: transform 0.25s ease;
     width: 280px;
+    /* Debe quedar POR ENCIMA de .mobile-overlay (z-index 999), o los taps
+       sobre los items los captura el overlay y solo cierra el menú. */
+    z-index: 1000;
   }
   .sidebar.mobile-open { transform: translateX(0); }
 }
