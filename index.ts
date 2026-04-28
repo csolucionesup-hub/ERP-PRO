@@ -465,12 +465,22 @@ apiRouter.delete('/cotizaciones/reset', async (req: Request, res: Response) => {
 });
 
 // Upload de fotos (multer en memoria → Cloudinary)
+// Cloudinary normaliza HEIC/HEIF/AVIF/GIF al servir (fetch_format:auto), así
+// que aceptamos los formatos que el cliente típicamente recibe por WhatsApp /
+// iPhone y dejamos que el CDN los entregue como JPG/WebP al navegador.
+const MIMES_FOTO_OK = [
+  'image/jpeg', 'image/png', 'image/webp',
+  'image/heic', 'image/heif',  // iPhone por defecto
+  'image/avif',                 // formato moderno cada vez más común
+  'image/gif',
+];
 const uploadFoto = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB (ampliado: las fotos de celular modernos pesan 5-8 MB)
   fileFilter: (_req, file, cb) => {
-    const ok = ['image/jpeg', 'image/png', 'image/webp'].includes(file.mimetype);
-    if (!ok) return cb(new Error('Solo se aceptan JPG, PNG o WebP'));
+    if (!MIMES_FOTO_OK.includes(file.mimetype)) {
+      return cb(new Error('Formato no soportado. Acepta: JPG, PNG, WebP, HEIC, HEIF, AVIF, GIF'));
+    }
     cb(null, true);
   },
 });
