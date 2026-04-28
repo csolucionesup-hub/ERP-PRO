@@ -771,6 +771,8 @@ function archivoTable(cotizaciones, filtroMarca) {
         </td>
         <td style="text-align:center">
           <div style="display:flex;flex-direction:column;gap:4px">
+            <button class="action-btn"
+              onclick="window.previewPDFCotizacion(${c.id_cotizacion},'${c.nro_cotizacion.replace(/'/g, "\\'")}')">👁️ Ver</button>
             <button class="action-btn" style="background:#dc2626;color:#fff"
               onclick="window.descargarPDFCotizacion(${c.id_cotizacion},'${c.nro_cotizacion.replace(/'/g, "\\'")}')">📄 PDF</button>
             ${!anulada && (c.estado === 'APROBADA' || c.estado === 'TERMINADA') && !c.nro_factura ? `
@@ -858,8 +860,12 @@ function renderAnuladasTab(anuladas) {
         </td>
         <td style="text-align:center">${estadoBadge('ANULADA')}</td>
         <td style="text-align:center">
-          <button class="action-btn" style="background:#dc2626;color:#fff"
-            onclick="window.descargarPDFCotizacion(${c.id_cotizacion},'${c.nro_cotizacion.replace(/'/g, "\\'")}')">📄 PDF</button>
+          <div style="display:flex;flex-direction:column;gap:4px">
+            <button class="action-btn"
+              onclick="window.previewPDFCotizacion(${c.id_cotizacion},'${c.nro_cotizacion.replace(/'/g, "\\'")}')">👁️ Ver</button>
+            <button class="action-btn" style="background:#dc2626;color:#fff"
+              onclick="window.descargarPDFCotizacion(${c.id_cotizacion},'${c.nro_cotizacion.replace(/'/g, "\\'")}')">📄 PDF</button>
+          </div>
         </td>
       </tr>`;
   }).join('');
@@ -1256,6 +1262,69 @@ export const Comercial = async () => {
         setTimeout(() => URL.revokeObjectURL(url), 60_000);
       } catch (err) {
         window.showError?.('Error generando PDF: ' + (err.message || err));
+      }
+    };
+
+    // Preview en modal con iframe — el usuario decide si descarga o cierra.
+    // Usa el mismo endpoint que descargarPDFCotizacion (Bearer token via fetch);
+    // el blob URL alimenta el visor PDF nativo del navegador dentro del iframe.
+    window.previewPDFCotizacion = async (id, nro) => {
+      let blobUrl = null;
+      let overlay = null;
+      try {
+        const token = localStorage.getItem('erp_token');
+        const r = await fetch(`/api/cotizaciones/${id}/pdf`, { headers: { Authorization: `Bearer ${token}` } });
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        const blob = await r.blob();
+        blobUrl = URL.createObjectURL(blob);
+
+        const filename = `${String(nro).replace(/\s+/g, '_')}.pdf`;
+
+        overlay = document.createElement('div');
+        overlay.style.cssText =
+          'position:fixed;inset:0;background:rgba(0,0,0,0.65);z-index:9000;' +
+          'display:flex;align-items:center;justify-content:center;padding:20px';
+        overlay.innerHTML = `
+          <div style="background:#fff;border-radius:8px;width:min(960px,95vw);height:min(92vh,1200px);display:flex;flex-direction:column;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.4)">
+            <div style="padding:12px 16px;border-bottom:1px solid #e5e7eb;display:flex;justify-content:space-between;align-items:center;background:#f9fafb;flex-wrap:wrap;gap:8px">
+              <div>
+                <strong style="font-size:14px;color:#111">📄 Vista previa</strong>
+                <span style="font-size:12px;color:#6b7280;margin-left:10px">${nro}</span>
+              </div>
+              <div style="display:flex;gap:8px">
+                <button id="dl-pdf-${id}" type="button"
+                  style="padding:7px 14px;background:#dc2626;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:12px;font-weight:600">
+                  📥 Descargar
+                </button>
+                <button id="close-preview-${id}" type="button" data-close
+                  style="padding:7px 14px;background:#fff;color:#374151;border:1px solid #d1d5db;border-radius:4px;cursor:pointer;font-size:12px">
+                  Cerrar
+                </button>
+              </div>
+            </div>
+            <iframe src="${blobUrl}" style="flex:1;border:none;width:100%;background:#525659" title="Preview ${nro}"></iframe>
+          </div>
+        `;
+        document.body.appendChild(overlay);
+
+        const cleanup = () => {
+          if (overlay && overlay.parentNode) overlay.remove();
+          if (blobUrl) { URL.revokeObjectURL(blobUrl); blobUrl = null; }
+        };
+
+        document.getElementById(`dl-pdf-${id}`).onclick = () => {
+          const a = document.createElement('a');
+          a.href = blobUrl;
+          a.download = filename;
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+        };
+        document.getElementById(`close-preview-${id}`).onclick = cleanup;
+      } catch (err) {
+        if (overlay && overlay.parentNode) overlay.remove();
+        if (blobUrl) URL.revokeObjectURL(blobUrl);
+        window.showError?.('Error abriendo vista previa: ' + (err.message || err));
       }
     };
 
