@@ -1,0 +1,208 @@
+/* ═══════════════════════════════════════════════════════════════════════
+   forms.css — Inputs, selects, textareas, labels (Enterprise edition)
+   Refactor G17. Carga DESPUÉS de main.css.
+   Sin !important: los inline styles existentes en cada página (width,
+   padding, border) siguen ganando — este CSS aplica el resto (focus,
+   tipografía, fondo, color, motion).
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* ─── Reset base de form controls ───────────────────────────────────── */
+input[type="text"],
+input[type="number"],
+input[type="email"],
+input[type="tel"],
+input[type="search"],
+input[type="password"],
+input[type="date"],
+input[type="month"],
+input[type="time"],
+input[type="datetime-local"],
+input[type="url"],
+select,
+textarea {
+  font-family: var(--app-font);
+  font-size: var(--app-text-sm);
+  color: var(--app-text);
+  background-color: var(--app-bg-card);
+  border: 1px solid var(--app-border);
+  border-radius: var(--app-radius-sm);
+  padding: 8px 11px;
+  line-height: 1.4;
+  transition: border-color var(--app-transition-fast),
+              box-shadow var(--app-transition-fast);
+  outline: none;
+}
+
+/* Hover */
+input[type="text"]:hover:not(:disabled):not(:focus),
+input[type="number"]:hover:not(:disabled):not(:focus),
+input[type="email"]:hover:not(:disabled):not(:focus),
+input[type="tel"]:hover:not(:disabled):not(:focus),
+input[type="search"]:hover:not(:disabled):not(:focus),
+input[type="password"]:hover:not(:disabled):not(:focus),
+input[type="date"]:hover:not(:disabled):not(:focus),
+input[type="month"]:hover:not(:disabled):not(:focus),
+input[type="time"]:hover:not(:disabled):not(:focus),
+select:hover:not(:disabled):not(:focus),
+textarea:hover:not(:disabled):not(:focus) {
+  border-color: var(--app-border-strong);
+}
+
+/* Focus visible: ring sutil + border primary */
+input[type="text"]:focus,
+input[type="number"]:focus,
+input[type="email"]:focus,
+input[type="tel"]:focus,
+input[type="search"]:focus,
+input[type="password"]:focus,
+input[type="date"]:focus,
+input[type="month"]:focus,
+input[type="time"]:focus,
+input[type="datetime-local"]:focus,
+input[type="url"]:focus,
+select:focus,
+textarea:focus {
+  border-color: var(--app-primary);
+  box-shadow: 0 0 0 3px rgba(15, 23, 42, 0.08);
+}
+
+/* Disabled */
+input:disabled,
+select:disabled,
+textarea:disabled {
+  background-color: var(--app-bg-subtle);
+  color: var(--app-text-subtle);
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+/* Placeholder */
+input::placeholder,
+textarea::placeholder {
+  color: var(--app-text-subtle);
+  opacity: 1;
+}
+
+/* ─── Select: caret personalizado ───────────────────────────────────── */
+select {
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2364748B' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  background-size: 12px 12px;
+  padding-right: 30px;
+}
+
+/* ─── Checkbox / Radio: estilo nativo limpio (mantener nativo accesible) */
+input[type="checkbox"],
+input[type="radio"] {
+  accent-color: var(--app-primary);
+  cursor: pointer;
+}
+
+/* ─── Textarea ──────────────────────────────────────────────────────── */
+textarea {
+  resize: vertical;
+  min-height: 70px;
+  line-height: var(--app-leading-normal);
+}
+
+/* ─── Labels: estilo compacto enterprise ─────────────────────────────
+   Aplica a labels que NO tienen estilos inline propios. Los muchos labels
+   con inline `style="font-size:..."` siguen como están.
+   Para labels limpios (futuros componentes refactorizados) se ven así:
+   ─────────────────────────────────────────────────────────────────── */
+label {
+  font-family: var(--app-font);
+  color: var(--app-text);
+  font-size: var(--app-text-sm);
+  font-weight: var(--app-weight-medium);
+}
+
+/* Helper para etiquetas estilo "kpi-label" o de form group */
+.app-form-label {
+  display: block;
+  font-size: 11px;
+  font-weight: var(--app-weight-semibold);
+  color: var(--app-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 5px;
+}
+
+/* ─── Form group + form row helpers (uso futuro) ────────────────────── */
+.app-form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-bottom: 14px;
+}
+
+.app-form-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 14px;
+  margin-bottom: 14px;
+}
+
+/* ─── Hint / help text ──────────────────────────────────────────────── */
+.app-form-hint {
+  font-size: 12px;
+  color: var(--app-text-muted);
+  margin-top: 4px;
+  line-height: var(--app-leading-normal);
+}
+
+.app-form-error {
+  font-size: 12px;
+  color: var(--app-danger);
+  margin-top: 4px;
+  font-weight: var(--app-weight-medium);
+}
+
+/* Required indicator */
+.app-form-label.required::after {
+  content: "*";
+  color: var(--app-danger);
+  margin-left: 3px;
+  font-weight: var(--app-weight-bold);
+}
+
+/* ─── Input group: prefijo/sufijo (ej. S/, %) ───────────────────────── */
+.app-input-group {
+  display: flex;
+  align-items: stretch;
+  border: 1px solid var(--app-border);
+  border-radius: var(--app-radius-sm);
+  background: var(--app-bg-card);
+  overflow: hidden;
+  transition: border-color var(--app-transition-fast);
+}
+.app-input-group:focus-within {
+  border-color: var(--app-primary);
+  box-shadow: 0 0 0 3px rgba(15, 23, 42, 0.08);
+}
+.app-input-group__prefix,
+.app-input-group__suffix {
+  display: flex;
+  align-items: center;
+  padding: 0 11px;
+  background: var(--app-bg-subtle);
+  color: var(--app-text-muted);
+  font-size: var(--app-text-sm);
+  font-weight: var(--app-weight-medium);
+}
+.app-input-group input {
+  border: none;
+  border-radius: 0;
+  flex: 1;
+  background: transparent;
+}
+.app-input-group input:focus {
+  box-shadow: none;
+  border: none;
+}
+
+/* ─── Mobile: ya hay reglas en main.css con !important. No las pisamos. */
