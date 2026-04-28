@@ -2,6 +2,7 @@ import { api } from '../services/api.js';
 import { showError } from '../services/ui.js';
 import { TabBar } from '../components/TabBar.js';
 import { kpiGrid } from '../components/KpiCard.js';
+import { pill } from '../components/Pill.js';
 import { destroyChart } from '../components/charts.js';
 
 const MESES = ['', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
@@ -108,7 +109,7 @@ async function renderDetalle(panel) {
         <td style="padding:8px"><span style="background:#f3f4f6;padding:2px 6px;border-radius:6px;font-size:11px">${d.tipo_gasto_logistica}</span></td>
         <td style="padding:8px;font-size:12px">${d.centro_costo}</td>
         <td style="padding:8px;text-align:right;font-weight:700">${fPEN(d.total_base)}</td>
-        <td style="padding:8px"><span style="background:${d.estado_pago === 'PAGADO' ? '#dcfce7' : '#fef3c7'};color:${d.estado_pago === 'PAGADO' ? '#166534' : '#92400e'};padding:2px 6px;border-radius:6px;font-size:10px;font-weight:600">${d.estado_pago || 'PENDIENTE'}</span></td>
+        <td style="padding:8px">${pill(d.estado_pago || 'PENDIENTE', d.estado_pago || 'PENDIENTE')}</td>
       </tr>`).join('');
 
     cont.innerHTML = `

@@ -1,5 +1,6 @@
 import { api } from '../services/api.js';
 import { showSuccess, showError } from '../services/ui.js';
+import { pill } from '../components/Pill.js';
 
 // ── Config visual (paralelo a Comercial.js) ──────────────────────
 const MARCAS = {
@@ -659,9 +660,9 @@ async function modalLibroBancos() {
   const fmtDate = (s) => s ? String(s).slice(0,10).split('-').reverse().join('/') : '—';
   const monedaCta = (idC) => (cuentasBanco.find(c => c.id_cuenta == idC) || {}).moneda || 'PEN';
   const estadoBadgeM = (e) => {
-    if (e === 'CONCILIADO') return '<span style="background:#dcfce7;color:#166534;padding:2px 6px;border-radius:10px;font-size:10px;font-weight:600">🟢 Conciliado</span>';
-    if (e === 'IGNORADO')   return '<span style="background:#e5e7eb;color:#374151;padding:2px 6px;border-radius:10px;font-size:10px;font-weight:600">⚪ Ignorado</span>';
-    return '<span style="background:#fef3c7;color:#92400e;padding:2px 6px;border-radius:10px;font-size:10px;font-weight:600">🟡 Pendiente</span>';
+    if (e === 'CONCILIADO') return pill('Conciliado', 'success');
+    if (e === 'IGNORADO')   return pill('Ignorado',   'neutral');
+    return pill('Pendiente', 'warning');
   };
   const fuenteBadge = (f) => {
     if (f === 'AUTO')        return '<span style="color:#6b7280;font-size:10px">🤖 AUTO</span>';
@@ -1095,9 +1096,9 @@ async function modalConciliacion() {
     const hoy = new Date().toISOString().slice(0,10);
 
     const estadoBadge = (est) => {
-      if (est === 'CONCILIADO') return '<span style="background:#dcfce7;color:#166534;padding:2px 6px;border-radius:10px;font-size:10px;font-weight:600">✓ CONCILIADO</span>';
-      if (est === 'IGNORADO')   return '<span style="background:#f3f4f6;color:#6b7280;padding:2px 6px;border-radius:10px;font-size:10px;font-weight:600">IGNORADO</span>';
-      return '<span style="background:#fef3c7;color:#92400e;padding:2px 6px;border-radius:10px;font-size:10px;font-weight:600">POR CONCILIAR</span>';
+      if (est === 'CONCILIADO') return pill('Conciliado',   'success', { icon: 'check' });
+      if (est === 'IGNORADO')   return pill('Ignorado',     'neutral');
+      return pill('Por conciliar', 'warning');
     };
 
     return `

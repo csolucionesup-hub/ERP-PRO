@@ -12,6 +12,7 @@ import { api } from '../services/api.js';
 import { showSuccess, showError, tip } from '../services/ui.js';
 import { TabBar } from '../components/TabBar.js';
 import { kpiGrid } from '../components/KpiCard.js';
+import { pill } from '../components/Pill.js';
 
 const ESTADO_COLOR = {
   BORRADOR:         { bg: '#f3f4f6', fg: '#374151', icon: '📝' },
@@ -408,7 +409,7 @@ async function verOC(id_oc) {
               <summary style="cursor:pointer;font-size:12px;color:var(--primary-color);font-weight:600;margin-bottom:10px">Historial de aprobaciones (${oc.aprobaciones.length})</summary>
               <table style="width:100%;border-collapse:collapse;font-size:11px;margin-top:8px">
                 <thead><tr style="background:#f9fafb"><th style="padding:6px;text-align:left">Fecha</th><th style="padding:6px;text-align:left">Acción</th><th style="padding:6px;text-align:left">Comentario</th></tr></thead>
-                <tbody>${oc.aprobaciones.map(a => `<tr><td style="padding:6px">${new Date(a.fecha).toLocaleString('es-PE')}</td><td style="padding:6px"><span style="background:#dcfce7;color:#166534;padding:1px 6px;border-radius:4px">${a.accion}</span></td><td style="padding:6px;color:var(--text-secondary)">${a.comentario || '—'}</td></tr>`).join('')}</tbody>
+                <tbody>${oc.aprobaciones.map(a => `<tr><td style="padding:6px">${new Date(a.fecha).toLocaleString('es-PE')}</td><td style="padding:6px">${pill(a.accion, 'success')}</td><td style="padding:6px;color:var(--text-secondary)">${a.comentario || '—'}</td></tr>`).join('')}</tbody>
               </table>
             </details>
           ` : ''}
