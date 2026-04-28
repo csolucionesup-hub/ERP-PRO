@@ -562,20 +562,26 @@ export const Dashboard = async () => {
 
       <div id="tab-ejecutivo">
       <h2 style="font-size:16px; margin: 25px 0 15px; color:var(--text-primary); text-transform:uppercase; letter-spacing:1px;">A. Tesorería Diaria</h2>
-      <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap: 20px;">
-         <div class="card" style="border-left: 4px solid var(--info); background: linear-gradient(to right, #ffffff, #f4f7fe);">
-            <h3 class="card-title">Saldo Actual en Caja</h3>
-            <h2 class="card-value" style="color:var(--info); font-size:32px;">${formatCurrency(dataOperativa.caja_diaria.saldo_global)}</h2>
-         </div>
-         <div class="card" style="border-top: 3px solid var(--success)">
-            <h3 class="card-title">Ingresos HOY</h3>
-            <h2 class="card-value text-success">+ ${formatCurrency(dataOperativa.caja_diaria.ingresos_hoy)}</h2>
-         </div>
-         <div class="card" style="border-top: 3px solid var(--danger)">
-            <h3 class="card-title">Egresos HOY</h3>
-            <h2 class="card-value text-danger">- ${formatCurrency(dataOperativa.caja_diaria.egresos_hoy)}</h2>
-         </div>
-      </div>
+      ${kpiGrid([
+        {
+          label: 'Saldo Actual en Caja',
+          value: formatCurrency(dataOperativa.caja_diaria.saldo_global),
+          icon: 'dollar-sign',
+          accent: 'info',
+        },
+        {
+          label: 'Ingresos HOY',
+          value: '+ ' + formatCurrency(dataOperativa.caja_diaria.ingresos_hoy),
+          icon: 'trending-up',
+          accent: 'success',
+        },
+        {
+          label: 'Egresos HOY',
+          value: '− ' + formatCurrency(dataOperativa.caja_diaria.egresos_hoy),
+          icon: 'trending-down',
+          accent: 'danger',
+        },
+      ], 3)}
 
       <h2 style="font-size:16px; margin: 35px 0 15px; color:var(--text-primary); text-transform:uppercase; letter-spacing:1px;">B. Rentabilidad Acumulada</h2>
       <div style="display:grid; grid-template-columns: repeat(2, 1fr); gap: 20px;">

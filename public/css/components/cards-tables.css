@@ -239,14 +239,172 @@ th.right {
   border-color: var(--app-border-strong);
 }
 
+/* ─── KPI Card v2 (componente reutilizable) ─────────────────────────── */
+.kpi-card {
+  background: var(--app-bg-card);
+  border: 1px solid var(--app-border);
+  border-radius: var(--app-radius-lg);
+  padding: 18px 20px;
+  box-shadow: none;
+  transition: border-color var(--app-transition-fast),
+              box-shadow var(--app-transition-fast);
+  position: relative;
+}
+.kpi-card:hover {
+  transform: none;
+  border-color: var(--app-border-strong);
+  box-shadow: var(--app-shadow-sm);
+}
+.kpi-card[role="button"]:hover {
+  border-color: var(--app-primary);
+  cursor: pointer;
+}
+
+.kpi-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.kpi-icon {
+  width: 16px;
+  height: 16px;
+  color: var(--app-text-subtle);
+  font-size: 16px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.kpi-label {
+  font-family: var(--app-font);
+  font-size: 11px;
+  font-weight: var(--app-weight-semibold);
+  color: var(--app-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  line-height: 1.3;
+}
+
+.kpi-value {
+  font-family: var(--app-font);
+  font-size: 26px;
+  font-weight: var(--app-weight-bold);
+  color: var(--app-text);
+  letter-spacing: -0.5px;
+  line-height: 1.1;
+  margin: 2px 0 0;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1, 'cv11' 1;
+}
+
+.kpi-value .currency,
+.kpi-value .unit {
+  font-size: 14px;
+  font-weight: var(--app-weight-semibold);
+  color: var(--app-text-muted);
+  margin-right: 3px;
+}
+
+.kpi-change {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: var(--app-weight-medium);
+  margin-top: 6px;
+  font-variant-numeric: tabular-nums;
+  color: var(--app-text-muted);
+}
+.kpi-change.up,
+.kpi-change.positive { color: var(--app-success); }
+.kpi-change.down,
+.kpi-change.negative { color: var(--app-danger); }
+.kpi-change.flat,
+.kpi-change.neutral { color: var(--app-text-muted); }
+
+/* Accent variant (border-top de color, ej. para semánticos) */
+.kpi-card.accent-success { border-top: 3px solid var(--app-success); padding-top: 15px; }
+.kpi-card.accent-danger  { border-top: 3px solid var(--app-danger);  padding-top: 15px; }
+.kpi-card.accent-warning { border-top: 3px solid var(--app-warning); padding-top: 15px; }
+.kpi-card.accent-info    { border-top: 3px solid var(--app-info);    padding-top: 15px; }
+.kpi-card.accent-primary { border-top: 3px solid var(--app-primary); padding-top: 15px; }
+
+/* Grid wrapper (Bento) */
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 14px;
+  margin-bottom: 20px;
+}
+.kpi-grid[data-cols="2"] { grid-template-columns: repeat(2, 1fr); }
+.kpi-grid[data-cols="3"] { grid-template-columns: repeat(3, 1fr); }
+.kpi-grid[data-cols="4"] { grid-template-columns: repeat(4, 1fr); }
+
+/* ─── Empty state (uso con componente EmptyState.js) ────────────────── */
+.app-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 40px 20px;
+  color: var(--app-text-muted);
+}
+.app-empty__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  border-radius: var(--app-radius-pill);
+  background: var(--app-bg-subtle);
+  color: var(--app-text-subtle);
+  margin-bottom: 14px;
+}
+.app-empty__icon .ico {
+  width: 28px;
+  height: 28px;
+}
+.app-empty__title {
+  font-family: var(--app-font);
+  font-size: 15px;
+  font-weight: var(--app-weight-semibold);
+  color: var(--app-text);
+  margin: 0 0 6px;
+}
+.app-empty__text {
+  font-size: var(--app-text-sm);
+  color: var(--app-text-muted);
+  max-width: 380px;
+  margin: 0;
+  line-height: var(--app-leading-normal);
+}
+
+/* Variante compacta para uso en celdas de tabla colspan */
+td > .app-empty,
+.app-empty.compact {
+  padding: 28px 16px;
+}
+
 /* ─── Mobile (≤ 768px) ──────────────────────────────────────────────── */
 @media (max-width: 768px) {
-  .card {
+  .card,
+  .kpi-card {
     padding: 14px 16px;
     border-radius: var(--app-radius);
   }
-  .card-value {
+  .card-value,
+  .kpi-value {
     font-size: 22px;
+  }
+  .kpi-grid,
+  .kpi-grid[data-cols="3"],
+  .kpi-grid[data-cols="4"] {
+    grid-template-columns: repeat(2, 1fr);
   }
   th, td {
     padding: 8px 10px;
