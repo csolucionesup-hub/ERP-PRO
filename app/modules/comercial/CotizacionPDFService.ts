@@ -163,29 +163,29 @@ class CotizacionPDFService {
 
     // ── Tabla de ítems ──────────────────────────────────────────
     // Columnas (A4 = 595pt, L=50, R=545, pageW=495)
-    // Ítem | Descripción | Foto | Unidad | Cantidad | P.Unit | SubTotal
-    //   28 |         208 |   72 |     38 |       40 |     52 |      57 = 495 ✓
+    // Ítem | Descripción | Unidad | Cantidad | P.Unit | SubTotal+Foto
+    //   28 |         220 |     38 |       45 |     55 |        109 = 495 ✓
+    // La foto va DEBAJO del precio en la columna SubTotal (estilo PDF Excel referencia).
     const cIT = L,        wIT = 28;
-    const cDE = L + 28,   wDE = 208;
-    const cFO = L + 236,  wFO = 72;
-    const cUN = L + 308,  wUN = 38;
-    const cCA = L + 346,  wCA = 45;
-    const cPU = L + 391,  wPU = 55;
-    const cST = L + 446,  wST = R - (L + 446); // = 99pt
+    const cDE = L + 28,   wDE = 220;
+    const cUN = L + 248,  wUN = 38;
+    const cCA = L + 286,  wCA = 45;
+    const cPU = L + 331,  wPU = 55;
+    const cST = L + 386,  wST = R - (L + 386); // = 109pt
 
     const drawTableHeader = () => {
-      doc.moveTo(L, y).lineTo(R, y).lineWidth(1).strokeColor('#000').stroke();
-      y += 4;
-      doc.fontSize(9).font('Helvetica-Bold').fillColor('#000');
-      doc.text('Ítem',        cIT, y, { width: wIT, align: 'left' });
-      doc.text('Descripción', cDE, y, { width: wDE + wFO, align: 'left' });
-      doc.text('Unidad',      cUN, y, { width: wUN, align: 'center' });
-      doc.text('Cantidad',    cCA, y, { width: wCA, align: 'center' });
-      doc.text(`Precio Unit.\n${curSym}`, cPU, y, { width: wPU, align: 'right' });
-      doc.text(`Sub Total\n${curSym}`,    cST, y, { width: wST, align: 'right' });
-      y += 24;
-      doc.moveTo(L, y).lineTo(R, y).lineWidth(0.5).strokeColor('#000').stroke();
-      y += 4;
+      // Header con fondo de color de marca (rojo Perfotools / negro Metal)
+      doc.rect(L, y, pageW, 22).fillColor(visual.color).fill();
+      doc.fontSize(9).font('Helvetica-Bold').fillColor('#FFFFFF');
+      const hY = y + 6;
+      doc.text('Ítem',        cIT, hY, { width: wIT, align: 'left' });
+      doc.text('Descripción', cDE, hY, { width: wDE, align: 'left' });
+      doc.text('Unidad',      cUN, hY, { width: wUN, align: 'center' });
+      doc.text('Cantidad',    cCA, hY, { width: wCA, align: 'center' });
+      doc.text(`Precio Unit. ${curSym}`, cPU, hY, { width: wPU, align: 'right' });
+      doc.text(`Sub Total ${curSym}`,    cST, hY, { width: wST, align: 'right' });
+      y += 22;
+      doc.fillColor('#000');
     };
 
     // withHeader=true solo dentro del loop de ítems; fuera de la tabla NO se redibuja cabecera
@@ -203,6 +203,24 @@ class CotizacionPDFService {
     const detalles = (cot.detalles || []) as any[];
     let subtotalOrig = 0;
 
+    // ── Pre-fetch de fotos: pdfkit no descarga URLs HTTPS, hay que pasarle Buffer ──
+    // Las URLs Cloudinary se bajan en paralelo antes de renderizar la tabla.
+    const fotoUrlsUnicas = Array.from(new Set(
+      detalles.map(d => d.foto_url).filter(Boolean) as string[]
+    ));
+    const fotoBuffers = new Map<string, Buffer>();
+    await Promise.all(fotoUrlsUnicas.map(async (url) => {
+      try {
+        const res = await fetch(url);
+        if (!res.ok) return;
+        const ab  = await res.arrayBuffer();
+        fotoBuffers.set(url, Buffer.from(ab));
+      } catch { /* foto inalcanzable: el PDF sale sin imagen */ }
+    }));
+
+    const FOTO_SIZE = 60; // ancho/alto máximo de la foto debajo del subtotal
+    const PRECIO_LINE_H = 14;
+
     detalles.forEach((d, i) => {
       const nro  = String(i + 1).padStart(2, '0');
       const cant = Number(d.cantidad) || 0;
@@ -210,7 +228,9 @@ class CotizacionPDFService {
       const sub  = cant * pu;
       subtotalOrig += sub;
 
-      // Medir alto
+      const fotoBuf = d.foto_url ? fotoBuffers.get(d.foto_url) : null;
+
+      // Medir alto del bloque texto (descripción)
       doc.font('Helvetica-Bold').fontSize(10);
       const hTitulo = doc.heightOfString(d.descripcion || '-', { width: wDE });
       doc.font('Helvetica').fontSize(9);
@@ -218,10 +238,12 @@ class CotizacionPDFService {
         ? doc.heightOfString(d.subdescripcion, { width: wDE }) + 4 : 0;
       doc.font('Helvetica-BoldOblique').fontSize(9);
       const hNotas  = d.notas ? doc.heightOfString(d.notas, { width: wDE }) + 4 : 0;
-      const hFoto   = d.foto_url ? 80 : 0;
 
-      const rowH = Math.max(hTitulo + hSub + hNotas + 10, hFoto + 6, 40);
-      ensureSpace(rowH + 6, true); // dentro del loop: repintar cabecera de tabla en nueva página
+      const hTextoCol = hTitulo + hSub + hNotas + 10;
+      const hPrecioCol = PRECIO_LINE_H + (fotoBuf ? FOTO_SIZE + 6 : 0);
+      const rowH = Math.max(hTextoCol, hPrecioCol, 40);
+
+      ensureSpace(rowH + 6, true);
 
       // Ítem
       doc.font('Helvetica-Bold').fontSize(10).fillColor('#000')
@@ -243,12 +265,6 @@ class CotizacionPDFService {
       }
       doc.fillColor('#000').font('Helvetica');
 
-      // Foto
-      if (d.foto_url) {
-        try { doc.image(d.foto_url, cFO, y, { fit: [wFO, 70], align: 'center' }); }
-        catch { /* ignorar urls invalidas */ }
-      }
-
       // Celdas numéricas alineadas al top de la fila
       doc.font('Helvetica').fontSize(10).fillColor('#000');
       doc.text('UND.',                      cUN, y, { width: wUN, align: 'center' });
@@ -257,6 +273,15 @@ class CotizacionPDFService {
                                              cPU, y, { width: wPU, align: 'right' });
       doc.text(sub.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
                                              cST, y, { width: wST, align: 'right' });
+
+      // Foto: debajo del subtotal, centrada en la columna (estilo PDF Excel referencia)
+      if (fotoBuf) {
+        const fotoX = cST + (wST - FOTO_SIZE) / 2;
+        const fotoY = y + PRECIO_LINE_H + 4;
+        try {
+          doc.image(fotoBuf, fotoX, fotoY, { fit: [FOTO_SIZE, FOTO_SIZE], align: 'center', valign: 'center' });
+        } catch { /* imagen corrupta: ignorar */ }
+      }
 
       y += rowH;
       doc.moveTo(L, y).lineTo(R, y).lineWidth(0.3).strokeColor('#d1d5db').stroke();
