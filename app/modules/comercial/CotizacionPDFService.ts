@@ -108,13 +108,29 @@ class CotizacionPDFService {
       console.warn(`[PDF] ConfiguracionMarca falta para ${marca} — usando defaults hardcoded:`, err);
       cfg = DEFAULT_CFG_BY_MARCA[marca];
     }
+    // Resolver el logo: prioridad URL de Cloudinary (subida desde Configuración),
+    // fallback al PNG local en public/img/, fallback final al texto (en el catch
+    // de doc.image más abajo). pdfkit acepta tanto string path como Buffer.
+    let logoFuente: string | Buffer = visual.logo;
+    if (cfg.logo_url) {
+      try {
+        const r = await fetch(cfg.logo_url);
+        if (r.ok) {
+          const ab = await r.arrayBuffer();
+          logoFuente = Buffer.from(ab);
+        }
+      } catch (err) {
+        console.warn(`[PDF] No se pudo bajar logo_url de Cloudinary, uso fallback local:`, err);
+      }
+    }
+
     const meta   = {
       razon:     cfg.razon_social,
       ruc:       cfg.ruc,
       direccion: cfg.direccion,
       web:       cfg.web,
       email:     cfg.email,
-      logo:      visual.logo,
+      logo:      logoFuente,
       color:     visual.color,
     };
     const esUSD  = cot.moneda === 'USD';

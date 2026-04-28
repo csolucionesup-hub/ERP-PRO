@@ -56,6 +56,36 @@ export const CloudinaryService = {
   },
 
   /**
+   * Sube el logo de una marca (METAL/PERFOTOOLS) a Cloudinary.
+   * Carpeta separada de las fotos de cotizaciones para que sean fáciles de
+   * encontrar en el dashboard de Cloudinary. Sin transformación de tamaño
+   * (preservamos resolución porque el PDF puede usar un logo grande en la
+   * cabecera y otro chico en la firma).
+   */
+  async subirLogoMarca(buffer: Buffer, marca: string) {
+    return new Promise<{ url: string; public_id: string }>((resolve, reject) => {
+      const stream = cloudinary.uploader.upload_stream(
+        {
+          folder: 'metalengineers/logos',
+          public_id: `logo-${marca.toLowerCase()}`,
+          overwrite: true,            // re-subir reemplaza el anterior
+          resource_type: 'image',
+          transformation: [
+            { quality: 'auto:best' },  // máxima calidad: es un logo, va impreso
+            { fetch_format: 'auto' },
+          ],
+        },
+        (err, result) => {
+          if (err) return reject(err);
+          if (!result) return reject(new Error('Cloudinary devolvió respuesta vacía'));
+          resolve({ url: result.secure_url, public_id: result.public_id });
+        }
+      );
+      stream.end(buffer);
+    });
+  },
+
+  /**
    * Sube un archivo genérico (PDF, imagen, etc.) a una carpeta dada.
    * No aplica las transformaciones de foto — conserva el archivo tal cual.
    * Usado por AdjuntosService para facturas, gastos, recibos, etc.

@@ -201,6 +201,21 @@ export const api = {
     getAll:        ()              => get('/configuracion-marca'),
     getByMarca:    (marca)         => get(`/configuracion-marca/${marca}`),
     update:        (marca, data)   => put(`/configuracion-marca/${marca}`, data),
+    uploadLogo: async (marca, file) => {
+      const token = localStorage.getItem('erp_token');
+      const fd = new FormData();
+      fd.append('logo', file);
+      const r = await fetch(`${API_BASE_URL}/configuracion-marca/${marca}/upload-logo`, {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: fd,
+      });
+      if (!r.ok) {
+        const err = await r.json().catch(() => ({}));
+        throw new Error(err.error || `Error HTTP ${r.status}`);
+      }
+      return r.json(); // { url, public_id }
+    },
   },
   alertas: {
     list:      ()        => get('/alertas'),

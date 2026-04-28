@@ -45,6 +45,32 @@ function renderHTML() {
           Modo solo lectura. Solo el Gerente puede modificar esta configuración.
         </div>` : ''}
 
+      <section style="background:#f8f9fa;padding:14px 16px;border-radius:6px;margin-bottom:14px">
+        <div style="font-size:12px;font-weight:700;color:#555;margin-bottom:10px;text-transform:uppercase">Logo de la marca</div>
+        <p style="margin:0 0 10px;color:#666;font-size:12px">
+          Aparece en la cabecera y la firma del PDF de cotizaciones. Recomendado: PNG con fondo transparente, mínimo 600px de ancho.
+        </p>
+        <div style="display:flex;align-items:center;gap:16px">
+          <div id="logo-preview-${_marca}"
+               style="width:200px;height:80px;border:1px dashed #ccc;border-radius:6px;display:flex;align-items:center;justify-content:center;background:#fff;overflow:hidden">
+            ${c.logo_url
+              ? `<img src="${c.logo_url}" alt="Logo ${_marca}" style="max-width:100%;max-height:100%;object-fit:contain">`
+              : `<span style="color:#999;font-size:12px">Sin logo</span>`}
+          </div>
+          <div style="display:flex;flex-direction:column;gap:6px">
+            <input type="file" id="logo-input-${_marca}" accept="image/*" style="display:none"
+                   onchange="cfgComercial.subirLogo(event)">
+            <button type="button" ${!esGerente ? 'disabled' : ''}
+              onclick="document.getElementById('logo-input-${_marca}').click()"
+              style="padding:8px 14px;border:1px solid #d0d0d0;background:${esGerente ? '#fff' : '#f1f1f1'};
+                     border-radius:4px;cursor:${esGerente ? 'pointer' : 'not-allowed'};font-size:13px">
+              📁 ${c.logo_url ? 'Reemplazar logo' : 'Subir logo'}
+            </button>
+            <span id="logo-status-${_marca}" style="font-size:11px;color:#666"></span>
+          </div>
+        </div>
+      </section>
+
       <form id="cfg-form" onsubmit="cfgComercial.guardar(event)">
         <section style="background:#f8f9fa;padding:14px 16px;border-radius:6px;margin-bottom:14px">
           <div style="font-size:12px;font-weight:700;color:#555;margin-bottom:10px;text-transform:uppercase">Datos de la empresa</div>
@@ -125,6 +151,26 @@ window.cfgComercial = {
       showSuccess(`Configuración ${_marca} guardada`);
     } catch (e) {
       showError('Error al guardar: ' + e.message);
+    }
+  },
+  async subirLogo(ev) {
+    const file = ev.target.files && ev.target.files[0];
+    if (!file) return;
+    const status  = document.getElementById(`logo-status-${_marca}`);
+    const preview = document.getElementById(`logo-preview-${_marca}`);
+    if (status) status.textContent = '⏳ Subiendo…';
+    try {
+      const result = await api.configuracionMarca.uploadLogo(_marca, file);
+      // Actualizar el caché local y el preview sin recargar la página
+      _configs[_marca] = { ..._configs[_marca], logo_url: result.url, logo_public_id: result.public_id };
+      if (preview) preview.innerHTML = `<img src="${result.url}" alt="Logo ${_marca}" style="max-width:100%;max-height:100%;object-fit:contain">`;
+      if (status)  status.textContent = '✓ Logo actualizado';
+      showSuccess(`Logo de ${_marca} actualizado`);
+      // Limpiar el input para que el mismo archivo se pueda re-subir si se quiere
+      ev.target.value = '';
+    } catch (e) {
+      if (status) status.textContent = '';
+      showError('Error subiendo logo: ' + e.message);
     }
   },
 };

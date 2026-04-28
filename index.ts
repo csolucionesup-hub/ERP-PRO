@@ -623,6 +623,47 @@ apiRouter.put('/configuracion-marca/:marca', requireModulo('GERENCIA'), async (r
   res.json({ success: true });
 });
 
+// Upload de logo por marca (multer en memoria → Cloudinary). Solo GERENTE.
+// Reusa el mismo `uploadFoto` (límites y filtro de imagen) — no necesitamos
+// otro multer porque las reglas son las mismas: imagen, ≤10MB, MIME OR extensión.
+apiRouter.post(
+  '/configuracion-marca/:marca/upload-logo',
+  requireModulo('GERENCIA'),
+  uploadFoto.single('logo'),
+  async (req: Request, res: Response) => {
+    const marca = String(req.params.marca || '').toUpperCase();
+    if (marca !== 'METAL' && marca !== 'PERFOTOOLS') {
+      return res.status(400).json({ error: `Marca inválida: ${req.params.marca}` });
+    }
+    if (!req.file) return res.status(400).json({ error: 'No se recibió archivo (campo "logo")' });
+
+    // Mismo pre-check de credenciales que /cotizaciones/upload-foto
+    const tieneSeparadas = !!(
+      process.env.CLOUDINARY_CLOUD_NAME &&
+      process.env.CLOUDINARY_API_KEY &&
+      process.env.CLOUDINARY_API_SECRET
+    );
+    const tieneURL = !!(process.env.CLOUDINARY_URL && /^cloudinary:\/\/[^:]+:[^@]+@\S+/.test(process.env.CLOUDINARY_URL));
+    if (!tieneSeparadas && !tieneURL) {
+      return res.status(503).json({
+        error: 'Cloudinary no está configurado en este servidor.',
+        code: 'CLOUDINARY_NOT_CONFIGURED',
+      });
+    }
+
+    try {
+      const result = await CloudinaryService.subirLogoMarca(req.file.buffer, marca);
+      await ConfiguracionMarcaService.setLogo(marca as any, result.url, result.public_id);
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({
+        error: `Error subiendo logo: ${err?.message || 'desconocido'}`,
+        code: 'CLOUDINARY_UPLOAD_FAILED',
+      });
+    }
+  }
+);
+
 // ===== ADMIN: RESET BASE DE DATOS =====
 apiRouter.use('/admin', requireModulo('GERENCIA'));
 apiRouter.post('/admin/reset-db', async (req: Request, res: Response) => {

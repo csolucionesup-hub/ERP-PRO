@@ -20,6 +20,8 @@ export interface ConfiguracionMarca {
   firma_telefono: string | null;
   firma_email: string | null;
   firma_direccion: string | null;
+  logo_url: string | null;
+  logo_public_id: string | null;
 }
 
 const MARCAS_VALIDAS: Marca[] = ['METAL', 'PERFOTOOLS'];
@@ -71,6 +73,21 @@ class ConfiguracionMarcaService {
     await db.query(
       `UPDATE ConfiguracionMarca SET ${sets.join(', ')} WHERE marca = ?`,
       params
+    );
+  }
+
+  /**
+   * Persiste la URL y public_id de Cloudinary del logo de una marca.
+   * El logo no entra en CAMPOS_EDITABLES porque no se edita por texto:
+   * llega de un upload aparte (POST /configuracion-marca/:marca/upload-logo).
+   */
+  async setLogo(marca: Marca, logo_url: string, logo_public_id: string): Promise<void> {
+    if (!MARCAS_VALIDAS.includes(marca)) {
+      throw new Error(`Marca inválida: ${marca}`);
+    }
+    await db.query(
+      `UPDATE ConfiguracionMarca SET logo_url = ?, logo_public_id = ? WHERE marca = ?`,
+      [logo_url, logo_public_id, marca]
     );
   }
 }
