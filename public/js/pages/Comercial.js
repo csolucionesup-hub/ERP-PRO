@@ -1285,7 +1285,11 @@ export const Comercial = async () => {
         return window.showError?.('Error cargando cotización: ' + (err.message || err));
       }
       const marca = data.marca;
-      const idpEdit = `${marca.toLowerCase()}-edit`;
+      // OJO: usar `_` y NO `-` porque el idp se concatena en nombres de
+      // funciones globales (window.__removeLinea_${idp}) y atributos id=.
+      // El guion provoca que JS interprete `__removeLinea_perfotools-edit`
+      // como resta → "edit is not defined".
+      const idpEdit = `${marca.toLowerCase()}_edit`;
 
       const ov = document.createElement('div');
       ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9998;display:flex;align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto';
