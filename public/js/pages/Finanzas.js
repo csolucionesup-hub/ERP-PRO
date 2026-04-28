@@ -1,6 +1,7 @@
 import { api } from '../services/api.js';
 import { showSuccess, showError } from '../services/ui.js';
 import { pill } from '../components/Pill.js';
+import { kpiCard as kpiCardEnt } from '../components/KpiCard.js';
 
 // ── Config visual (paralelo a Comercial.js) ──────────────────────
 const MARCAS = {
@@ -1779,11 +1780,26 @@ async function modalDetalle(id) {
 
 // ── Página principal ────────────────────────────────────────────
 function renderDashboard(d) {
+  // Adapter legacy → helper enterprise. Mapea color hex → variante accent.
+  const FIN_ACCENT_BY_COLOR = {
+    '#16a34a': 'success',
+    '#0891b2': 'info',
+    '#7c3aed': 'info',
+    '#db2777': 'danger',
+    '#dc2626': 'danger',
+    '#f59e0b': 'warning',
+    '#d97706': 'warning',
+    '#3b82f6': 'info',
+  };
   const card = (label, value, sub, color) => `
-    <div style="flex:1;min-width:160px;background:#fff;border:1px solid #e5e7eb;border-left:4px solid ${color};border-radius:8px;padding:12px 14px">
-      <div style="font-size:11px;color:#6b7280;text-transform:uppercase;font-weight:600;letter-spacing:.3px">${label}</div>
-      <div style="font-size:20px;font-weight:700;color:#111827;margin-top:4px">${value}</div>
-      ${sub ? `<div style="font-size:11px;color:#6b7280;margin-top:2px">${sub}</div>` : ''}
+    <div style="flex:1;min-width:160px">
+      ${kpiCardEnt({
+        label,
+        value,
+        change: sub || '',
+        changeType: 'neutral',
+        accent: FIN_ACCENT_BY_COLOR[color] || '',
+      })}
     </div>
   `;
   const topList = (d.top_vencidas || []).map(t => `

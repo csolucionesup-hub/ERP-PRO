@@ -1,6 +1,6 @@
 import { api } from '../services/api.js';
 import { TabBar } from '../components/TabBar.js';
-import { kpiGrid } from '../components/KpiCard.js';
+import { kpiCard, kpiGrid } from '../components/KpiCard.js';
 import { lineChart, barChart, donutChart, chartColors, destroyChart } from '../components/charts.js';
 
 export const Dashboard = async () => {
@@ -584,25 +584,22 @@ export const Dashboard = async () => {
       ], 3)}
 
       <h2 style="font-size:16px; margin: 35px 0 15px; color:var(--text-primary); text-transform:uppercase; letter-spacing:1px;">B. Rentabilidad Acumulada</h2>
-      <div style="display:grid; grid-template-columns: repeat(2, 1fr); gap: 20px;">
-         <div class="card" style="display:flex; justify-content:space-between; align-items:center;">
-            <div>
-              <h3 class="card-title">Utilidad Neta (Ingresos Base - Costos Reales)</h3>
-              <h2 class="card-value" style="color:${rentabilidadColor}; font-size:36px;">
-                 ${utilidadTotal > 0 ? '+' : ''} ${formatCurrency(utilidadTotal)}
-              </h2>
-            </div>
-            <div style="opacity:0.2; font-size:60px;">+</div>
-         </div>
-         <div class="card" style="display:flex; justify-content:space-between; align-items:center;">
-            <div>
-              <h3 class="card-title">Margen de Rentabilidad Promedio</h3>
-              <h2 class="card-value" style="color:${rentabilidadColor}; font-size:36px;">${margenPromedio}%</h2>
-              <span style="font-size:12px; color:var(--text-secondary)">Sobre ingresos netos (sin impuestos)</span>
-            </div>
-            <div style="opacity:0.2; font-size:60px;">%</div>
-         </div>
-      </div>
+      ${kpiGrid([
+        {
+          label: 'Utilidad Neta (Ingresos − Costos Reales)',
+          value: (utilidadTotal > 0 ? '+ ' : '') + formatCurrency(utilidadTotal),
+          icon: utilidadTotal >= 0 ? 'trending-up' : 'trending-down',
+          accent: utilidadTotal > 0 ? 'success' : utilidadTotal < 0 ? 'danger' : 'primary',
+        },
+        {
+          label: 'Margen de Rentabilidad Promedio',
+          value: margenPromedio + '%',
+          icon: 'bar-chart',
+          accent: utilidadTotal > 0 ? 'success' : utilidadTotal < 0 ? 'danger' : 'primary',
+          change: 'Sobre ingresos netos (sin impuestos)',
+          changeType: 'neutral',
+        },
+      ], 2)}
 
       <div style="display:grid; grid-template-columns: 1fr 1fr; gap:20px; margin-top:35px;">
         <div>
@@ -637,16 +634,22 @@ export const Dashboard = async () => {
         <div>
           <h2 style="font-size:16px; margin-bottom: 15px; color:var(--text-primary); text-transform:uppercase; letter-spacing:1px;">D. Finanzas Estructurales</h2>
           <div style="display:flex; flex-direction:column; gap:15px;">
-            <div class="card" style="border-left: 4px solid var(--primary-color);">
-               <h3 class="card-title">Cuentas por Cobrar (AR - Clientes)</h3>
-               <h2 class="card-value" style="color:var(--primary-color)">${formatCurrency(dataMaster.indicadores.por_cobrar)}</h2>
-               <p style="font-size:13px; color:var(--text-secondary); margin-top:5px;">Flujo de caja pendiente de ingreso o en morosidad.</p>
-            </div>
-            <div class="card" style="border-left: 4px solid #f97316;">
-               <h3 class="card-title">Cuentas por Pagar (AP - Logística & Fijos)</h3>
-               <h2 class="card-value" style="color:#f97316">- ${formatCurrency(dataMaster.indicadores.por_pagar)}</h2>
-               <p style="font-size:13px; color:var(--text-secondary); margin-top:5px;">Obligaciones y pasivos activos pendientes de liquidar.</p>
-            </div>
+            ${kpiCard({
+              label: 'Cuentas por Cobrar (AR - Clientes)',
+              value: formatCurrency(dataMaster.indicadores.por_cobrar),
+              icon: 'dollar-sign',
+              accent: 'primary',
+              change: 'Flujo de caja pendiente de ingreso o en morosidad',
+              changeType: 'neutral',
+            })}
+            ${kpiCard({
+              label: 'Cuentas por Pagar (AP - Logística & Fijos)',
+              value: '− ' + formatCurrency(dataMaster.indicadores.por_pagar),
+              icon: 'credit-card',
+              accent: 'warning',
+              change: 'Obligaciones y pasivos activos pendientes de liquidar',
+              changeType: 'neutral',
+            })}
             <div class="card" style="background-color: var(--bg-sidebar); border:none; margin-top: 5px;">
                <h3 class="card-title" style="color:rgba(255,255,255,0.7)">Liquidez Proyectada (Caja + CxC + Me Deben − CxP − Debo)</h3>
                <h2 class="card-value" style="color:${dataMaster.indicadores.liquidez_proyectada >= 0 ? 'var(--success)' : 'var(--danger)'}">${formatCurrency(dataMaster.indicadores.liquidez_proyectada)}</h2>

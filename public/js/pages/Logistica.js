@@ -386,11 +386,11 @@ function renderDashboard(panel) {
   panel.innerHTML = `
     <div style="margin-top:16px">
       ${kpiGrid([
-        { label: 'OCs Generales',  value: fPEN(totalGen), subtitle: `${_ocsGeneral.length} OC(s)`, color: '#1565c0' },
-        { label: 'OCs Servicio',   value: fPEN(totalSrv), subtitle: `${_ocsServicio.length} OC(s)`, color: '#e65100' },
-        { label: 'OCs Almacén',    value: fPEN(totalAlm), subtitle: `${_ocsAlmacen.length} OC(s)`, color: '#2e7d32' },
-        { label: 'Total histórico', value: fPEN(totalAll), subtitle: `${pendientes} pendientes`, color: '#676767' },
-      ])}
+        { label: 'OCs Generales',   value: fPEN(totalGen), change: `${_ocsGeneral.length} OC(s)`,  changeType: 'neutral', icon: 'briefcase', accent: 'info' },
+        { label: 'OCs Servicio',    value: fPEN(totalSrv), change: `${_ocsServicio.length} OC(s)`, changeType: 'neutral', icon: 'truck',     accent: 'warning' },
+        { label: 'OCs Almacén',     value: fPEN(totalAlm), change: `${_ocsAlmacen.length} OC(s)`,  changeType: 'neutral', icon: 'archive',   accent: 'success' },
+        { label: 'Total histórico', value: fPEN(totalAll), change: `${pendientes} pendientes`,     changeType: 'neutral', icon: 'bar-chart', accent: 'primary' },
+      ], 4)}
     </div>
 
     <div class="card" style="margin-top:20px">

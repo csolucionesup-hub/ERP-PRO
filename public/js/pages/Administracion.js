@@ -3,6 +3,7 @@ import { showError } from '../services/ui.js';
 import { TabBar } from '../components/TabBar.js';
 import { kpiGrid } from '../components/KpiCard.js';
 import { pill } from '../components/Pill.js';
+import { emptyState } from '../components/EmptyState.js';
 import { destroyChart } from '../components/charts.js';
 
 const MESES = ['', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
@@ -138,7 +139,11 @@ async function renderDetalle(panel) {
             <th style="padding:10px;text-align:right">Registros</th>
             <th style="padding:10px;text-align:right">Total</th>
           </tr></thead>
-          <tbody>${resumenRows || `<tr><td colspan="5" style="padding:30px;text-align:center;color:var(--text-secondary)">Sin datos para el período</td></tr>`}</tbody>
+          <tbody>${resumenRows || `<tr><td colspan="5" style="padding:0">${emptyState({
+            icon: 'archive',
+            title: 'Sin datos para el período',
+            text: 'Cuando se registren gastos de personal en Logística con centro de costo asignado, aparecerán acá.',
+          })}</td></tr>`}</tbody>
         </table>
       </div>
 

@@ -1,6 +1,7 @@
 import { api } from '../services/api.js';
 import { tip } from '../services/ui.js';
 import { pillCotizacionEstado } from '../components/Pill.js';
+import { kpiCard as kpiCardEnt } from '../components/KpiCard.js';
 
 // ── Marca config (UI): logo, color, moneda por defecto ──────────
 const MARCAS = {
@@ -706,12 +707,25 @@ function renderDashboardTab(d) {
   const usd = d.totalesPorMoneda.find(r => r.moneda === 'USD');
   const totalCots = d.totalesPorMoneda.reduce((s, r) => s + Number(r.cantidad), 0);
 
-  const kpiCard = (label, value, sub, borderColor, valueColor = '#111') => `
-    <div class="card" style="text-align:center;border-top:3px solid ${borderColor};padding:14px 10px">
-      <div style="font-size:10px;color:#666;margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px">${label}</div>
-      <div style="font-size:20px;font-weight:700;color:${valueColor};line-height:1.2">${value}</div>
-      <div style="font-size:11px;color:#999;margin-top:4px">${sub}</div>
-    </div>`;
+  // Adapter legacy → helper enterprise. Mantiene la API antigua de la
+  // función local: (label, value, sub, borderColor, valueColor).
+  const ACCENT_BY_COLOR = {
+    '#000':     'primary',
+    '#dc2626':  'danger',
+    '#f59e0b':  'warning',
+    '#22c55e':  'success',
+    '#16a34a':  'success',
+    '#0284c7':  'info',
+    '#6b7280':  '',
+  };
+  const kpiCard = (label, value, sub, borderColor, _valueColor = '#111') =>
+    kpiCardEnt({
+      label,
+      value,
+      change: sub,
+      changeType: 'neutral',
+      accent: ACCENT_BY_COLOR[borderColor] || '',
+    });
 
   // ── Fila 1: Totales financieros ──────────────────────────────────
   const kpis1 = `

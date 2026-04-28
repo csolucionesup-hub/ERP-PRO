@@ -1,5 +1,6 @@
 import { api } from '../services/api.js';
 import { showSuccess, showError } from '../services/ui.js';
+import { emptyState } from '../components/EmptyState.js';
 
 export const Compras = async () => {
   let compras = [], proveedores = [], inventario = [], tcHoy = { valor_venta: 1, es_hoy: false, fecha: '' };
@@ -470,7 +471,11 @@ export const Compras = async () => {
              </tr>
            </thead>
            <tbody>
-             ${compraRows || '<tr><td colspan="7" style="text-align:center">No hay registros</td></tr>'}
+             ${compraRows || `<tr><td colspan="7" style="padding:0">${emptyState({
+               icon: 'package',
+               title: 'No hay compras registradas',
+               text: 'Las compras aparecerán acá cuando registres facturas de proveedores.',
+             })}</td></tr>`}
            </tbody>
          </table>
        </div>
