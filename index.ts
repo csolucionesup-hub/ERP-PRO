@@ -465,19 +465,23 @@ apiRouter.delete('/cotizaciones/reset', async (req: Request, res: Response) => {
 });
 
 // Upload de fotos (multer en memoria → Cloudinary)
-// Aceptamos cualquier `image/*` y dejamos que Cloudinary haga la normalización
-// (su pipeline soporta JPG/PNG/WebP/HEIC/HEIF/AVIF/GIF/BMP/TIFF/SVG/ICO y al
-// servir con fetch_format:auto los entrega como JPG/WebP al navegador). El
-// filtro estricto previo rebotaba archivos válidos (BMP de scanners, TIFF de
-// cámaras, etc.) sin razón funcional. Si el archivo no es imagen, el mensaje
-// incluye el MIME exacto recibido para que el usuario pueda diagnosticar.
+// Aceptamos cualquier `image/*` Y también HEIC/HEIF/AVIF por extensión: Chrome
+// en Windows sin la extensión HEIF instalada manda mimetype 'application/
+// octet-stream' aunque el archivo sea una foto válida del iPhone. Cloudinary
+// procesa todos estos formatos y los normaliza con fetch_format:auto, así que
+// el navegador del consumidor recibe JPG/WebP. Si el archivo no es imagen, el
+// mensaje incluye el MIME exacto recibido para que el usuario diagnostique.
+const EXT_IMAGEN_OK = /\.(jpe?g|png|webp|heic|heif|avif|gif|bmp|tiff?|svg|ico)$/i;
 const uploadFoto = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB (ampliado: las fotos de celular modernos pesan 5-8 MB)
   fileFilter: (_req, file, cb) => {
-    if (!file.mimetype || !file.mimetype.startsWith('image/')) {
+    const mimeOk = file.mimetype && file.mimetype.startsWith('image/');
+    const extOk  = EXT_IMAGEN_OK.test(file.originalname || '');
+    if (!mimeOk && !extOk) {
       return cb(new Error(
-        `El archivo no es una imagen (tipo recibido: ${file.mimetype || 'desconocido'}). ` +
+        `El archivo no parece ser una imagen ` +
+        `(tipo: ${file.mimetype || 'desconocido'}, nombre: ${file.originalname || 'sin nombre'}). ` +
         `Asegurate de subir una foto, no un PDF, video u otro formato.`
       ));
     }
