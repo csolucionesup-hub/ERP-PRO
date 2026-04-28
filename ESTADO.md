@@ -2,9 +2,9 @@
 
 > **LEER PRIMERO.** Este documento es la fuente de verdad sobre qué está hecho, qué falta y dónde estamos parados. Se actualiza al cierre de cada sesión de trabajo.
 
-**Última actualización:** 2026-04-15 (sesión Libro Bancos + modales + deploy Railway)
+**Última actualización:** 2026-04-27 (sesión Rediseño Enterprise UI completo)
 **Rama activa:** `main`
-**Último commit:** `122b0ea feat: Libro Bancos completo — extracto bancario, import EECC Interbank, auto-movimientos, conciliación inline`
+**Último commit:** `b48ade5 feat(ui): hints contextuales en formulario Configuración Empresa`
 **Servidor dev:** `npx ts-node index.ts` en `D:\proyectos\ERP-PRO` → `http://localhost:3000`
 **Producción:** `erp-pro-production-e4c0.up.railway.app` — Railway (deploy automático desde main)
 
@@ -71,6 +71,7 @@ Railway desplegado y operativo con 24 tablas (migraciones 001-019 aplicadas via 
 
 - [x] ~~Hacer commit del trabajo sin commitear~~ → `122b0ea`
 - [x] ~~Push a `origin/main`~~ → pusheado + Railway desplegado
+- [x] ~~Rediseño Enterprise UI~~ → 10 commits desplegados al 27/04 (ver sección abajo)
 - [ ] Investigar y limpiar los 2 registros `COT 0000-000-MN`
 - [ ] Resolver hallazgos de auditoría V3 (prioridad: F01, F06, A02, A06)
 - [ ] Eliminar worktrees basura en `.claude/worktrees/`
@@ -78,6 +79,44 @@ Railway desplegado y operativo con 24 tablas (migraciones 001-019 aplicadas via 
 - [ ] Fix nro_operacion duplicado en descripción de EECC importados
 - [ ] Módulo Logística completo (UI con 3 tipos: GENERAL/SERVICIO/ALMACEN)
 - [ ] OC de servicios en Finanzas (tabla nueva en BD)
+- [ ] Replicar hints contextuales (`.app-form-hint`) en Cotización Comercial, Logística OC, Compras, Cobranzas Finanzas (piloto hecho en Configuración Empresa)
+- [ ] G20 — QA mobile real iPhone Safari + Android Chrome con dispositivo físico
+- [ ] Empty states en Comercial/Alertas/Contabilidad (cosméticos)
+- [ ] Refactor de iconos emoji → Lucide en KPIs de Administración/Inventario/Préstamos/OC/Contabilidad
+
+## Rediseño Enterprise UI — 27/04/2026 (cerrado)
+
+**10 commits desplegados a `origin/main`** en una sola sesión. Cero impacto en backend/lógica/datos.
+
+| Commit | Bloque |
+|---|---|
+| `086d0f6` | Semana 1 — sidebar slate-950 + header refactor + Inter 300-800 + tabular-nums global + sprite Lucide + helper `icon()` |
+| `bd6f712` | G11 — cards/tablas/badges enterprise |
+| `30da2e9` | G17 — formularios con focus ring |
+| `3604cb8` | G18-G19 — microinteracciones + focus visible WCAG AA |
+| `0e728d2` | G8/G9/G10 helpers (KpiCard v2, Pill, EmptyState) + G12 piloto Dashboard Tesorería |
+| `f4ec59e` | G13 piloto Comercial pills semánticos |
+| `6142046` | G14/G15/G16 — pills en Finanzas/OC/Administración |
+| `70ec1bd` | Dashboard B+D + KPIs Comercial/Finanzas/Logística enterprise + 2 empty states |
+| `b48ade5` | Hints contextuales en Configuración Empresa (piloto del patrón `.app-form-hint`) |
+
+**Archivos nuevos clave:**
+- `public/css/tokens.css` — variables `--app-*`
+- `public/css/components/sidebar.css` | `header.css` | `cards-tables.css` | `forms.css` | `motion-states.css`
+- `public/lib/icons.svg` — sprite Lucide 36 iconos
+- `public/js/components/Pill.js` — helper de pills semánticos con mapping de estados ERP
+- `public/js/components/EmptyState.js` — empty states diseñados
+
+**Archivos modificados clave:**
+- `public/index.html` — links a los nuevos CSS, weights Inter 300-800
+- `public/js/components/Sidebar.js` — refactor completo
+- `public/js/components/KpiCard.js` — soporta iconos Lucide + accent semántico
+- `public/js/services/ui.js` — agregado helper `icon(name, opts)`
+- `public/js/pages/Dashboard.js` | `Comercial.js` | `Finanzas.js` | `Logistica.js` | `OrdenesCompra.js` | `Administracion.js` | `Compras.js` | `Configuracion.js` — refactors puntuales
+
+**Patrón:** CSS aditivo + adapters JS legacy → enterprise. Las clases legacy de main.css siguen funcionando, los archivos enterprise sobreescriben por orden de cascada.
+
+**Detalles completos:** ver memoria `project_redesign_enterprise.md` en `~/.claude/projects/D--proyectos-ERP-PRO/memory/`.
 
 ---
 
@@ -106,9 +145,9 @@ Railway desplegado y operativo con 24 tablas (migraciones 001-019 aplicadas via 
 
 ---
 
-## Snapshot de `git status` (al 2026-04-15)
+## Snapshot de `git status` (al 2026-04-27)
 
-**Working tree limpio.** Todo commiteado en `122b0ea` y pusheado a `origin/main`.
+**Working tree limpio.** Último commit del rediseño: `b48ade5`. Todo pusheado a `origin/main`. Branch local activa: `redesign-enterprise` en worktree `brave-ishizaka-a6823a`.
 
 ### Basura a limpiar (aún en disco, no commiteada)
 ```
