@@ -350,7 +350,7 @@ deuda_neta = total_base - monto_detraccion - monto_retencion - cobrado
 32. **Password usuario gerente:** bcryptjs (NO bcrypt). Hash se genera con `bcryptjs.hashSync('Metal2026!', 10)`.
 33. **Railway deploy:** automático al push a `main`. Migraciones NO se ejecutan automáticamente — correr `npx ts-node database/apply_migrations.ts --env=railway` después de agregar migraciones nuevas. Para reset total: `npx ts-node database/bootstrap_railway.ts` (usa `.env.railway`).
 34. **`.env.railway`** tiene credenciales de Railway MySQL (interchange.proxy.rlwy.net:37963). NO commitear. MySQL local usa `.env` con `"C:/Program Files/MySQL/MySQL Server 8.0/bin/mysql.exe"`.
-35. **Railway BD — 24 tablas** (al 15/04/2026): schema.sql + relations.sql + migraciones 001-019 + usuario gerente. Bootstrap hecho con `bootstrap_railway.ts`.
+35. **BD productiva — Supabase Postgres + 30+ tablas** (al 30/04/2026): schema.sql + relations.sql + migraciones **001-037 + 042-043** + usuario gerente. Bootstrap inicial hecho con `bootstrap_railway.ts`. La BD real es Supabase project `fhlrxlsscerfiuuyiejw`; el adapter en `connection.ts` traduce sintaxis MySQL→Postgres. Railway sigue siendo solo el host de la app Node.
 
 ---
 

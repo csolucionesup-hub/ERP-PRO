@@ -2,20 +2,20 @@
 
 > **LEER PRIMERO.** Este documento es la fuente de verdad sobre qué está hecho, qué falta y dónde estamos parados. Se actualiza al cierre de cada sesión de trabajo.
 
-**Última actualización:** 2026-04-28 tarde (sesión sidebar mobile + uploads HEIC + preview PDF + seed ConfiguracionMarca)
+**Última actualización:** 2026-04-30 (auditoría + sidebar colapsable + sync de estado)
 **Rama activa:** `main`
-**Último commit pusheado:** `3c351b3 chore(cotizaciones): surface backend error message en toast del PDF`
-**Pendiente de commit (esta sesión):** sync de migración 011 + hardening PDF service + ESTADO.md + CLAUDE.md
+**Último commit pusheado:** `9911ad3 feat(ui): sidebar colapsable para ganar espacio de trabajo`
 **Servidor dev:** `npx ts-node index.ts` en `D:\proyectos\ERP-PRO` → `http://localhost:3000`
 **Producción:** `erp-pro-production-e4c0.up.railway.app` — Railway (deploy automático desde main)
-**Cache buster JS actual:** `v=20260428r3` (bumpear este número si se cambia algo en `public/js/`)
+**Cache buster JS actual:** `v=20260430r1` (app.js) · `v=20260430r3` (sidebar.css) — bumpear si se modifican
+**Migraciones BD:** 001 → 037 + 042 + 043 aplicadas (Supabase Postgres). El ESTADO previo decía "001-019" — desactualizado.
 
 ---
 
 ## ✅ Estado del repositorio
 
 Working tree **limpio**. Todo commiteado y pusheado a `origin/main`.
-Railway desplegado y operativo con 24 tablas (migraciones 001-019 aplicadas via bootstrap).
+Railway desplegado y operativo con 30+ tablas (migraciones 001-037 + 042-043 aplicadas via bootstrap).
 
 ---
 
@@ -81,16 +81,25 @@ Railway desplegado y operativo con 24 tablas (migraciones 001-019 aplicadas via 
 - [x] ~~Subir foto HEIC desde iPhone (rebotaba con "solo JPG/PNG/WebP")~~ → filtro `image/*` + extension fallback (`5ebf77e..61fa07b`)
 - [x] ~~Botón 👁️ Ver para previsualizar PDF antes de descargar~~ → modal con iframe (`f4a88ac`)
 - [x] ~~Seed faltante de `ConfiguracionMarca` en producción~~ → INSERT vía Supabase MCP, 28/04 mediodía
+- [x] ~~Logos editables por marca desde Configuración Empresa~~ → migración 043 + endpoint upload (`aa08c9c`)
+- [x] ~~OC: editar y eliminar~~ → con confirmación (`140a61a`)
+- [x] ~~OC: botón 👁️ Ver para preview PDF~~ → paridad con Cotizaciones (`e96504c`)
+- [x] ~~SPA: preservar módulo al hard reload~~ → `ebff50f` + `0fa9a63`
+- [x] ~~Sidebar colapsable para ganar espacio~~ → `«` + `☰` flotante (`9911ad3`, 30/04)
 - [ ] **Verificar end-to-end PDF** (Julio, próxima sesión): clickear `👁️ Ver` y `📄 PDF` en cotizaciones METAL y PERFOTOOLS — debe abrir / bajar sin 500
 - [ ] **Verificar end-to-end fotos** (Julio, próxima sesión): subir foto HEIC desde iPhone y desde PC → debe llegar a Cloudinary y aparecer en preview + PDF con foto bajo subtotal
 - [ ] Rotar `CLOUDINARY_API_SECRET` (memoria dice que fue expuesto en chats anteriores)
 - [ ] Investigar y limpiar los 2 registros `COT 0000-000-MN`
+- [ ] Race condition correlativos cotizaciones (`COUNT(*)` fuera de transacción en `CotizacionService.ts:63`)
 - [ ] Resolver hallazgos de auditoría V3 (prioridad: F01, F06, A02, A06)
 - [ ] Eliminar worktrees basura en `.claude/worktrees/`
+- [ ] Limpiar archivos `*_temp.txt`, `COT-2026-002-ME.pdf`, `auditoria_erp_pro.pdf`, `auditoria_v2_contexto.txt` en raíz
 - [ ] Fix KPI comisiones en Libro Bancos (contar ITF/N/D importados)
 - [ ] Fix nro_operacion duplicado en descripción de EECC importados
-- [ ] Módulo Logística completo (UI con 3 tipos: GENERAL/SERVICIO/ALMACEN)
-- [ ] OC de servicios en Finanzas (tabla nueva en BD)
+- [ ] **Decisión estratégica:** ¿Fase B (facturación electrónica STUB→REAL) o Fase C (Logística + Almacén valorizado) primero?
+- [ ] Módulo Logística completo (UI con 3 tipos: GENERAL/SERVICIO/ALMACEN) — Fase C
+- [ ] OC de servicios en Finanzas (tabla nueva en BD) — Fase C
+- [ ] Almacén valorizado con kárdex por ítem — Fase C
 - [ ] Replicar hints contextuales (`.app-form-hint`) en Cotización Comercial, Logística OC, Compras, Cobranzas Finanzas (piloto hecho en Configuración Empresa)
 - [ ] G20 — QA mobile real iPhone Safari + Android Chrome con dispositivo físico
 - [ ] Empty states en Comercial/Alertas/Contabilidad (cosméticos)
@@ -189,6 +198,72 @@ Sesión de bugfixes UX reportados por Julio probando en producción. Mezcla de m
 
 ---
 
+## Sesión 28/04 noche-29/04 — pulido PDF cotizaciones + logos editables
+
+**6 commits pusheados a `main`** (`a5b194d..aa08c9c`). Todo cosmético del PDF + feature nuevo de logos editables.
+
+| Commit | Cambio |
+|---|---|
+| `a5b194d` | CSP: permitir `frame-src 'self' blob:` y `object-src 'self' blob:` para que el preview de PDF en modal (iframe con blob URL) funcione en producción. |
+| `ac372cf` | Espaciado del PDF: header de tabla más alto, saludo con margen, "Total" → "SON" (en letras) con mejor separación. |
+| `2eb0fa7` | Header de tabla en 2 líneas (cabe el texto largo) + aire antes de la primera fila. |
+| `85b7b88` | Fix path de logos en PDF: usar `process.cwd()` en lugar de `__dirname` para que funcione tanto en dev como en Railway. |
+| `aa08c9c` | **Feature:** subir logos de marca desde Configuración Empresa (frontend + endpoint). Cloudinary upload reusado. METAL y PERFOTOOLS pueden tener logos distintos editables sin tocar código. Migración 043 (`configuracion_marca_logos`). |
+
+---
+
+## Sesión 28/04-29/04 — Órdenes de Compra (mejoras UX)
+
+**5 commits pusheados a `main`** (`140a61a..e96504c`). Refactor del módulo OC con paridad respecto a Cotizaciones.
+
+| Commit | Cambio |
+|---|---|
+| `140a61a` | **Feature:** editar y eliminar OC + alertas en transiciones de estado (con confirmación). |
+| `6fb910d` | Refrescar el módulo OC sin recargar la página completa al cambiar estado. |
+| `ebff50f` | Fix SPA: preservar el módulo actual al hacer hard reload (Ctrl+Shift+R no te tira al dashboard). |
+| `0fa9a63` | Fix SPA: respetar el primer segmento del hash con sub-rutas (`#logistica/general` no fuerza re-navegación al cambiar pestaña interna). |
+| `e96504c` | **Feature:** botón 👁️ Ver en OC para preview de PDF en modal (paridad con Cotizaciones). PDF mejorado con header marca + tabla legible. Migración 042 (`oc_unique_por_centro_costo`). |
+
+---
+
+## Sesión 30/04 — Sidebar colapsable
+
+**1 commit pusheado a `main`** (`9911ad3`). Mejora UX solicitada por Julio para ganar espacio de trabajo.
+
+- Botón `«` arriba a la derecha de la sidebar la oculta (transform translateX(-100%) + main-content reflow a 100vw).
+- Aparece botón flotante `☰` arriba a la izquierda para volver a mostrarla.
+- Estado persistido en `localStorage.erp_sidebar_collapsed` — sobrevive al reload.
+- Solo aplica en desktop (≥769px). En mobile sigue el hamburger existente.
+- **Nota técnica:** se descartaron las `transition: ... 0.22s` en `.sidebar` y `.main-content` porque Chromium no dispara la transición cuando una clase del `<body>` cambia en runtime y los selectores combinan media query + descendiente. Colapso instantáneo es lo correcto.
+
+**Archivos tocados:**
+- `public/js/components/Sidebar.js` — botón `«` en el render
+- `public/css/components/sidebar.css` — `.app-sidebar-toggle`, `.app-sidebar-show`, reglas `body.sidebar-collapsed` (scoped a desktop)
+- `public/js/app.js` — botón flotante `☰` en el shell, `window.toggleSidebarCollapse`, restauración del estado al iniciar
+- `public/index.html` — cache busters bumpeados (`sidebar.css?v=20260430r3`, `app.js?v=20260430r1`)
+
+---
+
+## Auditoría 30/04/2026 — donde estamos parados
+
+| Fase del Plan Maestro | Estado | Notas |
+|---|---|---|
+| **G** Rediseño Enterprise UI | ✅ **CERRADA** | 10 commits 27/04 + 7 cotizaciones + sidebar mobile/HEIC/PDF preview/colapsable |
+| **A** Fundaciones (config, auditoría, periodos, adjuntos, roles) | 🟢 **CASI HECHA** | Migraciones 020-024 aplicadas. Módulo `app/modules/configuracion/` con 4 services (`ConfiguracionService`, `AuditoriaService`, `PeriodosService`, `AdjuntosService`). Falta verificar wizard de setup completo y uso del audit log en todas las rutas sensibles. |
+| **B** Facturación electrónica + Libros SUNAT | 🟡 **MODO STUB** | Tablas Facturas/NotasCredito/GuiasRemision creadas (025-027). `NubefactService` implementado pero con flag STUB en línea 4. **Bloqueado por:** certificado digital + cuenta Nubefact REAL (gestión externa de Julio). |
+| **C** Logística + Almacén valorizado + Dashboards | 🟡 **PARCIAL** | OC funcionando (029-030 + 042) con edit/delete/PDF/preview. Falta módulo Logística completo con 3 tipos (GENERAL/SERVICIO/ALMACEN) y kárdex de Almacén valorizado. |
+| **D** Contabilidad PCGE + EE.FF. | 🔴 **INCIPIENTE** | Solo placeholder `Contabilidad.js`. Sin Plan de Cuentas, asientos automáticos ni Estados Financieros. |
+| **E** Producción metalmecánica (OT, BOM, QC) | ⬜ **NO INICIADA** | El diferenciador. Para agosto-septiembre. |
+| **F** Multi-tenancy SaaS + onboarding + pricing | ⬜ **NO INICIADA** | Para fin de septiembre. |
+
+**Plan SUNAT SIRE (paralelo a B):** plan escrito y aprobado, no ejecutado. Bloqueado por certificado digital + Nubefact + Usuario Secundario SOL específico para el ERP.
+
+**Fase de testing UAT (activa):** Luis y Jorge con rol GERENTE temporal hasta que los flujos críticos pasen 2 semanas sin bugs nuevos.
+
+**Recomendación:** sesión corta de cierre (verificación end-to-end PDF/fotos + housekeeping) → arrancar Fase B en MODO STUB completo (UI Facturas terminada, certificado se enchufa al final) en paralelo a gestión de certificado/Nubefact por Julio. Alternativa: ir derecho a Fase C (Logística completa + Almacén) que no tiene bloqueos externos.
+
+---
+
 ## Para Claude (contexto rápido en cada sesión nueva)
 
 **Al arrancar una sesión, LEER este archivo completo antes de actuar.** Evita re-descubrir estado.
@@ -214,13 +289,20 @@ Sesión de bugfixes UX reportados por Julio probando en producción. Mezcla de m
 
 ---
 
-## Snapshot de `git status` (al 2026-04-28 tarde)
+## Snapshot de `git status` (al 2026-04-30)
 
-**Worktree activo:** `.claude/worktrees/youthful-fermat-1f2932/` (rama `claude/youthful-fermat-1f2932`).
-**Pusheados a `main`:** 6 commits de la sesión 28/04 tarde (`6025290..3c351b3`).
-**Pendiente de commit en este worktree:** seed migración 011 + hardening PDF service + CLAUDE.md + ESTADO.md (este archivo). Se commitea como cierre de sesión.
+**Working tree limpio.** Todo pusheado a `origin/main`. Railway desplegado.
 
-**Total acumulado desde 27/04:** 23 commits (10 rediseño + 7 cotizaciones AM + 6 sesión tarde).
+**Acumulado de commits desde 27/04:**
+- 10 commits rediseño Enterprise UI (27/04)
+- 7 commits cotizaciones AM 27-28/04 (fotos Cloudinary + edit ítem + eliminar duplicado)
+- 6 commits sesión 28/04 tarde (sidebar mobile + HEIC + preview PDF + seed ConfiguracionMarca)
+- 1 commit cierre 28/04 (`8745bd2` — sync seed + hardening PDF + docs)
+- 5 commits pulido PDF cotizaciones + logos editables (28-29/04, `a5b194d..aa08c9c`)
+- 5 commits OC mejoras UX 28-29/04 (`140a61a..e96504c`)
+- 1 commit sidebar colapsable (30/04, `9911ad3`)
+
+**Total: 35 commits** desde el rediseño Enterprise.
 
 ## Para Claude (próxima sesión)
 
