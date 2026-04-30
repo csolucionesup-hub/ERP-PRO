@@ -56,6 +56,12 @@ interface OCData {
   proveedor_direccion?: string;
   proveedor_telefono?: string;
   proveedor_email?: string;
+  proveedor_banco_1_nombre?: string | null;
+  proveedor_banco_1_numero?: string | null;
+  proveedor_banco_1_cci?: string | null;
+  proveedor_banco_2_nombre?: string | null;
+  proveedor_banco_2_numero?: string | null;
+  proveedor_banco_2_cci?: string | null;
   detalle: Array<{
     orden: number;
     descripcion: string;
@@ -281,8 +287,23 @@ export class OrdenCompraPDFService {
       [`- Fecha de entrega : ${oc.fecha_entrega_esperada ? fechaCorta(oc.fecha_entrega_esperada) : fechaCorta(oc.fecha_emision)}`],
       [`- Lugar de Entrega : ${oc.lugar_entrega || 'Lima'}`],
     ];
+    // Cuentas bancarias del proveedor:
+    // 1. Si la OC tiene una cuenta_bancaria_pago manual (override), tiene prioridad.
+    // 2. Si no, mostramos las cuentas que tenga el proveedor en su ficha (banco_1 y/o banco_2).
+    //    El proveedor sabe cuál usar según la moneda de la OC — mostramos lo que hay.
     if (oc.cuenta_bancaria_pago) {
       condiciones.push([`- ${oc.cuenta_bancaria_pago}`]);
+    } else {
+      const formatBanco = (nombre?: string | null, numero?: string | null, cci?: string | null): string | null => {
+        if (!numero) return null;
+        const partes = [`Cta. ${nombre || 'Banco'} N°${numero}`];
+        if (cci) partes.push(`CCI ${cci}`);
+        return partes.join(' / ');
+      };
+      const b1 = formatBanco(oc.proveedor_banco_1_nombre, oc.proveedor_banco_1_numero, oc.proveedor_banco_1_cci);
+      const b2 = formatBanco(oc.proveedor_banco_2_nombre, oc.proveedor_banco_2_numero, oc.proveedor_banco_2_cci);
+      if (b1) condiciones.push([`- ${b1}`]);
+      if (b2) condiciones.push([`- ${b2}`]);
     }
     condiciones.push([`- Facturar a nombre de ${cfg.razon_social} , RUC ${cfg.ruc}`]);
     condiciones.push([`- Enviar factura a ${cfg.email_facturacion || ''}`]);

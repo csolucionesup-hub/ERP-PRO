@@ -452,7 +452,20 @@ class OrdenCompraService {
 
   async obtener(id_oc: number) {
     const [rows]: any = await db.query(
-      `SELECT oc.*, p.razon_social AS proveedor_nombre, p.ruc AS proveedor_ruc
+      `SELECT oc.*,
+              p.razon_social AS proveedor_nombre,
+              p.ruc          AS proveedor_ruc,
+              p.tipo         AS proveedor_tipo,
+              p.dni          AS proveedor_dni,
+              p.direccion    AS proveedor_direccion,
+              p.telefono     AS proveedor_telefono,
+              p.email        AS proveedor_email,
+              p.banco_1_nombre AS proveedor_banco_1_nombre,
+              p.banco_1_numero AS proveedor_banco_1_numero,
+              p.banco_1_cci    AS proveedor_banco_1_cci,
+              p.banco_2_nombre AS proveedor_banco_2_nombre,
+              p.banco_2_numero AS proveedor_banco_2_numero,
+              p.banco_2_cci    AS proveedor_banco_2_cci
        FROM OrdenesCompra oc
        LEFT JOIN Proveedores p ON p.id_proveedor = oc.id_proveedor
        WHERE oc.id_oc = ?`,
