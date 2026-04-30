@@ -127,12 +127,14 @@ class OrdenCompraService {
       const nro_oc = await this.proximoNumero(empresa, cc, anio);
       const estado: EstadoOC = autoAprobar ? 'APROBADA' : 'BORRADOR';
 
-      // Auto-fill defaults de firmas/contacto desde ConfiguracionEmpresa
-      const solicitado   = params.solicitado_por   || (cfg as any).oc_solicitado_default   || null;
-      const revisado     = params.revisado_por     || (cfg as any).oc_revisado_default     || null;
-      const autorizado   = params.autorizado_por   || (cfg as any).oc_autorizado_default   || null;
-      const ctactoNombre = params.contacto_interno || (cfg as any).oc_contacto_nombre      || null;
-      const ctactoTel    = params.contacto_telefono|| (cfg as any).oc_contacto_telefono    || null;
+      // Las firmas y contacto se leen dinámicamente desde Configuración
+      // al renderizar el PDF (con fallback al snapshot per-OC si existe).
+      // Solo guardamos override explícito por OC; si no, NULL → cfg vivo.
+      const solicitado   = params.solicitado_por   || null;
+      const revisado     = params.revisado_por     || null;
+      const autorizado   = params.autorizado_por   || null;
+      const ctactoNombre = params.contacto_interno || null;
+      const ctactoTel    = params.contacto_telefono|| null;
 
       const [res]: any = await conn.query(
         `INSERT INTO OrdenesCompra

@@ -82,6 +82,11 @@ interface ConfigEmpresa {
   telefono?: string | null;
   web?: string | null;
   oc_ciudad_emision?: string | null;
+  oc_solicitado_default?: string | null;
+  oc_revisado_default?: string | null;
+  oc_autorizado_default?: string | null;
+  oc_contacto_nombre?: string | null;
+  oc_contacto_telefono?: string | null;
   tasa_igv?: number;
 }
 
@@ -336,11 +341,20 @@ export class OrdenCompraPDFService {
     y += 10;
 
     // ── 7. Centro de costo + contacto ──────────────────────
+    // Las firmas y el contacto interno usan los defaults de Configuración
+    // como fallback si la OC no tiene override propio. Así, cambiar los
+    // nombres en Configuración aplica a todas las OCs (pasadas y futuras).
+    const contactoNombre = oc.contacto_interno || cfg.oc_contacto_nombre || null;
+    const contactoTel    = oc.contacto_telefono || cfg.oc_contacto_telefono || null;
+    const solicitadoPor  = oc.solicitado_por   || cfg.oc_solicitado_default || null;
+    const revisadoPor    = oc.revisado_por     || cfg.oc_revisado_default   || null;
+    const autorizadoPor  = oc.autorizado_por   || cfg.oc_autorizado_default || null;
+
     doc.font('Helvetica').fontSize(9);
     doc.text(`CENTRO COSTO: ${oc.centro_costo}`, marginL, y);
     y += 14;
-    if (oc.contacto_interno) {
-      doc.text(`Contacto : ${oc.contacto_interno}   Celular : ${oc.contacto_telefono || ''}`, marginL, y);
+    if (contactoNombre) {
+      doc.text(`Contacto : ${contactoNombre}   Celular : ${contactoTel || ''}`, marginL, y);
       y += 14;
     }
 
@@ -355,9 +369,9 @@ export class OrdenCompraPDFService {
         doc.font('Helvetica').fontSize(9.5).text(nombre, x, y + 18, { width: firmaW, align: 'center' });
       }
     };
-    firma(marginL,                    'Solicitado Por :', oc.solicitado_por);
-    firma(marginL + firmaW,           'Revisado Por :',   oc.revisado_por);
-    firma(marginL + firmaW * 2,       'Autorizado Por :', oc.autorizado_por);
+    firma(marginL,                    'Solicitado Por :', solicitadoPor);
+    firma(marginL + firmaW,           'Revisado Por :',   revisadoPor);
+    firma(marginL + firmaW * 2,       'Autorizado Por :', autorizadoPor);
 
     // ── 9. Pie de página: reducir margen inferior para que las 3 líneas quepan ─
     const originalBottomMargin = doc.page.margins.bottom;
