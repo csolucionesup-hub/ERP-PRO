@@ -463,9 +463,11 @@ class OrdenCompraService {
               p.banco_1_nombre AS proveedor_banco_1_nombre,
               p.banco_1_numero AS proveedor_banco_1_numero,
               p.banco_1_cci    AS proveedor_banco_1_cci,
+              p.banco_1_moneda AS proveedor_banco_1_moneda,
               p.banco_2_nombre AS proveedor_banco_2_nombre,
               p.banco_2_numero AS proveedor_banco_2_numero,
-              p.banco_2_cci    AS proveedor_banco_2_cci
+              p.banco_2_cci    AS proveedor_banco_2_cci,
+              p.banco_2_moneda AS proveedor_banco_2_moneda
        FROM OrdenesCompra oc
        LEFT JOIN Proveedores p ON p.id_proveedor = oc.id_proveedor
        WHERE oc.id_oc = ?`,

@@ -4,8 +4,8 @@ class ProvidersService {
   async getProveedores() {
     const [rows] = await db.query(
       `SELECT id_proveedor, ruc, dni, tipo, razon_social, contacto, telefono, email, direccion,
-              banco_1_nombre, banco_1_numero, banco_1_cci,
-              banco_2_nombre, banco_2_numero, banco_2_cci,
+              banco_1_nombre, banco_1_numero, banco_1_cci, banco_1_moneda,
+              banco_2_nombre, banco_2_numero, banco_2_cci, banco_2_moneda,
               billetera_digital
        FROM Proveedores ORDER BY razon_social ASC`
     );
@@ -16,16 +16,16 @@ class ProvidersService {
     const [result] = await db.query(
       `INSERT INTO Proveedores
         (ruc, dni, tipo, razon_social, contacto, telefono, email, direccion,
-         banco_1_nombre, banco_1_numero, banco_1_cci,
-         banco_2_nombre, banco_2_numero, banco_2_cci,
+         banco_1_nombre, banco_1_numero, banco_1_cci, banco_1_moneda,
+         banco_2_nombre, banco_2_numero, banco_2_cci, banco_2_moneda,
          billetera_digital)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         data.ruc || null, data.dni || null, data.tipo || 'EMPRESA',
         data.razon_social,
         data.contacto || null, data.telefono || null, data.email || null, data.direccion || null,
-        data.banco_1_nombre || null, data.banco_1_numero || null, data.banco_1_cci || null,
-        data.banco_2_nombre || null, data.banco_2_numero || null, data.banco_2_cci || null,
+        data.banco_1_nombre || null, data.banco_1_numero || null, data.banco_1_cci || null, data.banco_1_moneda || 'PEN',
+        data.banco_2_nombre || null, data.banco_2_numero || null, data.banco_2_cci || null, data.banco_2_moneda || 'USD',
         data.billetera_digital || null,
       ]
     );
@@ -36,16 +36,16 @@ class ProvidersService {
     await db.query(
       `UPDATE Proveedores SET
         ruc=?, dni=?, tipo=?, razon_social=?, contacto=?, telefono=?, email=?, direccion=?,
-        banco_1_nombre=?, banco_1_numero=?, banco_1_cci=?,
-        banco_2_nombre=?, banco_2_numero=?, banco_2_cci=?,
+        banco_1_nombre=?, banco_1_numero=?, banco_1_cci=?, banco_1_moneda=?,
+        banco_2_nombre=?, banco_2_numero=?, banco_2_cci=?, banco_2_moneda=?,
         billetera_digital=?
        WHERE id_proveedor=?`,
       [
         data.ruc || null, data.dni || null, data.tipo || 'EMPRESA',
         data.razon_social,
         data.contacto || null, data.telefono || null, data.email || null, data.direccion || null,
-        data.banco_1_nombre || null, data.banco_1_numero || null, data.banco_1_cci || null,
-        data.banco_2_nombre || null, data.banco_2_numero || null, data.banco_2_cci || null,
+        data.banco_1_nombre || null, data.banco_1_numero || null, data.banco_1_cci || null, data.banco_1_moneda || 'PEN',
+        data.banco_2_nombre || null, data.banco_2_numero || null, data.banco_2_cci || null, data.banco_2_moneda || 'USD',
         data.billetera_digital || null,
         id,
       ]

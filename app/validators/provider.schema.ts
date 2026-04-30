@@ -4,9 +4,11 @@ const bancoCampos = {
   banco_1_nombre:    z.string().optional(),
   banco_1_numero:    z.string().optional(),
   banco_1_cci:       z.string().optional(),
+  banco_1_moneda:    z.enum(['PEN', 'USD']).optional(),
   banco_2_nombre:    z.string().optional(),
   banco_2_numero:    z.string().optional(),
   banco_2_cci:       z.string().optional(),
+  banco_2_moneda:    z.enum(['PEN', 'USD']).optional(),
   billetera_digital: z.string().optional(),
 };
 

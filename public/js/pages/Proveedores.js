@@ -105,42 +105,58 @@ export const Proveedores = async () => {
           <input name="direccion" value="${p.direccion || ''}" placeholder="Av. Principal 123 - Distrito" style="${inputStyle}">
         </div>
 
-        <!-- Cuenta Soles -->
+        <!-- Cuenta 1 -->
         <div style="${sectionStyle}">
-          <div style="${sectionTitle}">💰 Cuenta bancaria — Soles (PEN)</div>
-          <div style="display:grid;grid-template-columns:1fr 2fr;gap:6px;margin-bottom:6px">
+          <div style="${sectionTitle}">💰 Cuenta bancaria 1</div>
+          <div style="display:grid;grid-template-columns:2fr 1fr;gap:6px;margin-bottom:6px">
             <div><label style="${labelStyle}">Banco</label>
               <select name="banco_1_nombre" style="${inputStyle}">
-                <option value="">— Banco PEN —</option>
+                <option value="">— Banco —</option>
                 ${['BCP', 'Interbank', 'Scotiabank', 'BBVA', 'Banco de la Nación', 'Banco Pichincha', 'Banbif', 'GNB', 'Mibanco', 'Caja Arequipa', 'Otros'].map(b =>
                   `<option ${p.banco_1_nombre === b ? 'selected' : ''}>${b}</option>`
                 ).join('')}
               </select>
             </div>
+            <div><label style="${labelStyle}">Moneda</label>
+              <select name="banco_1_moneda" style="${inputStyle}">
+                <option value="PEN" ${(p.banco_1_moneda || 'PEN') === 'PEN' ? 'selected' : ''}>Soles (PEN)</option>
+                <option value="USD" ${p.banco_1_moneda === 'USD' ? 'selected' : ''}>Dólares (USD)</option>
+              </select>
+            </div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
             <div><label style="${labelStyle}">Nº cuenta</label>
               <input name="banco_1_numero" value="${p.banco_1_numero || ''}" placeholder="194-12345678-0-12" style="${inputStyle}"></div>
+            <div><label style="${labelStyle}">CCI</label>
+              <input name="banco_1_cci" value="${p.banco_1_cci || ''}" placeholder="00219412345678012345" maxlength="20" style="${inputStyle}"></div>
           </div>
-          <div><label style="${labelStyle}">CCI</label>
-            <input name="banco_1_cci" value="${p.banco_1_cci || ''}" placeholder="00219412345678012345" maxlength="20" style="${inputStyle}"></div>
         </div>
 
-        <!-- Cuenta Dólares -->
+        <!-- Cuenta 2 -->
         <div style="${sectionStyle}">
-          <div style="${sectionTitle}">💵 Cuenta bancaria — Dólares (USD) — opcional</div>
-          <div style="display:grid;grid-template-columns:1fr 2fr;gap:6px;margin-bottom:6px">
+          <div style="${sectionTitle}">💵 Cuenta bancaria 2 — opcional</div>
+          <div style="display:grid;grid-template-columns:2fr 1fr;gap:6px;margin-bottom:6px">
             <div><label style="${labelStyle}">Banco</label>
               <select name="banco_2_nombre" style="${inputStyle}">
-                <option value="">— Banco USD —</option>
-                ${['BCP', 'Interbank', 'Scotiabank', 'BBVA', 'Banbif', 'Otros'].map(b =>
+                <option value="">— Banco —</option>
+                ${['BCP', 'Interbank', 'Scotiabank', 'BBVA', 'Banco de la Nación', 'Banco Pichincha', 'Banbif', 'GNB', 'Mibanco', 'Caja Arequipa', 'Otros'].map(b =>
                   `<option ${p.banco_2_nombre === b ? 'selected' : ''}>${b}</option>`
                 ).join('')}
               </select>
             </div>
-            <div><label style="${labelStyle}">Nº cuenta USD</label>
-              <input name="banco_2_numero" value="${p.banco_2_numero || ''}" placeholder="194-9876543-1-87" style="${inputStyle}"></div>
+            <div><label style="${labelStyle}">Moneda</label>
+              <select name="banco_2_moneda" style="${inputStyle}">
+                <option value="PEN" ${p.banco_2_moneda === 'PEN' ? 'selected' : ''}>Soles (PEN)</option>
+                <option value="USD" ${(p.banco_2_moneda || 'USD') === 'USD' ? 'selected' : ''}>Dólares (USD)</option>
+              </select>
+            </div>
           </div>
-          <div><label style="${labelStyle}">CCI USD</label>
-            <input name="banco_2_cci" value="${p.banco_2_cci || ''}" maxlength="20" style="${inputStyle}"></div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+            <div><label style="${labelStyle}">Nº cuenta</label>
+              <input name="banco_2_numero" value="${p.banco_2_numero || ''}" placeholder="194-9876543-1-87" style="${inputStyle}"></div>
+            <div><label style="${labelStyle}">CCI</label>
+              <input name="banco_2_cci" value="${p.banco_2_cci || ''}" maxlength="20" style="${inputStyle}"></div>
+          </div>
         </div>
 
         <!-- Billetera digital -->
@@ -171,9 +187,11 @@ export const Proveedores = async () => {
       banco_1_nombre: f('banco_1_nombre') || undefined,
       banco_1_numero: f('banco_1_numero') || undefined,
       banco_1_cci:    f('banco_1_cci') || undefined,
+      banco_1_moneda: f('banco_1_moneda') || undefined,
       banco_2_nombre: f('banco_2_nombre') || undefined,
       banco_2_numero: f('banco_2_numero') || undefined,
       banco_2_cci:    f('banco_2_cci') || undefined,
+      banco_2_moneda: f('banco_2_moneda') || undefined,
       billetera_digital: f('billetera_digital') || undefined,
     };
   }

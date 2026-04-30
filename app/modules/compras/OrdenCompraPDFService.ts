@@ -59,9 +59,11 @@ interface OCData {
   proveedor_banco_1_nombre?: string | null;
   proveedor_banco_1_numero?: string | null;
   proveedor_banco_1_cci?: string | null;
+  proveedor_banco_1_moneda?: 'PEN' | 'USD' | null;
   proveedor_banco_2_nombre?: string | null;
   proveedor_banco_2_numero?: string | null;
   proveedor_banco_2_cci?: string | null;
+  proveedor_banco_2_moneda?: 'PEN' | 'USD' | null;
   detalle: Array<{
     orden: number;
     descripcion: string;
@@ -294,14 +296,24 @@ export class OrdenCompraPDFService {
     if (oc.cuenta_bancaria_pago) {
       condiciones.push([`- ${oc.cuenta_bancaria_pago}`]);
     } else {
-      const formatBanco = (nombre?: string | null, numero?: string | null, cci?: string | null): string | null => {
+      const formatBanco = (
+        nombre?: string | null, numero?: string | null, cci?: string | null,
+        moneda?: 'PEN' | 'USD' | null
+      ): string | null => {
         if (!numero) return null;
-        const partes = [`Cta. ${nombre || 'Banco'} N°${numero}`];
+        const monedaLbl = moneda === 'USD' ? 'Dólares' : 'Soles';
+        const partes = [`Cta. ${nombre || 'Banco'} ${monedaLbl} N°${numero}`];
         if (cci) partes.push(`CCI ${cci}`);
         return partes.join(' / ');
       };
-      const b1 = formatBanco(oc.proveedor_banco_1_nombre, oc.proveedor_banco_1_numero, oc.proveedor_banco_1_cci);
-      const b2 = formatBanco(oc.proveedor_banco_2_nombre, oc.proveedor_banco_2_numero, oc.proveedor_banco_2_cci);
+      const b1 = formatBanco(
+        oc.proveedor_banco_1_nombre, oc.proveedor_banco_1_numero,
+        oc.proveedor_banco_1_cci, oc.proveedor_banco_1_moneda
+      );
+      const b2 = formatBanco(
+        oc.proveedor_banco_2_nombre, oc.proveedor_banco_2_numero,
+        oc.proveedor_banco_2_cci, oc.proveedor_banco_2_moneda
+      );
       if (b1) condiciones.push([`- ${b1}`]);
       if (b2) condiciones.push([`- ${b2}`]);
     }
