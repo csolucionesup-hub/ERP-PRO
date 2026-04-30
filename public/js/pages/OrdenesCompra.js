@@ -175,6 +175,24 @@ let _proveedores = [];
 let _servicios = [];
 let _cfg = null;
 
+// Helper: refresca el listado de OC en su sitio. Si la OC está embebida
+// dentro del hub de Logística (#logi-panel-oc), re-renderiza ese panel
+// inline para mantener al usuario en la pestaña donde estaba. Si la página
+// se está usando standalone, navega normalmente.
+async function refreshOC() {
+  const logiPanel = document.getElementById('logi-panel-oc');
+  if (logiPanel && logiPanel.style.display !== 'none') {
+    try {
+      const html = await OrdenesCompra();
+      logiPanel.innerHTML = html.replace(/<header[\s\S]*?<\/header>/, '');
+    } catch (e) {
+      logiPanel.innerHTML = `<div style="padding:40px;color:var(--danger)">Error: ${e.message}</div>`;
+    }
+    return;
+  }
+  window.navigate('ordenes-compra');
+}
+
 export const OrdenesCompra = async () => {
   try {
     [_ocs, _proveedores, _servicios, _cfg] = await Promise.all([
@@ -612,7 +630,7 @@ async function aprobar(id) {
   try {
     await api.ordenesCompra.aprobar(id, { comentario: c });
     showSuccess('OC aprobada');
-    setTimeout(() => window.navigate('ordenes-compra'), 600);
+    setTimeout(() => refreshOC(), 600);
   } catch (e) { showError(e.message); }
 }
 
@@ -628,7 +646,7 @@ async function enviar(id) {
   try {
     await api.ordenesCompra.enviar(id);
     showSuccess('OC marcada como enviada');
-    setTimeout(() => window.navigate('ordenes-compra'), 600);
+    setTimeout(() => refreshOC(), 600);
   } catch (e) { showError(e.message); }
 }
 
@@ -658,7 +676,7 @@ async function recibir(id) {
   try {
     const r = await api.ordenesCompra.recibir(id, lineas);
     showSuccess(`Recepción registrada · Estado: ${r.estado}`);
-    setTimeout(() => window.navigate('ordenes-compra'), 600);
+    setTimeout(() => refreshOC(), 600);
   } catch (e) { showError(e.message); }
 }
 
@@ -678,7 +696,7 @@ async function facturar(id) {
   try {
     await api.ordenesCompra.facturar(id, { nro_factura_proveedor: nro, fecha_factura: fecha });
     showSuccess('OC facturada — se creó registro en Compras');
-    setTimeout(() => window.navigate('ordenes-compra'), 800);
+    setTimeout(() => refreshOC(), 800);
   } catch (e) { showError(e.message); }
 }
 
@@ -688,7 +706,7 @@ async function anular(id) {
   try {
     await api.ordenesCompra.anular(id, motivo);
     showSuccess('OC anulada');
-    setTimeout(() => window.navigate('ordenes-compra'), 600);
+    setTimeout(() => refreshOC(), 600);
   } catch (e) { showError(e.message); }
 }
 
@@ -714,7 +732,7 @@ async function eliminarOC(id, nro) {
   try {
     await api.ordenesCompra.eliminar(id);
     showSuccess('OC eliminada');
-    setTimeout(() => window.navigate('ordenes-compra'), 600);
+    setTimeout(() => refreshOC(), 600);
   } catch (e) { showError(e.message); }
 }
 
@@ -876,7 +894,7 @@ function nuevaOC(editData) {
         const r = await api.ordenesCompra.create(payload);
         showSuccess(`OC ${r.nro_oc} creada · ${r.autoAprobada ? '✓ Auto-aprobada' : 'Pendiente aprobación'}`);
       }
-      setTimeout(() => window.navigate('ordenes-compra'), 800);
+      setTimeout(() => refreshOC(), 800);
     } catch (err) {
       showError(err.message || (esEdit ? 'Error actualizando OC' : 'Error creando OC'));
     }
