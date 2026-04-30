@@ -1,4 +1,4 @@
-import { renderSidebar } from './components/Sidebar.js';
+import { renderSidebar } from './components/Sidebar.js?v=20260430r1';
 import { Dashboard }   from './pages/Dashboard.js';
 import { Finanzas }    from './pages/Finanzas.js';
 import { Inventario }  from './pages/Inventario.js';
@@ -88,6 +88,14 @@ window.logout = function () {
   localStorage.removeItem('erp_user');
   localStorage.removeItem('erp_last_page');
   window.location.replace('/login.html');
+};
+
+// Toggle ocultar/mostrar sidebar (desktop). Persiste en localStorage para
+// que el estado sobreviva al reload. En mobile no se usa (allí está el
+// hamburger), las reglas CSS de .sidebar-collapsed están scopeadas a desktop.
+window.toggleSidebarCollapse = function () {
+  const collapsed = document.body.classList.toggle('sidebar-collapsed');
+  try { localStorage.setItem('erp_sidebar_collapsed', collapsed ? '1' : '0'); } catch {}
 };
 
 function getPaginaInicio(user) {
@@ -193,12 +201,23 @@ async function init() {
   // Shell estática con sidebar + main-content + hamburger mobile
   document.getElementById('root').innerHTML = `
     <button class="mobile-menu-toggle" id="mobile-menu-toggle" aria-label="Menú">☰</button>
+    <button class="app-sidebar-show" id="app-sidebar-show" type="button"
+            aria-label="Mostrar menú lateral" title="Mostrar menú"
+            onclick="toggleSidebarCollapse()">☰</button>
     <div class="mobile-overlay" id="mobile-overlay"></div>
     <div class="app-container">
       <aside class="sidebar" id="sidebar"></aside>
       <main class="main-content" id="main-content"></main>
     </div>
   `;
+
+  // Restaurar estado colapsado de la sidebar (solo aplica visualmente en desktop;
+  // en mobile la regla CSS está scopeada a min-width:769px y no afecta).
+  try {
+    if (localStorage.getItem('erp_sidebar_collapsed') === '1') {
+      document.body.classList.add('sidebar-collapsed');
+    }
+  } catch {}
 
   // Toggle hamburger en mobile
   const sidebarEl = document.getElementById('sidebar');

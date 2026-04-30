@@ -115,6 +115,8 @@ export function renderSidebar(activePage) {
   const rolLabel = esGerente ? 'Gerente' : (user.rol || 'Usuario');
 
   document.getElementById('sidebar').innerHTML = `
+    <button class="app-sidebar-toggle" type="button" aria-label="Ocultar menú lateral"
+            title="Ocultar menú" onclick="toggleSidebarCollapse()">«</button>
     <div class="app-sidebar-brand">
       <img src="/img/logo-metal.png" alt="Metal Engineers" />
     </div>
