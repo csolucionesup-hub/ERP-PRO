@@ -385,25 +385,30 @@ class CotizacionPDFService {
     ensureSpace(140);
     doc.font('Helvetica-Bold').fontSize(10).fillColor('#000').text('CONDICIONES GENERALES', L, y); y += 14;
 
-    // Línea simple (sin label:value)
+    // Línea simple (sin label:value). Auto-paginación: si la línea no entra
+    // antes del footer, salta a la siguiente página antes de dibujar.
     const condLine = (text: string) => {
-      doc.font('Helvetica').fontSize(9.5).fillColor('#000').text(text, L, y, { width: pageW });
-      y += doc.heightOfString(text, { width: pageW }) + 3;
+      doc.font('Helvetica').fontSize(9.5).fillColor('#000');
+      const h = doc.heightOfString(text, { width: pageW });
+      ensureSpace(h + 3);
+      doc.text(text, L, y, { width: pageW });
+      y += h + 3;
     };
     // Línea con label en negrita + valor en normal (x separados para alineamiento perfecto)
     const COND_LBL = 148; // ancho columna label
     const condPar = (label: string, value: any) => {
       if (!value) return;
       const val = String(value);
-      const ySnap = y;
-      doc.font('Helvetica').fontSize(9.5).fillColor('#000')
-        .text(label, L, ySnap, { width: COND_LBL });
-      doc.font('Helvetica').fontSize(9.5).fillColor('#000')
-        .text(val, L + COND_LBL, ySnap, { width: pageW - COND_LBL });
-      y += Math.max(
+      doc.font('Helvetica').fontSize(9.5).fillColor('#000');
+      const h = Math.max(
         doc.heightOfString(label, { width: COND_LBL }),
         doc.heightOfString(val,   { width: pageW - COND_LBL })
-      ) + 3;
+      );
+      ensureSpace(h + 3);
+      const ySnap = y;
+      doc.text(label, L, ySnap, { width: COND_LBL });
+      doc.text(val, L + COND_LBL, ySnap, { width: pageW - COND_LBL });
+      y += h + 3;
     };
 
     // Si un valor tiene 2+ líneas (separadas por \n), renderiza cada línea con bullet "• ".
@@ -430,6 +435,7 @@ class CotizacionPDFService {
     const cuentaNro   = esUSD ? cfg.cta_usd_numero : cfg.cta_pen_numero;
     const cuentaCci   = esUSD ? cfg.cta_usd_cci    : cfg.cta_pen_cci;
     if (cuentaBanco && cuentaNro) {
+      ensureSpace(32);
       doc.font('Helvetica').fontSize(9.5)
         .text(`Cuentas corrientes a nombre de ${cfg.razon_social}:`, L, y); y += 12;
       doc.font('Helvetica-Bold').text(
@@ -437,9 +443,15 @@ class CotizacionPDFService {
       y += 16;
     }
 
-    doc.font('Helvetica').fontSize(9.5).fillColor('#000')
-      .text('Sin otro particular y esperando vernos favorecidos con sus gratas órdenes, nos suscribimos de ustedes. Atentamente,',
-        L, y, { width: pageW }); y += 28;
+    // Texto de cierre + firma como bloque indivisible: si no entra el cierre
+    // junto con la firma (≈80pt), saltamos a página nueva ANTES de dibujar
+    // el cierre — sino el cierre se monta sobre el footer.
+    const closingTxt = 'Sin otro particular y esperando vernos favorecidos con sus gratas órdenes, nos suscribimos de ustedes. Atentamente,';
+    doc.font('Helvetica').fontSize(9.5).fillColor('#000');
+    const closingH = doc.heightOfString(closingTxt, { width: pageW });
+    ensureSpace(closingH + 12 + 80); // cierre + aire + firma block
+    doc.text(closingTxt, L, y, { width: pageW });
+    y += closingH + 12;
 
     // ── Firma ───────────────────────────────────────────────────
     ensureSpace(80);
