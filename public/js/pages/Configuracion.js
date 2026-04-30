@@ -174,12 +174,63 @@ function renderTabEmpresa(panel, cfg) {
         </div>
       </form>
     </div>
+
+    <div class="card" style="margin-top:18px">
+      <h3 style="margin-bottom:6px;font-size:15px">Firmas y contacto en Órdenes de Compra</h3>
+      <p style="color:var(--text-secondary);font-size:13px;margin-bottom:16px">
+        Estos nombres aparecen al pie del PDF de OC (Solicitado / Revisado / Autorizado) y como contacto interno.
+        Se aplican como <strong>default</strong> a cada OC nueva — al crear/editar una OC podés sobrescribir si fuera necesario.
+      </p>
+      <form id="form-firmas-oc" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px">
+        <div>
+          <label>Solicitado por</label>
+          <input name="oc_solicitado_default" value="${cfg.oc_solicitado_default || ''}">
+          <div class="app-form-hint">Quien levanta el requerimiento (asistente de compras, jefe de proyecto).</div>
+        </div>
+        <div>
+          <label>Revisado por</label>
+          <input name="oc_revisado_default" value="${cfg.oc_revisado_default || ''}">
+          <div class="app-form-hint">Quien valida la cotización del proveedor (administración).</div>
+        </div>
+        <div>
+          <label>Autorizado por</label>
+          <input name="oc_autorizado_default" value="${cfg.oc_autorizado_default || ''}">
+          <div class="app-form-hint">Quien aprueba el desembolso (gerencia).</div>
+        </div>
+        <div>
+          <label>Contacto interno (nombre)</label>
+          <input name="oc_contacto_nombre" value="${cfg.oc_contacto_nombre || ''}">
+          <div class="app-form-hint">Aparece como "Contacto: …" abajo del centro de costo.</div>
+        </div>
+        <div>
+          <label>Celular del contacto</label>
+          <input name="oc_contacto_telefono" value="${cfg.oc_contacto_telefono || ''}">
+          <div class="app-form-hint">Para que el proveedor sepa a quién llamar.</div>
+        </div>
+        <div>
+          <label>Ciudad de emisión</label>
+          <input name="oc_ciudad_emision" value="${cfg.oc_ciudad_emision || ''}">
+          <div class="app-form-hint">Encabezado del PDF: "Puente Piedra, 12 de Enero del 2026".</div>
+        </div>
+        <div style="grid-column:span 3;display:flex;justify-content:flex-end">
+          <button type="submit" class="btn-primary" style="padding:10px 24px;background:var(--primary-color);color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:600">
+            Guardar firmas
+          </button>
+        </div>
+      </form>
+    </div>
   `;
 
   document.getElementById('form-empresa').onsubmit = (e) => {
     e.preventDefault();
     const data = Object.fromEntries(new FormData(e.target));
     delete data.ruc; // no editable
+    window.Configuracion.guardarEmpresa(data);
+  };
+
+  document.getElementById('form-firmas-oc').onsubmit = (e) => {
+    e.preventDefault();
+    const data = Object.fromEntries(new FormData(e.target));
     window.Configuracion.guardarEmpresa(data);
   };
 }
