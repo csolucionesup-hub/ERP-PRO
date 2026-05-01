@@ -1234,6 +1234,14 @@ ocRouter.post('/:id/anular', validateIdParam, auditLog('OrdenCompra', 'ANULAR'),
   res.json(await OrdenCompraService.anular(Number(req.params.id), req.body?.motivo || 'Sin motivo'));
 });
 
+// REACTIVAR OC anulada — vuelve a BORRADOR, solo GERENTE.
+ocRouter.post('/:id/reactivar', validateIdParam, auditLog('OrdenCompra', 'REACTIVAR'), async (req: any, res: Response) => {
+  if (req.user?.rol !== 'GERENTE') {
+    return res.status(403).json({ error: 'Solo el GERENTE puede reactivar una OC anulada' });
+  }
+  res.json(await OrdenCompraService.reactivar(Number(req.params.id)));
+});
+
 // EDITAR OC — permitido hasta ENVIADA (el Service valida el estado).
 ocRouter.put('/:id', validateIdParam, auditLog('OrdenCompra', 'UPDATE'), async (req: any, res: Response) => {
   req.body.id_usuario = req.user!.id_usuario;

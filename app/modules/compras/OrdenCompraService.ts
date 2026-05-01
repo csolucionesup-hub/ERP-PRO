@@ -422,6 +422,24 @@ class OrdenCompraService {
     return { success: true, estado: 'ANULADA' };
   }
 
+  /**
+   * Revertir una anulación accidental: vuelve la OC a BORRADOR para que
+   * pueda editarse y re-aprobarse. Solo aplica si la OC está ANULADA.
+   * Limpia motivo_anulacion para no dejar traza fantasma.
+   */
+  async reactivar(id_oc: number) {
+    const [rows]: any = await db.query('SELECT estado FROM OrdenesCompra WHERE id_oc = ?', [id_oc]);
+    if (!rows[0]) throw new Error('OC no encontrada');
+    if (rows[0].estado !== 'ANULADA') {
+      throw new Error(`Solo se puede reactivar una OC ANULADA (actual: ${rows[0].estado}).`);
+    }
+    await db.query(
+      `UPDATE OrdenesCompra SET estado='BORRADOR', motivo_anulacion=NULL WHERE id_oc=?`,
+      [id_oc]
+    );
+    return { success: true, estado: 'BORRADOR' };
+  }
+
   async listar(filtros: {
     estado?: EstadoOC; desde?: string; hasta?: string;
     id_proveedor?: number; empresa?: 'ME' | 'PT'; limit?: number;

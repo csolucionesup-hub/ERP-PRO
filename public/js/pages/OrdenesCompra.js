@@ -249,7 +249,7 @@ function init() {
     },
   });
 
-  window.OC = { nuevaOC, verOC, aprobar, enviar, recibir, facturar, anular, eliminarOC, editar, descargarPDF, reporteROC };
+  window.OC = { nuevaOC, verOC, aprobar, enviar, recibir, facturar, anular, reactivar, eliminarOC, editar, descargarPDF, reporteROC };
 }
 
 // Helper local: rol del usuario logueado (para mostrar botón Eliminar solo a GERENTE).
@@ -620,6 +620,10 @@ function accionesSegunEstado(oc) {
   if (!['FACTURADA', 'PAGADA', 'ANULADA'].includes(oc.estado)) {
     btns.push(`<button onclick="OC.anular(${oc.id_oc})" style="padding:10px 18px;background:transparent;color:#dc2626;border:1px solid #dc2626;border-radius:6px;cursor:pointer;font-weight:600">Anular</button>`);
   }
+  // Reactivar — solo si está ANULADA y eres GERENTE. Vuelve la OC a BORRADOR.
+  if (oc.estado === 'ANULADA' && esGerente) {
+    btns.push(`<button onclick="OC.reactivar(${oc.id_oc}, '${nroSafe}')" style="padding:10px 18px;background:#0891b2;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">♻ Reactivar</button>`);
+  }
   return btns.join('');
 }
 
@@ -707,6 +711,23 @@ async function anular(id) {
     await api.ordenesCompra.anular(id, motivo);
     showSuccess('OC anulada');
     setTimeout(() => refreshOC(), 600);
+  } catch (e) { showError(e.message); }
+}
+
+// Reactivar OC anulada — vuelve a BORRADOR para poder editar y re-flujar.
+async function reactivar(id, nro) {
+  const ok = await confirmarAccion({
+    titulo: '♻ Reactivar OC anulada',
+    mensaje: `Vas a reactivar la OC <strong>${nro}</strong>. Volverá al estado <strong>BORRADOR</strong> con el motivo de anulación borrado, y podrás editarla y re-aprobarla desde cero. ¿Continuar?`,
+    tipo: 'warning',
+    textoBoton: 'Sí, reactivar',
+  });
+  if (!ok) return;
+  try {
+    await api.ordenesCompra.reactivar(id);
+    showSuccess(`OC ${nro} reactivada — está en BORRADOR`);
+    document.getElementById('oc-modal').innerHTML = '';
+    setTimeout(() => refreshOC(), 400);
   } catch (e) { showError(e.message); }
 }
 

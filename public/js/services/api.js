@@ -317,6 +317,7 @@ export const api = {
     recibir:    (id, lineas) => post(`/ordenes-compra/${id}/recibir`, { lineas }),
     facturar:   (id, data)   => post(`/ordenes-compra/${id}/facturar`, data),
     anular:     (id, motivo) => post(`/ordenes-compra/${id}/anular`, { motivo }),
+    reactivar:  (id)         => post(`/ordenes-compra/${id}/reactivar`, {}),
     descargarPDF: async (id) => {
       const token = localStorage.getItem('erp_token');
       const r = await fetch(`${API_BASE_URL}/ordenes-compra/${id}/pdf`, {
