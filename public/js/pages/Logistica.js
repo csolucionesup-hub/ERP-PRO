@@ -100,7 +100,7 @@ function initTabs() {
     },
   });
 
-  window.Logistica = { descargarPDF, anularOC, editarCC, toggleCC, eliminarCC, descargarROC };
+  window.Logistica = { descargarPDF, anularOC, reactivarOC, editarCC, toggleCC, eliminarCC, descargarROC };
 }
 
 // ─── TAB Proveedores (delega a página Proveedores.js) ───────────────────
@@ -445,6 +445,10 @@ function buildByCentroCosto(ocs) {
 
 // ─── Tabla de OCs compartida ────────────────────────────────────────────
 function renderTablaOCs(ocs, opts = {}) {
+  // Rol del usuario (para mostrar Reactivar solo a GERENTE).
+  let _rol = 'USUARIO';
+  try { _rol = JSON.parse(localStorage.getItem('erp_user') || '{}').rol || 'USUARIO'; } catch {}
+  const esGerente = _rol === 'GERENTE';
   return `
     <div style="overflow-x:auto">
       <table style="width:100%;border-collapse:collapse;font-size:13px">
@@ -461,22 +465,31 @@ function renderTablaOCs(ocs, opts = {}) {
           </tr>
         </thead>
         <tbody>
-          ${ocs.map(o => `
-            <tr style="border-bottom:1px solid #e5e7eb">
-              <td style="padding:8px;font-weight:600">${o.nro_oc || '—'}</td>
-              <td style="padding:8px">${fmtDate(o.fecha_emision)}</td>
-              <td style="padding:8px">${o.proveedor_nombre || '—'}</td>
-              ${opts.mostrarServicio ? `<td style="padding:8px;font-size:11px">${o.servicio_codigo || '—'}</td>` : ''}
-              <td style="padding:8px"><span style="font-size:10px;background:#e5e7eb;padding:2px 6px;border-radius:4px">${o.centro_costo || '—'}</span></td>
-              <td style="padding:8px;text-align:right;font-weight:700">${fmtMoney(o.total, o.moneda)}</td>
-              <td style="padding:8px;text-align:center">${estadoBadgeOC(o.estado)}</td>
-              <td style="padding:8px;text-align:center;white-space:nowrap">
-                <button onclick="window.previewPDFOC(${o.id_oc}, '${String(o.nro_oc).replace(/'/g, "\\'")}')" style="padding:3px 8px;border:1px solid #d1d5db;background:transparent;color:#374151;border-radius:4px;cursor:pointer;font-size:11px;margin-right:4px">👁️ Ver</button>
-                <button onclick="Logistica.descargarPDF(${o.id_oc})" style="padding:3px 8px;border:1px solid var(--primary-color);background:transparent;color:var(--primary-color);border-radius:4px;cursor:pointer;font-size:11px">📄 PDF</button>
-                ${o.estado !== 'ANULADA' && o.estado !== 'PAGADA' ? `<button onclick="Logistica.anularOC(${o.id_oc})" style="padding:3px 8px;border:1px solid #dc2626;background:transparent;color:#dc2626;border-radius:4px;cursor:pointer;font-size:11px;margin-left:4px">✕</button>` : ''}
-              </td>
-            </tr>
-          `).join('')}
+          ${ocs.map(o => {
+            const nroSafe = String(o.nro_oc).replace(/'/g, "\\'");
+            const btnAnular = (o.estado !== 'ANULADA' && o.estado !== 'PAGADA')
+              ? `<button onclick="Logistica.anularOC(${o.id_oc})" title="Anular" style="padding:3px 8px;border:1px solid #dc2626;background:transparent;color:#dc2626;border-radius:4px;cursor:pointer;font-size:11px;margin-left:4px">✕</button>`
+              : '';
+            const btnReactivar = (o.estado === 'ANULADA' && esGerente)
+              ? `<button onclick="Logistica.reactivarOC(${o.id_oc}, '${nroSafe}')" title="Reactivar (vuelve a BORRADOR)" style="padding:3px 8px;border:1px solid #0891b2;background:transparent;color:#0891b2;border-radius:4px;cursor:pointer;font-size:11px;margin-left:4px">♻ Reactivar</button>`
+              : '';
+            return `
+              <tr style="border-bottom:1px solid #e5e7eb">
+                <td style="padding:8px;font-weight:600">${o.nro_oc || '—'}</td>
+                <td style="padding:8px">${fmtDate(o.fecha_emision)}</td>
+                <td style="padding:8px">${o.proveedor_nombre || '—'}</td>
+                ${opts.mostrarServicio ? `<td style="padding:8px;font-size:11px">${o.servicio_codigo || '—'}</td>` : ''}
+                <td style="padding:8px"><span style="font-size:10px;background:#e5e7eb;padding:2px 6px;border-radius:4px">${o.centro_costo || '—'}</span></td>
+                <td style="padding:8px;text-align:right;font-weight:700">${fmtMoney(o.total, o.moneda)}</td>
+                <td style="padding:8px;text-align:center">${estadoBadgeOC(o.estado)}</td>
+                <td style="padding:8px;text-align:center;white-space:nowrap">
+                  <button onclick="window.previewPDFOC(${o.id_oc}, '${nroSafe}')" style="padding:3px 8px;border:1px solid #d1d5db;background:transparent;color:#374151;border-radius:4px;cursor:pointer;font-size:11px;margin-right:4px">👁️ Ver</button>
+                  <button onclick="Logistica.descargarPDF(${o.id_oc})" style="padding:3px 8px;border:1px solid var(--primary-color);background:transparent;color:var(--primary-color);border-radius:4px;cursor:pointer;font-size:11px">📄 PDF</button>
+                  ${btnAnular}${btnReactivar}
+                </td>
+              </tr>
+            `;
+          }).join('')}
         </tbody>
       </table>
     </div>
@@ -836,5 +849,17 @@ async function anularOC(id_oc) {
     setTimeout(() => location.reload(), 600);
   } catch (err) {
     showError(err?.error || err?.message || 'Error anulando OC');
+  }
+}
+
+// Reactivar una OC anulada — vuelve a BORRADOR. Solo GERENTE.
+async function reactivarOC(id_oc, nro) {
+  if (!confirm(`¿Reactivar la OC ${nro}?\n\nVolverá al estado BORRADOR. Podrás editarla y re-aprobarla desde cero.`)) return;
+  try {
+    await api.ordenesCompra.reactivar(id_oc);
+    showSuccess(`OC ${nro} reactivada — está en BORRADOR`);
+    setTimeout(() => location.reload(), 600);
+  } catch (err) {
+    showError(err?.error || err?.message || 'Error reactivando OC');
   }
 }
