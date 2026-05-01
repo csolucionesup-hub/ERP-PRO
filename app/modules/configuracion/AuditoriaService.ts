@@ -1,7 +1,7 @@
 import { db } from '../../../database/connection';
 
 export type AuditAccion =
-  | 'CREATE' | 'UPDATE' | 'DELETE' | 'ANULAR'
+  | 'CREATE' | 'UPDATE' | 'DELETE' | 'ANULAR' | 'REACTIVAR'
   | 'LOGIN' | 'LOGOUT' | 'CONFIG' | 'EXPORT' | 'EMIT';
 
 export interface LogEntry {
