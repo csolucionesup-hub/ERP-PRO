@@ -2,20 +2,22 @@
 
 > **LEER PRIMERO.** Este documento es la fuente de verdad sobre qué está hecho, qué falta y dónde estamos parados. Se actualiza al cierre de cada sesión de trabajo.
 
-**Última actualización:** 2026-04-30 (auditoría + sidebar colapsable + sync de estado)
+**Última actualización:** 2026-05-01 (sesión OC: cuentas+moneda, firmas vivas, reactivar, post-mortem build)
 **Rama activa:** `main`
-**Último commit pusheado:** `9911ad3 feat(ui): sidebar colapsable para ganar espacio de trabajo`
+**Último commit pusheado:** `d285f31 fix(build): agregar 'REACTIVAR' al type AuditAccion`
 **Servidor dev:** `npx ts-node index.ts` en `D:\proyectos\ERP-PRO` → `http://localhost:3000`
 **Producción:** `erp-pro-production-e4c0.up.railway.app` — Railway (deploy automático desde main)
-**Cache buster JS actual:** `v=20260430r1` (app.js) · `v=20260430r3` (sidebar.css) — bumpear si se modifican
-**Migraciones BD:** 001 → 037 + 042 + 043 aplicadas (Supabase Postgres). El ESTADO previo decía "001-019" — desactualizado.
+**Cache buster JS actual:** `v=20260430r7` (app.js) — **convención nueva**: hardcoded en CADA import dentro de app.js. Ver gotcha #36 en CLAUDE.md.
+**Migraciones BD:** 001 → 037 + 042 → 044 aplicadas (Supabase Postgres project `fhlrxlsscerfiuuyiejw`).
 
 ---
 
 ## ✅ Estado del repositorio
 
-Working tree **limpio**. Todo commiteado y pusheado a `origin/main`.
-Railway desplegado y operativo con 30+ tablas (migraciones 001-037 + 042-043 aplicadas via bootstrap).
+Working tree de este worktree **limpio**. Todo commiteado y pusheado a `origin/main`.
+Railway desplegado y operativo con 41 tablas. Build limpio (`npx tsc --noEmit` pasa).
+
+> **Heads up para próxima sesión:** el worktree principal `D:/proyectos/ERP-PRO` puede tener archivos modificados sin commit — son WIP de Julio. NO tocar sin preguntar.
 
 ---
 
@@ -86,16 +88,23 @@ Railway desplegado y operativo con 30+ tablas (migraciones 001-037 + 042-043 apl
 - [x] ~~OC: botón 👁️ Ver para preview PDF~~ → paridad con Cotizaciones (`e96504c`)
 - [x] ~~SPA: preservar módulo al hard reload~~ → `ebff50f` + `0fa9a63`
 - [x] ~~Sidebar colapsable para ganar espacio~~ → `«` + `☰` flotante (`9911ad3`, 30/04)
+- [x] ~~Configuración: editar firmas y contacto OC~~ → tarjeta nueva en tab Empresa (`b6bffc0`)
+- [x] ~~OC PDF: cuentas bancarias del proveedor~~ → con moneda PEN/USD por cuenta (`d956b7f` + `d3291a2`)
+- [x] ~~OC firmas vivas (no snapshot)~~ → cambios en cfg aplican retroactivo (`503175e`)
+- [x] ~~Reactivar OC anulada~~ → vuelve a BORRADOR, modal + fila inline (`70cbbe0` + `0e98a3f`)
+- [x] ~~Cache busting de imports ES module~~ → hardcoded en cada import (`09dfb58`)
+- [x] ~~Fix PDF cotización: cierre montado sobre footer~~ → ensureSpace en condLine/condPar + bloque indivisible (`e805ec5`)
+- [x] ~~OC: refrescar inline en Logística sin navegar~~ → helper refreshOC (`36165fa`)
 - [ ] **Verificar end-to-end PDF** (Julio, próxima sesión): clickear `👁️ Ver` y `📄 PDF` en cotizaciones METAL y PERFOTOOLS — debe abrir / bajar sin 500
 - [ ] **Verificar end-to-end fotos** (Julio, próxima sesión): subir foto HEIC desde iPhone y desde PC → debe llegar a Cloudinary y aparecer en preview + PDF con foto bajo subtotal
 - [ ] Rotar `CLOUDINARY_API_SECRET` (memoria dice que fue expuesto en chats anteriores)
-- [ ] Investigar y limpiar los 2 registros `COT 0000-000-MN`
+- [x] ~~Investigar 2 registros `COT 0000-000-MN`~~ → no existen en Supabase (verificado 01/05/2026 vía MCP). Era basura de MySQL local.
+- [x] ~~Fix KPI comisiones en Libro Bancos~~ → no es bug. Tabla `movimientobancario` vacía. Cuando se importe el primer EECC, la heurística de `esComisionImportada()` ya cubre ITF/N/D/COM./PORTE.
 - [ ] Race condition correlativos cotizaciones (`COUNT(*)` fuera de transacción en `CotizacionService.ts:63`)
 - [ ] Resolver hallazgos de auditoría V3 (prioridad: F01, F06, A02, A06)
 - [ ] Eliminar worktrees basura en `.claude/worktrees/`
 - [ ] Limpiar archivos `*_temp.txt`, `COT-2026-002-ME.pdf`, `auditoria_erp_pro.pdf`, `auditoria_v2_contexto.txt` en raíz
-- [ ] Fix KPI comisiones en Libro Bancos (contar ITF/N/D importados)
-- [ ] Fix nro_operacion duplicado en descripción de EECC importados
+- [ ] Fix nro_operacion duplicado en descripción de EECC importados (cuando empiece a importar)
 - [ ] **Decisión estratégica:** ¿Fase B (facturación electrónica STUB→REAL) o Fase C (Logística + Almacén valorizado) primero?
 - [ ] Módulo Logística completo (UI con 3 tipos: GENERAL/SERVICIO/ALMACEN) — Fase C
 - [ ] OC de servicios en Finanzas (tabla nueva en BD) — Fase C
@@ -244,6 +253,49 @@ Sesión de bugfixes UX reportados por Julio probando en producción. Mezcla de m
 
 ---
 
+## Sesión 30/04 noche → 01/05 — pulido OC + cuentas proveedor + reactivar (10 commits)
+
+Sesión muy operativa: arreglos de UX en cotizaciones+OC pedidos por Julio mientras testeaba en producción, terminó con un episodio de build roto que tapó deploys ~3 hs. Todo cerrado y desplegado.
+
+| Commit | Cambio |
+|---|---|
+| `e805ec5` | Fix PDF cotización: el texto de cierre se montaba sobre el footer cuando las condiciones eran largas. `condLine`/`condPar` ahora pre-calculan altura y llaman `ensureSpace`. Cierre + firma como bloque indivisible. |
+| `36165fa` | Fix OC: refrescar inline cuando está embebida en Logística. El navigate('ordenes-compra') sacaba al usuario del hub. Helper `refreshOC()` detecta `#logi-panel-oc` y re-renderiza in-place. 7 acciones reemplazadas (aprobar, enviar, recibir, facturar, anular, eliminar, create/edit). |
+| `b6bffc0` | **Feature:** Configuración → Empresa ahora tiene tarjeta "Firmas y contacto en OC" con 6 campos editables (oc_solicitado_default, oc_revisado_default, oc_autorizado_default, oc_contacto_nombre, oc_contacto_telefono, oc_ciudad_emision). Backend ya aceptaba via PUT /api/config (pasa-todo a ConfiguracionService.update). |
+| `d956b7f` | **Feature:** OC PDF muestra cuentas bancarias del proveedor. La query `obtener(id_oc)` jalaba solo razon_social y ruc; ahora trae también `tipo, dni, direccion, telefono, email` (estos también salían vacíos antes) + las 6 columnas bancarias. PDF muestra `Cta. {Banco} N°{numero} / CCI {cci}` por cada banco con número. |
+| `d3291a2` | **Feature + migración 044:** moneda explícita por cuenta bancaria (banco_1_moneda, banco_2_moneda VARCHAR(3) defaults 'PEN'/'USD'). UI Proveedores muestra dropdown PEN/USD por cuenta. PDF ahora muestra `Cta. {Banco} {Soles\|Dólares} N°{numero}`. Aplicada también en Supabase. |
+| `503175e` | Fix OC firmas: antes se snapshoteaban al crear OC desde cfg.oc_*_default a las columnas de OrdenesCompra, así que cambiar Configuración no afectaba a OCs existentes. Ahora `OrdenCompraPDFService` lee dinámicamente con fallback al snapshot per-OC. `OrdenCompraService.create` deja columnas en NULL salvo override explícito. **Limpieza vía MCP:** UPDATE ordenescompra SET solicitado_por=NULL... (4 filas) para que las OCs históricas reflejen el config actual. |
+| `70cbbe0` | **Feature:** reactivar OC anulada. `OrdenCompraService.reactivar(id)` valida estado=ANULADA, UPDATE estado=BORRADOR + motivo_anulacion=NULL. Ruta POST `/api/ordenes-compra/:id/reactivar` solo GERENTE. Botón "♻ Reactivar" en accionesSegunEstado del modal. |
+| `0e98a3f` | Reactivar también en la fila inline de Logística (Gastos Generales/Servicio/Almacén tab), no solo dentro del modal. Más obvio para el usuario. |
+| `09dfb58` | **Fix de raíz para cache:** los `import` de `app.js` (pages, components, services) NO tenían cache buster, solo `app.js` lo tenía. Browser refetcheaba app.js fresco pero servía pages/ desde caché → fixes invisibles. Hardcodeado `?v=20260430r7` en los 19 imports. **Convención**: a partir de ahora se bumpea ese sufijo en TODAS las líneas + en index.html cuando se cambia algo en `public/js/`. |
+| `d285f31` | **Post-mortem build:** el commit 70cbbe0 introdujo `auditLog('OrdenCompra', 'REACTIVAR')` pero `'REACTIVAR'` no estaba en el type `AuditAccion`. tsc fallaba → Railway nixpacks no buildeaba → ningún push de los últimos ~3 hs se desplegó. Agregado `'REACTIVAR'` al ENUM. **Lección**: correr `npx tsc --noEmit` antes de pushear. |
+
+**Configuración cambiada por Julio durante la sesión:**
+- `oc_solicitado_default` cambiado de "Jorge Luis Roman Hurtado" a "Luis Ramos" — verificado vía MCP que se guardó. Las 4 OCs existentes ya muestran "Luis Ramos" en el PDF (gracias al fix de firmas vivas).
+
+**OC reactivada exitosamente (test end-to-end):** OC #1 (`001-2026 - FABRICACION DE AUGER - PSV`) que estaba ANULADA → user usó el botón cyan → pasó a BORRADOR → user la aprobó → ahora está APROBADA. Flujo completo confirmado en producción.
+
+---
+
+## Auditoría 01/05/2026 — verificación post-deploy
+
+Auditoría completa contra producción + Supabase MCP:
+
+- ✅ `npx tsc --noEmit` limpio
+- ✅ Railway last-modified `02:24 GMT 01/05`, sirviendo el código nuevo
+- ✅ 41 tablas en Supabase, migraciones 001-037 + 042-044 aplicadas
+- ✅ ConfiguracionEmpresa tiene "Luis Ramos" en oc_solicitado_default (cambio del usuario persistido)
+- ✅ ConfiguracionMarca: METAL + PERFOTOOLS con datos correctos
+- ✅ 4 proveedores con `banco_X_moneda` poblado
+- ✅ 4 OCs con firmas en NULL (lectura desde cfg vivo funcional)
+- ✅ 14 cotizaciones, ningún `COT 0000-000-MN` en BD productiva (era basura local)
+- ✅ MovimientoBancario: 0 filas (no hay imports de EECC todavía — el KPI Comisiones=S/0 no es bug, es que no hay datos)
+- ✅ 58 entradas de auditoría, tracking activo
+
+**Verificaciones que tachan pendientes históricos del ESTADO:**
+- ~~COT 0000-000-MN huérfanos~~ → no existen en producción
+- ~~KPI Comisiones=0~~ → no hay datos para sumar; cuando importes EECC, `esComisionImportada()` en CobranzasService:906 ya cubre ITF/N/D/COM./PORTE
+
 ## Auditoría 30/04/2026 — donde estamos parados
 
 | Fase del Plan Maestro | Estado | Notas |
@@ -289,9 +341,9 @@ Sesión de bugfixes UX reportados por Julio probando en producción. Mezcla de m
 
 ---
 
-## Snapshot de `git status` (al 2026-04-30)
+## Snapshot de `git status` (al 2026-05-01)
 
-**Working tree limpio.** Todo pusheado a `origin/main`. Railway desplegado.
+**Working tree de este worktree limpio.** Todo pusheado a `origin/main`. Railway desplegado y verificado contra Supabase.
 
 **Acumulado de commits desde 27/04:**
 - 10 commits rediseño Enterprise UI (27/04)
@@ -301,8 +353,10 @@ Sesión de bugfixes UX reportados por Julio probando en producción. Mezcla de m
 - 5 commits pulido PDF cotizaciones + logos editables (28-29/04, `a5b194d..aa08c9c`)
 - 5 commits OC mejoras UX 28-29/04 (`140a61a..e96504c`)
 - 1 commit sidebar colapsable (30/04, `9911ad3`)
+- 1 commit sync ESTADO (30/04, `d590073`)
+- 10 commits sesión 30/04 noche → 01/05 (OC: cuentas+moneda, firmas vivas, reactivar, cache buster, post-mortem build, `e805ec5..d285f31`)
 
-**Total: 35 commits** desde el rediseño Enterprise.
+**Total: 46 commits** desde el rediseño Enterprise.
 
 ## Para Claude (próxima sesión)
 
