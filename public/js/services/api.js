@@ -232,6 +232,9 @@ export const api = {
       const qs = anio ? `?anio=${anio}` : '';
       return get(`/admin/dashboard${qs}`);
     },
+    resetDb:          ()       => post('/admin/reset-db'),
+    getCuentasSaldo:  ()       => get('/admin/cuentas-saldo'),
+    setSaldoInicial:  (data)   => post('/admin/saldo-inicial', data),
   },
   usuarios: {
     getUsuarios:          () => fetchAPI('/api/usuarios'),

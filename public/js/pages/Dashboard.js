@@ -162,13 +162,11 @@ export const Dashboard = async () => {
         const confirmado = confirm('¿Estás seguro? Esta acción borrará TODOS los datos del sistema. Esta acción no se puede deshacer.');
         if (!confirmado) return;
         try {
-          const res = await fetch('/api/admin/reset-db', { method: 'POST' });
-          const data = await res.json();
-          if (!res.ok) throw new Error(data.error || 'Error desconocido');
-          alert('✅ Base de datos reseteada correctamente.');
+          await api.administracion.resetDb();
+          window.showSuccess?.('Base de datos reseteada correctamente.');
           window.navigate('dashboard');
         } catch (e) {
-          alert('Error al resetear: ' + e.message);
+          window.showError?.('Error al resetear: ' + e.message);
         }
       };
 
@@ -183,8 +181,7 @@ export const Dashboard = async () => {
       // Cargar saldos actuales de BD y mostrarlos (panel + botón resumen)
       const cargarSaldosActuales = async () => {
         try {
-          const res = await fetch('/api/admin/cuentas-saldo');
-          const cuentas = await res.json();
+          const cuentas = await api.administracion.getCuentasSaldo();
           const pen = cuentas.find(c => c.id_cuenta === 1);
           const usd = cuentas.find(c => c.id_cuenta === 2);
           const penVal = pen ? Number(pen.saldo_actual) : 0;
@@ -214,17 +211,11 @@ export const Dashboard = async () => {
         const btn = document.getElementById('btn-aplicar-saldo');
         try {
           if (btn) { btn.textContent = 'Aplicando...'; btn.disabled = true; }
-          const res = await fetch('/api/admin/saldo-inicial', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ saldo_pen, saldo_usd, tipo_cambio })
-          });
-          const data = await res.json();
-          if (!res.ok) throw new Error(data.error || 'Error desconocido');
+          await api.administracion.setSaldoInicial({ saldo_pen, saldo_usd, tipo_cambio });
           window.navigate('dashboard');
         } catch (e) {
           if (btn) { btn.textContent = 'Aplicar'; btn.disabled = false; }
-          alert('Error: ' + e.message);
+          window.showError?.('Error: ' + e.message);
         }
       };
 
