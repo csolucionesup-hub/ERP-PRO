@@ -56,40 +56,55 @@ class CotizacionService {
    * Correlativo independiente por marca dentro del año.
    * COT 2026-001-MN (Metal), COT 2026-001-ME (Perfotools) — secuencias separadas.
    *
-   * Patrón UPDATE-first: si la fila ya existe se incrementa, si no, se inserta
-   * con valor inicial 1. Funciona en MySQL y Postgres sin sintaxis específica
-   * de upsert (evita ON DUPLICATE KEY UPDATE / ON CONFLICT que difieren por motor).
-   * Corre dentro de la transacción de createCotizacion (conn opcional) para
-   * evitar race conditions concurrentes.
+   * Concurrencia: la tabla Correlativos tiene PRIMARY KEY (anio, marca).
+   * - UPDATE incrementa atómicamente con row-lock cuando la fila existe.
+   * - Si la fila NO existe (primer correlativo del año/marca), se intenta INSERT.
+   *   Si dos transacciones cargan la misma combinación al mismo tiempo, una
+   *   gana el INSERT y la otra recibe duplicate-key error → reintentamos UPDATE
+   *   en el siguiente loop, donde ya existe y se incrementa normal.
    */
   private async generarCorrelativo(marca: Marca, conn?: any): Promise<string> {
     const anio = new Date().getFullYear();
     const sufijo = SUFIJO_MARCA[marca];
     const runner = conn || db;
+    const MAX_RETRIES = 5;
 
-    // 1. Intentar incrementar si existe la fila
-    const [updRes]: any = await runner.query(
-      `UPDATE Correlativos SET ultimo = ultimo + 1 WHERE anio = ? AND marca = ?`,
-      [anio, marca]
-    );
-
-    // 2. Si no existía (primer correlativo del año/marca), insertar con valor 1
-    if (!updRes || !updRes.affectedRows) {
-      await runner.query(
-        `INSERT INTO Correlativos (anio, marca, ultimo) VALUES (?, ?, 1)`,
+    for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+      // 1. Intentar incrementar si la fila ya existe (caso normal)
+      const [updRes]: any = await runner.query(
+        `UPDATE Correlativos SET ultimo = ultimo + 1 WHERE anio = ? AND marca = ?`,
         [anio, marca]
       );
+
+      if (updRes && updRes.affectedRows) {
+        const [rows] = await runner.query(
+          `SELECT ultimo FROM Correlativos WHERE anio = ? AND marca = ?`,
+          [anio, marca]
+        );
+        const secuencia = Number((rows as any)[0].ultimo);
+        return `COT ${anio}-${String(secuencia).padStart(3, '0')}-${sufijo}`;
+      }
+
+      // 2. La fila no existía. Intentar INSERT inicial.
+      try {
+        await runner.query(
+          `INSERT INTO Correlativos (anio, marca, ultimo) VALUES (?, ?, 1)`,
+          [anio, marca]
+        );
+        return `COT ${anio}-001-${sufijo}`;
+      } catch (e: any) {
+        const isDup =
+          e?.code === '23505' ||
+          e?.code === 'ER_DUP_ENTRY' ||
+          /duplicate key|already exists|UNIQUE constraint|PRIMARY KEY/i.test(e?.message || '');
+        if (!isDup) throw e;
+        // Otra tx ganó el INSERT — el próximo loop hará UPDATE exitoso.
+      }
     }
 
-    // 3. Leer el valor final
-    const [rows] = await runner.query(
-      `SELECT ultimo FROM Correlativos WHERE anio = ? AND marca = ?`,
-      [anio, marca]
+    throw new Error(
+      `No se pudo generar correlativo para ${marca} ${anio} tras ${MAX_RETRIES} intentos (concurrencia anormal).`
     );
-    const secuencia = Number((rows as any)[0].ultimo);
-    const nnn = String(secuencia).padStart(3, '0');
-
-    return `COT ${anio}-${nnn}-${sufijo}`;
   }
 
   private calcularTotales(
