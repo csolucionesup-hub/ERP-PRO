@@ -1087,17 +1087,18 @@ class CobranzasService {
         movDesc = movDesc.slice(0, canalMatch.index).trim();
       }
 
+      // Scrub TODAS las ocurrencias de nroOp ANTES de extraer tipoMov/descripcion.
+      // El PDF de Interbank a veces lo repite múltiples veces en el segmento, lo
+      // que puede confundir el split de tipoMov si tipoMatch no atrapa el patrón.
+      if (nroOp !== '-') {
+        const reNroOp = new RegExp(`\\b${nroOp.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'g');
+        movDesc = movDesc.replace(reNroOp, '').replace(/\s+/g, ' ').trim();
+      }
+
       // Extraer tipo de movimiento
       const tipoMatch = movDesc.match(/^(ITF|N\/D[^\s]*|ABONO\s*TRANSFERENCIA|CARGO\s*TRANSFERENCIA|TRAN\s*TIL|PAGO\s*DE\s*SERVICIOS|TRANSFERENCIA|DEPOSITO|RETIRO)/i);
       const tipoMov = tipoMatch ? tipoMatch[1].toUpperCase().replace(/\s+/g, ' ') : movDesc.split(' ')[0].toUpperCase();
       let descripcion = tipoMatch ? movDesc.slice(tipoMatch[0].length).trim() : movDesc;
-
-      // Scrub TODAS las ocurrencias de nroOp en la descripción (el PDF a veces
-      // lo repite varias veces en el cuerpo del segmento).
-      if (nroOp !== '-') {
-        const reNroOp = new RegExp(`\\b${nroOp.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'g');
-        descripcion = descripcion.replace(reNroOp, '').replace(/\s+/g, ' ').trim();
-      }
 
       const monto = parseMonto(impStr);
       items.push({
