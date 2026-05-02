@@ -2,12 +2,12 @@
 
 > **LEER PRIMERO.** Este documento es la fuente de verdad sobre qué está hecho, qué falta y dónde estamos parados. Se actualiza al cierre de cada sesión de trabajo.
 
-**Última actualización:** 2026-05-01 (sesión OC: cuentas+moneda, firmas vivas, reactivar, post-mortem build)
+**Última actualización:** 2026-05-02 (sesión housekeeping + fixes bugs + auditoría V3 cerrada + descubrimiento Fase C 95% lista)
 **Rama activa:** `main`
-**Último commit pusheado:** `d285f31 fix(build): agregar 'REACTIVAR' al type AuditAccion`
+**Último commit pusheado:** `18fa474 fix(dashboard): migrar fetch directos admin a api.administracion (auditoría V3 F01)`
 **Servidor dev:** `npx ts-node index.ts` en `D:\proyectos\ERP-PRO` → `http://localhost:3000`
 **Producción:** `erp-pro-production-e4c0.up.railway.app` — Railway (deploy automático desde main)
-**Cache buster JS actual:** `v=20260430r7` (app.js) — **convención nueva**: hardcoded en CADA import dentro de app.js. Ver gotcha #36 en CLAUDE.md.
+**Cache buster JS actual:** `v=20260502r1` (app.js) — **convención nueva**: hardcoded en CADA import dentro de app.js. Ver gotcha #36 en CLAUDE.md.
 **Migraciones BD:** 001 → 037 + 042 → 044 aplicadas (Supabase Postgres project `fhlrxlsscerfiuuyiejw`).
 
 ---
@@ -60,14 +60,16 @@ Railway desplegado y operativo con 41 tablas. Build limpio (`npx tsc --noEmit` p
 
 ## ⚠️ Bugs / observaciones pendientes
 
-1. **Correlativos bugueados `COT 0000-000-MN`** — hay 2 registros anulados con año 0000 y secuencia 000. Investigar si son seed residual o bug real en `generarCorrelativo()`.
-2. **Race condition en correlativos** — `CotizacionService.ts:63` usa `COUNT(*)` fuera de transacción. Dos usuarios simultáneos pueden obtener el mismo número.
-3. **Archivos `*_temp.txt` en raíz** — basura de sesiones anteriores (`schema_temp.txt`, `inventory_temp.txt`, etc.). Borrar o agregar a `.gitignore`.
-4. **`COT-2026-002-ME.pdf` en raíz** — PDF de prueba. No debe commitearse (agregar patrón a `.gitignore`).
-5. **Worktrees basura en `.claude/worktrees/`** — copias viejas del código. Se pueden eliminar con seguridad.
-6. **Auditoría V3 pendiente** — ver `auditoria_v3_20260408.md` para 21 hallazgos.
-7. **Libro Bancos — nro_operacion duplicado en descripción** (cosmético): Algunas líneas importadas de EECC muestran "1845485 1845485". Parser tiene dedup parcial.
-8. **Libro Bancos — KPI Comisiones siempre S/ 0.00**: Líneas ITF/N/D importadas de EECC tienen ref_tipo=NULL, el cálculo solo suma ref_tipo='GASTO_BANCARIO'.
+1. ~~**Correlativos `COT 0000-000-MN`**~~ → resuelto: no existen en Supabase (verificado 01/05/2026 vía MCP). Era basura de MySQL local.
+2. ~~**Race condition en correlativos**~~ → resuelto en `192f452` (02/05/2026): UPDATE-then-INSERT con retry-on-duplicate (5 intentos máx). Maneja correctamente la concurrencia del primer correlativo del año/marca.
+3. ~~**Archivos `*_temp.txt` en raíz**~~ → 9 archivos borrados 02/05/2026.
+4. ~~**`COT-2026-002-ME.pdf` en raíz**~~ → borrado 02/05/2026. `.gitignore` ya tiene patrón `COT-*.pdf`.
+5. ~~**Worktrees basura en `.claude/worktrees/`**~~ → pruneado 02/05/2026 (`awesome-satoshi-ec1075`).
+6. ~~**Auditoría V3 pendiente**~~ → cerrada 02/05/2026: A02/A06/F06 ya estaban; F01 cerrado en `18fa474` (Dashboard.js → api.administracion).
+7. ~~**Libro Bancos — nro_operacion duplicado**~~ → fixed `783a629` (02/05/2026): scrub global ANTES del tipoMatch. Validar empíricamente al primer EECC importado.
+8. ~~**Libro Bancos — KPI Comisiones = S/ 0.00**~~ → no es bug. `MovimientoBancario` vacío en producción. La heurística `esComisionImportada()` cubre ITF/N/D/COM./PORTE cuando llegue el primer EECC.
+
+**Bugs activos:** ninguno conocido al 02/05/2026.
 
 ---
 
@@ -95,21 +97,22 @@ Railway desplegado y operativo con 41 tablas. Build limpio (`npx tsc --noEmit` p
 - [x] ~~Cache busting de imports ES module~~ → hardcoded en cada import (`09dfb58`)
 - [x] ~~Fix PDF cotización: cierre montado sobre footer~~ → ensureSpace en condLine/condPar + bloque indivisible (`e805ec5`)
 - [x] ~~OC: refrescar inline en Logística sin navegar~~ → helper refreshOC (`36165fa`)
-- [ ] **Verificar end-to-end PDF** (Julio, próxima sesión): clickear `👁️ Ver` y `📄 PDF` en cotizaciones METAL y PERFOTOOLS — debe abrir / bajar sin 500
-- [ ] **Verificar end-to-end fotos** (Julio, próxima sesión): subir foto HEIC desde iPhone y desde PC → debe llegar a Cloudinary y aparecer en preview + PDF con foto bajo subtotal
-- [ ] Rotar `CLOUDINARY_API_SECRET` (memoria dice que fue expuesto en chats anteriores)
+- [x] ~~Verificar end-to-end PDF~~ (Julio confirmó funcionando)
+- [x] ~~Verificar end-to-end fotos~~ (Julio confirmó funcionando)
+- [ ] Rotar `CLOUDINARY_API_SECRET` (acción manual de Julio en console.cloudinary.com + Railway env var)
 - [x] ~~Investigar 2 registros `COT 0000-000-MN`~~ → no existen en Supabase (verificado 01/05/2026 vía MCP). Era basura de MySQL local.
 - [x] ~~Fix KPI comisiones en Libro Bancos~~ → no es bug. Tabla `movimientobancario` vacía. Cuando se importe el primer EECC, la heurística de `esComisionImportada()` ya cubre ITF/N/D/COM./PORTE.
-- [ ] Race condition correlativos cotizaciones (`COUNT(*)` fuera de transacción en `CotizacionService.ts:63`)
-- [ ] Resolver hallazgos de auditoría V3 (prioridad: F01, F06, A02, A06)
-- [ ] Eliminar worktrees basura en `.claude/worktrees/`
-- [ ] Limpiar archivos `*_temp.txt`, `COT-2026-002-ME.pdf`, `auditoria_erp_pro.pdf`, `auditoria_v2_contexto.txt` en raíz
-- [ ] Fix nro_operacion duplicado en descripción de EECC importados (cuando empiece a importar)
-- [ ] **Decisión estratégica:** ¿Fase B (facturación electrónica STUB→REAL) o Fase C (Logística + Almacén valorizado) primero?
-- [ ] Módulo Logística completo (UI con 3 tipos: GENERAL/SERVICIO/ALMACEN) — Fase C
-- [ ] OC de servicios en Finanzas (tabla nueva en BD) — Fase C
-- [ ] Almacén valorizado con kárdex por ítem — Fase C
-- [ ] Replicar hints contextuales (`.app-form-hint`) en Cotización Comercial, Logística OC, Compras, Cobranzas Finanzas (piloto hecho en Configuración Empresa)
+- [x] ~~Race condition correlativos cotizaciones~~ → fixed `192f452` 02/05/2026 (UPDATE-then-INSERT con retry-on-duplicate, 5 intentos máx).
+- [x] ~~Resolver hallazgos auditoría V3~~ → A02/A06/F06 ya estaban; F01 cerrado en `18fa474` 02/05/2026 (Dashboard.js → api.administracion).
+- [x] ~~Eliminar worktrees basura en `.claude/worktrees/`~~ → pruneado 02/05/2026. La carpeta física se borra al cerrar el proceso que la tiene abierta (lock de Windows).
+- [x] ~~Limpiar archivos `*_temp.txt`, `COT-2026-002-ME.pdf`, `auditoria_*.pdf|txt` en raíz~~ → 9 archivos borrados 02/05/2026.
+- [x] ~~Fix nro_operacion duplicado en descripción de EECC importados~~ → fixed `783a629` 02/05/2026 (scrub global ANTES del tipoMatch en parser).
+- [ ] **Decisión estratégica:** ¿Fase B (facturación electrónica STUB→REAL) o verificación end-to-end Fase C primero?
+- [x] ~~Módulo Logística completo (UI con 3 tipos: GENERAL/SERVICIO/ALMACEN)~~ → ya implementado (hub Logistica.js con 6 tabs, `tipo_oc` ENUM en OrdenesCompra). Verificado mapping 02/05/2026.
+- [x] ~~OC de servicios en Finanzas~~ → ya implementado (`tipo_oc='SERVICIO'` + `id_servicio` en OrdenesCompra, sin tabla aparte). Verificado 02/05/2026.
+- [x] ~~Almacén valorizado con kárdex por ítem~~ → ya implementado (costo promedio ponderado en PurchaseService, MovimientosInventario polimórfico, endpoint `GET /inventario/:id/kardex`, modal kárdex en Inventario.js). Verificado 02/05/2026.
+- [ ] **PENDIENTE Fase C — verificación end-to-end:** flujo OC ALMACEN → APROBADA → recibir → stock actualizado + costo promedio recalculado + movimiento ENTRADA en kárdex. Hacer con 1 ítem de prueba antes de cargar data real.
+- [ ] Replicar hints contextuales (`.app-form-hint`) en Cotización/Logística OC/Compras/Cobranzas (cosmético, valor marginal — Comercial y OC ya tienen tooltips inline `tip()`)
 - [ ] G20 — QA mobile real iPhone Safari + Android Chrome con dispositivo físico
 - [ ] Empty states en Comercial/Alertas/Contabilidad (cosméticos)
 - [ ] Refactor de iconos emoji → Lucide en KPIs de Administración/Inventario/Préstamos/OC/Contabilidad
@@ -296,14 +299,14 @@ Auditoría completa contra producción + Supabase MCP:
 - ~~COT 0000-000-MN huérfanos~~ → no existen en producción
 - ~~KPI Comisiones=0~~ → no hay datos para sumar; cuando importes EECC, `esComisionImportada()` en CobranzasService:906 ya cubre ITF/N/D/COM./PORTE
 
-## Auditoría 30/04/2026 — donde estamos parados
+## Auditoría 02/05/2026 — donde estamos parados
 
 | Fase del Plan Maestro | Estado | Notas |
 |---|---|---|
 | **G** Rediseño Enterprise UI | ✅ **CERRADA** | 10 commits 27/04 + 7 cotizaciones + sidebar mobile/HEIC/PDF preview/colapsable |
-| **A** Fundaciones (config, auditoría, periodos, adjuntos, roles) | 🟢 **CASI HECHA** | Migraciones 020-024 aplicadas. Módulo `app/modules/configuracion/` con 4 services (`ConfiguracionService`, `AuditoriaService`, `PeriodosService`, `AdjuntosService`). Falta verificar wizard de setup completo y uso del audit log en todas las rutas sensibles. |
+| **A** Fundaciones (config, auditoría, periodos, adjuntos, roles) | 🟢 **CASI HECHA** | Migraciones 020-024 aplicadas. Módulo `app/modules/configuracion/` con 4 services. Falta verificar wizard de setup completo y uso del audit log en todas las rutas sensibles. |
 | **B** Facturación electrónica + Libros SUNAT | 🟡 **MODO STUB** | Tablas Facturas/NotasCredito/GuiasRemision creadas (025-027). `NubefactService` implementado pero con flag STUB en línea 4. **Bloqueado por:** certificado digital + cuenta Nubefact REAL (gestión externa de Julio). |
-| **C** Logística + Almacén valorizado + Dashboards | 🟡 **PARCIAL** | OC funcionando (029-030 + 042) con edit/delete/PDF/preview. Falta módulo Logística completo con 3 tipos (GENERAL/SERVICIO/ALMACEN) y kárdex de Almacén valorizado. |
+| **C** Logística + Almacén valorizado + Dashboards | 🟢 **95% LISTA** (re-auditada 02/05/2026) | Logística hub 6 tabs (`Logistica.js`), OC con `tipo_oc` ENUM(GENERAL/SERVICIO/ALMACEN), filtro `id_servicio`, `getOC` con tipo_oc, costo promedio ponderado en `PurchaseService`, kárdex polimórfico en `MovimientosInventario`, endpoint `/inventario/:id/kardex` con UI modal. Falta solo verificación end-to-end del flujo OC ALMACEN→recibir→stock+costo. |
 | **D** Contabilidad PCGE + EE.FF. | 🔴 **INCIPIENTE** | Solo placeholder `Contabilidad.js`. Sin Plan de Cuentas, asientos automáticos ni Estados Financieros. |
 | **E** Producción metalmecánica (OT, BOM, QC) | ⬜ **NO INICIADA** | El diferenciador. Para agosto-septiembre. |
 | **F** Multi-tenancy SaaS + onboarding + pricing | ⬜ **NO INICIADA** | Para fin de septiembre. |
