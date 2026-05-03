@@ -49,6 +49,7 @@ export const cotizacionEstadoSchema = z.object({
       'RECHAZADA',
       'TERMINADA',
       'A_ESPERA_RESPUESTA',
+      'TRABAJO_EN_RIESGO',
     ]),
   }),
 });
