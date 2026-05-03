@@ -30,6 +30,7 @@ const fmtMoney = (v, moneda) => moneda === 'USD' ? fUSD(v) : fPEN(v);
 
 let _cfg = null;
 let _servicios = [];
+let _proyectos = []; // cotizaciones APROBADAS/TERMINADAS/TRABAJO_EN_RIESGO (Camino A)
 let _proveedores = [];
 let _centrosCosto = [];
 let _ocsGeneral = [];
@@ -39,7 +40,7 @@ let _chartInstances = {};
 
 export const Logistica = async () => {
   try {
-    [_cfg, _servicios, _proveedores, _centrosCosto, _ocsGeneral, _ocsServicio, _ocsAlmacen] = await Promise.all([
+    [_cfg, _servicios, _proveedores, _centrosCosto, _ocsGeneral, _ocsServicio, _ocsAlmacen, _proyectos] = await Promise.all([
       api.config.get().catch(() => ({ aplica_igv: 1, tasa_igv: 18, monto_limite_sin_aprobacion: 5000 })),
       api.services.getServiciosActivos().catch(() => []),
       api.purchases.getProveedores().catch(() => []),
@@ -47,6 +48,7 @@ export const Logistica = async () => {
       api.ordenesCompra.list({ tipo_oc: 'GENERAL' }).catch(() => []),
       api.ordenesCompra.list({ tipo_oc: 'SERVICIO' }).catch(() => []),
       api.ordenesCompra.list({ tipo_oc: 'ALMACEN' }).catch(() => []),
+      api.cotizaciones.proyectosActivos({ todos: true }).catch(() => []),
     ]);
   } catch (e) {
     console.error('[Logistica] error cargando:', e);
@@ -558,11 +560,15 @@ function renderFormOC(tipoOC) {
 
         ${esServicio ? `
         <div>
-          <label>Servicio / Proyecto *</label>
-          <select name="id_servicio" required>
+          <label>Proyecto / Cotización *</label>
+          <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px">
+            <input type="text" id="srv-search-${tipoOC}" placeholder="🔍 Buscar por cliente o proyecto..."
+              style="flex:1;padding:7px 10px;border:1px solid #d9dad9;border-radius:6px;font-size:12px">
+          </div>
+          <select name="id_cotizacion" id="srv-select-${tipoOC}" required>
             <option value="">— Selecciona proyecto —</option>
-            ${servOpts || '<option value="" disabled>Sin servicios activos</option>'}
           </select>
+          <div id="srv-info-${tipoOC}" style="font-size:10px;color:var(--text-secondary);margin-top:4px"></div>
         </div>` : ''}
 
         <div>
@@ -659,7 +665,45 @@ function bindFormOCMulti(panel, tipoOC) {
   const btnAddLinea  = form.querySelector('.btn-add-linea');
   const provInfoDiv  = form.querySelector(`#prov-info-${tipoOC}`);
   const provSelect   = form.querySelector('[name=id_proveedor]');
-  const servSelect   = form.querySelector('[name=id_servicio]');
+  const servSelect   = form.querySelector('[name=id_cotizacion]');
+  const srvSearch    = form.querySelector(`#srv-search-${tipoOC}`);
+  const srvInfo      = form.querySelector(`#srv-info-${tipoOC}`);
+
+  // ── Picker de Proyecto/Cotización (solo en form de Servicio) ──
+  // Reemplaza el dropdown viejo de Servicios (tabla orfanada) por una lista
+  // de cotizaciones APROBADAS/TERMINADAS/TRABAJO_EN_RIESGO. Filtra cliente-side
+  // según moneda actual de la OC + searchbox.
+  const renderProyectoOpts = () => {
+    if (!servSelect) return;
+    const monedaSel = form.querySelector('[name=moneda]')?.value || 'PEN';
+    const f = (srvSearch?.value || '').trim().toLowerCase();
+    const lista = _proyectos
+      .filter(p => p.moneda === monedaSel)
+      .filter(p => !f
+        || String(p.cliente || '').toLowerCase().includes(f)
+        || String(p.proyecto || '').toLowerCase().includes(f)
+        || String(p.nro_cotizacion || '').toLowerCase().includes(f));
+    const fmtMoney = (n, m) => (m === 'USD' ? '$ ' : 'S/ ') +
+      Number(n || 0).toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    servSelect.innerHTML =
+      `<option value="">— Selecciona proyecto —</option>` +
+      lista.map(p => `
+        <option value="${p.id_cotizacion}">
+          ${p.nro_cotizacion} · ${p.cliente}${p.proyecto ? ' — ' + p.proyecto : ''} · ${fmtMoney(p.total, p.moneda)} (${p.estado})
+        </option>
+      `).join('');
+    if (srvInfo) {
+      srvInfo.textContent = lista.length === 0
+        ? `Sin cotizaciones ${monedaSel} disponibles. Aprobá alguna en Comercial primero.`
+        : `${lista.length} proyecto(s) ${monedaSel} disponible(s).`;
+    }
+  };
+  if (servSelect) {
+    srvSearch?.addEventListener('input', renderProyectoOpts);
+    form.querySelector('[name=moneda]')?.addEventListener('change', renderProyectoOpts);
+    renderProyectoOpts();
+  }
+
   const ccInput      = form.querySelector('[name=centro_costo]');
   const igvCheckbox  = form.querySelector('[name=aplica_igv]');
   const formaPagoSel = form.querySelector('[name=forma_pago]');
@@ -746,10 +790,17 @@ function bindFormOCMulti(panel, tipoOC) {
 
   // ── Auto-fill centro costo al elegir servicio ──
   if (servSelect) {
+    // Auto-rellenar Centro de Costo con el cliente de la cotización elegida.
     servSelect.onchange = () => {
-      const s = _servicios.find(x => String(x.id_servicio) === servSelect.value);
-      if (s && ccInput) ccInput.value = (s.cliente || ('PROYECTO-' + s.id_servicio)).toUpperCase();
+      const idCot = Number(servSelect.value) || null;
+      if (!idCot) return;
+      const proy = _proyectos.find(p => p.id_cotizacion === idCot);
+      if (proy && ccInput && !ccInput.dataset.userTouched) {
+        ccInput.value = String(proy.cliente || `PROYECTO-${idCot}`).toUpperCase();
+      }
     };
+    // Si el usuario tipea manualmente en CC, no lo sobreescribimos al cambiar proyecto
+    ccInput?.addEventListener('input', () => { ccInput.dataset.userTouched = '1'; });
   }
 
   // ── Show/hide días crédito según forma pago ──
@@ -790,7 +841,8 @@ function bindFormOCMulti(panel, tipoOC) {
       empresa:        fd.get('empresa') || 'ME',
       fecha_emision:  fd.get('fecha_emision'),
       id_proveedor:   Number(fd.get('id_proveedor')),
-      id_servicio:    fd.get('id_servicio') ? Number(fd.get('id_servicio')) : null,
+      id_cotizacion:  fd.get('id_cotizacion') ? Number(fd.get('id_cotizacion')) : null,
+      id_servicio:    null, // Camino A: el dropdown viejo de Servicios fue reemplazado por id_cotizacion
       centro_costo:   fd.get('centro_costo'),
       moneda:         fd.get('moneda') || 'PEN',
       tipo_cambio:    Number(fd.get('tipo_cambio')) || 1,
