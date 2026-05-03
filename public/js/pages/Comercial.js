@@ -1354,9 +1354,9 @@ function renderDashboardTab(d) {
       </div>
     </div>
 
-    <!-- Tendencia 12 meses con Chart.js -->
+    <!-- Tendencia 24 meses con Chart.js (incluye data histórica cargada) -->
     <div class="card" style="margin-bottom:20px">
-      <div style="font-size:12px;font-weight:700;color:#555;text-transform:uppercase;margin-bottom:14px">📈 Tendencia 12 meses — Cotizado vs Aprobado (PEN equiv)</div>
+      <div style="font-size:12px;font-weight:700;color:#555;text-transform:uppercase;margin-bottom:14px">📈 Tendencia 24 meses — Cotizado vs Aprobado (PEN equiv)</div>
       ${d.tendencia.length === 0
         ? '<div style="color:#999;font-size:13px;padding:20px;text-align:center">Sin datos en el período</div>'
         : `<canvas id="ch-cotiz-trend" style="max-height:280px"></canvas>`}

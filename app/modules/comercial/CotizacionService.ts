@@ -71,9 +71,15 @@ class CotizacionService {
    *   Si dos transacciones cargan la misma combinación al mismo tiempo, una
    *   gana el INSERT y la otra recibe duplicate-key error → reintentamos UPDATE
    *   en el siguiente loop, donde ya existe y se incrementa normal.
+   *
+   * Si se pasa `anioFecha`, el correlativo usa ese año (útil para cargar
+   * cotizaciones históricas con fecha 2025 → COT 2025-N en vez de COT 2026-N).
+   * Cada (año, marca) tiene su propia secuencia independiente.
    */
-  private async generarCorrelativo(marca: Marca, conn?: any): Promise<string> {
-    const anio = new Date().getFullYear();
+  private async generarCorrelativo(marca: Marca, conn?: any, anioFecha?: number): Promise<string> {
+    const anio = (anioFecha && anioFecha >= 2000 && anioFecha <= 2100)
+      ? anioFecha
+      : new Date().getFullYear();
     const sufijo = SUFIJO_MARCA[marca];
     const runner = conn || db;
     const MAX_RETRIES = 5;
@@ -181,7 +187,8 @@ class CotizacionService {
        LIMIT 8`
     );
 
-    // Tendencia mensual últimos 12 meses (extendido de 6)
+    // Tendencia mensual últimos 24 meses (extendido de 12 para incluir
+    // data histórica cargada — Julio cargando enero/2025 desde mayo/2026).
     const [tendencia] = await db.query(
       `SELECT DATE_FORMAT(fecha, '%Y-%m') AS mes,
               COUNT(*) AS cantidad,
@@ -191,7 +198,7 @@ class CotizacionService {
               SUM(CASE WHEN estado='APROBADA' AND moneda='PEN' THEN total ELSE 0 END) AS aprobadas_pen
        FROM Cotizaciones
        WHERE estado != 'ANULADA'
-         AND fecha >= DATE_SUB(CURDATE(), INTERVAL 12 MONTH)
+         AND fecha >= DATE_SUB(CURDATE(), INTERVAL 24 MONTH)
        GROUP BY DATE_FORMAT(fecha, '%Y-%m')
        ORDER BY mes ASC`
     );
@@ -431,7 +438,10 @@ class CotizacionService {
     const conn = await db.getConnection();
     await conn.beginTransaction();
     try {
-      const nro_cotizacion = await this.generarCorrelativo(marca, conn);
+      // El correlativo respeta el año de la fecha cargada (no el año del sistema).
+      // Útil para data histórica: COT 2025-001 si fecha=2025-01-15.
+      const anioFecha = parseInt(fecha.split('-')[0], 10);
+      const nro_cotizacion = await this.generarCorrelativo(marca, conn, anioFecha);
       const [res] = await conn.query(
         `INSERT INTO Cotizaciones
            (nro_cotizacion, marca, fecha, cliente, atencion, telefono, correo, proyecto, ref,
