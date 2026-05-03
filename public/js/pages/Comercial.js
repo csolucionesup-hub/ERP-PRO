@@ -745,6 +745,7 @@ function archivoTable(cotizaciones, filtroMarca) {
           <strong>${c.cliente}</strong>
           ${c.proyecto ? `<br><span style="font-size:11px;color:var(--text-secondary)">${c.proyecto}</span>` : ''}
           ${c.atencion ? `<br><span style="font-size:10px;color:var(--text-secondary)">${c.atencion}</span>` : ''}
+          ${c.comentarios ? `<div style="margin-top:6px;padding:6px 8px;background:#fffbeb;border:1px solid #fde68a;border-radius:4px;font-size:11px;color:#78350f;white-space:pre-wrap;line-height:1.4" title="Comentario interno (no aparece en el PDF)">📝 ${c.comentarios}</div>` : ''}
         </td>
         <td style="text-align:right;font-size:12px;line-height:1.6">
           ${esUSD ? `<div style="color:#16a34a">${fUSD(subOrig)}</div>` : ''}
@@ -853,6 +854,7 @@ function renderAnuladasTab(anuladas) {
         <td>
           <strong>${c.cliente}</strong>
           ${c.proyecto ? `<br><span style="font-size:11px;color:var(--text-secondary)">${c.proyecto}</span>` : ''}
+          ${c.comentarios ? `<div style="margin-top:6px;padding:6px 8px;background:#fffbeb;border:1px solid #fde68a;border-radius:4px;font-size:11px;color:#78350f;white-space:pre-wrap;line-height:1.4" title="Comentario interno (no aparece en el PDF)">📝 ${c.comentarios}</div>` : ''}
         </td>
         <td style="text-align:right;font-size:12px">
           ${esUSD ? `<div style="color:#16a34a">${fUSD(Number(c.total) / (Number(c.tipo_cambio) || 1))}</div>` : ''}
