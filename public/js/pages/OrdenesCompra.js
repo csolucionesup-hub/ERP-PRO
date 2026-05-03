@@ -677,11 +677,136 @@ async function recibir(id) {
     return { id_detalle: l.id_detalle, cantidad_recibida: cant };
   }).filter(Boolean);
   if (!lineas.length) return;
+  await registrarRecepcionConResolucion(id, lineas);
+}
+
+// Helper: intenta registrar la recepción y, si el backend responde 422 con
+// OC_LINEAS_SIN_ITEM, abre el modal de resolución para asignar/crear ítems
+// del catálogo. Tras asignar, reintenta la recepción con las mismas líneas.
+async function registrarRecepcionConResolucion(id, lineas) {
   try {
     const r = await api.ordenesCompra.recibir(id, lineas);
     showSuccess(`Recepción registrada · Estado: ${r.estado}`);
     setTimeout(() => refreshOC(), 600);
-  } catch (e) { showError(e.message); }
+  } catch (e) {
+    if (e?.code === 'OC_LINEAS_SIN_ITEM') {
+      const resolvio = await abrirModalResolucionItems(id, e.lineas_pendientes || []);
+      if (resolvio) return registrarRecepcionConResolucion(id, lineas);
+      return;
+    }
+    showError(e.message || 'No se pudo registrar la recepción');
+  }
+}
+
+// Modal: lista las líneas de OC sin id_item y permite asignarlas a un ítem
+// existente del catálogo o crear uno nuevo inline. Resuelve true si todas las
+// líneas quedaron asignadas, false si el usuario cancela.
+async function abrirModalResolucionItems(id_oc, lineasPendientes) {
+  // Cargar catálogo actual
+  let catalogo = [];
+  try {
+    catalogo = await api.inventory.getInventario();
+  } catch (e) {
+    showError('No se pudo cargar el catálogo de inventario: ' + e.message);
+    return false;
+  }
+
+  return new Promise((resolve) => {
+    // Estado local: id_item asignado por id_detalle
+    const asignaciones = {};
+    const renderOptions = () => catalogo
+      .slice()
+      .sort((a, b) => String(a.nombre).localeCompare(String(b.nombre)))
+      .map(i => `<option value="${i.id_item}">${i.nombre} (${i.unidad || 'UND'}) — stock: ${Number(i.stock_actual || 0)}</option>`)
+      .join('');
+
+    const renderTabla = () => lineasPendientes.map(l => `
+      <tr style="border-bottom:1px solid #e5e7eb">
+        <td style="padding:10px;font-size:13px;vertical-align:top">
+          <strong>${l.descripcion}</strong><br>
+          <span style="font-size:11px;color:#6b7280">Pedido: ${Number(l.cantidad)} ${l.unidad || ''} · ${fPEN(Number(l.precio_unitario))}</span>
+        </td>
+        <td style="padding:10px;vertical-align:top">
+          <select id="asig-item-${l.id_detalle}" data-detalle="${l.id_detalle}" style="width:100%;padding:8px;border-radius:6px;border:1px solid #d1d5db;font-size:12px">
+            <option value="">— Seleccionar ítem —</option>
+            ${renderOptions()}
+          </select>
+        </td>
+        <td style="padding:10px;vertical-align:top">
+          <button type="button" onclick="window.OC._crearItem(${l.id_detalle}, '${(l.descripcion || '').replace(/'/g, "\\'")}', '${l.unidad || 'UND'}')" style="padding:7px 11px;background:#059669;color:white;border:none;border-radius:6px;cursor:pointer;font-size:11px;font-weight:600;white-space:nowrap">+ Crear nuevo</button>
+        </td>
+      </tr>
+    `).join('');
+
+    const html = `
+      <div id="ov-resolver-items" style="position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:2100;display:flex;align-items:center;justify-content:center;padding:20px">
+        <div style="background:white;border-radius:12px;padding:24px;width:780px;max-width:95vw;max-height:90vh;overflow:auto">
+          <h3 style="margin:0 0 6px;font-size:18px">📋 Resolver ítems del catálogo</h3>
+          <p style="margin:0 0 14px;font-size:13px;color:#6b7280">
+            Esta OC ALMACÉN tiene líneas sin ítem del catálogo asignado. Asigná cada una a un ítem existente o creá uno nuevo. Después se registra la recepción.
+          </p>
+          <table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:18px">
+            <thead><tr style="background:#f9fafb;border-bottom:2px solid #d9dad9">
+              <th style="padding:10px;text-align:left">Descripción de la OC</th>
+              <th style="padding:10px;text-align:left">Ítem del catálogo</th>
+              <th style="padding:10px"></th>
+            </tr></thead>
+            <tbody id="resolver-tbody">${renderTabla()}</tbody>
+          </table>
+          <div style="display:flex;justify-content:flex-end;gap:10px">
+            <button id="resolver-cancelar" style="padding:10px 18px;background:transparent;border:1px solid #d9dad9;border-radius:6px;cursor:pointer">Cancelar</button>
+            <button id="resolver-confirmar" style="padding:10px 22px;background:var(--primary-color);color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">Asignar y recibir</button>
+          </div>
+        </div>
+      </div>`;
+    document.body.insertAdjacentHTML('beforeend', html);
+    const ov = document.getElementById('ov-resolver-items');
+
+    // "Crear ítem nuevo" inline: crea en catálogo y selecciona en el dropdown
+    window.OC._crearItem = async (id_detalle, descSugerida, unidadSugerida) => {
+      const nombre = prompt('Nombre del ítem nuevo:', descSugerida);
+      if (!nombre) return;
+      const categoria = prompt('Categoría (Material / Consumible / Herramienta / Equipo / EPP):', 'Material') || 'Material';
+      const unidad = prompt('Unidad (UND, KG, MT, etc.):', unidadSugerida) || 'UND';
+      try {
+        const nuevo = await api.inventory.createInventarioItem({ nombre, categoria, unidad });
+        // Actualizar catálogo local + UI
+        catalogo.push({ id_item: nuevo.id_item, nombre, unidad, stock_actual: 0 });
+        document.getElementById('resolver-tbody').innerHTML = renderTabla();
+        const sel = document.getElementById(`asig-item-${id_detalle}`);
+        if (sel) sel.value = String(nuevo.id_item);
+        showSuccess(`Ítem "${nombre}" creado`);
+      } catch (e) {
+        showError('No se pudo crear el ítem: ' + e.message);
+      }
+    };
+
+    document.getElementById('resolver-cancelar').onclick = () => {
+      ov.remove();
+      resolve(false);
+    };
+
+    document.getElementById('resolver-confirmar').onclick = async () => {
+      const selects = ov.querySelectorAll('select[data-detalle]');
+      const lista = [];
+      for (const s of selects) {
+        const id_detalle = Number(s.dataset.detalle);
+        const id_item = Number(s.value);
+        if (!id_item) {
+          showError('Faltan ítems por asignar — completá todas las líneas o creá ítems nuevos.');
+          return;
+        }
+        lista.push({ id_detalle, id_item });
+      }
+      try {
+        await api.ordenesCompra.asignarItems(id_oc, lista);
+        ov.remove();
+        resolve(true);
+      } catch (e) {
+        showError('Error asignando ítems: ' + e.message);
+      }
+    };
+  });
 }
 
 async function facturar(id) {

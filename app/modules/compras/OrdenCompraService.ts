@@ -19,7 +19,7 @@
  *   - Al facturar, se crea un registro en Compras con id_oc_origen
  */
 
-import { db } from '../../../database/connection';
+import { db, DEFAULT_ACCOUNT_ID } from '../../../database/connection';
 import ConfiguracionService from '../configuracion/ConfiguracionService';
 
 export type EstadoOC =
@@ -231,27 +231,134 @@ class OrdenCompraService {
 
   /**
    * Registra recepción parcial/total. Si todas las líneas están recibidas → RECIBIDA.
+   *
+   * Para tipo_oc='ALMACEN':
+   *   - Valida que toda línea a recibir tenga id_item (sino lanza OC_LINEAS_SIN_ITEM
+   *     para que el frontend abra el modal de resolución).
+   *   - Por cada línea con id_item: lock pesimista en Inventario, recalcula costo
+   *     promedio ponderado (en PEN), actualiza stock y registra ENTRADA en kárdex.
+   *   - El precio de la OC se convierte a PEN si moneda='USD' (Inventario almacena
+   *     costo en moneda nativa PEN siempre, para consistencia contable).
+   *
+   * Para tipo_oc='GENERAL' o 'SERVICIO': solo se actualiza cantidad_recibida y el
+   * estado de la OC. La afectación financiera ocurre en facturar().
    */
   async recibir(id_oc: number, lineasRecibidas: { id_detalle: number; cantidad_recibida: number }[]) {
+    if (!Array.isArray(lineasRecibidas) || lineasRecibidas.length === 0) {
+      throw new Error('Debe indicar al menos una línea con cantidad recibida');
+    }
+
     const conn = await db.getConnection();
     await conn.beginTransaction();
     try {
+      // 1. Cabecera OC con lock — necesitamos tipo_oc, moneda y tipo_cambio
+      const [ocRows]: any = await conn.query(
+        `SELECT id_oc, tipo_oc, moneda, tipo_cambio, estado
+         FROM OrdenesCompra WHERE id_oc = ? FOR UPDATE`,
+        [id_oc]
+      );
+      const oc = ocRows[0];
+      if (!oc) throw new Error('OC no encontrada');
+      if (!['APROBADA', 'ENVIADA', 'RECIBIDA_PARCIAL'].includes(oc.estado)) {
+        throw new Error(`OC en estado ${oc.estado} no acepta recepción`);
+      }
+
+      const esAlmacen = oc.tipo_oc === 'ALMACEN';
+      const tcOC = Number(oc.tipo_cambio) || 1;
+
+      // 2. Si es ALMACEN, validar que todas las líneas tienen id_item asignado
+      if (esAlmacen) {
+        const idsDetalle = lineasRecibidas.map(l => l.id_detalle);
+        const placeholders = idsDetalle.map(() => '?').join(',');
+        const [pendientes]: any = await conn.query(
+          `SELECT id_detalle, descripcion, unidad, cantidad, precio_unitario
+           FROM DetalleOrdenCompra
+           WHERE id_oc = ? AND id_detalle IN (${placeholders}) AND id_item IS NULL`,
+          [id_oc, ...idsDetalle]
+        );
+        if ((pendientes as any[]).length > 0) {
+          const err: any = new Error(
+            `Hay ${(pendientes as any[]).length} línea(s) sin ítem del catálogo asignado. Resolvé antes de recibir.`
+          );
+          err.code = 'OC_LINEAS_SIN_ITEM';
+          err.lineas_pendientes = pendientes;
+          err.id_oc = id_oc;
+          throw err;
+        }
+      }
+
+      // 3. Para cada línea: actualizar cantidad_recibida + (si ALMACEN) afectar stock+kárdex
       for (const l of lineasRecibidas) {
+        const aRecibir = Number(l.cantidad_recibida);
+        if (!aRecibir || aRecibir <= 0) continue;
+
+        const [detRows]: any = await conn.query(
+          `SELECT id_detalle, id_item, descripcion, cantidad, cantidad_recibida, precio_unitario
+           FROM DetalleOrdenCompra WHERE id_detalle = ? AND id_oc = ?`,
+          [l.id_detalle, id_oc]
+        );
+        const det = detRows[0];
+        if (!det) throw new Error(`Detalle ${l.id_detalle} no pertenece a OC ${id_oc}`);
+
+        const yaRecibido = Number(det.cantidad_recibida);
+        const pedido = Number(det.cantidad);
+        if (yaRecibido + aRecibir > pedido + 0.0001) {
+          throw new Error(
+            `Línea "${det.descripcion}": pedís recibir ${aRecibir} pero solo quedan ${(pedido - yaRecibido).toFixed(4)}`
+          );
+        }
+
         await conn.query(
           `UPDATE DetalleOrdenCompra SET cantidad_recibida = cantidad_recibida + ? WHERE id_detalle = ?`,
-          [l.cantidad_recibida, l.id_detalle]
+          [aRecibir, l.id_detalle]
         );
-      }
-      // Determinar nuevo estado
-      const [rowsDet]: any = await conn.query(
-        `SELECT SUM(cantidad) AS total_pedido, SUM(cantidad_recibida) AS total_recibido
-         FROM DetalleOrdenCompra WHERE id_oc = ?`, [id_oc]
-      );
-      const { total_pedido, total_recibido } = rowsDet[0];
-      let nuevoEstado: EstadoOC = 'RECIBIDA_PARCIAL';
-      if (Number(total_recibido) >= Number(total_pedido) - 0.0001) nuevoEstado = 'RECIBIDA';
 
-      await conn.query(`UPDATE OrdenesCompra SET estado=? WHERE id_oc=?`, [nuevoEstado, id_oc]);
+        if (esAlmacen && det.id_item) {
+          // Lock pesimista del ítem
+          const [invRows]: any = await conn.query(
+            `SELECT stock_actual, costo_promedio_unitario FROM Inventario WHERE id_item = ? FOR UPDATE`,
+            [det.id_item]
+          );
+          const inv = invRows[0];
+          if (!inv) throw new Error(`Item id=${det.id_item} no existe en catálogo`);
+
+          const stockActual = Number(inv.stock_actual);
+          const cppActual = Number(inv.costo_promedio_unitario);
+          const precio = Number(det.precio_unitario);
+          // Inventario almacena costo en PEN — convertir si la OC es USD
+          const precioPEN = oc.moneda === 'USD' ? precio * tcOC : precio;
+
+          const stockNuevo = stockActual + aRecibir;
+          const cppNuevo = stockNuevo > 0
+            ? (stockActual * cppActual + aRecibir * precioPEN) / stockNuevo
+            : precioPEN;
+
+          await conn.query(
+            `UPDATE Inventario SET stock_actual = ?, costo_promedio_unitario = ?, updated_at = NOW() WHERE id_item = ?`,
+            [stockNuevo, cppNuevo.toFixed(4), det.id_item]
+          );
+
+          await conn.query(
+            `INSERT INTO MovimientosInventario
+              (id_item, referencia_tipo, referencia_id, tipo_movimiento, cantidad, saldo_posterior, fecha_movimiento)
+             VALUES (?, 'ORDEN_COMPRA', ?, 'ENTRADA', ?, ?, NOW())`,
+            [det.id_item, id_oc, aRecibir, stockNuevo]
+          );
+        }
+      }
+
+      // 4. Determinar nuevo estado por totales
+      const [totRows]: any = await conn.query(
+        `SELECT COALESCE(SUM(cantidad), 0) AS total_pedido,
+                COALESCE(SUM(cantidad_recibida), 0) AS total_recibido
+         FROM DetalleOrdenCompra WHERE id_oc = ?`,
+        [id_oc]
+      );
+      const { total_pedido, total_recibido } = totRows[0];
+      const nuevoEstado: EstadoOC =
+        Number(total_recibido) >= Number(total_pedido) - 0.0001 ? 'RECIBIDA' : 'RECIBIDA_PARCIAL';
+
+      await conn.query(`UPDATE OrdenesCompra SET estado = ? WHERE id_oc = ?`, [nuevoEstado, id_oc]);
       await conn.commit();
       return { success: true, estado: nuevoEstado };
     } catch (e) {
@@ -263,38 +370,162 @@ class OrdenCompraService {
   }
 
   /**
-   * Convierte la OC en una Compra facturada. Crea el registro en tabla Compras
-   * con los datos de la OC. Se llama cuando llega la factura física del proveedor.
+   * Convierte la OC en factura recibida. El comportamiento depende del tipo_oc:
+   *
+   *   ALMACEN  → INSERT Compras + DetalleCompra (id_item, cantidad recibida) +
+   *              Transaccion EGRESO. El stock e Inventario YA fueron afectados
+   *              en recibir(); aquí solo se registra el documento contable.
+   *
+   *   SERVICIO → INSERT Gastos (tipo_gasto_logistica='SERVICIO', id_servicio) +
+   *              Transaccion EGRESO + INSERT CostosServicio (para que el costo
+   *              aparezca en la rentabilidad del proyecto).
+   *
+   *   GENERAL  → INSERT Gastos (tipo_gasto_logistica='GENERAL') + Transaccion
+   *              EGRESO. Centro de costo OFICINA CENTRAL u otro definido en OC.
+   *
+   * En los tres casos OC pasa a estado FACTURADA. Solo ALMACEN setea
+   * id_compra_generada (para los otros, la referencia es vía nro_oc en Gastos).
    */
   async facturar(id_oc: number, nro_factura_proveedor: string, fecha_factura: string) {
-    const [rows]: any = await db.query('SELECT * FROM OrdenesCompra WHERE id_oc = ?', [id_oc]);
+    const [rows]: any = await db.query(
+      `SELECT oc.*, p.razon_social AS proveedor_nombre
+         FROM OrdenesCompra oc
+         LEFT JOIN Proveedores p ON p.id_proveedor = oc.id_proveedor
+        WHERE oc.id_oc = ?`,
+      [id_oc]
+    );
     const oc = rows[0];
     if (!oc) throw new Error('OC no encontrada');
     if (!['RECIBIDA', 'RECIBIDA_PARCIAL'].includes(oc.estado)) {
       throw new Error(`OC debe estar RECIBIDA para facturar (actual: ${oc.estado})`);
     }
 
+    const tcOC = Number(oc.tipo_cambio) || 1;
+    const monto_base_pen = (Number(oc.subtotal) - Number(oc.descuento || 0)) * tcOC;
+    const igv_base_pen = Number(oc.igv) * tcOC;
+    const total_base_pen = Number(oc.total) * tcOC;
+
     const conn = await db.getConnection();
     await conn.beginTransaction();
     try {
-      // Insert en Compras (columna real es nro_comprobante)
-      const [comp]: any = await conn.query(
-        `INSERT INTO Compras
-          (nro_comprobante, id_proveedor, fecha, moneda, tipo_cambio,
-           monto_base, igv_base, total_base, centro_costo, estado)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'CONFIRMADO')`,
-        [nro_factura_proveedor, oc.id_proveedor, fecha_factura, oc.moneda, oc.tipo_cambio,
-         oc.subtotal - oc.descuento, oc.igv, oc.total, oc.centro_costo]
-      );
-      const id_compra = comp.insertId;
+      let id_compra: number | null = null;
+      let id_gasto: number | null = null;
+
+      if (oc.tipo_oc === 'ALMACEN') {
+        // 1. Compras (cabecera)
+        const [comp]: any = await conn.query(
+          `INSERT INTO Compras
+            (nro_oc, nro_comprobante, id_proveedor, fecha, moneda, tipo_cambio,
+             aplica_igv, monto_base, igv_base, total_base, centro_costo,
+             estado, estado_pago)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'CONFIRMADA', ?)`,
+          [
+            oc.nro_oc, nro_factura_proveedor, oc.id_proveedor, fecha_factura,
+            oc.moneda, tcOC, !!oc.aplica_igv,
+            monto_base_pen, igv_base_pen, total_base_pen,
+            oc.centro_costo,
+            oc.forma_pago === 'CONTADO' ? 'PAGADO' : 'PENDIENTE',
+          ]
+        );
+        id_compra = comp.insertId;
+
+        // 2. DetalleCompra desde DetalleOrdenCompra (solo líneas con id_item y cantidad recibida)
+        const [detalles]: any = await conn.query(
+          `SELECT id_item, cantidad_recibida, precio_unitario
+             FROM DetalleOrdenCompra
+            WHERE id_oc = ? AND id_item IS NOT NULL AND cantidad_recibida > 0`,
+          [id_oc]
+        );
+        for (const d of (detalles as any[])) {
+          const cant = Number(d.cantidad_recibida);
+          const precio = Number(d.precio_unitario);
+          await conn.query(
+            `INSERT INTO DetalleCompra (id_compra, id_item, cantidad, precio_unitario, subtotal)
+             VALUES (?, ?, ?, ?, ?)`,
+            [id_compra, d.id_item, cant, precio, cant * precio]
+          );
+        }
+
+        // 3. Transaccion EGRESO
+        await conn.query(
+          `INSERT INTO Transacciones
+            (id_cuenta, referencia_tipo, referencia_id, tipo_movimiento,
+             moneda, tipo_cambio, aplica_igv,
+             monto_original, igv_original, total_original,
+             monto_base, igv_base, total_base,
+             fecha, descripcion, estado)
+           VALUES (?, 'COMPRA', ?, 'EGRESO', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            DEFAULT_ACCOUNT_ID, id_compra, oc.moneda, tcOC, !!oc.aplica_igv,
+            Number(oc.subtotal) - Number(oc.descuento || 0), Number(oc.igv), Number(oc.total),
+            monto_base_pen, igv_base_pen, total_base_pen,
+            fecha_factura, `Compra OC ${oc.nro_oc} · Fact ${nro_factura_proveedor}`,
+            oc.forma_pago === 'CONTADO' ? 'CONFIRMADO' : 'PENDIENTE',
+          ]
+        );
+      } else {
+        // SERVICIO o GENERAL → Gastos
+        const tipo_logi = oc.tipo_oc === 'SERVICIO' ? 'SERVICIO' : 'GENERAL';
+        const concepto = `Factura por OC ${oc.nro_oc}`;
+
+        const [gastoRes]: any = await conn.query(
+          `INSERT INTO Gastos
+            (nro_oc, id_servicio, tipo_gasto, centro_costo, tipo_gasto_logistica,
+             fecha, concepto, proveedor_nombre, nro_comprobante,
+             moneda, tipo_cambio, aplica_igv,
+             monto_base, igv_base, total_base, estado, estado_pago)
+           VALUES (?, ?, 'OPERATIVO', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'CONFIRMADO', ?)`,
+          [
+            oc.nro_oc, oc.id_servicio || null,
+            oc.centro_costo, tipo_logi,
+            fecha_factura, concepto,
+            oc.proveedor_nombre || null, nro_factura_proveedor,
+            oc.moneda, tcOC, !!oc.aplica_igv,
+            monto_base_pen, igv_base_pen, total_base_pen,
+            oc.forma_pago === 'CONTADO' ? 'PAGADO' : 'PENDIENTE',
+          ]
+        );
+        id_gasto = gastoRes.insertId;
+
+        // Transaccion EGRESO
+        await conn.query(
+          `INSERT INTO Transacciones
+            (id_cuenta, referencia_tipo, referencia_id, tipo_movimiento,
+             moneda, tipo_cambio, aplica_igv,
+             monto_original, igv_original, total_original,
+             monto_base, igv_base, total_base,
+             fecha, descripcion, estado)
+           VALUES (?, 'GASTO', ?, 'EGRESO', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            DEFAULT_ACCOUNT_ID, id_gasto, oc.moneda, tcOC, !!oc.aplica_igv,
+            Number(oc.subtotal) - Number(oc.descuento || 0), Number(oc.igv), Number(oc.total),
+            monto_base_pen, igv_base_pen, total_base_pen,
+            fecha_factura, `Gasto OC ${oc.nro_oc} · Fact ${nro_factura_proveedor}`,
+            oc.forma_pago === 'CONTADO' ? 'CONFIRMADO' : 'PENDIENTE',
+          ]
+        );
+
+        // Si SERVICIO, registrar en CostosServicio para rentabilidad de proyecto
+        if (oc.tipo_oc === 'SERVICIO' && oc.id_servicio) {
+          await conn.query(
+            `INSERT INTO CostosServicio
+              (id_servicio, concepto, moneda, monto_original, tipo_cambio, monto_base, tipo_costo, fecha)
+             VALUES (?, ?, ?, ?, ?, ?, 'GASTO_OC', ?)`,
+            [
+              oc.id_servicio, `OC ${oc.nro_oc} · Fact ${nro_factura_proveedor}`,
+              oc.moneda, Number(oc.total), tcOC, total_base_pen, fecha_factura,
+            ]
+          );
+        }
+      }
 
       await conn.query(
-        `UPDATE OrdenesCompra SET estado='FACTURADA', id_compra_generada=? WHERE id_oc=?`,
+        `UPDATE OrdenesCompra SET estado = 'FACTURADA', id_compra_generada = ? WHERE id_oc = ?`,
         [id_compra, id_oc]
       );
 
       await conn.commit();
-      return { success: true, estado: 'FACTURADA', id_compra };
+      return { success: true, estado: 'FACTURADA', id_compra, id_gasto, tipo_oc: oc.tipo_oc };
     } catch (e) {
       await conn.rollback();
       throw e;
@@ -504,6 +735,62 @@ class OrdenCompraService {
       [id_oc]
     );
     return { ...oc, detalle: det, aprobaciones: apro };
+  }
+
+  /**
+   * Asigna ítems del catálogo Inventario a líneas de DetalleOrdenCompra.
+   * Usado por el modal de resolución cuando recibir() devuelve OC_LINEAS_SIN_ITEM.
+   *
+   * Solo permite la asignación si la OC todavía no tiene cantidad_recibida en
+   * la línea (sino la afectación de inventario sería ambigua). Verifica que el
+   * id_item exista en Inventario.
+   */
+  async asignarItemsALineas(id_oc: number, asignaciones: { id_detalle: number; id_item: number }[]) {
+    if (!Array.isArray(asignaciones) || asignaciones.length === 0) {
+      throw new Error('Debe indicar al menos una asignación id_detalle → id_item');
+    }
+    const conn = await db.getConnection();
+    await conn.beginTransaction();
+    try {
+      // Verificar que la OC existe y está en estado editable de detalle
+      const [ocRows]: any = await conn.query(
+        `SELECT estado FROM OrdenesCompra WHERE id_oc = ? FOR UPDATE`, [id_oc]
+      );
+      if (!ocRows[0]) throw new Error('OC no encontrada');
+
+      for (const a of asignaciones) {
+        // Validar que el item existe
+        const [invRows]: any = await conn.query(
+          `SELECT id_item FROM Inventario WHERE id_item = ?`, [a.id_item]
+        );
+        if (!invRows[0]) throw new Error(`Ítem ${a.id_item} no existe en Inventario`);
+
+        // Validar que la línea existe en la OC y no tiene cantidad_recibida
+        const [detRows]: any = await conn.query(
+          `SELECT cantidad_recibida FROM DetalleOrdenCompra
+            WHERE id_detalle = ? AND id_oc = ?`,
+          [a.id_detalle, id_oc]
+        );
+        if (!detRows[0]) throw new Error(`Línea ${a.id_detalle} no pertenece a la OC ${id_oc}`);
+        if (Number(detRows[0].cantidad_recibida) > 0) {
+          throw new Error(
+            `Línea ${a.id_detalle} ya tiene cantidad recibida — no se puede reasignar item`
+          );
+        }
+
+        await conn.query(
+          `UPDATE DetalleOrdenCompra SET id_item = ? WHERE id_detalle = ? AND id_oc = ?`,
+          [a.id_item, a.id_detalle, id_oc]
+        );
+      }
+      await conn.commit();
+      return { success: true, asignados: asignaciones.length };
+    } catch (e) {
+      await conn.rollback();
+      throw e;
+    } finally {
+      conn.release();
+    }
   }
 }
 

@@ -1219,7 +1219,29 @@ ocRouter.post('/:id/enviar', validateIdParam, auditLog('OrdenCompra', 'UPDATE'),
 });
 
 ocRouter.post('/:id/recibir', validateIdParam, auditLog('OrdenCompra', 'UPDATE'), async (req: Request, res: Response) => {
-  res.json(await OrdenCompraService.recibir(Number(req.params.id), req.body?.lineas || []));
+  try {
+    res.json(await OrdenCompraService.recibir(Number(req.params.id), req.body?.lineas || []));
+  } catch (e: any) {
+    // Caso especial: OC ALMACEN con líneas sin id_item — el front abre modal de
+    // resolución. Devolvemos 422 con la data necesaria para reconstruir el modal.
+    if (e?.code === 'OC_LINEAS_SIN_ITEM') {
+      return res.status(422).json({
+        error: e.message,
+        code: e.code,
+        id_oc: e.id_oc,
+        lineas_pendientes: e.lineas_pendientes,
+      });
+    }
+    throw e;
+  }
+});
+
+// Asignar ítems del catálogo a líneas de OC (post-resolución).
+ocRouter.post('/:id/asignar-items', validateIdParam, auditLog('OrdenCompra', 'UPDATE'), async (req: Request, res: Response) => {
+  res.json(await OrdenCompraService.asignarItemsALineas(
+    Number(req.params.id),
+    req.body?.asignaciones || []
+  ));
 });
 
 ocRouter.post('/:id/facturar', validateIdParam, auditLog('OrdenCompra', 'UPDATE'), async (req: Request, res: Response) => {

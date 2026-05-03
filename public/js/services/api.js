@@ -27,6 +27,13 @@ async function fetchAPI(url, options = {}) {
       const errData = await response.json().catch(() => null);
       const msg = errData?.error || `Error HTTP: ${response.status}`;
       const err = new Error(msg);
+      // Preservar campos extra del body (code, datos auxiliares para UI) — útil
+      // por ejemplo cuando recibir() devuelve 422 con lineas_pendientes para que
+      // el front abra el modal de resolución de ítems.
+      if (errData && typeof errData === 'object') {
+        Object.assign(err, errData);
+        err.status = response.status;
+      }
       // Marca semántica para que las páginas puedan reaccionar al setup pendiente
       if (typeof msg === 'string' && msg.includes('ConfiguracionEmpresa vacía')) {
         err.code = 'CONFIG_VACIA';
@@ -318,6 +325,7 @@ export const api = {
     aprobar:    (id, data)   => post(`/ordenes-compra/${id}/aprobar`, data || {}),
     enviar:     (id)         => post(`/ordenes-compra/${id}/enviar`, {}),
     recibir:    (id, lineas) => post(`/ordenes-compra/${id}/recibir`, { lineas }),
+    asignarItems: (id, asignaciones) => post(`/ordenes-compra/${id}/asignar-items`, { asignaciones }),
     facturar:   (id, data)   => post(`/ordenes-compra/${id}/facturar`, data),
     anular:     (id, motivo) => post(`/ordenes-compra/${id}/anular`, { motivo }),
     reactivar:  (id)         => post(`/ordenes-compra/${id}/reactivar`, {}),
