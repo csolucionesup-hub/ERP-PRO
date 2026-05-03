@@ -1,25 +1,25 @@
 // Cache busting para imports ES module: cada path lleva su ?v=YYYYMMDDr#
 // hardcodeado. Si se cambia CUALQUIER archivo de pages/components/services
 // hay que bumpear el sufijo en TODAS las líneas (Find/Replace de v=2026...).
-import { renderSidebar } from './components/Sidebar.js?v=20260502r16';
-import { Dashboard }   from './pages/Dashboard.js?v=20260502r16';
-import { Finanzas }    from './pages/Finanzas.js?v=20260502r16';
-import { Inventario }  from './pages/Inventario.js?v=20260502r16';
-import { Usuarios }    from './pages/Usuarios.js?v=20260502r16';
-import { Compras }       from './pages/Compras.js?v=20260502r16';
-import { Servicios }     from './pages/Servicios.js?v=20260502r16';
-import { Proveedores }   from './pages/Proveedores.js?v=20260502r16';
-import { Prestamos }     from './pages/Prestamos.js?v=20260502r16';
-import { Comercial }     from './pages/Comercial.js?v=20260502r16';
-import { ConfiguracionComercial } from './pages/ConfiguracionComercial.js?v=20260502r16';
-import { Logistica }     from './pages/Logistica.js?v=20260502r16';
-import { Administracion } from './pages/Administracion.js?v=20260502r16';
-import { Configuracion }  from './pages/Configuracion.js?v=20260502r16';
-import { Contabilidad }   from './pages/Contabilidad.js?v=20260502r16';
-import { Importador }     from './pages/Importador.js?v=20260502r16';
-import { OrdenesCompra }  from './pages/OrdenesCompra.js?v=20260502r16';
-import { Alertas }        from './pages/Alertas.js?v=20260502r16';
-import { showSuccess, showError, showToast } from './services/ui.js?v=20260502r16';
+import { renderSidebar } from './components/Sidebar.js?v=20260502r17';
+import { Dashboard }   from './pages/Dashboard.js?v=20260502r17';
+import { Finanzas }    from './pages/Finanzas.js?v=20260502r17';
+import { Inventario }  from './pages/Inventario.js?v=20260502r17';
+import { Usuarios }    from './pages/Usuarios.js?v=20260502r17';
+import { Compras }       from './pages/Compras.js?v=20260502r17';
+import { Servicios }     from './pages/Servicios.js?v=20260502r17';
+import { Proveedores }   from './pages/Proveedores.js?v=20260502r17';
+import { Prestamos }     from './pages/Prestamos.js?v=20260502r17';
+import { Comercial }     from './pages/Comercial.js?v=20260502r17';
+import { ConfiguracionComercial } from './pages/ConfiguracionComercial.js?v=20260502r17';
+import { Logistica }     from './pages/Logistica.js?v=20260502r17';
+import { Administracion } from './pages/Administracion.js?v=20260502r17';
+import { Configuracion }  from './pages/Configuracion.js?v=20260502r17';
+import { Contabilidad }   from './pages/Contabilidad.js?v=20260502r17';
+import { Importador }     from './pages/Importador.js?v=20260502r17';
+import { OrdenesCompra }  from './pages/OrdenesCompra.js?v=20260502r17';
+import { Alertas }        from './pages/Alertas.js?v=20260502r17';
+import { showSuccess, showError, showToast } from './services/ui.js?v=20260502r17';
 
 // Exponer helpers de toast globalmente (los modules ES no tienen acceso
 // directo desde otros modules sin import; varios usan window.showSuccess?.()
@@ -265,6 +265,15 @@ async function init() {
     const page = window.location.hash.replace('#', '').trim().split('/')[0];
     if (page && PAGES[page] && page !== currentPage) navigate(page);
   });
+
+  // Helper para refrescar el módulo actual (re-fetch + re-render) tras una
+  // mutation. El listener de hashchange por sí solo NO re-navega cuando el
+  // page no cambia (decisión consciente para preservar state de pestañas
+  // internas tipo #logistica/general). Para post-cobranza/post-OC/etc.
+  // necesitamos forzar el re-render — este helper lo cubre.
+  window.refreshModule = () => {
+    if (currentPage && PAGES[currentPage]) navigate(currentPage);
+  };
 
   // Página inicial — primer segmento del hash (algunos módulos usan
   // sub-rutas internas tipo #logistica/general para sus pestañas, así

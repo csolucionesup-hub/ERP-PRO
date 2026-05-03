@@ -1744,7 +1744,7 @@ async function modalDetalle(id) {
       await api.cobranzas.actualizarTributario(c.id_cotizacion, nuevo);
       showSuccess('Datos tributarios actualizados');
       close();
-      window.dispatchEvent(new Event('hashchange'));
+      window.refreshModule?.();
     } catch (e) { showError(e.message); }
   };
 
@@ -1757,7 +1757,7 @@ async function modalDetalle(id) {
       await api.cobranzas.facturar(c.id_cotizacion, data);
       showSuccess('Cotización facturada');
       close();
-      window.dispatchEvent(new Event('hashchange'));
+      window.refreshModule?.();
     } catch (e) { showError(e.message); }
   };
   const btnCob = ov.querySelector('#btn-cobrada');
@@ -1767,7 +1767,7 @@ async function modalDetalle(id) {
       await api.cobranzas.marcarCobrada(c.id_cotizacion);
       showSuccess('Marcada como cobrada');
       close();
-      window.dispatchEvent(new Event('hashchange'));
+      window.refreshModule?.();
     } catch (e) { showError(e.message); }
   };
   const btnRev = ov.querySelector('#btn-revertir-fac');
@@ -1777,7 +1777,7 @@ async function modalDetalle(id) {
       await api.cobranzas.revertirFactura(c.id_cotizacion);
       showSuccess('Facturación revertida');
       close();
-      window.dispatchEvent(new Event('hashchange'));
+      window.refreshModule?.();
     } catch (e) { showError(e.message); }
   };
 
@@ -1789,7 +1789,7 @@ async function modalDetalle(id) {
         showSuccess('Movimiento eliminado');
         close();
         location.hash = location.hash; // re-render
-        window.dispatchEvent(new Event('hashchange'));
+        window.refreshModule?.();
       } catch (e) { showError(e.message); }
     };
   });
@@ -1809,7 +1809,7 @@ async function modalDetalle(id) {
         await api.cobranzas.editar(id_cobranza, data);
         showSuccess('Movimiento actualizado');
         close();
-        window.dispatchEvent(new Event('hashchange'));
+        window.refreshModule?.();
       } catch (e) { showError(e.message); }
     };
   });
@@ -1979,7 +1979,7 @@ function bindHandlers(cuentas, dashboard) {
 
   // Refresh
   document.querySelectorAll('.btn-refresh').forEach(btn => {
-    btn.onclick = () => window.dispatchEvent(new Event('hashchange'));
+    btn.onclick = () => window.refreshModule?.();
   });
 
   // Gestión de cuentas
@@ -2016,7 +2016,7 @@ function bindHandlers(cuentas, dashboard) {
       try {
         await api.cobranzas.registrar(data);
         showSuccess('Cobranza registrada');
-        window.dispatchEvent(new Event('hashchange'));
+        window.refreshModule?.();
       } catch (e) {
         showError('Error: ' + e.message);
       }
@@ -2052,7 +2052,7 @@ function bindHandlers(cuentas, dashboard) {
       try {
         await api.cobranzas.editar(movs[0].id_cobranza, data);
         showSuccess('Movimiento actualizado');
-        window.dispatchEvent(new Event('hashchange'));
+        window.refreshModule?.();
       } catch (e) { showError(e.message); }
     };
   });
