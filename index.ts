@@ -32,6 +32,7 @@ import PeriodosService from './app/modules/configuracion/PeriodosService';
 import AdjuntosService from './app/modules/configuracion/AdjuntosService';
 import NubefactService from './app/modules/facturacion/NubefactService';
 import FacturaService from './app/modules/facturacion/FacturaService';
+import FacturaPDFService from './app/modules/facturacion/FacturaPDFService';
 import PLEExporter from './app/modules/facturacion/PLEExporter';
 import { FacturacionCron } from './app/modules/facturacion/FacturacionCron';
 import ImportadorService, { EntidadImportable } from './app/modules/importador/ImportadorService';
@@ -945,6 +946,29 @@ facturasRouter.get('/:id', validateIdParam, async (req: Request, res: Response) 
 // Refrescar estado desde SUNAT (útil cuando quedó PENDIENTE o ERROR)
 facturasRouter.post('/:id/consultar-estado', validateIdParam, auditLog('Factura', 'UPDATE'), async (req: Request, res: Response) => {
   res.json(await FacturaService.consultarEstado(parseInt(req.params.id as string)));
+});
+
+// Pre-llenar form de factura desde una cotización (no persiste)
+facturasRouter.get('/preview-cotizacion/:id_cotizacion', async (req: Request, res: Response) => {
+  const id = parseInt(req.params.id_cotizacion as string);
+  if (isNaN(id) || id <= 0) return res.status(400).json({ error: 'id_cotizacion inválido' });
+  res.json(await FacturaService.previewDesdeCotizacion(id));
+});
+
+// Crear y emitir factura/boleta con form completo (multi-items editables)
+facturasRouter.post('/', auditLog('Factura', 'EMIT'), async (req: any, res: Response) => {
+  const result = await FacturaService.crearYEmitir(req.body, { id_usuario_emisor: req.user?.id_usuario });
+  res.json(result);
+});
+
+// PDF de la factura (preview interno mientras esté en STUB; oficial cuando Nubefact REAL)
+facturasRouter.get('/:id/pdf', validateIdParam, async (req: Request, res: Response) => {
+  const id = parseInt(req.params.id as string);
+  const buf = await FacturaPDFService.generar(id);
+  const f = await FacturaService.obtener(id);
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `inline; filename="${f.serie}-${String(f.numero).padStart(6,'0')}.pdf"`);
+  res.send(buf);
 });
 
 app.use('/api/facturas', facturasRouter);

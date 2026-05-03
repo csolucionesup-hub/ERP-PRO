@@ -298,6 +298,8 @@ export const api = {
   facturas: {
     emitirDesdeCotizacion: (idCot, data = {}) =>
       post(`/facturas/emitir-desde-cotizacion/${idCot}`, data),
+    previewCotizacion: (idCot) => get(`/facturas/preview-cotizacion/${idCot}`),
+    crearYEmitir:      (data)  => post('/facturas', data),
     list: (filtros = {}) => {
       const p = new URLSearchParams();
       Object.entries(filtros).forEach(([k, v]) => { if (v != null && v !== '') p.append(k, v); });
@@ -305,6 +307,7 @@ export const api = {
     },
     get:              (id)    => get(`/facturas/${id}`),
     consultarEstado:  (id)    => post(`/facturas/${id}/consultar-estado`),
+    pdfUrl:           (id)    => `/api/facturas/${id}/pdf`,
   },
   centrosCosto: {
     list:    (soloActivos = false) => get(`/centros-costo${soloActivos ? '?activos=1' : ''}`),
