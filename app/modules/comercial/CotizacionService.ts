@@ -51,6 +51,11 @@ interface CotizacionInput {
   lugar_trabajo?: string;
   precios_incluyen?: string;
   comentarios?: string;
+  /**
+   * Fecha de la cotización en formato YYYY-MM-DD. Si no viene, se usa hoy.
+   * Útil cuando se carga data histórica (Julio cargando enero/2025 hoy).
+   */
+  fecha?: string;
   detalles: DetalleCotizacionInput[];
 }
 
@@ -416,7 +421,12 @@ class CotizacionService {
       detalles, moneda, tipo_cambio, aplica_igv
     );
 
-    const fecha = new Date().toISOString().split('T')[0];
+    // Fecha editable (default hoy) — clave para cargar data histórica.
+    // Validamos formato YYYY-MM-DD para evitar SQL malformado.
+    const fechaInput = (data.fecha || '').trim();
+    const fecha = /^\d{4}-\d{2}-\d{2}$/.test(fechaInput)
+      ? fechaInput
+      : new Date().toISOString().split('T')[0];
 
     const conn = await db.getConnection();
     await conn.beginTransaction();
@@ -565,13 +575,18 @@ class CotizacionService {
         detalles, moneda, tipo_cambio, aplica_igv
       );
 
+      // Fecha: si viene válida en YYYY-MM-DD se actualiza; sino se preserva la actual.
+      const fechaInput = (data.fecha || '').trim();
+      const fechaValida = /^\d{4}-\d{2}-\d{2}$/.test(fechaInput) ? fechaInput : null;
+
       // marca NO se modifica en update: el correlativo ya fue asignado.
       await conn.query(
         `UPDATE Cotizaciones SET
            cliente = ?, atencion = ?, telefono = ?, correo = ?, proyecto = ?, ref = ?,
            moneda = ?, tipo_cambio = ?, subtotal = ?, igv = ?, total = ?,
            forma_pago = ?, validez_oferta = ?, plazo_entrega = ?,
-           lugar_entrega = ?, lugar_trabajo = ?, comentarios = ?, precios_incluyen = ?
+           lugar_entrega = ?, lugar_trabajo = ?, comentarios = ?, precios_incluyen = ?,
+           fecha = COALESCE(?, fecha)
          WHERE id_cotizacion = ?`,
         [
           cliente, atencion ?? null, telefono ?? null, correo ?? null,
@@ -580,6 +595,7 @@ class CotizacionService {
           forma_pago ?? null, validez_oferta ?? null,
           plazo_entrega ?? null, lugar_entrega ?? null, lugar_trabajo ?? null,
           comentarios ?? null, precios_incluyen ?? null,
+          fechaValida,
           id,
         ]
       );

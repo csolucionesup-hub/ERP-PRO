@@ -512,6 +512,12 @@ function formNueva(marca, tcHoy, opts = {}) {
             <span style="font-size:10px;color:var(--text-secondary)">SBS ${tcHoy.es_hoy ? 'hoy' : (tcHoy.fecha || '')}: ${tcHoy.valor_venta}</span>
           </div>
           ` : `<input type="hidden" name="tipo_cambio" value="1">`}
+          <div>
+            <label style="font-size:11px;color:var(--text-secondary)">Fecha ${tip('Fecha real de la cotización. Editable para cargar data histórica (ej. cotizaciones de meses anteriores). Si lo dejás en blanco se usa hoy.')}</label>
+            <input name="fecha" type="date"
+              value="${editData?.fecha ? String(editData.fecha).slice(0,10) : new Date().toISOString().slice(0,10)}"
+              style="width:100%;padding:9px;border-radius:var(--radius-sm);border:1px solid var(--border-light)">
+          </div>
         </div>
 
         <!-- IGV toggle -->
@@ -918,6 +924,7 @@ function bindForm(marca, opts = {}) {
           lugar_trabajo:    f.lugar_trabajo.value    || undefined,
           precios_incluyen: f.precios_incluyen.value || undefined,
           comentarios:      f.comentarios.value      || undefined,
+          fecha:            f.fecha?.value           || undefined,
           detalles:         lineas,
         };
         if (editData) {
