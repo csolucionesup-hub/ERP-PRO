@@ -505,6 +505,23 @@ class CotizacionService {
         );
       }
 
+      // Hook inverso: al pasar a estado terminal negativo, cerrar seguimiento
+      // financiero (volver a 'NA') para que la cotización deje de aparecer en
+      // Finanzas. Solo si NO hay cobranzas registradas — si las hay, hay datos
+      // contables y se requiere reverso manual (anular cobros antes).
+      if (['RECHAZADA', 'NO_APROBADA'].includes(estado)) {
+        const [cobs]: any = await conn.query(
+          `SELECT COUNT(*) AS n FROM CobranzasCotizacion WHERE id_cotizacion = ?`,
+          [id]
+        );
+        if (Number(cobs[0].n) === 0) {
+          await conn.query(
+            `UPDATE Cotizaciones SET estado_financiero = 'NA' WHERE id_cotizacion = ?`,
+            [id]
+          );
+        }
+      }
+
       await conn.commit();
     } catch (e) {
       await conn.rollback();
@@ -608,8 +625,18 @@ class CotizacionService {
       if (!cot) throw new Error('Cotización no encontrada');
       if (cot.estado === 'ANULADA') throw new Error('La cotización ya está ANULADA');
 
+      // Cerrar seguimiento financiero solo si no hay cobranzas — sino requiere
+      // reverso manual (anular cobros antes de anular la cotización).
+      const [cobs]: any = await conn.query(
+        `SELECT COUNT(*) AS n FROM CobranzasCotizacion WHERE id_cotizacion = ?`,
+        [id]
+      );
+      const reset = Number(cobs[0].n) === 0
+        ? `, estado_financiero = 'NA'`
+        : '';
+
       await conn.query(
-        `UPDATE Cotizaciones SET estado = 'ANULADA' WHERE id_cotizacion = ?`,
+        `UPDATE Cotizaciones SET estado = 'ANULADA' ${reset} WHERE id_cotizacion = ?`,
         [id]
       );
 
