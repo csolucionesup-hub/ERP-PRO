@@ -89,8 +89,8 @@ function renderCatalogo(panel) {
         <td style="text-align:right">${fPEN(i.costo_promedio || 0)}</td>
         <td style="text-align:right">${fPEN(i.valorizado || 0)}</td>
         <td style="display:flex;gap:4px">
-          <button class="action-btn" onclick="window.verKardex(${i.id_item}, '${(i.nombre || '').replace(/'/g, "\\'")}')">Kárdex</button>
-          <button class="action-btn" style="background:#ef4444;color:white" onclick="window.eliminarItem(${i.id_item}, '${(i.nombre || '').replace(/'/g, "\\'")}')">×</button>
+          <button class="action-btn" onclick="window.Inventario.verKardex(${i.id_item}, '${(i.nombre || '').replace(/'/g, "\\'")}')">Kárdex</button>
+          <button class="action-btn" style="background:#ef4444;color:white" onclick="window.Inventario.eliminarItem(${i.id_item}, '${(i.nombre || '').replace(/'/g, "\\'")}')">×</button>
         </td>
       </tr>
     `;
