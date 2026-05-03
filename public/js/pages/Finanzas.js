@@ -100,11 +100,17 @@ function rowCotizacion(c, marca) {
       </td>
       <td style="text-align:center">${semaforoDias(c.dias_esperando)}</td>
       <td>${estadoBadge(c.estado_financiero)}</td>
-      <td style="text-align:right">
+      <td style="text-align:right;white-space:nowrap">
         <button class="btn-registrar" data-id="${c.id_cotizacion}"
           style="padding:6px 12px;background:${cfg.color};color:#fff;border:none;border-radius:5px;cursor:pointer;font-size:11px;font-weight:600">
           + Cobranza
         </button>
+        ${(Number(c.monto_cobrado_banco || 0) > 0 || Number(c.monto_cobrado_detraccion || 0) > 0) ? `
+        <button class="btn-edit-cob" data-id="${c.id_cotizacion}"
+          title="Editar movimiento (si hay uno solo abre directo, sino lleva al detalle)"
+          style="padding:6px 9px;background:#fff;color:#374151;border:1px solid #d1d5db;border-radius:5px;cursor:pointer;font-size:11px;margin-left:4px">
+          ✎
+        </button>` : ''}
         <button class="btn-detalle" data-id="${c.id_cotizacion}"
           style="padding:6px 10px;background:#fff;color:#374151;border:1px solid #d1d5db;border-radius:5px;cursor:pointer;font-size:11px;margin-left:4px">
           Detalle
@@ -2020,5 +2026,34 @@ function bindHandlers(cuentas, dashboard) {
   // Detalle
   document.querySelectorAll('.btn-detalle').forEach(btn => {
     btn.onclick = () => modalDetalle(Number(btn.dataset.id));
+  });
+
+  // Atajo ✎: si hay 1 solo movimiento abre el editor directo; si hay más,
+  // cae al modal de detalle (donde podés elegir cuál editar).
+  document.querySelectorAll('.btn-edit-cob').forEach(btn => {
+    btn.onclick = async () => {
+      const id = Number(btn.dataset.id);
+      let det;
+      try { det = await api.cobranzas.getDetalle(id); }
+      catch (e) { return showError(e.message); }
+      const movs = det.movimientos || [];
+      if (movs.length === 0) {
+        showError('Aún no hay movimientos registrados para editar.');
+        return;
+      }
+      if (movs.length > 1) {
+        // Más de uno: dejamos al usuario elegir cuál en el modal de detalle.
+        modalDetalle(id);
+        return;
+      }
+      // Caso común: 1 solo movimiento → editor directo
+      const data = await modalRegistrarCobranza(det.cotizacion, cuentas, movs[0]);
+      if (!data) return;
+      try {
+        await api.cobranzas.editar(movs[0].id_cobranza, data);
+        showSuccess('Movimiento actualizado');
+        window.dispatchEvent(new Event('hashchange'));
+      } catch (e) { showError(e.message); }
+    };
   });
 }
