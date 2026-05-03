@@ -147,6 +147,15 @@ export const api = {
     updateCotizacion: (id, d)  => put(`/cotizaciones/${id}`, d),
     updateEstado:     (id, e)  => put(`/cotizaciones/${id}/estado`, { estado: e }),
     editarFecha:      (id, f)  => put(`/cotizaciones/${id}/fecha`, { fecha: f }),
+    proyectosActivos: (filtros = {}) => {
+      const p = new URLSearchParams();
+      if (filtros.moneda) p.append('moneda', filtros.moneda);
+      if (filtros.anio)   p.append('anio',   String(filtros.anio));
+      if (filtros.search) p.append('search', filtros.search);
+      if (filtros.todos)  p.append('todos',  '1');
+      const q = p.toString();
+      return get(`/cotizaciones/proyectos-activos${q ? '?' + q : ''}`);
+    },
     anularCotizacion: (id)     => post(`/cotizaciones/${id}/anular`),
     deleteCotizacion: (id)     => del(`/cotizaciones/${id}`),
     resetTodo:        ()       => del('/cotizaciones/reset'),

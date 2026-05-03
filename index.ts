@@ -531,6 +531,15 @@ apiRouter.get('/cotizaciones/anuladas', async (_req: Request, res: Response) => 
   res.json(await CotizacionService.getAnuladas());
 });
 
+// Proyectos / cotizaciones activas para el picker del form OC SERVICIO
+apiRouter.get('/cotizaciones/proyectos-activos', async (req: Request, res: Response) => {
+  const moneda = req.query.moneda as 'PEN' | 'USD' | undefined;
+  const anio = req.query.anio ? Number(req.query.anio) : undefined;
+  const search = req.query.search as string | undefined;
+  const todos = req.query.todos === '1' || req.query.todos === 'true';
+  res.json(await CotizacionService.getProyectosActivos({ moneda, anio, search, todos }));
+});
+
 apiRouter.get('/cotizaciones', async (req: Request, res: Response) => {
   const marca = req.query.marca as 'METAL' | 'PERFOTOOLS' | undefined;
   res.json(await CotizacionService.getCotizaciones(

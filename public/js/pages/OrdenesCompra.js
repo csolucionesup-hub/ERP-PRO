@@ -579,6 +579,11 @@ async function verOC(id_oc) {
             <div style="padding:10px;background:#f9fafb;border-radius:6px"><strong>Forma pago:</strong> ${oc.forma_pago}${oc.dias_credito ? ` (${oc.dias_credito}d)` : ''}</div>
           </div>
 
+          ${oc.id_cotizacion && oc.cotizacion_nro ? `
+          <div style="background:#eff6ff;border:1px solid #bfdbfe;color:#1e40af;padding:10px 14px;border-radius:6px;margin-bottom:16px;font-size:13px">
+            🔗 <strong>Vinculada a:</strong> ${oc.cotizacion_nro} — ${oc.cotizacion_cliente || ''}${oc.cotizacion_proyecto ? ' · ' + oc.cotizacion_proyecto : ''}
+          </div>` : ''}
+
           <h3 style="font-size:14px;margin-bottom:10px">Líneas</h3>
           <table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:16px">
             <thead><tr style="background:#f9fafb;border-bottom:2px solid #d9dad9">
@@ -1174,7 +1179,20 @@ function nuevaOC(editData) {
               <option value="ALMACEN" ${sel(tipoOC,'ALMACEN')}>Almacén (stock)</option>
             </select>
           </div>
-          <div style="grid-column:span 3"><label>Servicio/Proyecto (si tipo=SERVICIO) ${tip('Solo si tipo=SERVICIO. Vincula la OC al proyecto/obra para que el costo aparezca en su rentabilidad.')}</label><select name="id_servicio"><option value="">—</option>${servOpts}</select></div>
+          <div style="grid-column:span 3" id="oc-proyecto-block">
+            <label>Proyecto / Cotización (si tipo=SERVICIO) ${tip('Solo si tipo=SERVICIO. Vincula la OC a una cotización aprobada del cliente para que el costo aparezca en su rentabilidad. Filtrado automáticamente por moneda. Solo APROBADAS / TERMINADAS / TRABAJO A RIESGO.')}</label>
+            <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px">
+              <input type="text" id="oc-proyecto-search" placeholder="🔍 Buscar por cliente o proyecto..."
+                style="flex:1;padding:7px 10px;border:1px solid #d9dad9;border-radius:6px;font-size:12px">
+              <label style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--text-secondary);white-space:nowrap">
+                <input type="checkbox" id="oc-proyecto-todos"> Ver todos los años
+              </label>
+            </div>
+            <select name="id_cotizacion" id="oc-proyecto-select" style="width:100%">
+              <option value="">— Sin proyecto vinculado (solo aplica si tipo=SERVICIO) —</option>
+            </select>
+            <div id="oc-proyecto-info" style="font-size:11px;color:var(--text-secondary);margin-top:4px"></div>
+          </div>
           <div><label>Moneda ${tip('PEN = Soles. USD = Dólares. Si elegís USD, el tipo de cambio se usa para convertir todo a PEN para totales y reportes.')}</label>
             <select name="moneda"><option value="PEN" ${sel(moneda,'PEN')}>PEN</option><option value="USD" ${sel(moneda,'USD')}>USD</option></select>
           </div>
@@ -1243,6 +1261,66 @@ function nuevaOC(editData) {
   if (esEdit) renderLineas();
   else        window.OC._addLinea();
 
+  // ── Picker de proyecto (cotización vinculada) ─────────────────
+  // Carga cotizaciones APROBADAS/TERMINADAS/TRABAJO_EN_RIESGO filtradas por
+  // moneda actual de la OC. Se re-carga al cambiar moneda o al tildar
+  // "ver todos los años". Searchbox client-side filtra el dropdown ya cargado.
+  const proyBlock  = document.getElementById('oc-proyecto-block');
+  const proySelect = document.getElementById('oc-proyecto-select');
+  const proySearch = document.getElementById('oc-proyecto-search');
+  const proyTodos  = document.getElementById('oc-proyecto-todos');
+  const proyInfo   = document.getElementById('oc-proyecto-info');
+  let _proyectos = [];
+
+  const renderProyectoOptions = (filtro = '') => {
+    const f = filtro.trim().toLowerCase();
+    const filtrados = !f ? _proyectos : _proyectos.filter(p =>
+      String(p.cliente || '').toLowerCase().includes(f) ||
+      String(p.proyecto || '').toLowerCase().includes(f) ||
+      String(p.nro_cotizacion || '').toLowerCase().includes(f)
+    );
+    const fmtMoney = (n, m) => (m === 'USD' ? '$ ' : 'S/ ') +
+      Number(n || 0).toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const idPreSelected = esEdit ? Number(editData.id_cotizacion) : null;
+    proySelect.innerHTML =
+      `<option value="">— Sin proyecto vinculado —</option>` +
+      filtrados.map(p => `
+        <option value="${p.id_cotizacion}" ${idPreSelected === p.id_cotizacion ? 'selected' : ''}>
+          ${p.nro_cotizacion} · ${p.cliente}${p.proyecto ? ' — ' + p.proyecto : ''} · ${fmtMoney(p.total, p.moneda)} (${p.estado})
+        </option>
+      `).join('');
+    proyInfo.textContent = filtrados.length === 0
+      ? (_proyectos.length === 0 ? 'No hay cotizaciones aprobadas para esta moneda.' : 'Sin coincidencias para tu búsqueda.')
+      : `${filtrados.length} proyecto(s) disponible(s)${_proyectos.length !== filtrados.length ? ` de ${_proyectos.length}` : ''}.`;
+  };
+
+  const cargarProyectos = async () => {
+    const monedaSel = document.querySelector('#form-oc select[name="moneda"]')?.value || moneda;
+    const todos = !!proyTodos?.checked;
+    proyInfo.textContent = 'Cargando proyectos...';
+    try {
+      const lista = await api.cotizaciones.proyectosActivos({ moneda: monedaSel, todos });
+      _proyectos = Array.isArray(lista) ? lista : [];
+      renderProyectoOptions(proySearch?.value || '');
+    } catch (e) {
+      _proyectos = [];
+      proyInfo.textContent = 'Error cargando proyectos: ' + (e.message || e);
+    }
+  };
+
+  // Toggle de visibilidad del bloque proyecto según tipo_oc
+  const togglePicker = () => {
+    const tipo = document.querySelector('#form-oc select[name="tipo_oc"]')?.value;
+    if (proyBlock) proyBlock.style.display = (tipo === 'SERVICIO') ? '' : 'none';
+  };
+  document.querySelector('#form-oc select[name="tipo_oc"]')?.addEventListener('change', togglePicker);
+  document.querySelector('#form-oc select[name="moneda"]')?.addEventListener('change', cargarProyectos);
+  proySearch?.addEventListener('input', () => renderProyectoOptions(proySearch.value));
+  proyTodos?.addEventListener('change', cargarProyectos);
+
+  togglePicker();
+  cargarProyectos();
+
   document.getElementById('form-oc').onsubmit = async (e) => {
     e.preventDefault();
     if (!lineas.length || lineas.some(l => !l.descripcion || l.cantidad <= 0)) {
@@ -1254,6 +1332,7 @@ function nuevaOC(editData) {
       fecha_entrega_esperada: fd.get('fecha_entrega_esperada') || null,
       id_proveedor: Number(fd.get('id_proveedor')),
       id_servicio: fd.get('id_servicio') ? Number(fd.get('id_servicio')) : null,
+      id_cotizacion: fd.get('id_cotizacion') ? Number(fd.get('id_cotizacion')) : null,
       centro_costo: fd.get('centro_costo'),
       tipo_oc: fd.get('tipo_oc'),
       empresa: fd.get('empresa'),

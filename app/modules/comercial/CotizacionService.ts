@@ -488,6 +488,55 @@ class CotizacionService {
     }));
   }
 
+  /**
+   * Lista cotizaciones que pueden actuar como "proyecto/servicio" para
+   * vincular OCs SERVICIO. Sirve al picker del form de OC.
+   *
+   * Filtros opcionales:
+   *   - moneda: 'PEN' | 'USD' (auto-coincide con la moneda de la OC)
+   *   - anio:   limitar a un año específico
+   *   - desde:  cuántos meses hacia atrás (default 12)
+   *   - search: substring en cliente o proyecto (case-insensitive)
+   *   - todos:  si true, ignora el filtro de fecha (mostrar histórico completo)
+   */
+  async getProyectosActivos(filtros: {
+    moneda?: 'PEN' | 'USD';
+    anio?: number;
+    search?: string;
+    todos?: boolean;
+  } = {}) {
+    const where: string[] = [`estado IN ('APROBADA','TERMINADA','TRABAJO_EN_RIESGO')`];
+    const params: any[] = [];
+
+    if (filtros.moneda) {
+      where.push(`moneda = ?`);
+      params.push(filtros.moneda);
+    }
+    if (filtros.anio) {
+      where.push(`YEAR(fecha) = ?`);
+      params.push(filtros.anio);
+    } else if (!filtros.todos) {
+      // Default: últimos 12 meses + año actual completo
+      where.push(`fecha >= DATE_SUB(CURDATE(), INTERVAL 12 MONTH)`);
+    }
+    if (filtros.search && filtros.search.trim()) {
+      where.push(`(LOWER(cliente) LIKE LOWER(?) OR LOWER(COALESCE(proyecto,'')) LIKE LOWER(?))`);
+      const term = `%${filtros.search.trim()}%`;
+      params.push(term, term);
+    }
+
+    const [rows] = await db.query(
+      `SELECT id_cotizacion, nro_cotizacion, marca, fecha,
+              cliente, proyecto, moneda, total, estado,
+              tipo_cambio
+         FROM Cotizaciones
+        WHERE ${where.join(' AND ')}
+        ORDER BY fecha DESC, id_cotizacion DESC`,
+      params
+    );
+    return rows;
+  }
+
   async getAnuladas() {
     const [cots] = await db.query(
       `SELECT * FROM Cotizaciones

@@ -42,6 +42,12 @@ export interface CrearOCParams {
   fecha_entrega_esperada?: string | null;
   id_proveedor: number;
   id_servicio?: number | null;
+  /**
+   * Cotización vinculada (caso típico OC SERVICIO). Reemplaza el rol que
+   * tenía id_servicio cuando el "proyecto" para vos es una cotización
+   * aprobada del cliente. Picker en el form filtra por moneda + año.
+   */
+  id_cotizacion?: number | null;
   centro_costo?: string;
   tipo_oc?: 'GENERAL' | 'SERVICIO' | 'ALMACEN';
   empresa?: 'ME' | 'PT';
@@ -219,7 +225,7 @@ class OrdenCompraService {
 
       const [res]: any = await conn.query(
         `INSERT INTO OrdenesCompra
-          (nro_oc, fecha_emision, fecha_entrega_esperada, id_proveedor, id_servicio,
+          (nro_oc, fecha_emision, fecha_entrega_esperada, id_proveedor, id_servicio, id_cotizacion,
            centro_costo, tipo_oc, empresa, moneda, tipo_cambio,
            subtotal, descuento, aplica_igv, igv, total,
            forma_pago, dias_credito, condiciones_entrega, observaciones,
@@ -227,9 +233,9 @@ class OrdenCompraService {
            atencion, contacto_interno, contacto_telefono,
            solicitado_por, revisado_por, autorizado_por,
            cuenta_bancaria_pago, lugar_entrega)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [nro_oc, params.fecha_emision, params.fecha_entrega_esperada || null,
-         params.id_proveedor, params.id_servicio || null,
+         params.id_proveedor, params.id_servicio || null, params.id_cotizacion || null,
          cc, params.tipo_oc || 'GENERAL',
          empresa, moneda, tc,
          subtotal, descuento, aplicaIgv ? 1 : 0, igv, total,
@@ -586,14 +592,19 @@ class OrdenCompraService {
           ]
         );
 
-        // Si SERVICIO, registrar en CostosServicio para rentabilidad de proyecto
-        if (oc.tipo_oc === 'SERVICIO' && oc.id_servicio) {
+        // Si SERVICIO, registrar en CostosServicio para rentabilidad de proyecto.
+        // Nuevo flujo: vincula por id_cotizacion (preferido). Legacy: id_servicio.
+        // CHECK constraint exige que al menos uno de los dos esté poblado.
+        if (oc.tipo_oc === 'SERVICIO' && (oc.id_cotizacion || oc.id_servicio)) {
           await conn.query(
             `INSERT INTO CostosServicio
-              (id_servicio, concepto, moneda, monto_original, tipo_cambio, monto_base, tipo_costo, fecha)
-             VALUES (?, ?, ?, ?, ?, ?, 'GASTO_OC', ?)`,
+              (id_servicio, id_cotizacion, concepto, moneda, monto_original,
+               tipo_cambio, monto_base, tipo_costo, fecha)
+             VALUES (?, ?, ?, ?, ?, ?, ?, 'GASTO_OC', ?)`,
             [
-              oc.id_servicio, `OC ${oc.nro_oc} · Fact ${nro_factura_proveedor}`,
+              oc.id_servicio || null,
+              oc.id_cotizacion || null,
+              `OC ${oc.nro_oc} · Fact ${nro_factura_proveedor}`,
               oc.moneda, Number(oc.total), tcOC, total_base_pen, fecha_factura,
             ]
           );
@@ -715,7 +726,7 @@ class OrdenCompraService {
       await conn.query(
         `UPDATE OrdenesCompra SET
            fecha_emision = ?, fecha_entrega_esperada = ?,
-           id_proveedor = ?, id_servicio = ?, centro_costo = ?, tipo_oc = ?,
+           id_proveedor = ?, id_servicio = ?, id_cotizacion = ?, centro_costo = ?, tipo_oc = ?,
            empresa = ?, moneda = ?, tipo_cambio = ?,
            subtotal = ?, descuento = ?, aplica_igv = ?, igv = ?, total = ?,
            forma_pago = ?, dias_credito = ?, condiciones_entrega = ?, observaciones = ?,
@@ -724,7 +735,7 @@ class OrdenCompraService {
            cuenta_bancaria_pago = ?, lugar_entrega = ?
          WHERE id_oc = ?`,
         [params.fecha_emision, params.fecha_entrega_esperada || null,
-         params.id_proveedor, params.id_servicio || null,
+         params.id_proveedor, params.id_servicio || null, params.id_cotizacion || null,
          params.centro_costo || 'OFICINA CENTRAL', params.tipo_oc || 'GENERAL',
          params.empresa || 'ME', moneda, tc,
          subtotal, descuento, aplicaIgv ? 1 : 0, igv, total,
@@ -838,9 +849,15 @@ class OrdenCompraService {
               p.banco_2_nombre AS proveedor_banco_2_nombre,
               p.banco_2_numero AS proveedor_banco_2_numero,
               p.banco_2_cci    AS proveedor_banco_2_cci,
-              p.banco_2_moneda AS proveedor_banco_2_moneda
+              p.banco_2_moneda AS proveedor_banco_2_moneda,
+              cot.nro_cotizacion AS cotizacion_nro,
+              cot.cliente        AS cotizacion_cliente,
+              cot.proyecto       AS cotizacion_proyecto,
+              cot.moneda         AS cotizacion_moneda,
+              cot.total          AS cotizacion_total
        FROM OrdenesCompra oc
        LEFT JOIN Proveedores p ON p.id_proveedor = oc.id_proveedor
+       LEFT JOIN Cotizaciones cot ON cot.id_cotizacion = oc.id_cotizacion
        WHERE oc.id_oc = ?`,
       [id_oc]
     );
