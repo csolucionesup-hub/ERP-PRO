@@ -656,28 +656,142 @@ async function enviar(id) {
 
 async function recibir(id) {
   const oc = await api.ordenesCompra.get(id);
-  // Solo alertamos en la PRIMERA recepción (cuando aún no es RECIBIDA_PARCIAL).
-  // En recepciones siguientes ya pasamos el punto donde se podía editar, así que
-  // mostrar otra vez la alerta sería ruido.
-  if (['APROBADA', 'ENVIADA'].includes(oc.estado)) {
-    const ok = await confirmarAccion({
-      titulo: '📦 Registrar primera recepción',
-      mensaje: 'Una vez registres recepción (parcial o total), esta OC <strong style="color:#dc2626">ya no podrá editarse</strong>. ¿Estás seguro de continuar?',
-      tipo: 'warning',
-      textoBoton: 'Sí, registrar recepción',
-    });
-    if (!ok) return;
+  if (!oc.detalle || oc.detalle.length === 0) {
+    showError('La OC no tiene líneas para recibir');
+    return;
   }
-  const lineas = (oc.detalle || []).map(l => {
-    const rest = Number(l.cantidad) - Number(l.cantidad_recibida);
-    const r = prompt(`${l.descripcion}\nPedido: ${l.cantidad} · Ya recibido: ${l.cantidad_recibida} · Falta: ${rest}\n¿Cuánto llegó ahora?`, rest);
-    if (r === null) return null;
-    const cant = Number(r);
-    if (isNaN(cant) || cant < 0) return null;
-    return { id_detalle: l.id_detalle, cantidad_recibida: cant };
-  }).filter(Boolean);
-  if (!lineas.length) return;
-  await registrarRecepcionConResolucion(id, lineas);
+  await abrirModalRecepcion(oc);
+}
+
+// Modal de recepción: tabla con todas las líneas, input por línea con la
+// cantidad a recibir pre-llenada con "lo que falta". El usuario edita las que
+// difieran y confirma todas de una. Reemplaza los prompt() nativos del browser.
+async function abrirModalRecepcion(oc) {
+  const f = (n) => Number(n).toLocaleString('es-PE', { minimumFractionDigits: 0, maximumFractionDigits: 4 });
+
+  // Banner solo en la primera recepción (estados APROBADA/ENVIADA)
+  const esPrimera = ['APROBADA', 'ENVIADA'].includes(oc.estado);
+  const banner = esPrimera ? `
+    <div style="background:#fef3c7;border:1px solid #fbbf24;color:#92400e;padding:10px 14px;border-radius:6px;margin-bottom:14px;font-size:13px">
+      ⚠️ Primera recepción: una vez confirmada, esta OC <strong style="color:#dc2626">ya no podrá editarse</strong>.
+    </div>` : '';
+
+  const filas = oc.detalle.map((l, idx) => {
+    const pedido = Number(l.cantidad);
+    const yaRec = Number(l.cantidad_recibida || 0);
+    const falta = Math.max(0, pedido - yaRec);
+    return `
+      <tr style="border-bottom:1px solid #e5e7eb" data-idx="${idx}" data-id="${l.id_detalle}" data-falta="${falta}">
+        <td style="padding:10px;font-size:13px">
+          <strong>${l.descripcion}</strong>
+          ${l.unidad ? `<span style="color:#6b7280;font-size:11px"> · ${l.unidad}</span>` : ''}
+        </td>
+        <td style="padding:10px;text-align:right;font-size:13px">${f(pedido)}</td>
+        <td style="padding:10px;text-align:right;font-size:13px;color:#6b7280">${f(yaRec)}</td>
+        <td style="padding:10px;text-align:right;font-size:13px;font-weight:600;color:#92400e">${f(falta)}</td>
+        <td style="padding:8px;text-align:right">
+          <input type="number" step="0.001" min="0" max="${falta}" value="${falta}"
+            data-rec-input="${l.id_detalle}"
+            style="width:110px;padding:7px 9px;border:1px solid #d1d5db;border-radius:5px;text-align:right;font-size:13px"
+            ${falta === 0 ? 'disabled' : ''}>
+        </td>
+      </tr>`;
+  }).join('');
+
+  return new Promise(async (resolve) => {
+    const html = `
+      <div id="ov-recepcion" style="position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:2000;display:flex;align-items:center;justify-content:center;padding:20px">
+        <div style="background:white;border-radius:12px;padding:24px;width:820px;max-width:95vw;max-height:90vh;overflow:auto">
+          <h3 style="margin:0 0 4px;font-size:18px">📦 Registrar recepción · OC ${oc.nro_oc}</h3>
+          <p style="margin:0 0 14px;font-size:13px;color:#6b7280">
+            Editá la cantidad recibida por línea (pre-cargada con lo que falta). Las que recibís 0 se ignoran.
+          </p>
+          ${banner}
+          <table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:14px">
+            <thead><tr style="background:#f9fafb;border-bottom:2px solid #d9dad9">
+              <th style="padding:10px;text-align:left">Descripción</th>
+              <th style="padding:10px;text-align:right">Pedido</th>
+              <th style="padding:10px;text-align:right">Ya recibido</th>
+              <th style="padding:10px;text-align:right">Falta</th>
+              <th style="padding:10px;text-align:right">Recibí ahora</th>
+            </tr></thead>
+            <tbody>${filas}</tbody>
+          </table>
+          <div id="rec-error" style="display:none;background:#fee2e2;color:#991b1b;padding:8px 12px;border-radius:6px;font-size:12px;margin-bottom:10px"></div>
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
+            <div style="font-size:12px;color:#6b7280" id="rec-resumen"></div>
+            <div style="display:flex;gap:10px">
+              <button id="rec-cancelar" style="padding:10px 18px;background:transparent;border:1px solid #d9dad9;border-radius:6px;cursor:pointer">Cancelar</button>
+              <button id="rec-confirmar" style="padding:10px 22px;background:#059669;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">Registrar recepción</button>
+            </div>
+          </div>
+        </div>
+      </div>`;
+    document.body.insertAdjacentHTML('beforeend', html);
+    const ov = document.getElementById('ov-recepcion');
+    const errBox = document.getElementById('rec-error');
+    const resumen = document.getElementById('rec-resumen');
+
+    const recalcResumen = () => {
+      const inputs = ov.querySelectorAll('input[data-rec-input]');
+      let lineasConCant = 0;
+      let total = 0;
+      inputs.forEach(i => {
+        const v = Number(i.value || 0);
+        if (v > 0) { lineasConCant++; total += v; }
+      });
+      resumen.textContent = lineasConCant > 0
+        ? `${lineasConCant} línea(s) con cantidad · ${f(total)} unidades en total`
+        : 'Ninguna línea con cantidad mayor a cero';
+    };
+
+    ov.querySelectorAll('input[data-rec-input]').forEach(i => {
+      i.addEventListener('input', recalcResumen);
+    });
+    recalcResumen();
+
+    document.getElementById('rec-cancelar').onclick = () => {
+      ov.remove();
+      resolve(null);
+    };
+
+    document.getElementById('rec-confirmar').onclick = async () => {
+      errBox.style.display = 'none';
+      const inputs = ov.querySelectorAll('input[data-rec-input]');
+      const lineas = [];
+      for (const inp of inputs) {
+        const id_detalle = Number(inp.dataset.recInput);
+        const cant = Number(inp.value || 0);
+        const falta = Number(inp.closest('tr').dataset.falta);
+        if (cant < 0) {
+          errBox.textContent = 'Hay cantidades negativas. Corregilas.';
+          errBox.style.display = 'block';
+          return;
+        }
+        if (cant > falta + 0.0001) {
+          errBox.textContent = `Una línea tiene cantidad ${cant} que excede lo pendiente (${falta}). Corregila.`;
+          errBox.style.display = 'block';
+          return;
+        }
+        if (cant > 0) lineas.push({ id_detalle, cantidad_recibida: cant });
+      }
+      if (!lineas.length) {
+        errBox.textContent = 'Indicá al menos una línea con cantidad mayor a cero.';
+        errBox.style.display = 'block';
+        return;
+      }
+
+      // Confirmación dura solo en la primera recepción
+      if (esPrimera) {
+        const ok = confirm('Una vez confirmada esta recepción, la OC ya no podrá editarse. ¿Continuar?');
+        if (!ok) return;
+      }
+
+      ov.remove();
+      await registrarRecepcionConResolucion(oc.id_oc, lineas);
+      resolve(true);
+    };
+  });
 }
 
 // Helper: intenta registrar la recepción y, si el backend responde 422 con
