@@ -197,6 +197,112 @@ class CobranzasService {
     }
   }
 
+  /**
+   * Edita un movimiento de cobranza ya registrado. Útil cuando al cobrar
+   * faltaba algún dato (nro_operacion, voucher, cuenta destino, etc.) y
+   * se completa después.
+   *
+   * Mantiene sincronizado el MovimientoBancario AUTO asociado:
+   *   - tenía cuenta y la sigue teniendo → UPDATE del movimiento bancario
+   *   - tenía cuenta y ahora no          → DELETE del movimiento bancario
+   *   - no tenía y ahora sí              → INSERT
+   *
+   * No permite cambiar `tipo` ni `id_cotizacion` (esos definen el destino
+   * contable; si hay que reasignar conviene eliminar y volver a registrar).
+   */
+  async editarCobranza(id_cobranza: number, data: Partial<CobranzaInput>) {
+    const FIELDS_EDITABLES: (keyof CobranzaInput)[] = [
+      'fecha_movimiento', 'id_cuenta', 'banco', 'nro_operacion',
+      'monto', 'moneda', 'tipo_cambio', 'voucher_url', 'comentario',
+    ];
+
+    const conn = await db.getConnection();
+    await conn.beginTransaction();
+    try {
+      const [rows]: any = await conn.query(
+        `SELECT * FROM CobranzasCotizacion WHERE id_cobranza = ? FOR UPDATE`,
+        [id_cobranza]
+      );
+      const cob = (rows as any[])[0];
+      if (!cob) throw new Error('Movimiento no encontrado');
+
+      const [cotRows]: any = await conn.query(
+        `SELECT id_cotizacion, nro_cotizacion, estado
+           FROM Cotizaciones WHERE id_cotizacion = ?`,
+        [cob.id_cotizacion]
+      );
+      const cot = (cotRows as any[])[0];
+      if (!cot) throw new Error('Cotización no encontrada');
+      if (cot.estado === 'ANULADA') {
+        throw new Error('Cotización anulada — no se puede editar el movimiento');
+      }
+
+      if (data.monto !== undefined && Number(data.monto) <= 0) {
+        throw new Error('monto debe ser > 0');
+      }
+
+      // UPDATE dinámico con campos editables presentes en el body
+      const fields: string[] = [];
+      const vals: any[] = [];
+      for (const k of FIELDS_EDITABLES) {
+        if (data[k] !== undefined) {
+          fields.push(`${k} = ?`);
+          vals.push(data[k] === '' ? null : data[k]);
+        }
+      }
+      if (!fields.length) throw new Error('Sin campos a actualizar');
+      vals.push(id_cobranza);
+      await conn.query(
+        `UPDATE CobranzasCotizacion SET ${fields.join(', ')} WHERE id_cobranza = ?`,
+        vals
+      );
+
+      // Sincronizar el MovimientoBancario AUTO asociado
+      const newCuenta = data.id_cuenta !== undefined ? data.id_cuenta : cob.id_cuenta;
+      const oldCuenta = cob.id_cuenta;
+      const newMonto  = data.monto !== undefined ? Number(data.monto) : Number(cob.monto);
+      const newFecha  = data.fecha_movimiento ?? cob.fecha_movimiento;
+      const newNroOp  = data.nro_operacion !== undefined ? (data.nro_operacion || null) : cob.nro_operacion;
+      const newComent = data.comentario !== undefined ? (data.comentario || null) : cob.comentario;
+      const tipo      = cob.tipo;
+      const desc = `Cobranza ${tipo === 'DEPOSITO_BANCO' ? 'depósito' : tipo === 'DETRACCION_BN' ? 'detracción BN' : 'retención'} — Cot ${cot.nro_cotizacion || cot.id_cotizacion}`;
+
+      if (oldCuenta && newCuenta) {
+        await conn.query(
+          `UPDATE MovimientoBancario
+              SET id_cuenta=?, fecha=?, nro_operacion=?, descripcion_banco=?, monto=?, comentario=?
+            WHERE ref_tipo='COBRANZA' AND ref_id=? AND fuente='AUTO'`,
+          [newCuenta, newFecha, newNroOp, desc, newMonto, newComent, id_cobranza]
+        );
+      } else if (oldCuenta && !newCuenta) {
+        await conn.query(
+          `DELETE FROM MovimientoBancario WHERE ref_tipo='COBRANZA' AND ref_id=? AND fuente='AUTO'`,
+          [id_cobranza]
+        );
+      } else if (!oldCuenta && newCuenta) {
+        await conn.query(
+          `INSERT INTO MovimientoBancario
+            (id_cuenta, fecha, nro_operacion, descripcion_banco, monto, tipo,
+             estado_conciliacion, ref_tipo, ref_id, fuente, comentario,
+             conciliado_at)
+          VALUES (?, ?, ?, ?, ?, 'ABONO', 'CONCILIADO', 'COBRANZA', ?, 'AUTO', ?, NOW())`,
+          [newCuenta, newFecha, newNroOp, desc, newMonto, id_cobranza, newComent]
+        );
+      }
+
+      // Recalcular acumulados/estado_financiero (puede haber cambiado el monto)
+      await this.recomputeEstado(conn, cob.id_cotizacion);
+
+      await conn.commit();
+      return { ok: true };
+    } catch (e) {
+      await conn.rollback();
+      throw e;
+    } finally {
+      conn.release();
+    }
+  }
+
   /** Borra un movimiento de cobranza y recalcula. */
   async eliminarCobranza(id_cobranza: number) {
     const conn = await db.getConnection();

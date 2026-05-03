@@ -171,6 +171,7 @@ export const api = {
     getCuentas:    ()              => get('/cobranzas/cuentas'),
     getDetalle:    (id)            => get(`/cobranzas/${id}/detalle`),
     registrar:     (data)          => post('/cobranzas', data),
+    editar:        (id, data)      => put(`/cobranzas/${id}`, data),
     eliminar:      (id)            => del(`/cobranzas/${id}`),
     actualizarTributario: (id, d)  => put(`/cobranzas/${id}/tributario`, d),
     createCuenta:  (data)          => post('/cobranzas/cuentas', data),

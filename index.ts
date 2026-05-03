@@ -356,6 +356,10 @@ apiRouter.post('/cobranzas', periodoGuard('fecha'), auditLog('Cobranza', 'CREATE
   res.json(await CobranzasService.registrarCobranza(req.body, user?.id));
 });
 
+apiRouter.put('/cobranzas/:id', validateIdParam, periodoGuard('fecha_movimiento'), auditLog('Cobranza', 'UPDATE'), async (req: Request, res: Response) => {
+  res.json(await CobranzasService.editarCobranza(Number(req.params.id), req.body));
+});
+
 apiRouter.delete('/cobranzas/:id', auditLog('Cobranza', 'DELETE'), async (req: Request, res: Response) => {
   res.json(await CobranzasService.eliminarCobranza(parseInt(req.params.id as string)));
 });

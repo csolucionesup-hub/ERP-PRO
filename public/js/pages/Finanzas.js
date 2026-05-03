@@ -220,8 +220,13 @@ function renderTabMarca(marca, data) {
   `;
 }
 
-// ── Modal: Registrar cobranza ───────────────────────────────────
-async function modalRegistrarCobranza(cot, cuentas) {
+// ── Modal: Registrar / Editar cobranza ─────────────────────────
+// `existing` opcional → cuando viene, el modal entra en modo edit:
+//   - título y botón cambian
+//   - el tipo no se puede cambiar (define el destino contable)
+//   - los campos vienen pre-llenados desde la cobranza existente
+async function modalRegistrarCobranza(cot, cuentas, existing = null) {
+  const isEdit = !!existing;
   const aplicaDetra = Number(cot.monto_detraccion) > 0;
   const esperadoBanco = Number(cot.total) - Number(cot.monto_detraccion || 0) - Number(cot.monto_retencion || 0);
   const faltaBanco = Math.max(0, esperadoBanco - Number(cot.monto_cobrado_banco || 0));
@@ -241,7 +246,9 @@ async function modalRegistrarCobranza(cot, cuentas) {
       (c.tipo === 'BANCO' || c.tipo === 'EFECTIVO') && c.moneda === cot.moneda
     );
   };
-  const cuentasIniciales = cuentasPorTipo('DEPOSITO_BANCO');
+  const tipoInicial = isEdit ? existing.tipo : 'DEPOSITO_BANCO';
+  const cuentasIniciales = cuentasPorTipo(tipoInicial);
+  const v = (x) => x == null ? '' : String(x).replace(/"/g, '&quot;');
 
   return new Promise((resolve) => {
     const ov = document.createElement('div');
@@ -249,10 +256,11 @@ async function modalRegistrarCobranza(cot, cuentas) {
     ov.innerHTML = `
       <div style="background:#fff;border-radius:8px;max-width:560px;width:100%;box-shadow:0 20px 50px rgba(0,0,0,.3);overflow:hidden">
         <div style="padding:18px 22px;border-top:4px solid ${cfg.color};border-bottom:1px solid #e5e7eb">
-          <h3 style="margin:0 0 4px 0;font-size:15px">Registrar cobranza</h3>
+          <h3 style="margin:0 0 4px 0;font-size:15px">${isEdit ? '✎ Editar cobranza' : 'Registrar cobranza'}</h3>
           <div style="font-size:12px;color:var(--text-secondary)">
             ${cot.nro_cotizacion} · ${cot.cliente} · Total ${fMoney(cot.total, cot.moneda)}
           </div>
+          ${isEdit ? `<div style="margin-top:6px;font-size:11px;color:#92400e;background:#fef3c7;padding:4px 8px;border-radius:4px;display:inline-block">El tipo no se puede modificar — solo los datos del movimiento.</div>` : ''}
         </div>
 
         <div style="padding:16px 22px">
@@ -269,22 +277,22 @@ async function modalRegistrarCobranza(cot, cuentas) {
           <form id="form-cob" style="display:flex;flex-direction:column;gap:10px">
             <div>
               <label style="font-size:11px;color:var(--text-secondary)">Tipo de movimiento *</label>
-              <select name="tipo" required style="width:100%;padding:8px;border:1px solid #d1d5db;border-radius:5px">
-                <option value="DEPOSITO_BANCO">Depósito en banco regular</option>
-                ${aplicaDetra ? `<option value="DETRACCION_BN">Depósito de detracción (Banco de la Nación)</option>` : ''}
-                <option value="RETENCION">Retención (cliente agente)</option>
+              <select name="tipo" required ${isEdit ? 'disabled' : ''} style="width:100%;padding:8px;border:1px solid #d1d5db;border-radius:5px${isEdit ? ';background:#f3f4f6;color:#6b7280' : ''}">
+                <option value="DEPOSITO_BANCO" ${tipoInicial==='DEPOSITO_BANCO'?'selected':''}>Depósito en banco regular</option>
+                ${aplicaDetra || tipoInicial==='DETRACCION_BN' ? `<option value="DETRACCION_BN" ${tipoInicial==='DETRACCION_BN'?'selected':''}>Depósito de detracción (Banco de la Nación)</option>` : ''}
+                <option value="RETENCION" ${tipoInicial==='RETENCION'?'selected':''}>Retención (cliente agente)</option>
               </select>
             </div>
 
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
               <div>
                 <label style="font-size:11px;color:var(--text-secondary)">Fecha *</label>
-                <input name="fecha_movimiento" type="date" required value="${new Date().toISOString().slice(0,10)}"
+                <input name="fecha_movimiento" type="date" required value="${isEdit ? String(existing.fecha_movimiento || '').slice(0,10) : new Date().toISOString().slice(0,10)}"
                   style="width:100%;padding:8px;border:1px solid #d1d5db;border-radius:5px">
               </div>
               <div>
                 <label style="font-size:11px;color:var(--text-secondary)">Monto (${cot.moneda}) *</label>
-                <input name="monto" type="number" step="0.01" required min="0.01" value="${faltaBanco.toFixed(2)}"
+                <input name="monto" type="number" step="0.01" required min="0.01" value="${isEdit ? Number(existing.monto).toFixed(2) : faltaBanco.toFixed(2)}"
                   style="width:100%;padding:8px;border:1px solid #d1d5db;border-radius:5px">
               </div>
             </div>
@@ -294,30 +302,30 @@ async function modalRegistrarCobranza(cot, cuentas) {
                 <label style="font-size:11px;color:var(--text-secondary)">Cuenta destino</label>
                 <select name="id_cuenta" style="width:100%;padding:8px;border:1px solid #d1d5db;border-radius:5px">
                   <option value="">— Sin asignar —</option>
-                  ${cuentasIniciales.map(c => `<option value="${c.id_cuenta}">${c.nombre} (${c.moneda})</option>`).join('')}
+                  ${cuentasIniciales.map(c => `<option value="${c.id_cuenta}" ${isEdit && Number(existing.id_cuenta) === Number(c.id_cuenta) ? 'selected' : ''}>${c.nombre} (${c.moneda})</option>`).join('')}
                 </select>
               </div>
               <div>
                 <label style="font-size:11px;color:var(--text-secondary)">Banco / Operación</label>
-                <input name="banco" placeholder="ej: BCP" style="width:100%;padding:8px;border:1px solid #d1d5db;border-radius:5px">
+                <input name="banco" placeholder="ej: BCP" value="${v(isEdit ? existing.banco : '')}" style="width:100%;padding:8px;border:1px solid #d1d5db;border-radius:5px">
               </div>
             </div>
 
             <div>
               <label style="font-size:11px;color:var(--text-secondary)">Nº de operación / voucher</label>
-              <input name="nro_operacion" style="width:100%;padding:8px;border:1px solid #d1d5db;border-radius:5px">
+              <input name="nro_operacion" value="${v(isEdit ? existing.nro_operacion : '')}" style="width:100%;padding:8px;border:1px solid #d1d5db;border-radius:5px">
             </div>
 
             <div>
               <label style="font-size:11px;color:var(--text-secondary)">Comentario</label>
-              <textarea name="comentario" rows="2" style="width:100%;padding:8px;border:1px solid #d1d5db;border-radius:5px;resize:vertical"></textarea>
+              <textarea name="comentario" rows="2" style="width:100%;padding:8px;border:1px solid #d1d5db;border-radius:5px;resize:vertical">${isEdit ? (existing.comentario || '') : ''}</textarea>
             </div>
           </form>
         </div>
 
         <div style="display:flex;gap:8px;justify-content:flex-end;padding:12px 18px;background:#f9fafb;border-top:1px solid #e5e7eb">
           <button id="cob-cancel" style="padding:8px 16px;border:1px solid #d1d5db;background:#fff;border-radius:5px;cursor:pointer;font-size:13px">Cancelar</button>
-          <button id="cob-ok" style="padding:8px 18px;border:none;background:${cfg.color};color:#fff;border-radius:5px;cursor:pointer;font-size:13px;font-weight:600">Registrar</button>
+          <button id="cob-ok" style="padding:8px 18px;border:none;background:${cfg.color};color:#fff;border-radius:5px;cursor:pointer;font-size:13px;font-weight:600">${isEdit ? 'Guardar cambios' : 'Registrar'}</button>
         </div>
       </div>
     `;
@@ -348,16 +356,18 @@ async function modalRegistrarCobranza(cot, cuentas) {
     });
 
     ov.querySelector('#cob-cancel').onclick = () => close(null);
-    ov.onclick = (e) => { if (e.target === ov) close(null); };
     ov.querySelector('#cob-ok').onclick = () => {
       const fd = new FormData(form);
       const data = Object.fromEntries(fd.entries());
       data.id_cotizacion = cot.id_cotizacion;
       data.monto = Number(data.monto);
-      if (data.id_cuenta === '') delete data.id_cuenta;
+      if (data.id_cuenta === '') data.id_cuenta = null;
       else data.id_cuenta = Number(data.id_cuenta);
       data.moneda = cot.moneda;
       data.tipo_cambio = Number(cot.tipo_cambio) || 1;
+      // En modo edit el select de tipo está disabled — FormData no incluye
+      // disabled fields, así que conservamos el tipo original explícito.
+      if (isEdit) data.tipo = existing.tipo;
       close(data);
     };
   });
@@ -1703,7 +1713,8 @@ async function modalDetalle(id) {
                     <td style="padding:8px 10px">${m.cuenta_nombre || m.banco || '—'}</td>
                     <td style="padding:8px 10px">${m.nro_operacion || '—'}</td>
                     <td style="padding:8px 10px;text-align:right;font-weight:600">${fMoney(m.monto, m.moneda)}</td>
-                    <td style="padding:8px 10px;text-align:right">
+                    <td style="padding:8px 10px;text-align:right;white-space:nowrap">
+                      <button class="cob-edit" data-id="${m.id_cobranza}" style="background:none;border:1px solid #d1d5db;color:#374151;cursor:pointer;font-size:11px;padding:3px 8px;border-radius:4px;margin-right:4px">✎ Editar</button>
                       <button class="cob-del" data-id="${m.id_cobranza}" style="background:none;border:none;color:#dc2626;cursor:pointer;font-size:11px">Eliminar</button>
                     </td>
                   </tr>
@@ -1772,6 +1783,26 @@ async function modalDetalle(id) {
         showSuccess('Movimiento eliminado');
         close();
         location.hash = location.hash; // re-render
+        window.dispatchEvent(new Event('hashchange'));
+      } catch (e) { showError(e.message); }
+    };
+  });
+
+  ov.querySelectorAll('.cob-edit').forEach(b => {
+    b.onclick = async () => {
+      const id_cobranza = Number(b.dataset.id);
+      const existing = movs.find(m => Number(m.id_cobranza) === id_cobranza);
+      if (!existing) return;
+      let cuentas;
+      try { cuentas = await api.cobranzas.getCuentas(); }
+      catch (e) { showError('No se pudieron cargar las cuentas: ' + e.message); return; }
+
+      const data = await modalRegistrarCobranza(c, cuentas, existing);
+      if (!data) return;
+      try {
+        await api.cobranzas.editar(id_cobranza, data);
+        showSuccess('Movimiento actualizado');
+        close();
         window.dispatchEvent(new Event('hashchange'));
       } catch (e) { showError(e.message); }
     };
