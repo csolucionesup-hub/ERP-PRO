@@ -1,25 +1,25 @@
 // Cache busting para imports ES module: cada path lleva su ?v=YYYYMMDDr#
 // hardcodeado. Si se cambia CUALQUIER archivo de pages/components/services
 // hay que bumpear el sufijo en TODAS las líneas (Find/Replace de v=2026...).
-import { renderSidebar } from './components/Sidebar.js?v=20260502r20';
-import { Dashboard }   from './pages/Dashboard.js?v=20260502r20';
-import { Finanzas }    from './pages/Finanzas.js?v=20260502r20';
-import { Inventario }  from './pages/Inventario.js?v=20260502r20';
-import { Usuarios }    from './pages/Usuarios.js?v=20260502r20';
-import { Compras }       from './pages/Compras.js?v=20260502r20';
-import { Servicios }     from './pages/Servicios.js?v=20260502r20';
-import { Proveedores }   from './pages/Proveedores.js?v=20260502r20';
-import { Prestamos }     from './pages/Prestamos.js?v=20260502r20';
-import { Comercial }     from './pages/Comercial.js?v=20260502r20';
-import { ConfiguracionComercial } from './pages/ConfiguracionComercial.js?v=20260502r20';
-import { Logistica }     from './pages/Logistica.js?v=20260502r20';
-import { Administracion } from './pages/Administracion.js?v=20260502r20';
-import { Configuracion }  from './pages/Configuracion.js?v=20260502r20';
-import { Contabilidad }   from './pages/Contabilidad.js?v=20260502r20';
-import { Importador }     from './pages/Importador.js?v=20260502r20';
-import { OrdenesCompra }  from './pages/OrdenesCompra.js?v=20260502r20';
-import { Alertas }        from './pages/Alertas.js?v=20260502r20';
-import { showSuccess, showError, showToast } from './services/ui.js?v=20260502r20';
+import { renderSidebar } from './components/Sidebar.js?v=20260502r21';
+import { Dashboard }   from './pages/Dashboard.js?v=20260502r21';
+import { Finanzas }    from './pages/Finanzas.js?v=20260502r21';
+import { Inventario }  from './pages/Inventario.js?v=20260502r21';
+import { Usuarios }    from './pages/Usuarios.js?v=20260502r21';
+import { Compras }       from './pages/Compras.js?v=20260502r21';
+import { Servicios }     from './pages/Servicios.js?v=20260502r21';
+import { Proveedores }   from './pages/Proveedores.js?v=20260502r21';
+import { Prestamos }     from './pages/Prestamos.js?v=20260502r21';
+import { Comercial }     from './pages/Comercial.js?v=20260502r21';
+import { ConfiguracionComercial } from './pages/ConfiguracionComercial.js?v=20260502r21';
+import { Logistica }     from './pages/Logistica.js?v=20260502r21';
+import { Administracion } from './pages/Administracion.js?v=20260502r21';
+import { Configuracion }  from './pages/Configuracion.js?v=20260502r21';
+import { Contabilidad }   from './pages/Contabilidad.js?v=20260502r21';
+import { Importador }     from './pages/Importador.js?v=20260502r21';
+import { OrdenesCompra }  from './pages/OrdenesCompra.js?v=20260502r21';
+import { Alertas }        from './pages/Alertas.js?v=20260502r21';
+import { showSuccess, showError, showToast } from './services/ui.js?v=20260502r21';
 
 // Exponer helpers de toast globalmente (los modules ES no tienen acceso
 // directo desde otros modules sin import; varios usan window.showSuccess?.()
@@ -145,7 +145,18 @@ function paginaSinModulos() {
 // ── Router SPA ────────────────────────────────────────────────
 let currentPage = null;
 
+// Redirecciones legacy: páginas standalone absorbidas en hubs. Si alguien
+// aterriza vía URL vieja o link viejo, lo mandamos al deeplink correcto del
+// hub para que tenga el menú de tabs y pueda navegar de vuelta.
+const REDIRECTS_LEGACY = {
+  proveedores: 'logistica/proveedores',
+};
+
 async function navigate(page) {
+  if (REDIRECTS_LEGACY[page]) {
+    window.location.hash = REDIRECTS_LEGACY[page];
+    return;
+  }
   const user = getUser();
   if (!tieneAcceso(user, page)) {
     renderSidebar(page);
