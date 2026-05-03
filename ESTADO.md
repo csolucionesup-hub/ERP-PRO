@@ -2,13 +2,13 @@
 
 > **LEER PRIMERO.** Este documento es la fuente de verdad sobre qué está hecho, qué falta y dónde estamos parados. Se actualiza al cierre de cada sesión de trabajo.
 
-**Última actualización:** 2026-05-02 (sesión cierre Fase C: flujo OC integrado con Inventario, Compras, Gastos, Tx + housekeeping + fixes bugs + auditoría V3 cerrada)
+**Última actualización:** 2026-05-03 (madrugada — cierre maratón post-Fase C: 21 commits adicionales en sesión continuada — fixes UX recepción OC + edición cobranzas + Tx Dashboard Gerencial + estado TRABAJO_EN_RIESGO + Form multi-item Factura + PDF SUNAT + fechas editables)
 **Rama activa:** `main`
-**Último commit pusheado:** `58f7aec feat(oc): cierre Fase C — flujo OC integrado con Inventario, Compras, Gastos y Tx`
+**Último commit pusheado:** `dbc9440 feat(oc): botón 📅 para editar fecha de emisión en cualquier estado`
 **Servidor dev:** `npx ts-node index.ts` en `D:\proyectos\ERP-PRO` → `http://localhost:3000`
 **Producción:** `erp-pro-production-e4c0.up.railway.app` — Railway (deploy automático desde main)
-**Cache buster JS actual:** `v=20260502r2` (app.js) — **convención nueva**: hardcoded en CADA import dentro de app.js. Ver gotcha #36 en CLAUDE.md.
-**Migraciones BD:** 001 → 037 + 042 → 044 aplicadas (Supabase Postgres project `fhlrxlsscerfiuuyiejw`).
+**Cache buster JS actual:** `v=20260502r13` (app.js) — **convención**: hardcoded en CADA import dentro de app.js. Ver gotcha #36 en CLAUDE.md.
+**Migraciones BD:** 001 → 037 + 042 → 050 aplicadas (Supabase Postgres project `fhlrxlsscerfiuuyiejw`). Migraciones nuevas hoy: 045-050.
 
 ---
 
@@ -113,7 +113,19 @@ Railway desplegado y operativo con 41 tablas. Build limpio (`npx tsc --noEmit` p
 - [x] ~~OC de servicios en Finanzas~~ → ya implementado (`tipo_oc='SERVICIO'` + `id_servicio` en OrdenesCompra, sin tabla aparte). Verificado 02/05/2026.
 - [x] ~~Almacén valorizado con kárdex por ítem~~ → ya implementado (costo promedio ponderado en PurchaseService, MovimientosInventario polimórfico, endpoint `GET /inventario/:id/kardex`, modal kárdex en Inventario.js). Verificado 02/05/2026.
 - [x] ~~Fase C — implementación completa del flujo OC integrado~~ → cerrada en `58f7aec` 02/05/2026: recibir() afecta Inventario+kárdex; facturar() split por tipo; modal de resolución de ítems sin id_item.
-- [ ] **Fase C — verificación end-to-end (Julio):** recibir OC ALMACEN `002-2026` (1 línea S/ 140) → modal asignación → crear ítem → confirmar → verificar stock+kárdex+costo en BD. Después la OC `001-2026 ALMACEN` (6 líneas).
+- [x] ~~Fase C — verificación end-to-end~~ → Julio probó OC ALMACEN `002-2026` (BOTELLA OXIGENO S/140), `001-2026 ALMACEN` (6 ítems), funciona stock+kárdex+costo. Inventario quedó con 6 ítems valorizados S/557.
+- [x] ~~UX recepción OC: reemplazar prompts nativos por modal con tabla~~ → `18db593`
+- [x] ~~UX crear ítem: reemplazar prompts por mini-modal con dropdown enum válido~~ → `89241fc`
+- [x] ~~Migración 045 (movimientosinventario referencia ORDEN_COMPRA)~~
+- [x] ~~Comentarios internos visibles en lista de cotizaciones~~ → `a57c4f3`
+- [x] ~~estado_financiero se cierra al rechazar/anular cotización~~ → `7ff73b0`
+- [x] ~~Editar cobranza ya registrada (PUT + sync MovBancario)~~ → `03137c3`
+- [x] ~~Atajo ✎ Editar en fila de bandeja~~ → `361e00e`
+- [x] ~~Cobranza inserta Tx INGRESO (Dashboard Gerencial)~~ → `46c57ff` + migración 046
+- [x] ~~Estado nuevo TRABAJO_EN_RIESGO~~ → `46bbd0a` + `ba60d26` + migración 047
+- [x] ~~Form multi-item Factura + PDF estilo SUNAT~~ → `311f4f7` + migraciones 048-050
+- [x] ~~Fechas editables en cotización (form + botón 📅)~~ → `52a98d5` + `1fd8d98`
+- [x] ~~Fechas editables en OC (botón 📅)~~ → `dbc9440`
 - [ ] **Bonus Fase C:** agregar campo opcional "Item del catálogo" en form de creación de OC (no urgente — modal de resolución cubre el caso al recibir).
 - [ ] **Bug latente alineado pero sin fix:** `PurchaseService.registrarCompra()` usa `'INGRESO'` mientras dashboards filtran `'ENTRADA'`. La nueva ruta de recibir OC ya usa `'ENTRADA'`. Cuando se haga la primera compra directa, los dashboards no la verán hasta que se alinee. **Fix sugerido:** cambiar `INGRESO` → `ENTRADA` en `PurchaseService.ts:208` y `:277`. No urgente (0 compras directas en producción).
 - [ ] Replicar hints contextuales (`.app-form-hint`) en Cotización/Logística OC/Compras/Cobranzas (cosmético, valor marginal — Comercial y OC ya tienen tooltips inline `tip()`)
@@ -368,13 +380,93 @@ Frontend:
 
 ---
 
+---
+
+## Sesión 02/05 noche → 03/05 madrugada — Maratón post-Fase C (15 commits adicionales)
+
+Sesión muy larga con Julio testing en producción y reportando issues + features. **15 commits pusheados** después del cierre inicial de Fase C (`0086dfc..dbc9440`). Todo en `main`.
+
+### Bloque 1 — UX recepción OC + bugs descubiertos al usar Fase C en vivo
+
+| Commit | Cambio |
+|---|---|
+| `18db593` | Reemplazar `prompt()` nativos en `recibir()` por modal con tabla. Antes era 6 popups en serie por línea, ahora una tabla completa con cantidad pedida / ya recibida / falta / input "recibí ahora" / validaciones inline. |
+| `89241fc` | Reemplazar prompts de "+ Crear nuevo ítem" por mini-modal con dropdown del enum válido (Material/Consumible/Herramienta/Equipo/EPP). El backend valida enum exacto en Zod; los prompts permitían tipos cualquier cosa y rebotaban con "Validación de datos fallida". |
+| `0928078` | Migración 045: extender `movimientosinventario_referencia_tipo_check` para aceptar `ORDEN_COMPRA`. El commit 58f7aec usaba ese valor pero el CHECK solo permitía SERVICIO/COMPRA/GASTO/PRESTAMO. La transacción rolló back limpio (sin daño) pero rompía cada recepción ALMACEN. |
+| `6397181` | Fix botones Kárdex/Eliminar en Inventario: el HTML llamaba `window.verKardex(...)` pero los handlers se registraban en `window.Inventario.{verKardex, eliminarItem}`. Patrón namespace por módulo (gotcha #17 / auditoría V3 F03). |
+
+### Bloque 2 — Mejoras Comercial pedidas por Julio
+
+| Commit | Cambio |
+|---|---|
+| `a57c4f3` | Mostrar comentarios internos (📝) en la fila de cotizaciones. Antes solo se veían entrando a editar; cuando la cotización pasaba a APROBADA/etc. ya no eran visibles. Caja amarilla suave debajo de cliente/proyecto, `white-space:pre-wrap` para preservar saltos de línea, tooltip "no aparece en PDF". |
+| `7ff73b0` | Fix bug: `COT 2026-001-MN` (PDI) figuraba como RECHAZADA en Comercial pero seguía apareciendo "Pendiente Depósito" en Finanzas. El `updateEstado` solo abría flujo financiero al APROBAR, nunca lo cerraba al pasar a estado terminal negativo. Fix bidireccional: al pasar a RECHAZADA/NO_APROBADA/ANULADA resetea `estado_financiero='NA'` SOLO si no hay cobranzas registradas (sino requiere reverso manual). Backfill aplicado: 1 fila corregida vía MCP. |
+
+### Bloque 3 — Editar cobranzas + Tx Dashboard Gerencial (descubierto al subir cobranza real)
+
+| Commit | Cambio |
+|---|---|
+| `03137c3` | Feature: editar cobranza ya registrada. Endpoint `PUT /api/cobranzas/:id` con sync del MovimientoBancario AUTO asociado (UPDATE/INSERT/DELETE según cambio de cuenta). El modal "Registrar cobranza" ahora es bimodal — recibe `existing` opcional y entra en modo edit. Botón ✎ Editar en cada fila del modal Detalle, junto al Eliminar. Modal ya no se cierra por backdrop (gotcha #28). |
+| `361e00e` | Atajo ✎ en fila de bandeja: si la cotización tiene 1 solo movimiento abre el editor directo, sino cae al modal Detalle. Solo se renderiza si hay algo cobrado. |
+| `46c57ff` | **Bug crítico fixed:** Julio cobró COT 2026-008-MN por S/ 4,531.20 pero el Dashboard Gerencial seguía en S/ 0.00. Causa: `registrarCobranza()` creaba CobranzasCotizacion + MovimientoBancario pero NO insertaba en `Transacciones`. El Dashboard mira Transacciones para calcular saldos. Fix: agregar INSERT Transacciones (referencia_tipo='COBRANZA', tipo_movimiento='INGRESO') sólo si hay id_cuenta. Sync en eliminar/editar también. **Bonus**: arreglé bug latente del commit `58f7aec` — las Tx de OC.facturar() usaban `estado='CONFIRMADO'` que NO existe (CHECK acepta PENDIENTE/REALIZADO/ANULADO). Cualquier facturación habría explotado al primer intento. Cambiado a `'REALIZADO'`. **Migración 046**: extender `transacciones_referencia_tipo_check` para aceptar `COBRANZA`. **Backfill**: 1 Tx histórica creada para Promafa. |
+
+### Bloque 4 — Estado nuevo TRABAJO_EN_RIESGO
+
+| Commit | Cambio |
+|---|---|
+| `46bbd0a` | **Caso real Julio:** cliente pidió trabajo informal sin formalizar pago, Julio empezó a riesgo gastando capital en OCs. Para que apareciera con nombre del cliente en Logística marcaba la cotización APROBADA — pero eso la metía en CxC del Dashboard y en Cobranzas como "esperando depósito" (mentira: nunca habrá depósito). Estado nuevo `TRABAJO_EN_RIESGO` indica "trabajo realizado, NO compromiso de cobro". Migración 047 extiende el CHECK constraint. Badge naranja "⚠ TRABAJO A RIESGO". `getBandejas()` lo excluye automáticamente vía filtro `estado_financiero <> 'NA'` + reset al cambiar de estado. Transición a APROBADA reabre flujo financiero. |
+| `ba60d26` | Fix Zod: el commit anterior agregó el estado al ENUM del Service y al CHECK de Postgres, pero olvidó extender `cotizacionEstadoSchema` que valida `PUT /cotizaciones/:id/estado`. El Zod corre antes del Service, rebotaba con "Validación de datos fallida". |
+
+### Bloque 5 — Form multi-item Factura + PDF SUNAT (Fase B avanza de 40% → 75%)
+
+| Commit | Cambio |
+|---|---|
+| `311f4f7` | **Hito grande**: cierre del flujo de emisión de facturas que estaba en STUB simple. Antes el botón "🧾 Emitir Factura" emitía 1:1 desde la cotización sin permitir editar nada. Ahora abre **modal multi-item** donde Julio puede ajustar cliente, dirección, items, observación, detracción. **Migraciones 048-050**: tabla `CorrelativosFactura(serie, ultimo)` con UPDATE-then-INSERT atómico (race-safe), `serie_factura/serie_boleta` por marca en `ConfiguracionMarca` (METAL=F001 PEN, PERFOTOOLS=F002 USD, boletas comunes=B001), `direccion_fiscal_sunat` en `ConfiguracionEmpresa` (Av. Javier Prado Este 2813 — la operativa de Puente Piedra sigue en `direccion_fiscal` para cotizaciones/OC). **Backend**: `FacturaService.crearYEmitir(data)` (núcleo, recibe payload completo, calcula totales, toma correlativo atómico, llama Nubefact STUB/REAL, persiste en Tx), `FacturaService.previewDesdeCotizacion(id)` (sugerido para form sin persistir), `FacturaService.resolverSerie()` (prioriza marca sobre default empresa). **`FacturaPDFService` nuevo (~280 líneas)**: layout SUNAT con caja empresa + caja tipo+correlativo, bloque cliente, tabla items multi-línea, columna totales, importe en letras, leyenda según estado SUNAT. **API**: GET preview-cotizacion/:id, POST /api/facturas, GET /:id/pdf. **Frontend**: `modalEmitirFactura(preview, opts)` con todos los campos editables + tabla items + totales en vivo + banner STUB/REAL. |
+
+### Bloque 6 — Fechas editables (carga histórica)
+
+| Commit | Cambio |
+|---|---|
+| `52a98d5` | Cotizaciones: campo `fecha` opcional en CotizacionInput + Zod schema. Form `formNueva` muestra input `<type="date">` al lado de moneda/TC. Default hoy. updateCotizacion usa COALESCE para no pisar la fecha si no viene una válida. Caso de uso: Julio cargando histórico enero/2025 sin que el sistema le ponga mayo/2026. |
+| `1fd8d98` | Cotizaciones: botón **📅** chiquito en cada fila junto a la fecha. Click → modal mini con input date + Guardar. Endpoint `PUT /api/cotizaciones/:id/fecha` que SOLO toca fecha, sin disparar hooks (no toca estado_financiero, fecha_aprobacion_comercial, items, totales, correlativo). Disponible en cualquier estado salvo ANULADA. Útil para corregir fechas mal cargadas en cotizaciones ya APROBADAS/RECHAZADAS sin tener que regresarlas a EN_PROCESO. |
+| `dbc9440` | OC: mismo patrón. Botón **📅** en columna fecha de la tab Lista. `OrdenCompraService.actualizarFecha`. Endpoint `PUT /api/ordenes-compra/:id/fecha`. Disponible en cualquier estado salvo ANULADA. El correlativo `nro_oc` (`NNN - YYYY`) NO se reasigna aunque cambie el año de la fecha. |
+
+### Estado de fechas editables al cierre
+
+| Módulo | Fecha en form | Botón 📅 rápido | Notas |
+|---|---|---|---|
+| Cotización | ✅ form pre-llenado hoy, editable | ✅ cualquier estado salvo ANULADA | El correlativo `COT YYYY-NNN` se calcula con año actual, NO con la fecha cargada |
+| OC | ✅ form pre-llenado hoy, editable | ✅ cualquier estado salvo ANULADA | El correlativo `NNN - YYYY` se asigna con año de fecha al CREAR, no se reasigna después |
+| Factura | ✅ en modal de emisión | ❌ a propósito | Las facturas emitidas son inmutables por trazabilidad SUNAT |
+
+### Bugs encontrados y resueltos en esta sesión
+
+1. ~~Race condition correlativos cotizaciones~~ → fix `192f452` con UPDATE-then-INSERT + retry-on-duplicate
+2. ~~`nro_operacion` duplicado en parser EECC~~ → fix `783a629`
+3. ~~Auditoría V3 F01 (3 fetch directos sin token en Dashboard.js)~~ → fix `18fa474`
+4. ~~Flujo OC → Inventario/Compras/Gastos roto~~ → fix `58f7aec` (cierre Fase C)
+5. ~~CHECK constraint movimientosinventario rechaza ORDEN_COMPRA~~ → migración 045
+6. ~~Botones Kárdex/Eliminar window.X vs window.Inventario.X~~ → fix `6397181`
+7. ~~estado_financiero no se cierra al rechazar/anular~~ → fix `7ff73b0`
+8. ~~Cobranza no crea Tx INGRESO → Dashboard Gerencial S/0~~ → fix `46c57ff`
+9. ~~OC.facturar() usa Tx.estado='CONFIRMADO' (CHECK rechaza)~~ → fix `46c57ff`
+10. ~~CHECK transacciones rechaza COBRANZA~~ → migración 046
+11. ~~CHECK cotizaciones rechaza TRABAJO_EN_RIESGO~~ → migración 047
+12. ~~Zod schema cotizacionEstado no incluye TRABAJO_EN_RIESGO~~ → fix `ba60d26`
+
+### Bugs latentes conocidos al cierre
+
+- `PurchaseService.ts:208` y `:277` usan `tipo_movimiento='INGRESO'` para compras directas (sin OC) mientras dashboards filtran `'ENTRADA'`. La nueva ruta de OC ya usa `'ENTRADA'`. Sin impacto hoy: 0 compras directas en producción. Fix trivial cuando se haga la primera.
+
+---
+
 ## Auditoría 02/05/2026 — donde estamos parados (post-cierre Fase C)
 
 | Fase del Plan Maestro | Estado | Notas |
 |---|---|---|
 | **G** Rediseño Enterprise UI | ✅ **CERRADA** | 10 commits 27/04 + 7 cotizaciones + sidebar mobile/HEIC/PDF preview/colapsable |
 | **A** Fundaciones (config, auditoría, periodos, adjuntos, roles) | 🟢 **CASI HECHA** | Migraciones 020-024 aplicadas. Módulo `app/modules/configuracion/` con 4 services. Falta verificar wizard de setup completo y uso del audit log en todas las rutas sensibles. |
-| **B** Facturación electrónica + Libros SUNAT | 🟡 **MODO STUB** | Tablas Facturas/NotasCredito/GuiasRemision creadas (025-027). `NubefactService` implementado pero con flag STUB en línea 4. **Bloqueado por:** certificado digital + cuenta Nubefact REAL (gestión externa de Julio). |
+| **B** Facturación electrónica + Libros SUNAT | 🟢 **75%** (era 40%) | Form multi-item completo + PDF estilo SUNAT (commit `311f4f7`). Series por marca configuradas (METAL=F001/PERFOTOOLS=F002/B001). Tabla `CorrelativosFactura` con UPDATE-then-INSERT atómico. `direccion_fiscal_sunat` separada de la operativa. Falta solo: listado UI, NC/ND, conexión Nubefact REAL (bloqueado por certificado externo). |
 | **C** Logística + Almacén valorizado + Dashboards | ✅ **CERRADA** (02/05/2026) | Flujo OC end-to-end integrado en commit `58f7aec`: recibir() afecta Inventario+kárdex en ALMACEN; facturar() splittea por tipo (ALMACEN→Compras+DetalleCompra+Tx; SERVICIO→Gastos+Tx+CostosServicio; GENERAL→Gastos+Tx). Modal de resolución de ítems al recibir OC ALMACEN sin id_item. **Verificación end-to-end con OC real pendiente** (las 4 OCs en APROBADA están listas para test). |
 | **D** Contabilidad PCGE + EE.FF. | 🔴 **INCIPIENTE** | Solo placeholder `Contabilidad.js`. Sin Plan de Cuentas, asientos automáticos ni Estados Financieros. |
 | **E** Producción metalmecánica (OT, BOM, QC) | ⬜ **NO INICIADA** | El diferenciador. Para agosto-septiembre. |
@@ -428,9 +520,11 @@ Frontend:
 - 1 commit sync ESTADO (30/04, `d590073`)
 - 10 commits sesión 30/04 noche → 01/05 (OC: cuentas+moneda, firmas vivas, reactivar, cache buster, post-mortem build, `e805ec5..d285f31`)
 - 1 commit cierre 01/05 (`e5e4e8c` — docs cierre)
-- 5 commits sesión 02/05 (housekeeping + 2 bugs + auditoría V3 + cierre Fase C, `192f452..58f7aec`)
+- 5 commits sesión 02/05 mañana (housekeeping + 2 bugs + auditoría V3 + cierre Fase C, `192f452..58f7aec`)
+- 1 commit cierre 02/05 mañana (`0086dfc` — docs Fase C)
+- 15 commits sesión 02/05 noche → 03/05 madrugada (modal recepción OC + edición cobranzas + Tx Dashboard + TRABAJO_EN_RIESGO + Form factura SUNAT + fechas editables, `18db593..dbc9440`)
 
-**Total: 52 commits** desde el rediseño Enterprise.
+**Total: 67 commits** desde el rediseño Enterprise.
 
 ## Para Claude (próxima sesión)
 
