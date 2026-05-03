@@ -56,6 +56,17 @@ export interface CrearOCParams {
   lineas: LineaOC[];
   id_usuario?: number;
 
+  /**
+   * Correlativo manual (OPCIONAL). Solo se respeta si:
+   *   - permitir_correlativo_manual está ON en ConfiguracionEmpresa
+   *   - El usuario es GERENTE
+   *   - Formato: "NNN - YYYY"
+   *   - Año coincide con año de fecha_emision
+   *   - Fecha en ventana válida (24m + año actual)
+   *   - No existe ya en (empresa, centro_costo)
+   */
+  nro_oc?: string;
+
   // Campos PDF (todos opcionales, se autocompletan desde ConfiguracionEmpresa)
   atencion?: string;
   contacto_interno?: string;
@@ -93,9 +104,68 @@ class OrdenCompraService {
   }
 
   /**
+   * Valida un correlativo manual de OC en modo migración.
+   * Lanza Error si alguna validación falla.
+   */
+  private async validarNroOcManual(
+    runner: any,
+    nroManual: string,
+    fechaEmision: string,
+    empresa: string,
+    centroCosto: string,
+    rolUsuario: string
+  ): Promise<void> {
+    if (rolUsuario !== 'GERENTE') {
+      throw new Error('Solo el GERENTE puede usar correlativos manuales (modo migración)');
+    }
+    const cfg = await ConfiguracionService.getActual();
+    if (!cfg.permitir_correlativo_manual) {
+      throw new Error(
+        'El modo migración no está activo. Activálo en Configuración → Empresa para tipear correlativos manualmente.'
+      );
+    }
+    const formatoOK = /^\d{3}\s*-\s*\d{4}$/.test(nroManual);
+    if (!formatoOK) {
+      throw new Error('Formato inválido. Esperado: "NNN - YYYY". Ejemplo: 001 - 2025');
+    }
+    const partes = nroManual.split('-').map(s => s.trim());
+    const anioCorr = parseInt(partes[1], 10);
+    const anioFecha = parseInt(fechaEmision.split('-')[0], 10);
+    if (anioCorr !== anioFecha) {
+      throw new Error(
+        `El año del correlativo (${anioCorr}) no coincide con el año de fecha_emision (${anioFecha})`
+      );
+    }
+    // Ventana: 24 meses hacia atrás + año actual
+    const today = new Date();
+    const min = new Date(today);
+    min.setMonth(min.getMonth() - 24);
+    const max = new Date(today.getFullYear(), 11, 31);
+    const f = new Date(fechaEmision);
+    if (isNaN(f.getTime()) || f < min || f > max) {
+      const fmt = (d: Date) => d.toISOString().slice(0, 10);
+      throw new Error(
+        `Fecha ${fechaEmision} fuera de la ventana de carga histórica permitida. Rango válido: ${fmt(min)} → ${fmt(max)}`
+      );
+    }
+    // No duplicado dentro del mismo (empresa, centro_costo) — el contador es por CC
+    const nroNormal = `${partes[0]} - ${partes[1]}`;
+    const [dupRows]: any = await runner.query(
+      `SELECT id_oc, id_proveedor FROM OrdenesCompra
+        WHERE empresa = ? AND centro_costo = ? AND nro_oc = ? LIMIT 1`,
+      [empresa, centroCosto, nroNormal]
+    );
+    if ((dupRows as any[]).length > 0) {
+      throw new Error(
+        `El correlativo "${nroNormal}" ya está en uso para empresa ${empresa} / centro de costo "${centroCosto}". Verificá el número o dejá el campo vacío para asignación automática.`
+      );
+    }
+  }
+
+  /**
    * Crear OC. Si total ≤ monto_limite_sin_aprobacion, auto-aprueba.
    */
-  async crear(params: CrearOCParams) {
+  async crear(params: CrearOCParams, opts: { rol?: string } = {}) {
     const cfg = await ConfiguracionService.getActual();
     const anio = new Date(params.fecha_emision).getFullYear();
     const empresa = params.empresa || 'ME';
@@ -124,7 +194,18 @@ class OrdenCompraService {
     await conn.beginTransaction();
     try {
       const cc = params.centro_costo || 'OFICINA CENTRAL';
-      const nro_oc = await this.proximoNumero(empresa, cc, anio);
+
+      // Decidir correlativo: manual (modo migración) o automático
+      let nro_oc: string;
+      const nroManual = (params.nro_oc || '').trim();
+      if (nroManual) {
+        await this.validarNroOcManual(conn, nroManual, params.fecha_emision, empresa, cc, opts.rol || '');
+        // Normalizar formato (espacios consistentes)
+        const partes = nroManual.split('-').map(s => s.trim());
+        nro_oc = `${partes[0]} - ${partes[1]}`;
+      } else {
+        nro_oc = await this.proximoNumero(empresa, cc, anio);
+      }
       const estado: EstadoOC = autoAprobar ? 'APROBADA' : 'BORRADOR';
 
       // Las firmas y contacto se leen dinámicamente desde Configuración

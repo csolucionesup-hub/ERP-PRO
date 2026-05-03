@@ -538,8 +538,8 @@ apiRouter.get('/cotizaciones', async (req: Request, res: Response) => {
   ));
 });
 
-apiRouter.post('/cotizaciones', validateParams(cotizacionCreateSchema), auditLog('Cotizacion', 'CREATE'), async (req: Request, res: Response) => {
-  const result = await CotizacionService.createCotizacion(req.body);
+apiRouter.post('/cotizaciones', validateParams(cotizacionCreateSchema), auditLog('Cotizacion', 'CREATE'), async (req: any, res: Response) => {
+  const result = await CotizacionService.createCotizacion(req.body, { rol: req.user?.rol });
 
   // Subir PDF a Google Drive en background (no bloquea la respuesta)
   setImmediate(async () => {
@@ -1241,7 +1241,7 @@ ocRouter.get('/:id', validateIdParam, async (req: Request, res: Response) => {
 
 ocRouter.post('/', auditLog('OrdenCompra', 'CREATE'), async (req: any, res: Response) => {
   req.body.id_usuario = req.user!.id_usuario;
-  res.status(201).json(await OrdenCompraService.crear(req.body));
+  res.status(201).json(await OrdenCompraService.crear(req.body, { rol: req.user?.rol }));
 });
 
 ocRouter.post('/:id/aprobar', validateIdParam, auditLog('OrdenCompra', 'UPDATE'), async (req: any, res: Response) => {

@@ -48,6 +48,11 @@ export interface ConfiguracionEmpresa {
   dias_credito_default: number;
   monto_limite_sin_aprobacion: number;
 
+  // Modo migración: cuando ON, el form de cotización/OC permite tipear
+  // el correlativo a mano (para cargar data histórica con sus números reales).
+  // Default OFF en producción. Solo GERENTE puede prender/apagar el flag.
+  permitir_correlativo_manual: boolean;
+
   modulo_comercial: number;
   modulo_finanzas: number;
   modulo_logistica: number;

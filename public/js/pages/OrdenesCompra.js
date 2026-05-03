@@ -199,7 +199,7 @@ export const OrdenesCompra = async () => {
       api.ordenesCompra.list().catch(() => []),
       api.purchases.getProveedores().catch(() => []),
       api.services.getServiciosActivos().catch(() => []),
-      api.config.get().catch(() => ({ aplica_igv: 1, tasa_igv: 18, monto_limite_sin_aprobacion: 5000 })),
+      api.config.get().catch(() => ({ aplica_igv: 1, tasa_igv: 18, monto_limite_sin_aprobacion: 5000, permitir_correlativo_manual: false })),
     ]);
   } catch (e) { console.error('[OC] error:', e); }
 
@@ -1143,6 +1143,23 @@ function nuevaOC(editData) {
         ${esEdit ? `<div style="background:#fef3c7;border:1px solid #fbbf24;color:#92400e;padding:10px 14px;border-radius:6px;margin-bottom:14px;font-size:13px">
           Estás editando una OC existente. Los totales se recalculan al guardar. Estado actual: <strong>${editData.estado}</strong>.
         </div>` : ''}
+        ${(() => {
+          if (esEdit) return '';
+          const userRol = (() => { try { return JSON.parse(localStorage.getItem('erp_user') || '{}').rol; } catch { return null; } })();
+          if (!_cfg?.permitir_correlativo_manual || userRol !== 'GERENTE') return '';
+          return `
+            <div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:6px;padding:10px 12px;margin-bottom:14px">
+              <div style="font-size:11px;font-weight:700;color:#9a3412;margin-bottom:6px;letter-spacing:.4px">
+                🗂 MODO MIGRACIÓN — CARGA HISTÓRICA
+              </div>
+              <label style="font-size:11px;color:#7c2d12;display:block;margin-bottom:4px">Nº de OC (opcional)</label>
+              <input name="nro_oc" placeholder="001 - 2025"
+                style="width:200px;padding:8px 10px;border:1px solid #fdba74;border-radius:4px;font-size:13px;font-family:monospace;background:#fff">
+              <div style="font-size:10px;color:#7c2d12;margin-top:4px">
+                Si lo dejás vacío, el sistema asigna automático. Formato: <strong>NNN - YYYY</strong>. Solo GERENTE.
+              </div>
+            </div>`;
+        })()}
         <form id="form-oc" style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px">
           <div><label>Fecha emisión ${tip('Fecha en la que emitís esta OC al proveedor.')}</label><input type="date" name="fecha_emision" value="${fechaEmision}" required></div>
           <div><label>Entrega esperada ${tip('Cuándo necesitás recibir el material o servicio. Se usa para alertas de OC vencida.')}</label><input type="date" name="fecha_entrega_esperada" value="${fechaEntrega}"></div>
@@ -1248,6 +1265,12 @@ function nuevaOC(editData) {
       observaciones: fd.get('observaciones'),
       lineas,
     };
+    // Modo migración: solo se manda si está en el form (renderizado condicional)
+    const ovEl = document.getElementById('oc-modal');
+    const nroManualInput = ovEl?.querySelector('input[name="nro_oc"]');
+    if (nroManualInput && nroManualInput.value.trim()) {
+      payload.nro_oc = nroManualInput.value.trim();
+    }
     try {
       if (esEdit) {
         await api.ordenesCompra.actualizar(editData.id_oc, payload);

@@ -175,6 +175,26 @@ function renderTabEmpresa(panel, cfg) {
       </form>
     </div>
 
+    <div class="card" style="margin-top:18px;border-left:4px solid #ea580c">
+      <h3 style="margin-bottom:6px;font-size:15px">🗂 Modo migración: cargar data histórica</h3>
+      <p style="color:var(--text-secondary);font-size:13px;margin-bottom:14px">
+        Cuando está <strong>activo</strong>, el form de Cotización y de OC muestran un campo extra
+        "Nº manual (opcional)" donde podés tipear el correlativo real que usaba la cotización/OC en
+        tu sistema viejo. Ideal al iniciar el ERP con 1-2 años de historia.
+        <br>Apagálo cuando termines la carga para volver a operación normal con correlativos automáticos.
+        <br><strong>Solo el GERENTE</strong> puede prender/apagar este modo.
+      </p>
+      <form id="form-migracion" style="display:flex;align-items:center;gap:14px">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:14px">
+          <input type="checkbox" name="permitir_correlativo_manual" ${cfg.permitir_correlativo_manual ? 'checked' : ''} style="transform:scale(1.3)">
+          <span>Permitir correlativo manual en cotizaciones y OCs</span>
+        </label>
+        <button type="submit" class="btn-primary" style="padding:8px 18px;background:var(--primary-color);color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:600">
+          Guardar
+        </button>
+      </form>
+    </div>
+
     <div class="card" style="margin-top:18px">
       <h3 style="margin-bottom:6px;font-size:15px">Firmas y contacto en Órdenes de Compra</h3>
       <p style="color:var(--text-secondary);font-size:13px;margin-bottom:16px">
@@ -233,6 +253,15 @@ function renderTabEmpresa(panel, cfg) {
     const data = Object.fromEntries(new FormData(e.target));
     window.Configuracion.guardarEmpresa(data);
   };
+
+  const formMig = document.getElementById('form-migracion');
+  if (formMig) {
+    formMig.onsubmit = (e) => {
+      e.preventDefault();
+      const checked = e.target.querySelector('input[name="permitir_correlativo_manual"]').checked;
+      window.Configuracion.guardarEmpresa({ permitir_correlativo_manual: checked });
+    };
+  }
 }
 
 async function guardarEmpresa(data) {

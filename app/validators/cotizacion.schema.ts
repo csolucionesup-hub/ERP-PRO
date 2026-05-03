@@ -31,6 +31,10 @@ const baseCotizacion = z.object({
   // Fecha editable (YYYY-MM-DD) — si no viene, el Service usa hoy.
   // Útil para cargar data histórica de meses anteriores.
   fecha:            z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Formato YYYY-MM-DD').optional(),
+  // Correlativo manual opcional (modo migración). El Service valida formato,
+  // permisos, ventana de fechas y duplicados. Acá solo permitimos string vacía
+  // o el formato esperado para ahorrar viaje al Service en casos triviales.
+  nro_cotizacion:   z.string().regex(/^COT \d{4}-\d{3}-(MN|ME)$/, 'Formato esperado: COT AAAA-NNN-MN o -ME').optional().or(z.literal('')),
   detalles:         z.array(detalleSchema).min(1, 'Debe incluir al menos un detalle'),
 });
 

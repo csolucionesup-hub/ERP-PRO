@@ -1,4 +1,5 @@
 import { db } from '../../../database/connection';
+import ConfiguracionService from '../configuracion/ConfiguracionService';
 
 const ESTADOS_VALIDOS = [
   'EN_PROCESO',
@@ -56,6 +57,17 @@ interface CotizacionInput {
    * Útil cuando se carga data histórica (Julio cargando enero/2025 hoy).
    */
   fecha?: string;
+  /**
+   * Correlativo manual (OPCIONAL). Solo se respeta si:
+   *   - permitir_correlativo_manual está ON en ConfiguracionEmpresa
+   *   - El usuario que crea es GERENTE
+   *   - Formato: COT YYYY-NNN-MN (o -ME)
+   *   - Año del correlativo coincide con año de la fecha
+   *   - Fecha está en la ventana válida (24m + año actual)
+   *   - No existe ya en BD
+   * Si no viene o falla la validación, el sistema cae al modo automático.
+   */
+  nro_cotizacion?: string;
   detalles: DetalleCotizacionInput[];
 }
 
@@ -76,6 +88,52 @@ class CotizacionService {
    * cotizaciones históricas con fecha 2025 → COT 2025-N en vez de COT 2026-N).
    * Cada (año, marca) tiene su propia secuencia independiente.
    */
+  /**
+   * Sincroniza Correlativos.ultimo con MAX(numero) que efectivamente existe
+   * en Cotizaciones para esa (año, marca). Cubre el caso del modo migración:
+   * si Julio cargó manualmente COT 2025-007-MN, queremos que el siguiente
+   * automático sea COT 2025-008-MN aunque la tabla Correlativos esté en 0.
+   */
+  private async sincronizarCorrelativo(runner: any, marca: Marca, anio: number): Promise<void> {
+    const sufijo = SUFIJO_MARCA[marca];
+    const [cots]: any = await runner.query(
+      `SELECT nro_cotizacion FROM Cotizaciones
+       WHERE marca = ? AND nro_cotizacion LIKE ?`,
+      [marca, `COT ${anio}-%-${sufijo}`]
+    );
+    const re = new RegExp(`^COT \\d{4}-(\\d{3})-${sufijo}$`);
+    const nums = (cots as any[])
+      .map(c => {
+        const m = String(c.nro_cotizacion).match(re);
+        return m ? parseInt(m[1], 10) : 0;
+      })
+      .filter(n => n > 0);
+    if (!nums.length) return;
+    const maxExistente = Math.max(...nums);
+
+    // UPDATE para forzar que Correlativos.ultimo no quede atrás del MAX real
+    const [upd]: any = await runner.query(
+      `UPDATE Correlativos SET ultimo = GREATEST(ultimo, ?) WHERE anio = ? AND marca = ?`,
+      [maxExistente, anio, marca]
+    );
+    if (upd?.affectedRows) return;
+
+    // No existía la fila en Correlativos: crearla con maxExistente
+    try {
+      await runner.query(
+        `INSERT INTO Correlativos (anio, marca, ultimo) VALUES (?, ?, ?)`,
+        [anio, marca, maxExistente]
+      );
+    } catch (e: any) {
+      const isDup = e?.code === '23505' || /duplicate|already exists/i.test(e?.message || '');
+      if (!isDup) throw e;
+      await runner.query(
+        `UPDATE Correlativos SET ultimo = GREATEST(ultimo, ?) WHERE anio = ? AND marca = ?`,
+        [maxExistente, anio, marca]
+      );
+    }
+  }
+
   private async generarCorrelativo(marca: Marca, conn?: any, anioFecha?: number): Promise<string> {
     const anio = (anioFecha && anioFecha >= 2000 && anioFecha <= 2100)
       ? anioFecha
@@ -83,6 +141,10 @@ class CotizacionService {
     const sufijo = SUFIJO_MARCA[marca];
     const runner = conn || db;
     const MAX_RETRIES = 5;
+
+    // Sincronizar con MAX existente antes de generar — protege contra el caso
+    // de cargas manuales previas que dejaron el contador atrás.
+    await this.sincronizarCorrelativo(runner, marca, anio);
 
     for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
       // 1. Intentar incrementar si la fila ya existe (caso normal)
@@ -120,6 +182,73 @@ class CotizacionService {
     throw new Error(
       `No se pudo generar correlativo para ${marca} ${anio} tras ${MAX_RETRIES} intentos (concurrencia anormal).`
     );
+  }
+
+  /**
+   * Valida un correlativo manual ingresado por el usuario en modo migración.
+   * Lanza Error con mensaje explicativo si alguna validación falla. Si pasa,
+   * la creación procede con el número tipeado tal cual (sin tocar la tabla
+   * Correlativos — el siguiente automático se sincronizará con MAX en BD).
+   */
+  private async validarCorrelativoManual(
+    runner: any,
+    nroManual: string,
+    fecha: string,
+    marca: Marca,
+    rolUsuario: string
+  ): Promise<void> {
+    if (rolUsuario !== 'GERENTE') {
+      throw new Error('Solo el GERENTE puede usar correlativos manuales (modo migración)');
+    }
+
+    const cfg = await ConfiguracionService.getActual();
+    if (!cfg.permitir_correlativo_manual) {
+      throw new Error(
+        'El modo migración no está activo. Activálo en Configuración → Empresa para tipear correlativos manualmente.'
+      );
+    }
+
+    const sufijo = SUFIJO_MARCA[marca];
+    const formatoOK = new RegExp(`^COT \\d{4}-\\d{3}-${sufijo}$`).test(nroManual);
+    if (!formatoOK) {
+      throw new Error(
+        `Formato inválido. Esperado: COT AAAA-NNN-${sufijo}. Ejemplo: COT 2025-001-${sufijo}`
+      );
+    }
+
+    // Año en correlativo debe coincidir con año en fecha
+    const anioCorr = parseInt(nroManual.match(/^COT (\d{4})-/)![1], 10);
+    const anioFecha = parseInt(fecha.split('-')[0], 10);
+    if (anioCorr !== anioFecha) {
+      throw new Error(
+        `El año del correlativo (${anioCorr}) no coincide con el año de la fecha (${anioFecha})`
+      );
+    }
+
+    // Ventana válida: 24 meses hacia atrás + año actual completo
+    const today = new Date();
+    const min = new Date(today);
+    min.setMonth(min.getMonth() - 24);
+    const max = new Date(today.getFullYear(), 11, 31);  // 31 dic año actual
+    const f = new Date(fecha);
+    if (isNaN(f.getTime()) || f < min || f > max) {
+      const fmt = (d: Date) => d.toISOString().slice(0, 10);
+      throw new Error(
+        `Fecha ${fecha} fuera de la ventana de carga histórica permitida. Rango válido: ${fmt(min)} → ${fmt(max)}`
+      );
+    }
+
+    // No duplicado
+    const [dupRows]: any = await runner.query(
+      `SELECT id_cotizacion, cliente, fecha FROM Cotizaciones WHERE nro_cotizacion = ? LIMIT 1`,
+      [nroManual]
+    );
+    if ((dupRows as any[]).length > 0) {
+      const d = (dupRows as any[])[0];
+      throw new Error(
+        `El correlativo ${nroManual} ya está en uso (cliente: ${d.cliente}, fecha: ${String(d.fecha).slice(0, 10)}). Verificá el número correcto en tu sistema viejo o dejá el campo vacío para asignación automática.`
+      );
+    }
   }
 
   private calcularTotales(
@@ -414,7 +543,7 @@ class CotizacionService {
 
   // ─── WRITE ───────────────────────────────────────────────────────────────────
 
-  async createCotizacion(data: CotizacionInput) {
+  async createCotizacion(data: CotizacionInput, opts: { rol?: string } = {}) {
     const {
       marca = 'METAL',
       cliente, atencion, telefono, correo, proyecto, ref,
@@ -438,10 +567,20 @@ class CotizacionService {
     const conn = await db.getConnection();
     await conn.beginTransaction();
     try {
-      // El correlativo respeta el año de la fecha cargada (no el año del sistema).
-      // Útil para data histórica: COT 2025-001 si fecha=2025-01-15.
-      const anioFecha = parseInt(fecha.split('-')[0], 10);
-      const nro_cotizacion = await this.generarCorrelativo(marca, conn, anioFecha);
+      // ── Decidir correlativo: manual (si modo migración) o automático
+      let nro_cotizacion: string;
+      const nroManual = (data.nro_cotizacion || '').trim();
+      if (nroManual) {
+        await this.validarCorrelativoManual(conn, nroManual, fecha, marca, opts.rol || '');
+        nro_cotizacion = nroManual;
+        // No actualizo Correlativos.ultimo: la próxima auto-generación
+        // sincronizará con MAX en BD vía sincronizarCorrelativo().
+      } else {
+        // El correlativo respeta el año de la fecha cargada (no el año del sistema).
+        // Útil para data histórica: COT 2025-001 si fecha=2025-01-15.
+        const anioFecha = parseInt(fecha.split('-')[0], 10);
+        nro_cotizacion = await this.generarCorrelativo(marca, conn, anioFecha);
+      }
       const [res] = await conn.query(
         `INSERT INTO Cotizaciones
            (nro_cotizacion, marca, fecha, cliente, atencion, telefono, correo, proyecto, ref,

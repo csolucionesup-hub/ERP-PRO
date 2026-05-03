@@ -520,6 +520,22 @@ function formNueva(marca, tcHoy, opts = {}) {
           </div>
         </div>
 
+        ${(opts.modoMigracion && !opts.editData) ? `
+        <div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:6px;padding:10px 12px;margin-bottom:14px">
+          <div style="font-size:11px;font-weight:700;color:#9a3412;margin-bottom:6px;letter-spacing:.4px">
+            🗂 MODO MIGRACIÓN — CARGA HISTÓRICA
+          </div>
+          <label style="font-size:11px;color:#7c2d12;display:block;margin-bottom:4px">
+            Nº de cotización (opcional)
+          </label>
+          <input name="nro_cotizacion" placeholder="COT 2025-001-${cfg.sufijo}"
+            style="width:100%;padding:8px 10px;border:1px solid #fdba74;border-radius:4px;font-size:13px;font-family:monospace;background:#fff">
+          <div style="font-size:10px;color:#7c2d12;margin-top:4px">
+            Si lo dejás vacío, el sistema asigna automático. Formato exacto: <strong>COT AAAA-NNN-${cfg.sufijo}</strong>. Solo GERENTE.
+          </div>
+        </div>
+        ` : ''}
+
         <!-- IGV toggle -->
         <div style="background:var(--bg-app);padding:9px;border-radius:4px">
           <label style="font-size:12px;font-weight:bold;display:flex;gap:8px;align-items:center">
@@ -925,6 +941,7 @@ function bindForm(marca, opts = {}) {
           precios_incluyen: f.precios_incluyen.value || undefined,
           comentarios:      f.comentarios.value      || undefined,
           fecha:            f.fecha?.value           || undefined,
+          nro_cotizacion:   f.nro_cotizacion?.value?.trim() || undefined,
           detalles:         lineas,
         };
         if (editData) {
@@ -1384,9 +1401,9 @@ function renderDashboardTab(d) {
 
 // ── Export principal ────────────────────────────────────────────
 export const Comercial = async () => {
-  let cotizaciones = [], tcHoy = { valor_venta: 1, es_hoy: false, fecha: '' }, dash = null, anuladas = [];
+  let cotizaciones = [], tcHoy = { valor_venta: 1, es_hoy: false, fecha: '' }, dash = null, anuladas = [], cfgEmpresa = null;
   try {
-    [cotizaciones, tcHoy, dash, anuladas] = await Promise.all([
+    [cotizaciones, tcHoy, dash, anuladas, cfgEmpresa] = await Promise.all([
       api.cotizaciones.getCotizaciones(),
       api.tipoCambio.getHoy('USD').catch(() => ({ valor_venta: 1, es_hoy: false, fecha: '' })),
       api.cotizaciones.getDashboard().catch(() => null),
@@ -1395,6 +1412,7 @@ export const Comercial = async () => {
         window.showError?.('No se pudo cargar Anuladas: ' + (err.message || err));
         return [];
       }),
+      api.config.get().catch(() => null),
     ]);
     if (!Array.isArray(cotizaciones)) cotizaciones = [];
     if (!Array.isArray(anuladas))     anuladas     = [];
@@ -1402,6 +1420,10 @@ export const Comercial = async () => {
   } catch (err) {
     console.error('[Comercial] Error cargando datos:', err);
   }
+
+  // Modo migración: solo GERENTE + flag ON habilita el campo "Nº manual" en formNueva
+  const userRol = (() => { try { return JSON.parse(localStorage.getItem('erp_user') || '{}').rol; } catch { return null; } })();
+  const modoMigracion = !!(cfgEmpresa?.permitir_correlativo_manual && userRol === 'GERENTE');
 
   // KPIs
   const total     = cotizaciones.length;
@@ -1828,10 +1850,10 @@ export const Comercial = async () => {
     </div>
 
     <div class="tab-panel" data-tab="metal"      style="display:block;margin-top:16px">
-      ${formNueva('METAL', tcHoy)}
+      ${formNueva('METAL', tcHoy, { modoMigracion })}
     </div>
     <div class="tab-panel" data-tab="perfotools" style="display:none;margin-top:16px">
-      ${formNueva('PERFOTOOLS', tcHoy)}
+      ${formNueva('PERFOTOOLS', tcHoy, { modoMigracion })}
     </div>
     <div class="tab-panel" data-tab="archivo"    style="display:none;margin-top:16px">
       <div class="card">
