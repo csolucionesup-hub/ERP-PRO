@@ -31,6 +31,7 @@ const STATE_TO_VARIANT = {
   NO_APROBADA:        'danger',
   RECHAZADA:          'neutral',
   ANULADA:            'neutral',
+  TRABAJO_EN_RIESGO:  'warning',
 
   // Cobranzas / Compras / OC
   COBRADO:    'success',
@@ -99,6 +100,7 @@ export function pillCotizacionEstado(estado) {
     TERMINADA:          'Terminada',
     A_ESPERA_RESPUESTA: 'En espera',
     ANULADA:            'Anulada',
+    TRABAJO_EN_RIESGO:  '⚠ Trabajo a riesgo',
   };
   return pill(
     labels[estado] || estado,

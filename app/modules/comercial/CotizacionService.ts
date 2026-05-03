@@ -8,6 +8,10 @@ const ESTADOS_VALIDOS = [
   'RECHAZADA',
   'TERMINADA',
   'A_ESPERA_RESPUESTA',
+  // Trabajo iniciado a riesgo sin compromiso firme de cobro: se cargan gastos
+  // contra el cliente pero NO aparece en Finanzas/CxC. Si después el cliente
+  // formaliza, se pasa a APROBADA (se reabre el flujo financiero).
+  'TRABAJO_EN_RIESGO',
 ] as const;
 
 type EstadoCotizacion = typeof ESTADOS_VALIDOS[number];
@@ -505,11 +509,11 @@ class CotizacionService {
         );
       }
 
-      // Hook inverso: al pasar a estado terminal negativo, cerrar seguimiento
-      // financiero (volver a 'NA') para que la cotización deje de aparecer en
-      // Finanzas. Solo si NO hay cobranzas registradas — si las hay, hay datos
-      // contables y se requiere reverso manual (anular cobros antes).
-      if (['RECHAZADA', 'NO_APROBADA'].includes(estado)) {
+      // Hook inverso: al pasar a estado terminal negativo o TRABAJO_EN_RIESGO,
+      // cerrar seguimiento financiero (volver a 'NA') para que la cotización
+      // deje de aparecer en Finanzas. Solo si NO hay cobranzas registradas —
+      // si las hay, hay datos contables y se requiere reverso manual.
+      if (['RECHAZADA', 'NO_APROBADA', 'TRABAJO_EN_RIESGO'].includes(estado)) {
         const [cobs]: any = await conn.query(
           `SELECT COUNT(*) AS n FROM CobranzasCotizacion WHERE id_cotizacion = ?`,
           [id]

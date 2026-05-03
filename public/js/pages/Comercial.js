@@ -33,6 +33,7 @@ const ESTADOS_COLOR = {
   TERMINADA:          { bg: '#8b5cf6', label: 'TERMINADA' },
   A_ESPERA_RESPUESTA: { bg: '#eab308', label: 'EN ESPERA' },
   ANULADA:            { bg: '#374151', label: 'ANULADA' },
+  TRABAJO_EN_RIESGO:  { bg: '#ea580c', label: '⚠ TRABAJO A RIESGO' },
 };
 
 // Pill semántico enterprise (delegado al helper Pill.js)
@@ -767,6 +768,7 @@ function archivoTable(cotizaciones, filtroMarca) {
               <option value="RECHAZADA">Rechazada</option>
               <option value="TERMINADA">Terminada</option>
               <option value="A_ESPERA_RESPUESTA">En Espera</option>
+              <option value="TRABAJO_EN_RIESGO">⚠ Trabajo a riesgo</option>
             </select>
           </div>` : ''}
         </td>
