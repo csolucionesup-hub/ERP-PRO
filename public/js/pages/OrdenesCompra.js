@@ -876,23 +876,83 @@ async function abrirModalResolucionItems(id_oc, lineasPendientes) {
     document.body.insertAdjacentHTML('beforeend', html);
     const ov = document.getElementById('ov-resolver-items');
 
-    // "Crear ítem nuevo" inline: crea en catálogo y selecciona en el dropdown
-    window.OC._crearItem = async (id_detalle, descSugerida, unidadSugerida) => {
-      const nombre = prompt('Nombre del ítem nuevo:', descSugerida);
-      if (!nombre) return;
-      const categoria = prompt('Categoría (Material / Consumible / Herramienta / Equipo / EPP):', 'Material') || 'Material';
-      const unidad = prompt('Unidad (UND, KG, MT, etc.):', unidadSugerida) || 'UND';
-      try {
-        const nuevo = await api.inventory.createInventarioItem({ nombre, categoria, unidad });
-        // Actualizar catálogo local + UI
-        catalogo.push({ id_item: nuevo.id_item, nombre, unidad, stock_actual: 0 });
-        document.getElementById('resolver-tbody').innerHTML = renderTabla();
-        const sel = document.getElementById(`asig-item-${id_detalle}`);
-        if (sel) sel.value = String(nuevo.id_item);
-        showSuccess(`Ítem "${nombre}" creado`);
-      } catch (e) {
-        showError('No se pudo crear el ítem: ' + e.message);
-      }
+    // "Crear ítem nuevo" inline: abre mini-modal con form (categoría como dropdown
+    // del enum exacto del backend para evitar errores de validación Zod).
+    window.OC._crearItem = (id_detalle, descSugerida, unidadSugerida) => {
+      const id = `crear-${Date.now()}`;
+      const html = `
+        <div id="ov-${id}" style="position:fixed;inset:0;background:rgba(0,0,0,0.65);z-index:2200;display:flex;align-items:center;justify-content:center;padding:20px">
+          <div style="background:white;border-radius:12px;padding:24px;width:480px;max-width:95vw">
+            <h3 style="margin:0 0 16px;font-size:17px">+ Crear ítem nuevo</h3>
+            <div style="display:flex;flex-direction:column;gap:12px">
+              <div>
+                <label style="font-size:12px;color:#374151;font-weight:600;display:block;margin-bottom:4px">Nombre *</label>
+                <input id="ci-nombre" type="text" value="${(descSugerida || '').replace(/"/g, '&quot;')}" style="width:100%;padding:9px 11px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
+                <div style="font-size:11px;color:#6b7280;margin-top:3px">Mínimo 3 caracteres</div>
+              </div>
+              <div>
+                <label style="font-size:12px;color:#374151;font-weight:600;display:block;margin-bottom:4px">Categoría *</label>
+                <select id="ci-categoria" style="width:100%;padding:9px 11px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;background:white">
+                  <option value="Material" selected>Material</option>
+                  <option value="Consumible">Consumible</option>
+                  <option value="Herramienta">Herramienta</option>
+                  <option value="Equipo">Equipo</option>
+                  <option value="EPP">EPP (Equipo de Protección Personal)</option>
+                </select>
+              </div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+                <div>
+                  <label style="font-size:12px;color:#374151;font-weight:600;display:block;margin-bottom:4px">Unidad</label>
+                  <input id="ci-unidad" type="text" value="${(unidadSugerida || 'UND').replace(/"/g, '&quot;')}" style="width:100%;padding:9px 11px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
+                </div>
+                <div>
+                  <label style="font-size:12px;color:#374151;font-weight:600;display:block;margin-bottom:4px">Stock mínimo</label>
+                  <input id="ci-min" type="number" min="0" step="0.01" value="10" style="width:100%;padding:9px 11px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
+                </div>
+              </div>
+              <div id="ci-error" style="display:none;background:#fee2e2;color:#991b1b;padding:8px 11px;border-radius:6px;font-size:12px"></div>
+            </div>
+            <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:18px">
+              <button id="ci-cancelar" style="padding:9px 16px;background:transparent;border:1px solid #d1d5db;border-radius:6px;cursor:pointer">Cancelar</button>
+              <button id="ci-crear" style="padding:9px 18px;background:#059669;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">Crear ítem</button>
+            </div>
+          </div>
+        </div>`;
+      document.body.insertAdjacentHTML('beforeend', html);
+      const ov = document.getElementById(`ov-${id}`);
+      const errBox = document.getElementById('ci-error');
+      const inpNombre = document.getElementById('ci-nombre');
+      inpNombre.focus();
+      inpNombre.select();
+
+      document.getElementById('ci-cancelar').onclick = () => ov.remove();
+
+      document.getElementById('ci-crear').onclick = async () => {
+        errBox.style.display = 'none';
+        const nombre = inpNombre.value.trim();
+        const categoria = document.getElementById('ci-categoria').value;
+        const unidad = document.getElementById('ci-unidad').value.trim() || 'UND';
+        const stock_minimo = Number(document.getElementById('ci-min').value || 0);
+
+        if (nombre.length < 3) {
+          errBox.textContent = 'El nombre debe tener al menos 3 caracteres.';
+          errBox.style.display = 'block';
+          return;
+        }
+        try {
+          const nuevo = await api.inventory.createInventarioItem({ nombre, categoria, unidad, stock_minimo });
+          // Actualizar catálogo local + redibujar tabla
+          catalogo.push({ id_item: nuevo.id_item, nombre, unidad, stock_actual: 0 });
+          document.getElementById('resolver-tbody').innerHTML = renderTabla();
+          const sel = document.getElementById(`asig-item-${id_detalle}`);
+          if (sel) sel.value = String(nuevo.id_item);
+          ov.remove();
+          showSuccess(`Ítem "${nombre}" creado y asignado`);
+        } catch (e) {
+          errBox.textContent = 'No se pudo crear: ' + (e.message || 'error desconocido');
+          errBox.style.display = 'block';
+        }
+      };
     };
 
     document.getElementById('resolver-cancelar').onclick = () => {
