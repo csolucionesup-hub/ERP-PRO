@@ -460,7 +460,7 @@ class OrdenCompraService {
             Number(oc.subtotal) - Number(oc.descuento || 0), Number(oc.igv), Number(oc.total),
             monto_base_pen, igv_base_pen, total_base_pen,
             fecha_factura, `Compra OC ${oc.nro_oc} · Fact ${nro_factura_proveedor}`,
-            oc.forma_pago === 'CONTADO' ? 'CONFIRMADO' : 'PENDIENTE',
+            oc.forma_pago === 'CONTADO' ? 'REALIZADO' : 'PENDIENTE',
           ]
         );
       } else {
@@ -501,7 +501,7 @@ class OrdenCompraService {
             Number(oc.subtotal) - Number(oc.descuento || 0), Number(oc.igv), Number(oc.total),
             monto_base_pen, igv_base_pen, total_base_pen,
             fecha_factura, `Gasto OC ${oc.nro_oc} · Fact ${nro_factura_proveedor}`,
-            oc.forma_pago === 'CONTADO' ? 'CONFIRMADO' : 'PENDIENTE',
+            oc.forma_pago === 'CONTADO' ? 'REALIZADO' : 'PENDIENTE',
           ]
         );
 

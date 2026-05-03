@@ -169,7 +169,9 @@ class CobranzasService {
         userId || null,
       ]);
 
-      // Auto-crear movimiento bancario (Libro Bancos) asociado
+      // Auto-crear movimiento bancario (Libro Bancos) + Transaccion INGRESO
+      // SOLO si hay cuenta destino. Sin cuenta, el dinero no afecta caja todavía;
+      // cuando se asigne vía editar, ahí se crean ambos.
       if (data.id_cuenta) {
         const desc = `Cobranza ${data.tipo === 'DEPOSITO_BANCO' ? 'depósito' : data.tipo === 'DETRACCION_BN' ? 'detracción BN' : 'retención'} — Cot ${cot.nro_cotizacion || cot.id_cotizacion}`;
         await conn.query(`
@@ -181,6 +183,32 @@ class CobranzasService {
         `, [
           data.id_cuenta, data.fecha_movimiento, data.nro_operacion || null,
           desc, data.monto, cobIns.insertId, userId || null, data.comentario || null,
+        ]);
+
+        // Transaccion INGRESO — el Dashboard Gerencial / getResumenOperativo
+        // suma desde Transacciones, no desde CobranzasCotizacion. Sin esto el
+        // saldo de caja queda en 0 aunque haya cobranzas registradas.
+        const moneda = data.moneda || cot.moneda || 'PEN';
+        const tc = Number(data.tipo_cambio ?? cot.tipo_cambio ?? 1);
+        const monto = Number(data.monto);
+        const monto_pen = monto * tc;
+        await conn.query(`
+          INSERT INTO Transacciones
+            (id_cuenta, referencia_tipo, referencia_id, tipo_movimiento,
+             moneda, tipo_cambio, aplica_igv,
+             monto_original, igv_original, total_original,
+             monto_base, igv_base, total_base,
+             fecha, descripcion, estado)
+          VALUES (?, 'COBRANZA', ?, 'INGRESO', ?, ?, false,
+                  ?, 0, ?,
+                  ?, 0, ?,
+                  ?, ?, 'REALIZADO')
+        `, [
+          data.id_cuenta, cobIns.insertId,
+          moneda, tc,
+          monto, monto,
+          monto_pen, monto_pen,
+          data.fecha_movimiento, desc,
         ]);
       }
 
@@ -290,6 +318,50 @@ class CobranzasService {
         );
       }
 
+      // Sincronizar Transaccion INGRESO (mismo patrón que MovimientoBancario)
+      const newMoneda = data.moneda ?? cob.moneda;
+      const newTc = Number(data.tipo_cambio ?? cob.tipo_cambio ?? 1);
+      const newMontoPen = newMonto * newTc;
+      if (oldCuenta && newCuenta) {
+        await conn.query(
+          `UPDATE Transacciones
+              SET id_cuenta=?, fecha=?, descripcion=?,
+                  moneda=?, tipo_cambio=?,
+                  monto_original=?, total_original=?,
+                  monto_base=?, total_base=?
+            WHERE referencia_tipo='COBRANZA' AND referencia_id=?`,
+          [newCuenta, newFecha, desc,
+           newMoneda, newTc,
+           newMonto, newMonto,
+           newMontoPen, newMontoPen,
+           id_cobranza]
+        );
+      } else if (oldCuenta && !newCuenta) {
+        await conn.query(
+          `DELETE FROM Transacciones WHERE referencia_tipo='COBRANZA' AND referencia_id=?`,
+          [id_cobranza]
+        );
+      } else if (!oldCuenta && newCuenta) {
+        await conn.query(`
+          INSERT INTO Transacciones
+            (id_cuenta, referencia_tipo, referencia_id, tipo_movimiento,
+             moneda, tipo_cambio, aplica_igv,
+             monto_original, igv_original, total_original,
+             monto_base, igv_base, total_base,
+             fecha, descripcion, estado)
+          VALUES (?, 'COBRANZA', ?, 'INGRESO', ?, ?, false,
+                  ?, 0, ?,
+                  ?, 0, ?,
+                  ?, ?, 'REALIZADO')
+        `, [
+          newCuenta, id_cobranza,
+          newMoneda, newTc,
+          newMonto, newMonto,
+          newMontoPen, newMontoPen,
+          newFecha, desc,
+        ]);
+      }
+
       // Recalcular acumulados/estado_financiero (puede haber cambiado el monto)
       await this.recomputeEstado(conn, cob.id_cotizacion);
 
@@ -315,9 +387,13 @@ class CobranzasService {
       const r = (rows as any[])[0];
       if (!r) throw new Error('Movimiento no encontrado');
 
-      // Eliminar movimiento bancario auto asociado
+      // Eliminar movimiento bancario auto + transacción INGRESO asociados
       await conn.query(
         `DELETE FROM MovimientoBancario WHERE ref_tipo='COBRANZA' AND ref_id=? AND fuente='AUTO'`,
+        [id_cobranza]
+      );
+      await conn.query(
+        `DELETE FROM Transacciones WHERE referencia_tipo='COBRANZA' AND referencia_id=?`,
         [id_cobranza]
       );
       await conn.query(`DELETE FROM CobranzasCotizacion WHERE id_cobranza = ?`, [id_cobranza]);
