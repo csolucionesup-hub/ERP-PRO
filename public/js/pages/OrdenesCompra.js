@@ -1318,6 +1318,21 @@ function nuevaOC(editData) {
   proySearch?.addEventListener('input', () => renderProyectoOptions(proySearch.value));
   proyTodos?.addEventListener('change', cargarProyectos);
 
+  // Auto-sync Empresa → Moneda + TC (ME=PEN, PT=USD). Dispara recarga del picker.
+  const empresaSel = document.querySelector('#form-oc select[name="empresa"]');
+  const monedaSel  = document.querySelector('#form-oc select[name="moneda"]');
+  const tcInput    = document.querySelector('#form-oc input[name="tipo_cambio"]');
+  if (empresaSel && monedaSel) {
+    empresaSel.addEventListener('change', () => {
+      const nueva = empresaSel.value === 'PT' ? 'USD' : 'PEN';
+      if (monedaSel.value !== nueva) {
+        monedaSel.value = nueva;
+        if (tcInput && nueva === 'PEN') tcInput.value = '1.0000';
+        monedaSel.dispatchEvent(new Event('change'));
+      }
+    });
+  }
+
   togglePicker();
   cargarProyectos();
 

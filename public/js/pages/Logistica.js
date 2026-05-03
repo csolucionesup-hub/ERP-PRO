@@ -698,9 +698,27 @@ function bindFormOCMulti(panel, tipoOC) {
         : `${lista.length} proyecto(s) ${monedaSel} disponible(s).`;
     }
   };
+  // Auto-sync Empresa → Moneda + TC. Cambiar Empresa a Perfotools también
+  // cambia Moneda a USD (con TC del día) y recarga la lista de proyectos.
+  // Pensado para que "Empresa: Perfotools" muestre cotizaciones USD sin que
+  // el usuario tenga que cambiar manualmente el select de Moneda.
+  const empresaSel = form.querySelector('[name=empresa]');
+  const monedaSel  = form.querySelector('[name=moneda]');
+  const tcInput    = form.querySelector('[name=tipo_cambio]');
+  if (empresaSel && monedaSel) {
+    empresaSel.addEventListener('change', () => {
+      const nueva = empresaSel.value === 'PT' ? 'USD' : 'PEN';
+      if (monedaSel.value !== nueva) {
+        monedaSel.value = nueva;
+        if (tcInput && nueva === 'PEN') tcInput.value = '1.0000';
+        monedaSel.dispatchEvent(new Event('change')); // dispara renderProyectoOpts
+      }
+    });
+  }
+
   if (servSelect) {
     srvSearch?.addEventListener('input', renderProyectoOpts);
-    form.querySelector('[name=moneda]')?.addEventListener('change', renderProyectoOpts);
+    monedaSel?.addEventListener('change', renderProyectoOpts);
     renderProyectoOpts();
   }
 
