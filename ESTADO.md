@@ -2,12 +2,12 @@
 
 > **LEER PRIMERO.** Este documento es la fuente de verdad sobre qué está hecho, qué falta y dónde estamos parados. Se actualiza al cierre de cada sesión de trabajo.
 
-**Última actualización:** 2026-05-02 (sesión housekeeping + fixes bugs + auditoría V3 cerrada + descubrimiento Fase C 95% lista)
+**Última actualización:** 2026-05-02 (sesión cierre Fase C: flujo OC integrado con Inventario, Compras, Gastos, Tx + housekeeping + fixes bugs + auditoría V3 cerrada)
 **Rama activa:** `main`
-**Último commit pusheado:** `18fa474 fix(dashboard): migrar fetch directos admin a api.administracion (auditoría V3 F01)`
+**Último commit pusheado:** `58f7aec feat(oc): cierre Fase C — flujo OC integrado con Inventario, Compras, Gastos y Tx`
 **Servidor dev:** `npx ts-node index.ts` en `D:\proyectos\ERP-PRO` → `http://localhost:3000`
 **Producción:** `erp-pro-production-e4c0.up.railway.app` — Railway (deploy automático desde main)
-**Cache buster JS actual:** `v=20260502r1` (app.js) — **convención nueva**: hardcoded en CADA import dentro de app.js. Ver gotcha #36 en CLAUDE.md.
+**Cache buster JS actual:** `v=20260502r2` (app.js) — **convención nueva**: hardcoded en CADA import dentro de app.js. Ver gotcha #36 en CLAUDE.md.
 **Migraciones BD:** 001 → 037 + 042 → 044 aplicadas (Supabase Postgres project `fhlrxlsscerfiuuyiejw`).
 
 ---
@@ -69,7 +69,8 @@ Railway desplegado y operativo con 41 tablas. Build limpio (`npx tsc --noEmit` p
 7. ~~**Libro Bancos — nro_operacion duplicado**~~ → fixed `783a629` (02/05/2026): scrub global ANTES del tipoMatch. Validar empíricamente al primer EECC importado.
 8. ~~**Libro Bancos — KPI Comisiones = S/ 0.00**~~ → no es bug. `MovimientoBancario` vacío en producción. La heurística `esComisionImportada()` cubre ITF/N/D/COM./PORTE cuando llegue el primer EECC.
 
-**Bugs activos:** ninguno conocido al 02/05/2026.
+**Bugs activos al cierre del 02/05/2026:**
+- (latente, no urgente) `PurchaseService.registrarCompra()` usa `'INGRESO'` cuando dashboards filtran `'ENTRADA'`. La nueva ruta OC ya usa `'ENTRADA'`. Compras directas no aparecerían en KPI hasta alinear (`PurchaseService.ts:208,:277`). Sin impacto hoy: 0 compras directas en producción.
 
 ---
 
@@ -111,7 +112,10 @@ Railway desplegado y operativo con 41 tablas. Build limpio (`npx tsc --noEmit` p
 - [x] ~~Módulo Logística completo (UI con 3 tipos: GENERAL/SERVICIO/ALMACEN)~~ → ya implementado (hub Logistica.js con 6 tabs, `tipo_oc` ENUM en OrdenesCompra). Verificado mapping 02/05/2026.
 - [x] ~~OC de servicios en Finanzas~~ → ya implementado (`tipo_oc='SERVICIO'` + `id_servicio` en OrdenesCompra, sin tabla aparte). Verificado 02/05/2026.
 - [x] ~~Almacén valorizado con kárdex por ítem~~ → ya implementado (costo promedio ponderado en PurchaseService, MovimientosInventario polimórfico, endpoint `GET /inventario/:id/kardex`, modal kárdex en Inventario.js). Verificado 02/05/2026.
-- [ ] **PENDIENTE Fase C — verificación end-to-end:** flujo OC ALMACEN → APROBADA → recibir → stock actualizado + costo promedio recalculado + movimiento ENTRADA en kárdex. Hacer con 1 ítem de prueba antes de cargar data real.
+- [x] ~~Fase C — implementación completa del flujo OC integrado~~ → cerrada en `58f7aec` 02/05/2026: recibir() afecta Inventario+kárdex; facturar() split por tipo; modal de resolución de ítems sin id_item.
+- [ ] **Fase C — verificación end-to-end (Julio):** recibir OC ALMACEN `002-2026` (1 línea S/ 140) → modal asignación → crear ítem → confirmar → verificar stock+kárdex+costo en BD. Después la OC `001-2026 ALMACEN` (6 líneas).
+- [ ] **Bonus Fase C:** agregar campo opcional "Item del catálogo" en form de creación de OC (no urgente — modal de resolución cubre el caso al recibir).
+- [ ] **Bug latente alineado pero sin fix:** `PurchaseService.registrarCompra()` usa `'INGRESO'` mientras dashboards filtran `'ENTRADA'`. La nueva ruta de recibir OC ya usa `'ENTRADA'`. Cuando se haga la primera compra directa, los dashboards no la verán hasta que se alinee. **Fix sugerido:** cambiar `INGRESO` → `ENTRADA` en `PurchaseService.ts:208` y `:277`. No urgente (0 compras directas en producción).
 - [ ] Replicar hints contextuales (`.app-form-hint`) en Cotización/Logística OC/Compras/Cobranzas (cosmético, valor marginal — Comercial y OC ya tienen tooltips inline `tip()`)
 - [ ] G20 — QA mobile real iPhone Safari + Android Chrome con dispositivo físico
 - [ ] Empty states en Comercial/Alertas/Contabilidad (cosméticos)
@@ -299,14 +303,79 @@ Auditoría completa contra producción + Supabase MCP:
 - ~~COT 0000-000-MN huérfanos~~ → no existen en producción
 - ~~KPI Comisiones=0~~ → no hay datos para sumar; cuando importes EECC, `esComisionImportada()` en CobranzasService:906 ya cubre ITF/N/D/COM./PORTE
 
-## Auditoría 02/05/2026 — donde estamos parados
+---
+
+## Sesión 02/05/2026 — Housekeeping + 2 bugs + Auditoría V3 + cierre Fase C (5 commits)
+
+Sesión amplia: arrancó como housekeeping y terminó cerrando Fase C completa. **5 commits pusheados a `main`** (`192f452..58f7aec`).
+
+| Commit | Bloque |
+|---|---|
+| `192f452` | Bloque 2A — fix race condition `generarCorrelativo()` (retry-on-duplicate, MAX 5 intentos) |
+| `783a629` | Bloque 2B — fix scrub `nro_operacion` ANTES del tipoMatch en parser EECC |
+| `18fa474` | Bloque 4 — auditoría V3 F01 cerrada (3 fetch directos en Dashboard.js → `api.administracion`) + cache buster v=20260502r1 |
+| `6f0385c` | Cierre intermedio: docs ESTADO con descubrimiento Fase C 95% |
+| `58f7aec` | **Bloque 6 — Cierre Fase C** (ver detalle abajo) |
+
+**Housekeeping no commiteado (filesystem):**
+- 9 archivos basura borrados de raíz repo principal (`*_temp.txt`, `auditoria_*.{pdf,txt}`, `COT-2026-002-ME.pdf`)
+- Worktree huérfano `awesome-satoshi-ec1075` pruneado de git
+- Carpeta física quedó con lock de Windows; se borra al cerrar el proceso que la tiene abierta
+
+### Bloque 6 — Cierre Fase C (commit `58f7aec`)
+
+**Hallazgo crítico** durante la verificación end-to-end: el flujo OC nunca cerraba en código.
+
+Antes de hoy:
+- `OrdenCompraService.recibir()` → solo movía `cantidad_recibida`. NO afectaba `Inventario.stock_actual`, NO recalculaba `costo_promedio_unitario`, NO generaba `MovimientosInventario`.
+- `OrdenCompraService.facturar()` → solo creaba cabecera de `Compras`. NO insertaba `DetalleCompra`, NO creaba `Transaccion EGRESO`. Para SERVICIO/GENERAL nunca se creaba registro en `Gastos`.
+- Form de OC no pedía `id_item` del catálogo — texto libre.
+
+**Sin daño en producción** (4 OCs en APROBADA, 0 facturadas, MovimientoBancario vacío) pero el flujo nunca habría cerrado correctamente.
+
+**Cambios en `58f7aec`:**
+
+`OrdenCompraService.recibir()` refactor:
+- Si `tipo_oc='ALMACEN'`: valida que toda línea a recibir tenga `id_item`. Si falta, lanza error con `code='OC_LINEAS_SIN_ITEM'` + `lineas_pendientes`.
+- Por cada línea con id_item: `SELECT FOR UPDATE` en Inventario, recalcula `costo_promedio_unitario` ponderado (convierte a PEN si OC es USD), actualiza `stock_actual`, registra `ENTRADA` en `MovimientosInventario` con `referencia_tipo='ORDEN_COMPRA'`.
+- GENERAL/SERVICIO: solo cantidad_recibida + estado.
+- Validación: `cantidad_recibida` no excede lo pedido.
+
+`OrdenCompraService.facturar()` split por tipo:
+- `ALMACEN` → INSERT `Compras` + `DetalleCompra` (con id_item, cantidad_recibida) + `Transaccion EGRESO`. Inventario YA afectado en `recibir()`.
+- `SERVICIO` → INSERT `Gastos` (`tipo_gasto_logistica='SERVICIO'`, `id_servicio`) + `Transaccion EGRESO` + INSERT `CostosServicio` (`tipo_costo='GASTO_OC'`).
+- `GENERAL` → INSERT `Gastos` (`tipo_gasto_logistica='GENERAL'`) + `Transaccion EGRESO`.
+- Estado de Transaccion = `'CONFIRMADO'` si `forma_pago=CONTADO`, `'PENDIENTE'` sino.
+
+`OrdenCompraService.asignarItemsALineas()` nuevo:
+- Acepta `[{id_detalle, id_item}]`.
+- Valida que ítem existe + línea no tiene cantidad_recibida.
+
+API:
+- `POST /api/ordenes-compra/:id/recibir` → captura `OC_LINEAS_SIN_ITEM` y devuelve **422** con `{ error, code, id_oc, lineas_pendientes }`.
+- `POST /api/ordenes-compra/:id/asignar-items` → nuevo.
+
+Frontend:
+- `fetchAPI` ahora preserva todos los campos del body en el Error lanzado (`Object.assign(err, errData)`). Permite leer `err.code` y `err.lineas_pendientes` en el caller.
+- `api.ordenesCompra.asignarItems(id, asignaciones)` agregado.
+- `recibir()` delega en `registrarRecepcionConResolucion()` que detecta el 422 y abre modal automáticamente.
+- `abrirModalResolucionItems()`: tabla con líneas pendientes + dropdown del catálogo + botón **+ Crear nuevo** inline (api.inventory.createInventarioItem).
+- Modal solo cierra con botón explícito (gotcha #28).
+- Cache buster bumpeado a `v=20260502r2`.
+
+**Hallazgo lateral (no fixed en esta sesión, anotado en pendientes):**
+- `PurchaseService.registrarCompra()` usa `tipo_movimiento='INGRESO'` mientras los dashboards filtran `'ENTRADA'`. Inconsistencia latente — la nueva ruta de recibir OC ya usa `'ENTRADA'`. Bug afectaría compras directas (aún 0 en producción). Fix: alinear a `ENTRADA` en `PurchaseService.ts:208` y `:277`.
+
+---
+
+## Auditoría 02/05/2026 — donde estamos parados (post-cierre Fase C)
 
 | Fase del Plan Maestro | Estado | Notas |
 |---|---|---|
 | **G** Rediseño Enterprise UI | ✅ **CERRADA** | 10 commits 27/04 + 7 cotizaciones + sidebar mobile/HEIC/PDF preview/colapsable |
 | **A** Fundaciones (config, auditoría, periodos, adjuntos, roles) | 🟢 **CASI HECHA** | Migraciones 020-024 aplicadas. Módulo `app/modules/configuracion/` con 4 services. Falta verificar wizard de setup completo y uso del audit log en todas las rutas sensibles. |
 | **B** Facturación electrónica + Libros SUNAT | 🟡 **MODO STUB** | Tablas Facturas/NotasCredito/GuiasRemision creadas (025-027). `NubefactService` implementado pero con flag STUB en línea 4. **Bloqueado por:** certificado digital + cuenta Nubefact REAL (gestión externa de Julio). |
-| **C** Logística + Almacén valorizado + Dashboards | 🟢 **95% LISTA** (re-auditada 02/05/2026) | Logística hub 6 tabs (`Logistica.js`), OC con `tipo_oc` ENUM(GENERAL/SERVICIO/ALMACEN), filtro `id_servicio`, `getOC` con tipo_oc, costo promedio ponderado en `PurchaseService`, kárdex polimórfico en `MovimientosInventario`, endpoint `/inventario/:id/kardex` con UI modal. Falta solo verificación end-to-end del flujo OC ALMACEN→recibir→stock+costo. |
+| **C** Logística + Almacén valorizado + Dashboards | ✅ **CERRADA** (02/05/2026) | Flujo OC end-to-end integrado en commit `58f7aec`: recibir() afecta Inventario+kárdex en ALMACEN; facturar() splittea por tipo (ALMACEN→Compras+DetalleCompra+Tx; SERVICIO→Gastos+Tx+CostosServicio; GENERAL→Gastos+Tx). Modal de resolución de ítems al recibir OC ALMACEN sin id_item. **Verificación end-to-end con OC real pendiente** (las 4 OCs en APROBADA están listas para test). |
 | **D** Contabilidad PCGE + EE.FF. | 🔴 **INCIPIENTE** | Solo placeholder `Contabilidad.js`. Sin Plan de Cuentas, asientos automáticos ni Estados Financieros. |
 | **E** Producción metalmecánica (OT, BOM, QC) | ⬜ **NO INICIADA** | El diferenciador. Para agosto-septiembre. |
 | **F** Multi-tenancy SaaS + onboarding + pricing | ⬜ **NO INICIADA** | Para fin de septiembre. |
@@ -344,9 +413,9 @@ Auditoría completa contra producción + Supabase MCP:
 
 ---
 
-## Snapshot de `git status` (al 2026-05-01)
+## Snapshot de `git status` (al 2026-05-02)
 
-**Working tree de este worktree limpio.** Todo pusheado a `origin/main`. Railway desplegado y verificado contra Supabase.
+**Working tree de este worktree limpio.** Todo pusheado a `origin/main`. Railway desplegado y verificado (Last-Modified 2026-05-03 02:01 GMT, sirviendo `v=20260502r2`).
 
 **Acumulado de commits desde 27/04:**
 - 10 commits rediseño Enterprise UI (27/04)
@@ -358,8 +427,10 @@ Auditoría completa contra producción + Supabase MCP:
 - 1 commit sidebar colapsable (30/04, `9911ad3`)
 - 1 commit sync ESTADO (30/04, `d590073`)
 - 10 commits sesión 30/04 noche → 01/05 (OC: cuentas+moneda, firmas vivas, reactivar, cache buster, post-mortem build, `e805ec5..d285f31`)
+- 1 commit cierre 01/05 (`e5e4e8c` — docs cierre)
+- 5 commits sesión 02/05 (housekeeping + 2 bugs + auditoría V3 + cierre Fase C, `192f452..58f7aec`)
 
-**Total: 46 commits** desde el rediseño Enterprise.
+**Total: 52 commits** desde el rediseño Enterprise.
 
 ## Para Claude (próxima sesión)
 
@@ -370,14 +441,18 @@ Si Julio dice "sigamos con cotizaciones" o reporta un bug del módulo Comercial:
 4. **Si reporta "PDF da HTTP 500" o "Configuración no encontrada"**: la tabla `ConfiguracionMarca` (lowercase en Postgres) debe tener filas para METAL y PERFOTOOLS. Verificar con `SELECT marca FROM configuracionmarca;` vía Supabase MCP en project `fhlrxlsscerfiuuyiejw`. Si faltan, ya hay defaults hardcoded en `CotizacionPDFService.ts` que evitan el 500, pero el ideal es re-insertar las filas.
 5. **Cuando se commitea cambios en `public/js/`**: SIEMPRE bumpear el cache buster del script en `index.html` (`?v=YYYYMMDDr#`). Sin esto, los navegadores cargan el JS viejo y los fixes no se ven.
 6. **Para hacer push a producción desde un worktree**: la rama `main` está checkout en `D:/proyectos/ERP-PRO`, así que NO se puede `git checkout main` desde el worktree. Usar `git push origin <branch-actual>:main` para empujar el commit como nuevo `main` (solo si es fast-forward).
+7. **Si reporta "no me sumó stock al recibir OC ALMACEN"**: verificar (a) que la OC tiene `tipo_oc='ALMACEN'` (las GENERAL/SERVICIO NO afectan stock), (b) que las líneas tienen `id_item` poblado en `DetalleOrdenCompra` (el modal de resolución obliga a asignar antes), (c) revisar `MovimientosInventario` con `referencia_tipo='ORDEN_COMPRA' AND referencia_id=<id_oc>`. La afectación está en `OrdenCompraService.recibir()` post commit `58f7aec`.
+8. **Si reporta "facturé OC y no veo la Compra/Gasto"**: el split por tipo en `facturar()` es:
+   - ALMACEN → tabla `Compras` + `DetalleCompra` + `Transacciones (referencia_tipo='COMPRA')`
+   - SERVICIO → tabla `Gastos` (con `id_servicio`) + `Transacciones (referencia_tipo='GASTO')` + `CostosServicio (tipo_costo='GASTO_OC')`
+   - GENERAL → tabla `Gastos` + `Transacciones (referencia_tipo='GASTO')`
+   Nota que solo ALMACEN setea `OrdenesCompra.id_compra_generada`. Para SERVICIO/GENERAL la trazabilidad es vía `Gastos.nro_oc`.
+9. **Bug latente conocido (PurchaseService.ts:208 y :277)**: usa `tipo_movimiento='INGRESO'` mientras dashboards filtran `'ENTRADA'`. La nueva ruta de OC ya usa `'ENTRADA'`. Si Julio empieza a hacer compras directas (sin OC) y no aparecen en los dashboards de Inventario, este es el motivo. Fix trivial — alinear ambas líneas a `'ENTRADA'`.
 
-### Basura a limpiar (aún en disco, no commiteada)
-```
-*_temp.txt (schema, inventory, main_css, connection, finance, prestamos_tributario, contexto_fase1)
-COT-2026-002-ME.pdf (PDF de prueba)
-auditoria_erp_pro.pdf (duplicado del .md)
-auditoria_v2_contexto.txt (contexto viejo)
-```
+### Estado del filesystem (worktree principal)
+- Working tree limpio en este worktree (`elegant-herschel-050bb4`).
+- En `D:/proyectos/ERP-PRO`: `.gitignore` y `ESTADO.md` modificados (WIP de Julio según heads-up histórico) + carpeta `backups/` untracked.
+- Carpeta basura `D:/proyectos/ERP-PRO/.claude/worktrees/awesome-satoshi-ec1075` quedó con lock de Windows tras prune; se elimina al cerrar el proceso que la tiene abierta (probablemente VS Code o antivirus).
 
 ### Dir `.claude/` — untracked
 Contiene worktrees y configuración local. **NO commitear.** Ya en `.gitignore`.
