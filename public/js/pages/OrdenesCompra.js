@@ -23,6 +23,7 @@ const ESTADO_COLOR = {
   FACTURADA:        { bg: '#ede9fe', fg: '#5b21b6', icon: '🧾' },
   PAGADA:           { bg: '#d1fae5', fg: '#065f46', icon: '💰' },
   ANULADA:          { bg: '#fee2e2', fg: '#991b1b', icon: '❌' },
+  CERRADA_SIN_FACTURA: { bg: '#fff7ed', fg: '#9a3412', icon: '🗂' },
 };
 
 const fPEN = (v) => new Intl.NumberFormat('es-PE', { style: 'currency', currency: 'PEN' }).format(Number(v) || 0);
@@ -249,7 +250,7 @@ function init() {
     },
   });
 
-  window.OC = { nuevaOC, verOC, aprobar, enviar, recibir, facturar, anular, reactivar, eliminarOC, editar, editarFecha, descargarPDF, reporteROC };
+  window.OC = { nuevaOC, verOC, aprobar, enviar, recibir, facturar, cerrarSinFactura, asociarFactura, anular, reactivar, eliminarOC, editar, editarFecha, descargarPDF, reporteROC };
 }
 
 // Editar SOLO la fecha de emisión (corregir data histórica) — disponible en
@@ -655,6 +656,15 @@ function accionesSegunEstado(oc) {
   }
   if (['RECIBIDA', 'RECIBIDA_PARCIAL'].includes(oc.estado)) {
     btns.push(`<button onclick="OC.facturar(${oc.id_oc})" style="padding:10px 18px;background:#7c3aed;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">🧾 Recibí factura</button>`);
+    // "Cerrar sin facturar" solo aplica a GENERAL/SERVICIO (no ALMACEN).
+    // ALMACEN siempre requiere comprobante porque genera stock valorizado.
+    if (oc.tipo_oc !== 'ALMACEN') {
+      btns.push(`<button onclick="OC.cerrarSinFactura(${oc.id_oc}, '${nroSafe}')" style="padding:10px 18px;background:#ea580c;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">🗂 Cerrar sin facturar</button>`);
+    }
+  }
+  // OC cerrada sin factura — ofrecer asociar factura tardía
+  if (oc.estado === 'CERRADA_SIN_FACTURA') {
+    btns.push(`<button onclick="OC.asociarFactura(${oc.id_oc}, '${nroSafe}')" style="padding:10px 18px;background:#7c3aed;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">🧾 Asociar factura tardía</button>`);
   }
   // Editar — hasta ENVIADA inclusive (después la mercadería ya fue recibida).
   if (['BORRADOR', 'APROBADA', 'ENVIADA'].includes(oc.estado)) {
@@ -1046,6 +1056,105 @@ async function facturar(id) {
   try {
     await api.ordenesCompra.facturar(id, { nro_factura_proveedor: nro, fecha_factura: fecha });
     showSuccess('OC facturada — se creó registro en Compras');
+    setTimeout(() => refreshOC(), 800);
+  } catch (e) { showError(e.message); }
+}
+
+// Cierra una OC sin factura formal (caja chica). Pide concepto + forma de pago real.
+async function cerrarSinFactura(id, nro) {
+  const data = await new Promise((resolve) => {
+    const ov = document.createElement('div');
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
+    ov.innerHTML = `
+      <div style="background:#fff;border-radius:8px;padding:22px;width:480px;max-width:95vw;box-shadow:0 20px 50px rgba(0,0,0,.3)">
+        <h3 style="margin:0 0 8px;font-size:16px">🗂 Cerrar OC ${nro} sin factura</h3>
+        <div style="background:#fff7ed;border:1px solid #fed7aa;color:#9a3412;padding:10px 12px;border-radius:6px;margin-bottom:14px;font-size:12px">
+          ⚠️ <strong>Sin comprobante SUNAT</strong> = NO genera crédito fiscal (IGV).<br>
+          NO aparece en Libro de Compras. SÍ se descuenta de caja como egreso.<br>
+          Solo válido para gastos sin sustento (típicamente caja chica < S/700).
+        </div>
+        <label style="font-size:11px;color:#374151;font-weight:600;display:block;margin-bottom:4px">Concepto del gasto *</label>
+        <input id="cs-concepto" placeholder="Ej: Gastos varios marketing — caja chica"
+          style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:5px;font-size:13px;margin-bottom:12px">
+        <label style="font-size:11px;color:#374151;font-weight:600;display:block;margin-bottom:4px">Forma de pago real *</label>
+        <select id="cs-fp" style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:5px;font-size:13px">
+          <option value="EFECTIVO">Efectivo (caja chica)</option>
+          <option value="TRANSFERENCIA">Transferencia bancaria</option>
+          <option value="TARJETA_PERSONAL">Tarjeta personal (con reembolso)</option>
+          <option value="OTRO">Otro</option>
+        </select>
+        <div id="cs-error" style="display:none;margin-top:10px;background:#fee2e2;color:#991b1b;padding:7px 10px;border-radius:5px;font-size:12px"></div>
+        <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:18px">
+          <button id="cs-cancel" style="padding:8px 16px;background:#fff;border:1px solid #d1d5db;border-radius:5px;cursor:pointer;font-size:13px">Cancelar</button>
+          <button id="cs-ok" style="padding:8px 22px;background:#ea580c;color:#fff;border:none;border-radius:5px;cursor:pointer;font-size:13px;font-weight:600">Confirmar cierre</button>
+        </div>
+      </div>`;
+    document.body.appendChild(ov);
+    const close = (val) => { ov.remove(); resolve(val); };
+    ov.querySelector('#cs-cancel').onclick = () => close(null);
+    ov.querySelector('#cs-ok').onclick = () => {
+      const concepto = ov.querySelector('#cs-concepto').value.trim();
+      const fp = ov.querySelector('#cs-fp').value;
+      if (!concepto) {
+        const err = ov.querySelector('#cs-error');
+        err.textContent = 'El concepto es obligatorio';
+        err.style.display = 'block';
+        return;
+      }
+      close({ concepto, forma_pago_real: fp });
+    };
+  });
+  if (!data) return;
+  try {
+    await api.ordenesCompra.cerrarSinFactura(id, data);
+    showSuccess(`OC ${nro} cerrada sin factura — registrada como gasto`);
+    setTimeout(() => refreshOC(), 800);
+  } catch (e) { showError(e.message); }
+}
+
+// Asocia una factura tardía a una OC CERRADA_SIN_FACTURA.
+// Enriquece el Gasto con nro_comprobante + fecha. Mueve OC a FACTURADA.
+async function asociarFactura(id, nro) {
+  const data = await new Promise((resolve) => {
+    const ov = document.createElement('div');
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
+    ov.innerHTML = `
+      <div style="background:#fff;border-radius:8px;padding:22px;width:440px;max-width:95vw;box-shadow:0 20px 50px rgba(0,0,0,.3)">
+        <h3 style="margin:0 0 8px;font-size:16px">🧾 Asociar factura tardía · OC ${nro}</h3>
+        <p style="margin:0 0 14px;font-size:12px;color:#6b7280">
+          La factura del proveedor llegó tarde. Esto enriquece el Gasto existente con el comprobante y mueve la OC a <strong>FACTURADA</strong>. No genera factura electrónica nueva (eso lo hacés desde Comercial si aplica).
+        </p>
+        <label style="font-size:11px;color:#374151;font-weight:600;display:block;margin-bottom:4px">N° comprobante *</label>
+        <input id="af-nro" placeholder="F001-00123"
+          style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:5px;font-size:13px;margin-bottom:12px;font-family:monospace">
+        <label style="font-size:11px;color:#374151;font-weight:600;display:block;margin-bottom:4px">Fecha del comprobante *</label>
+        <input id="af-fecha" type="date" value="${new Date().toISOString().slice(0,10)}"
+          style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:5px;font-size:13px">
+        <div id="af-error" style="display:none;margin-top:10px;background:#fee2e2;color:#991b1b;padding:7px 10px;border-radius:5px;font-size:12px"></div>
+        <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:18px">
+          <button id="af-cancel" style="padding:8px 16px;background:#fff;border:1px solid #d1d5db;border-radius:5px;cursor:pointer;font-size:13px">Cancelar</button>
+          <button id="af-ok" style="padding:8px 22px;background:#7c3aed;color:#fff;border:none;border-radius:5px;cursor:pointer;font-size:13px;font-weight:600">Asociar factura</button>
+        </div>
+      </div>`;
+    document.body.appendChild(ov);
+    const close = (val) => { ov.remove(); resolve(val); };
+    ov.querySelector('#af-cancel').onclick = () => close(null);
+    ov.querySelector('#af-ok').onclick = () => {
+      const nroComp = ov.querySelector('#af-nro').value.trim();
+      const fecha = ov.querySelector('#af-fecha').value;
+      if (!nroComp || !fecha) {
+        const err = ov.querySelector('#af-error');
+        err.textContent = 'Completá ambos campos';
+        err.style.display = 'block';
+        return;
+      }
+      close({ nro_comprobante: nroComp, fecha_factura: fecha });
+    };
+  });
+  if (!data) return;
+  try {
+    await api.ordenesCompra.asociarFacturaTardia(id, data);
+    showSuccess(`Factura ${data.nro_comprobante} asociada — OC pasa a FACTURADA`);
     setTimeout(() => refreshOC(), 800);
   } catch (e) { showError(e.message); }
 }

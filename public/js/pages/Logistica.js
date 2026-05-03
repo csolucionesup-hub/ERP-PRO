@@ -32,6 +32,7 @@ let _cfg = null;
 let _servicios = [];
 let _proyectos = []; // cotizaciones APROBADAS/TERMINADAS/TRABAJO_EN_RIESGO (Camino A)
 let _proveedores = [];
+let _ocsSinFactura = []; // OCs cerradas sin factura — bandeja para asociar factura tardía
 let _centrosCosto = [];
 let _ocsGeneral = [];
 let _ocsServicio = [];
@@ -40,7 +41,7 @@ let _chartInstances = {};
 
 export const Logistica = async () => {
   try {
-    [_cfg, _servicios, _proveedores, _centrosCosto, _ocsGeneral, _ocsServicio, _ocsAlmacen, _proyectos] = await Promise.all([
+    [_cfg, _servicios, _proveedores, _centrosCosto, _ocsGeneral, _ocsServicio, _ocsAlmacen, _proyectos, _ocsSinFactura] = await Promise.all([
       api.config.get().catch(() => ({ aplica_igv: 1, tasa_igv: 18, monto_limite_sin_aprobacion: 5000 })),
       api.services.getServiciosActivos().catch(() => []),
       api.purchases.getProveedores().catch(() => []),
@@ -49,6 +50,7 @@ export const Logistica = async () => {
       api.ordenesCompra.list({ tipo_oc: 'SERVICIO' }).catch(() => []),
       api.ordenesCompra.list({ tipo_oc: 'ALMACEN' }).catch(() => []),
       api.cotizaciones.proyectosActivos({ todos: true }).catch(() => []),
+      api.ordenesCompra.list({ estado: 'CERRADA_SIN_FACTURA' }).catch(() => []),
     ]);
   } catch (e) {
     console.error('[Logistica] error cargando:', e);
@@ -70,6 +72,7 @@ export const Logistica = async () => {
     <div id="logi-panel-general"       class="logi-tab-content" style="display:none"></div>
     <div id="logi-panel-servicio"      class="logi-tab-content" style="display:none"></div>
     <div id="logi-panel-almacen"       class="logi-tab-content" style="display:none"></div>
+    <div id="logi-panel-sin-factura"   class="logi-tab-content" style="display:none"></div>
     <div id="logi-panel-dash"          class="logi-tab-content" style="display:none"></div>
   `;
 };
@@ -84,6 +87,7 @@ function initTabs() {
       { id: 'general',     label: `🏢 Gastos Generales`,    badge: _ocsGeneral.length },
       { id: 'servicio',    label: `🔧 Gastos de Servicio`,  badge: _ocsServicio.length },
       { id: 'almacen',     label: `📥 Compras Almacén`,     badge: _ocsAlmacen.length },
+      { id: 'sin-factura', label: `🗂 Sin facturar`,        badge: _ocsSinFactura.length },
       { id: 'dash',        label: '📊 Dashboard' },
     ],
     defaultTab: 'proveedores',
@@ -98,6 +102,7 @@ function initTabs() {
       if (id === 'general'     && !panel.dataset.rendered) renderTabGastos(panel, 'GENERAL');
       if (id === 'servicio'    && !panel.dataset.rendered) renderTabGastos(panel, 'SERVICIO');
       if (id === 'almacen'     && !panel.dataset.rendered) renderTabAlmacen(panel);
+      if (id === 'sin-factura' && !panel.dataset.rendered) renderTabSinFactura(panel);
       if (id === 'dash')                                   renderDashboard(panel);
     },
   });
@@ -372,6 +377,79 @@ function renderTabAlmacen(panel) {
   `;
 
   bindFormOCMulti(panel, 'ALMACEN');
+}
+
+// ─── TAB Sin facturar ──────────────────────────────────────────────────
+// Bandeja de OCs cerradas sin factura formal (caja chica). Permite asociar
+// la factura tardía cuando aparezca, moviendo la OC a FACTURADA.
+function renderTabSinFactura(panel) {
+  panel.dataset.rendered = '1';
+  const total = _ocsSinFactura.reduce((s, oc) => {
+    const t = oc.moneda === 'USD' ? Number(oc.total) * (Number(oc.tipo_cambio) || 1) : Number(oc.total);
+    return s + (t || 0);
+  }, 0);
+
+  if (!_ocsSinFactura.length) {
+    panel.innerHTML = `
+      <div class="card" style="margin-top:16px;padding:40px;text-align:center;color:var(--text-secondary)">
+        <div style="font-size:40px;margin-bottom:10px">🗂</div>
+        <div style="font-size:14px;font-weight:600">Sin OCs cerradas sin factura</div>
+        <div style="font-size:12px;margin-top:6px;max-width:520px;margin-left:auto;margin-right:auto;line-height:1.5">
+          Acá aparecen las OCs que cerraste con el botón <strong>"🗂 Cerrar sin facturar"</strong>
+          (típicamente caja chica, gastos sin sustento documental). Si después aparece la factura del proveedor,
+          podés asociarla desde acá para mover la OC al estado <strong>FACTURADA</strong>.
+        </div>
+      </div>`;
+    return;
+  }
+
+  panel.innerHTML = `
+    <div class="card" style="margin-top:16px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+        <div>
+          <h3 style="margin:0;font-size:15px">🗂 OCs Cerradas Sin Factura</h3>
+          <div style="font-size:12px;color:var(--text-secondary);margin-top:2px">
+            Pendientes de asociar comprobante. Total acumulado equivalente: <strong>${fPEN(total)}</strong>
+          </div>
+        </div>
+        <span style="background:#fff7ed;color:#9a3412;padding:5px 12px;border-radius:14px;font-size:12px;font-weight:600">
+          ${_ocsSinFactura.length} pendiente(s)
+        </span>
+      </div>
+      <div style="overflow-x:auto">
+        <table style="width:100%;border-collapse:collapse;font-size:12px">
+          <thead style="background:#f9fafb;border-bottom:2px solid #d9dad9">
+            <tr>
+              <th style="padding:10px;text-align:left">OC</th>
+              <th style="padding:10px;text-align:left">Fecha cierre</th>
+              <th style="padding:10px;text-align:left">Proveedor</th>
+              <th style="padding:10px;text-align:left">Tipo</th>
+              <th style="padding:10px;text-align:left">Centro de costo</th>
+              <th style="padding:10px;text-align:right">Total</th>
+              <th style="padding:10px;text-align:center">Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${_ocsSinFactura.map(oc => `
+              <tr style="border-bottom:1px solid #e5e7eb">
+                <td style="padding:10px;font-weight:700">
+                  <a href="#" onclick="event.preventDefault();OC.verOC(${oc.id_oc})" style="color:var(--primary-color);text-decoration:none">${oc.nro_oc}</a>
+                </td>
+                <td style="padding:10px;color:#6b7280">${fmtDate(oc.fecha_emision)}</td>
+                <td style="padding:10px">${oc.proveedor_nombre || '—'}</td>
+                <td style="padding:10px"><span style="font-size:10px;background:#e5e7eb;padding:2px 6px;border-radius:4px">${oc.tipo_oc}</span></td>
+                <td style="padding:10px;color:#6b7280">${oc.centro_costo || '—'}</td>
+                <td style="padding:10px;text-align:right;font-weight:700">${oc.moneda === 'USD' ? fUSD(oc.total) : fPEN(oc.total)}</td>
+                <td style="padding:10px;text-align:center;white-space:nowrap">
+                  <button onclick="OC.verOC(${oc.id_oc})" style="padding:5px 10px;background:#fff;color:#374151;border:1px solid #d1d5db;border-radius:4px;cursor:pointer;font-size:11px;margin-right:4px">👁 Ver</button>
+                  <button onclick="OC.asociarFactura(${oc.id_oc}, '${oc.nro_oc.replace(/'/g, "\\'")}')" style="padding:5px 10px;background:#7c3aed;color:white;border:none;border-radius:4px;cursor:pointer;font-size:11px">🧾 Asociar factura</button>
+                </td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>`;
 }
 
 // ─── TAB Dashboard ──────────────────────────────────────────────────────

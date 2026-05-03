@@ -25,7 +25,8 @@ import ConfiguracionService from '../configuracion/ConfiguracionService';
 export type EstadoOC =
   | 'BORRADOR' | 'APROBADA' | 'ENVIADA'
   | 'RECIBIDA_PARCIAL' | 'RECIBIDA'
-  | 'FACTURADA' | 'PAGADA' | 'ANULADA';
+  | 'FACTURADA' | 'PAGADA' | 'ANULADA'
+  | 'CERRADA_SIN_FACTURA';
 
 export interface LineaOC {
   orden?: number;
@@ -830,6 +831,194 @@ class OrdenCompraService {
     vals.push(filtros.limit || 200);
     const [rows] = await db.query(sql, vals);
     return rows;
+  }
+
+  /**
+   * Cierra una OC sin factura formal del proveedor (caja chica, gastos
+   * menores). Genera Gasto + Transacción EGRESO + (si SERVICIO) CostosServicio.
+   * NO crea Factura. La OC queda en CERRADA_SIN_FACTURA con estado_pago=PAGADO.
+   *
+   * Si la factura aparece tarde, usar asociarFacturaTardia() para enriquecer
+   * el Gasto existente con el nro_comprobante.
+   */
+  async cerrarSinFactura(
+    id_oc: number,
+    data: { concepto?: string; forma_pago_real?: string },
+    opts: { id_usuario?: number } = {}
+  ) {
+    const [rows]: any = await db.query(
+      `SELECT oc.*, p.razon_social AS proveedor_nombre
+         FROM OrdenesCompra oc
+         LEFT JOIN Proveedores p ON p.id_proveedor = oc.id_proveedor
+        WHERE oc.id_oc = ?`,
+      [id_oc]
+    );
+    const oc = rows[0];
+    if (!oc) throw new Error('OC no encontrada');
+    if (!['RECIBIDA', 'RECIBIDA_PARCIAL'].includes(oc.estado)) {
+      throw new Error(`OC debe estar RECIBIDA para cerrar sin factura (actual: ${oc.estado})`);
+    }
+    if (oc.tipo_oc === 'ALMACEN') {
+      throw new Error('OC ALMACEN NO puede cerrarse sin factura — las compras de stock requieren comprobante');
+    }
+
+    const tcOC = Number(oc.tipo_cambio) || 1;
+    const monto_base_pen = (Number(oc.subtotal) - Number(oc.descuento || 0)) * tcOC;
+    const igv_base_pen = Number(oc.igv) * tcOC;
+    const total_base_pen = Number(oc.total) * tcOC;
+    const fechaCierre = new Date().toISOString().slice(0, 10);
+    const conceptoFinal = (data.concepto || '').trim() || `Gasto sin factura — OC ${oc.nro_oc}`;
+    const formaPagoReal = (data.forma_pago_real || 'EFECTIVO').toUpperCase();
+
+    const conn = await db.getConnection();
+    await conn.beginTransaction();
+    try {
+      // 1. Insertar Gasto sin nro_comprobante
+      const tipo_logi = oc.tipo_oc === 'SERVICIO' ? 'SERVICIO' : 'GENERAL';
+      const [gastoRes]: any = await conn.query(
+        `INSERT INTO Gastos
+          (nro_oc, id_servicio, tipo_gasto, centro_costo, tipo_gasto_logistica,
+           fecha, concepto, proveedor_nombre, nro_comprobante,
+           moneda, tipo_cambio, aplica_igv,
+           monto_base, igv_base, total_base, estado, estado_pago)
+         VALUES (?, ?, 'OPERATIVO', ?, ?, ?, ?, ?, NULL,
+                 ?, ?, ?, ?, ?, ?, 'CONFIRMADO', 'PAGADO')`,
+        [
+          oc.nro_oc, oc.id_servicio || null,
+          oc.centro_costo, tipo_logi,
+          fechaCierre, conceptoFinal,
+          oc.proveedor_nombre || null,
+          oc.moneda, tcOC, !!oc.aplica_igv,
+          monto_base_pen, igv_base_pen, total_base_pen,
+        ]
+      );
+      const id_gasto = gastoRes.insertId;
+
+      // 2. Transacción EGRESO (estado REALIZADO porque ya se pagó)
+      await conn.query(
+        `INSERT INTO Transacciones
+          (id_cuenta, referencia_tipo, referencia_id, tipo_movimiento,
+           moneda, tipo_cambio, aplica_igv,
+           monto_original, igv_original, total_original,
+           monto_base, igv_base, total_base,
+           fecha, descripcion, estado)
+         VALUES (?, 'GASTO', ?, 'EGRESO', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'REALIZADO')`,
+        [
+          DEFAULT_ACCOUNT_ID, id_gasto, oc.moneda, tcOC, !!oc.aplica_igv,
+          Number(oc.subtotal) - Number(oc.descuento || 0), Number(oc.igv), Number(oc.total),
+          monto_base_pen, igv_base_pen, total_base_pen,
+          fechaCierre, `OC ${oc.nro_oc} cerrada sin factura · ${formaPagoReal}`,
+        ]
+      );
+
+      // 3. Si SERVICIO con vínculo a cotización → CostosServicio
+      if (oc.tipo_oc === 'SERVICIO' && (oc.id_cotizacion || oc.id_servicio)) {
+        await conn.query(
+          `INSERT INTO CostosServicio
+            (id_servicio, id_cotizacion, concepto, moneda, monto_original,
+             tipo_cambio, monto_base, tipo_costo, fecha)
+           VALUES (?, ?, ?, ?, ?, ?, ?, 'GASTO_OC_SIN_FACTURA', ?)`,
+          [
+            oc.id_servicio || null,
+            oc.id_cotizacion || null,
+            `OC ${oc.nro_oc} sin factura — ${conceptoFinal}`,
+            oc.moneda, Number(oc.total), tcOC, total_base_pen, fechaCierre,
+          ]
+        );
+      }
+
+      // 4. UPDATE OC
+      await conn.query(
+        `UPDATE OrdenesCompra
+            SET estado = 'CERRADA_SIN_FACTURA',
+                estado_pago = 'PAGADO',
+                observaciones = COALESCE(?, observaciones)
+          WHERE id_oc = ?`,
+        [
+          (oc.observaciones ? oc.observaciones + ' · ' : '') +
+          `[Cerrada sin factura · ${formaPagoReal}] ${conceptoFinal}`,
+          id_oc,
+        ]
+      );
+
+      await conn.commit();
+      return {
+        success: true,
+        estado: 'CERRADA_SIN_FACTURA',
+        id_gasto,
+      };
+    } catch (e) {
+      await conn.rollback();
+      throw e;
+    } finally {
+      conn.release();
+    }
+  }
+
+  /**
+   * Asocia una factura tardía a una OC que estaba CERRADA_SIN_FACTURA.
+   * Enriquece el Gasto existente con nro_comprobante + fecha_factura, mueve
+   * la OC a FACTURADA. NO crea Factura nueva — solo agrega el dato del
+   * comprobante al Gasto que ya existe.
+   *
+   * Sirve para casos donde el proveedor entrega la factura semanas después
+   * y querés mantener trazabilidad de gastos sin perder el registro original.
+   */
+  async asociarFacturaTardia(
+    id_oc: number,
+    data: { nro_comprobante: string; fecha_factura: string }
+  ) {
+    const nroComp = (data.nro_comprobante || '').trim();
+    if (!nroComp) throw new Error('nro_comprobante requerido');
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(data.fecha_factura || '')) {
+      throw new Error('fecha_factura debe ser YYYY-MM-DD');
+    }
+
+    const conn = await db.getConnection();
+    await conn.beginTransaction();
+    try {
+      const [rows]: any = await conn.query(
+        `SELECT id_oc, estado, nro_oc FROM OrdenesCompra WHERE id_oc = ? FOR UPDATE`,
+        [id_oc]
+      );
+      const oc = rows[0];
+      if (!oc) throw new Error('OC no encontrada');
+      if (oc.estado !== 'CERRADA_SIN_FACTURA') {
+        throw new Error(`Solo OCs en CERRADA_SIN_FACTURA pueden asociar factura tardía (actual: ${oc.estado})`);
+      }
+
+      // Buscar el Gasto generado al cerrar (vía nro_oc — único entre Gastos)
+      const [gastosRows]: any = await conn.query(
+        `SELECT id_gasto FROM Gastos WHERE nro_oc = ? AND nro_comprobante IS NULL ORDER BY id_gasto DESC LIMIT 1`,
+        [oc.nro_oc]
+      );
+      const idGasto = gastosRows[0]?.id_gasto;
+      if (!idGasto) {
+        throw new Error('No se encontró el Gasto asociado al cierre de la OC. Contactá soporte.');
+      }
+
+      // Enriquecer el Gasto con el comprobante
+      await conn.query(
+        `UPDATE Gastos
+            SET nro_comprobante = ?, fecha = ?, tipo_ultima_accion = 'FACTURA_TARDIA'
+          WHERE id_gasto = ?`,
+        [nroComp, data.fecha_factura, idGasto]
+      );
+
+      // Mover OC a FACTURADA
+      await conn.query(
+        `UPDATE OrdenesCompra SET estado = 'FACTURADA' WHERE id_oc = ?`,
+        [id_oc]
+      );
+
+      await conn.commit();
+      return { success: true, estado: 'FACTURADA', id_gasto: idGasto };
+    } catch (e) {
+      await conn.rollback();
+      throw e;
+    } finally {
+      conn.release();
+    }
   }
 
   async obtener(id_oc: number) {

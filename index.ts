@@ -1289,6 +1289,24 @@ ocRouter.put('/:id/fecha', validateIdParam, auditLog('OrdenCompra', 'UPDATE'), a
   res.json(await OrdenCompraService.actualizarFecha(id, fecha));
 });
 
+// Cerrar OC sin factura formal (gastos caja chica). Genera Gasto + Tx EGRESO.
+ocRouter.post('/:id/cerrar-sin-factura', validateIdParam, auditLog('OrdenCompra', 'UPDATE'), async (req: any, res: Response) => {
+  res.json(await OrdenCompraService.cerrarSinFactura(
+    Number(req.params.id),
+    req.body || {},
+    { id_usuario: req.user?.id_usuario }
+  ));
+});
+
+// Asociar factura tardía a una OC CERRADA_SIN_FACTURA. Enriquece el Gasto
+// existente con nro_comprobante + fecha_factura. Mueve OC a FACTURADA.
+ocRouter.post('/:id/asociar-factura-tardia', validateIdParam, auditLog('OrdenCompra', 'UPDATE'), async (req: Request, res: Response) => {
+  res.json(await OrdenCompraService.asociarFacturaTardia(
+    Number(req.params.id),
+    req.body || {}
+  ));
+});
+
 // Asignar ítems del catálogo a líneas de OC (post-resolución).
 ocRouter.post('/:id/asignar-items', validateIdParam, auditLog('OrdenCompra', 'UPDATE'), async (req: Request, res: Response) => {
   res.json(await OrdenCompraService.asignarItemsALineas(
