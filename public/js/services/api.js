@@ -331,6 +331,7 @@ export const api = {
     enviar:     (id)         => post(`/ordenes-compra/${id}/enviar`, {}),
     recibir:    (id, lineas) => post(`/ordenes-compra/${id}/recibir`, { lineas }),
     asignarItems: (id, asignaciones) => post(`/ordenes-compra/${id}/asignar-items`, { asignaciones }),
+    editarFecha: (id, fecha) => put(`/ordenes-compra/${id}/fecha`, { fecha }),
     facturar:   (id, data)   => post(`/ordenes-compra/${id}/facturar`, data),
     anular:     (id, motivo) => post(`/ordenes-compra/${id}/anular`, { motivo }),
     reactivar:  (id)         => post(`/ordenes-compra/${id}/reactivar`, {}),

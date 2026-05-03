@@ -249,7 +249,44 @@ function init() {
     },
   });
 
-  window.OC = { nuevaOC, verOC, aprobar, enviar, recibir, facturar, anular, reactivar, eliminarOC, editar, descargarPDF, reporteROC };
+  window.OC = { nuevaOC, verOC, aprobar, enviar, recibir, facturar, anular, reactivar, eliminarOC, editar, editarFecha, descargarPDF, reporteROC };
+}
+
+// Editar SOLO la fecha de emisión (corregir data histórica) — disponible en
+// cualquier estado salvo ANULADA. No toca estado/items/totales/correlativo.
+async function editarFecha(id, nro, fechaActual) {
+  const nuevaFecha = await new Promise((resolve) => {
+    const ov = document.createElement('div');
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
+    ov.innerHTML = `
+      <div style="background:#fff;border-radius:8px;padding:22px;width:380px;max-width:95vw;box-shadow:0 20px 50px rgba(0,0,0,.3)">
+        <h3 style="margin:0 0 8px;font-size:15px">📅 Editar fecha · OC ${nro}</h3>
+        <p style="margin:0 0 14px;font-size:12px;color:#6b7280">
+          Útil para corregir data histórica. Solo cambia la fecha de emisión; no toca estado, totales ni el correlativo.
+        </p>
+        <label style="font-size:11px;color:#6b7280;display:block;margin-bottom:4px">Nueva fecha de emisión</label>
+        <input id="ocf-fecha" type="date" value="${fechaActual || new Date().toISOString().slice(0,10)}"
+          style="width:100%;padding:8px;border:1px solid #d1d5db;border-radius:5px;font-size:13px">
+        <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:16px">
+          <button id="ocf-cancel" style="padding:7px 14px;background:#fff;border:1px solid #d1d5db;border-radius:5px;cursor:pointer;font-size:12px">Cancelar</button>
+          <button id="ocf-ok" style="padding:7px 18px;background:#2563eb;color:#fff;border:none;border-radius:5px;cursor:pointer;font-size:12px;font-weight:600">Guardar</button>
+        </div>
+      </div>`;
+    document.body.appendChild(ov);
+    const close = (val) => { ov.remove(); resolve(val); };
+    ov.querySelector('#ocf-cancel').onclick = () => close(null);
+    ov.querySelector('#ocf-ok').onclick = () => {
+      const v = ov.querySelector('#ocf-fecha').value;
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) return showError('Fecha inválida');
+      close(v);
+    };
+  });
+  if (!nuevaFecha) return;
+  try {
+    await api.ordenesCompra.editarFecha(id, nuevaFecha);
+    showSuccess(`Fecha de OC ${nro} actualizada a ${nuevaFecha}`);
+    setTimeout(() => refreshOC(), 600);
+  } catch (e) { showError(e.message); }
 }
 
 // Helper local: rol del usuario logueado (para mostrar botón Eliminar solo a GERENTE).
@@ -449,10 +486,15 @@ function renderLista(panel) {
             ${_ocs.map(oc => {
               const color = ESTADO_COLOR[oc.estado];
               const monto = oc.moneda === 'USD' ? fUSD(oc.total) : fPEN(oc.total);
+              const fechaIso = oc.fecha_emision ? String(oc.fecha_emision).split('T')[0] : '';
+              const puedeEditarFecha = oc.estado !== 'ANULADA';
               return `
                 <tr style="border-bottom:1px solid #e5e7eb">
                   <td style="padding:8px;font-weight:700"><a href="#" onclick="event.preventDefault();OC.verOC(${oc.id_oc})" style="color:var(--primary-color);text-decoration:none">${oc.nro_oc}</a></td>
-                  <td style="padding:8px">${fmtDate(oc.fecha_emision)}</td>
+                  <td style="padding:8px;white-space:nowrap">
+                    ${fmtDate(oc.fecha_emision)}
+                    ${puedeEditarFecha ? `<button onclick="OC.editarFecha(${oc.id_oc},'${oc.nro_oc.replace(/'/g, "\\'")}','${fechaIso}')" title="Editar fecha (corregir data histórica)" style="background:none;border:none;color:#2563eb;cursor:pointer;font-size:12px;padding:0 2px;margin-left:4px">📅</button>` : ''}
+                  </td>
                   <td style="padding:8px">${oc.proveedor_nombre || '—'}</td>
                   <td style="padding:8px;text-align:center"><span style="font-size:10px;background:#e5e7eb;padding:2px 6px;border-radius:4px">${oc.tipo_oc}</span></td>
                   <td style="padding:8px;text-align:center"><span style="font-size:10px;padding:1px 6px;border-radius:4px;background:${oc.empresa === 'PT' ? '#16a34a' : '#676767'};color:white">${oc.empresa}</span></td>

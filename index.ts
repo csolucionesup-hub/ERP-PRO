@@ -1272,6 +1272,14 @@ ocRouter.post('/:id/recibir', validateIdParam, auditLog('OrdenCompra', 'UPDATE')
   }
 });
 
+// Actualizar SOLO la fecha de emisión (corregir data histórica sin tocar nada más)
+ocRouter.put('/:id/fecha', validateIdParam, auditLog('OrdenCompra', 'UPDATE'), async (req: Request, res: Response) => {
+  const id = parseInt(req.params.id as string);
+  const fecha = String(req.body?.fecha || req.body?.fecha_emision || '').trim();
+  if (!fecha) return res.status(400).json({ error: 'fecha requerida' });
+  res.json(await OrdenCompraService.actualizarFecha(id, fecha));
+});
+
 // Asignar ítems del catálogo a líneas de OC (post-resolución).
 ocRouter.post('/:id/asignar-items', validateIdParam, auditLog('OrdenCompra', 'UPDATE'), async (req: Request, res: Response) => {
   res.json(await OrdenCompraService.asignarItemsALineas(

@@ -544,6 +544,45 @@ class OrdenCompraService {
    * eliminar después de APROBADA, garantiza que `id_compra_generada` es NULL
    * (recién se setea al facturar) — no hay nada que revertir en Compras.
    */
+  /**
+   * Actualiza SOLO la fecha de emisión de una OC. Para corregir data histórica
+   * sin disparar hooks de estado, sin re-asignar correlativo, sin re-calcular
+   * totales ni nada.
+   *
+   * Disponible en cualquier estado excepto ANULADA. El correlativo `nro_oc`
+   * (`NNN - YYYY`) se mantiene aunque cambies el año de la fecha — si querés
+   * corregir el correlativo también es un caso aparte, no se hace acá.
+   */
+  async actualizarFecha(id_oc: number, fecha_emision: string) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha_emision)) {
+      throw new Error('Fecha inválida — debe ser YYYY-MM-DD');
+    }
+    const conn = await db.getConnection();
+    await conn.beginTransaction();
+    try {
+      const [rows]: any = await conn.query(
+        `SELECT estado FROM OrdenesCompra WHERE id_oc = ? FOR UPDATE`,
+        [id_oc]
+      );
+      const oc = rows[0];
+      if (!oc) throw new Error('OC no encontrada');
+      if (oc.estado === 'ANULADA') {
+        throw new Error('No se puede editar la fecha de una OC anulada');
+      }
+      await conn.query(
+        `UPDATE OrdenesCompra SET fecha_emision = ? WHERE id_oc = ?`,
+        [fecha_emision, id_oc]
+      );
+      await conn.commit();
+      return { ok: true, fecha_emision };
+    } catch (e) {
+      await conn.rollback();
+      throw e;
+    } finally {
+      conn.release();
+    }
+  }
+
   async eliminar(id_oc: number) {
     const [rows]: any = await db.query('SELECT estado FROM OrdenesCompra WHERE id_oc = ?', [id_oc]);
     if (!rows[0]) throw new Error('OC no encontrada');
