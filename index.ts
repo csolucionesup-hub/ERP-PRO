@@ -588,6 +588,14 @@ apiRouter.put('/cotizaciones/:id/estado', validateIdParam, validateParams(cotiza
   res.json({ success: true });
 });
 
+// Actualizar SOLO la fecha (para corregir data histórica sin tocar estado/hooks)
+apiRouter.put('/cotizaciones/:id/fecha', validateIdParam, auditLog('Cotizacion', 'UPDATE'), async (req: Request, res: Response) => {
+  const id = parseInt(req.params.id as string);
+  const fecha = String(req.body?.fecha || '').trim();
+  if (!fecha) return res.status(400).json({ error: 'fecha requerida' });
+  res.json(await CotizacionService.actualizarFecha(id, fecha));
+});
+
 apiRouter.post('/cotizaciones/:id/anular', validateIdParam, auditLog('Cotizacion', 'ANULAR'), async (req: Request, res: Response) => {
   await CotizacionService.anularCotizacion(parseInt(req.params.id as string));
   res.json({ success: true });

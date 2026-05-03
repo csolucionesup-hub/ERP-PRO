@@ -633,6 +633,44 @@ class CotizacionService {
     }
   }
 
+  /**
+   * Actualiza SOLO la fecha de una cotización. Útil para corregir data
+   * histórica mal cargada sin disparar los hooks de cambio de estado
+   * (estado_financiero, fecha_aprobacion_comercial, etc.).
+   *
+   * Disponible en cualquier estado excepto ANULADA. No cambia el correlativo,
+   * ni los items, ni el cliente, ni los totales. Solo `fecha`.
+   */
+  async actualizarFecha(id: number, fecha: string) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) {
+      throw new Error('Fecha inválida — debe ser YYYY-MM-DD');
+    }
+    const conn = await db.getConnection();
+    await conn.beginTransaction();
+    try {
+      const [rows]: any = await conn.query(
+        `SELECT estado FROM Cotizaciones WHERE id_cotizacion = ? FOR UPDATE`,
+        [id]
+      );
+      const cot = rows[0];
+      if (!cot) throw new Error('Cotización no encontrada');
+      if (cot.estado === 'ANULADA') {
+        throw new Error('No se puede editar la fecha de una cotización anulada');
+      }
+      await conn.query(
+        `UPDATE Cotizaciones SET fecha = ? WHERE id_cotizacion = ?`,
+        [fecha, id]
+      );
+      await conn.commit();
+      return { ok: true, fecha };
+    } catch (e) {
+      await conn.rollback();
+      throw e;
+    } finally {
+      conn.release();
+    }
+  }
+
   async anularCotizacion(id: number) {
     const conn = await db.getConnection();
     await conn.beginTransaction();

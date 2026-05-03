@@ -146,6 +146,7 @@ export const api = {
     createCotizacion: (data)   => post('/cotizaciones', data),
     updateCotizacion: (id, d)  => put(`/cotizaciones/${id}`, d),
     updateEstado:     (id, e)  => put(`/cotizaciones/${id}/estado`, { estado: e }),
+    editarFecha:      (id, f)  => put(`/cotizaciones/${id}/fecha`, { fecha: f }),
     anularCotizacion: (id)     => post(`/cotizaciones/${id}/anular`),
     deleteCotizacion: (id)     => del(`/cotizaciones/${id}`),
     resetTodo:        ()       => del('/cotizaciones/reset'),

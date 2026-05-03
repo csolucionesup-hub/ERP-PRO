@@ -961,12 +961,16 @@ function archivoTable(cotizaciones, filtroMarca) {
     const anulada = c.estado === 'ANULADA';
     const marcaBadge = MARCAS[c.marca]?.badgeHTML || '';
 
+    const fechaIso = c.fecha ? String(c.fecha).split('T')[0] : '';
     return `
       <tr class="${anulada ? 'row-anulada' : ''}">
         <td>
           ${marcaBadge}
           <div style="font-size:12px;font-weight:700;margin-top:3px">${c.nro_cotizacion}</div>
-          <div style="font-size:10px;color:var(--text-secondary)">${c.fecha ? String(c.fecha).split('T')[0] : '—'}</div>
+          <div style="font-size:10px;color:var(--text-secondary);display:flex;align-items:center;gap:4px">
+            <span>${fechaIso || '—'}</span>
+            ${!anulada ? `<button onclick="window.editarFechaCotizacion(${c.id_cotizacion},'${c.nro_cotizacion.replace(/'/g, "\\'")}','${fechaIso}')" title="Editar fecha (corregir data histórica)" style="background:none;border:none;color:#2563eb;cursor:pointer;font-size:11px;padding:0">📅</button>` : ''}
+          </div>
           ${esUSD ? `<span style="font-size:10px;background:#16a34a;color:#fff;padding:1px 5px;border-radius:3px">USD</span>` : ''}
         </td>
         <td>
@@ -1598,6 +1602,47 @@ export const Comercial = async () => {
         setTimeout(() => window.navigate('comercial'), 1500);
       } catch (err) {
         window.showError?.('Error reseteando: ' + (err.message || JSON.stringify(err)));
+      }
+    };
+
+    window.editarFechaCotizacion = async (id, nro, fechaActual) => {
+      // Modal mini para corregir fecha — disponible en cualquier estado salvo
+      // ANULADA. Solo cambia el campo `fecha`, no toca estado/hooks/totales.
+      const nuevaFecha = await new Promise((resolve) => {
+        const ov = document.createElement('div');
+        ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
+        ov.innerHTML = `
+          <div style="background:#fff;border-radius:8px;padding:22px;width:380px;max-width:95vw;box-shadow:0 20px 50px rgba(0,0,0,.3)">
+            <h3 style="margin:0 0 8px;font-size:15px">📅 Editar fecha · ${nro}</h3>
+            <p style="margin:0 0 14px;font-size:12px;color:#6b7280">
+              Útil para corregir data histórica. Solo cambia la fecha; no toca el estado, totales ni el correlativo.
+            </p>
+            <label style="font-size:11px;color:#6b7280;display:block;margin-bottom:4px">Nueva fecha</label>
+            <input id="ef-fecha" type="date" value="${fechaActual || new Date().toISOString().slice(0,10)}"
+              style="width:100%;padding:8px;border:1px solid #d1d5db;border-radius:5px;font-size:13px">
+            <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:16px">
+              <button id="ef-cancel" style="padding:7px 14px;background:#fff;border:1px solid #d1d5db;border-radius:5px;cursor:pointer;font-size:12px">Cancelar</button>
+              <button id="ef-ok" style="padding:7px 18px;background:#2563eb;color:#fff;border:none;border-radius:5px;cursor:pointer;font-size:12px;font-weight:600">Guardar</button>
+            </div>
+          </div>`;
+        document.body.appendChild(ov);
+        const close = (val) => { ov.remove(); resolve(val); };
+        ov.querySelector('#ef-cancel').onclick = () => close(null);
+        ov.querySelector('#ef-ok').onclick = () => {
+          const v = ov.querySelector('#ef-fecha').value;
+          if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) {
+            return window.showError?.('Fecha inválida');
+          }
+          close(v);
+        };
+      });
+      if (!nuevaFecha) return;
+      try {
+        await api.cotizaciones.editarFecha(id, nuevaFecha);
+        window.showSuccess?.(`Fecha de ${nro} actualizada a ${nuevaFecha}`);
+        setTimeout(() => window.navigate('comercial'), 600);
+      } catch (err) {
+        window.showError?.('Error: ' + (err.message || JSON.stringify(err)));
       }
     };
 
