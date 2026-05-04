@@ -170,9 +170,9 @@ async function renderTabCentros(panel) {
         <td style="padding:8px;text-align:center">${cc.activo ? '✅' : '❌'}</td>
         <td style="padding:8px;white-space:nowrap">
           <button onclick="Logistica.descargarROC('${cc.nombre.replace(/'/g, "\\'")}')" style="padding:4px 8px;font-size:11px;background:#065f46;color:white;border:none;border-radius:4px;cursor:pointer" title="Reporte semanal de OCs (Excel)">📊 ROC</button>
-          <button onclick="Logistica.editarCC(${cc.id_centro_costo})" style="padding:4px 8px;font-size:11px;background:var(--info);color:white;border:none;border-radius:4px;cursor:pointer">Editar</button>
-          <button onclick="Logistica.toggleCC(${cc.id_centro_costo}, ${cc.activo})" style="padding:4px 8px;font-size:11px;background:${cc.activo ? '#f59e0b' : '#16a34a'};color:white;border:none;border-radius:4px;cursor:pointer">${cc.activo ? 'Desactivar' : 'Activar'}</button>
-          <button onclick="Logistica.eliminarCC(${cc.id_centro_costo}, '${cc.nombre.replace(/'/g, "\\'")}')" style="padding:4px 8px;font-size:11px;background:#dc2626;color:white;border:none;border-radius:4px;cursor:pointer">×</button>
+          <button onclick="Logistica.editarCC(${cc.id_centro_costo})" title="Editar nombre y datos del centro de costo" style="padding:4px 8px;font-size:11px;background:var(--info);color:white;border:none;border-radius:4px;cursor:pointer">Editar</button>
+          <button onclick="Logistica.toggleCC(${cc.id_centro_costo}, ${cc.activo})" title="${cc.activo ? 'Desactivar (no aparece como opción en formularios pero sigue vinculado a OCs/gastos históricos)' : 'Reactivar para volver a usar en nuevos formularios'}" style="padding:4px 8px;font-size:11px;background:${cc.activo ? '#f59e0b' : '#16a34a'};color:white;border:none;border-radius:4px;cursor:pointer">${cc.activo ? 'Desactivar' : 'Activar'}</button>
+          <button onclick="Logistica.eliminarCC(${cc.id_centro_costo}, '${cc.nombre.replace(/'/g, "\\'")}')" title="Eliminar permanente (solo si no tiene OCs/gastos asociados)" aria-label="Eliminar centro de costo" style="padding:4px 8px;font-size:11px;background:#dc2626;color:white;border:none;border-radius:4px;cursor:pointer">×</button>
         </td>
       </tr>`;
   }).join('');
@@ -267,7 +267,7 @@ async function editarCC(id) {
     <div style="background:white;border-radius:10px;padding:24px;width:420px;max-width:95vw">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
         <h3 style="margin:0">Editar centro de costo</h3>
-        <button onclick="document.getElementById('modal-edit-cc').remove()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#999">×</button>
+        <button onclick="document.getElementById('modal-edit-cc').remove()" title="Cerrar sin guardar cambios" aria-label="Cerrar" style="background:none;border:none;font-size:20px;cursor:pointer;color:#999">×</button>
       </div>
       <form id="form-edit-cc" style="display:flex;flex-direction:column;gap:10px">
         <select name="tipo" required style="padding:8px 10px;border:1px solid #d1d5db;border-radius:6px">
@@ -552,10 +552,10 @@ function renderTablaOCs(ocs, opts = {}) {
           ${ocs.map(o => {
             const nroSafe = String(o.nro_oc).replace(/'/g, "\\'");
             const btnAnular = (o.estado !== 'ANULADA' && o.estado !== 'PAGADA')
-              ? `<button onclick="Logistica.anularOC(${o.id_oc})" title="Anular" style="padding:3px 8px;border:1px solid #dc2626;background:transparent;color:#dc2626;border-radius:4px;cursor:pointer;font-size:11px;margin-left:4px">✕</button>`
+              ? `<button onclick="Logistica.anularOC(${o.id_oc})" title="Anular esta OC (cambia el estado, no borra). El correlativo queda quemado." aria-label="Anular OC" style="padding:3px 8px;border:1px solid #dc2626;background:transparent;color:#dc2626;border-radius:4px;cursor:pointer;font-size:11px;margin-left:4px">✕</button>`
               : '';
             const btnReactivar = (o.estado === 'ANULADA' && esGerente)
-              ? `<button onclick="Logistica.reactivarOC(${o.id_oc}, '${nroSafe}')" title="Reactivar (vuelve a BORRADOR)" style="padding:3px 8px;border:1px solid #0891b2;background:transparent;color:#0891b2;border-radius:4px;cursor:pointer;font-size:11px;margin-left:4px">♻ Reactivar</button>`
+              ? `<button onclick="Logistica.reactivarOC(${o.id_oc}, '${nroSafe}')" title="Devolver la OC anulada a BORRADOR para retomar su flujo (solo GERENTE)" style="padding:3px 8px;border:1px solid #0891b2;background:transparent;color:#0891b2;border-radius:4px;cursor:pointer;font-size:11px;margin-left:4px">♻ Reactivar</button>`
               : '';
             return `
               <tr style="border-bottom:1px solid #e5e7eb">
@@ -831,7 +831,7 @@ function bindFormOCMulti(panel, tipoOC) {
       <input class="l-cant" type="number" step="0.01" min="0.01" value="${data.cantidad || 1}" required style="font-size:12px;text-align:right;padding:6px;border:1px solid #d1d5db;border-radius:4px">
       <input class="l-pu" type="number" step="0.01" min="0" placeholder="P/U" required style="font-size:12px;text-align:right;padding:6px;border:1px solid #d1d5db;border-radius:4px">
       <span class="l-total" style="text-align:right;font-weight:600;padding-top:8px">S/ 0.00</span>
-      <button type="button" class="l-del" style="color:#dc2626;background:transparent;border:none;cursor:pointer;padding-top:6px;font-size:14px">✕</button>
+      <button type="button" class="l-del" title="Quitar esta línea de la OC" aria-label="Quitar línea" style="color:#dc2626;background:transparent;border:none;cursor:pointer;padding-top:6px;font-size:14px">✕</button>
     `;
     lineasWrap.appendChild(row);
     row.querySelectorAll('input').forEach(i => i.addEventListener('input', recalc));

@@ -407,7 +407,7 @@ async function modalGestionCuentas() {
             <h3 style="margin:0 0 3px 0;font-size:15px">🏦 Gestión de cuentas bancarias</h3>
             <div style="font-size:12px;color:var(--text-secondary)">Catálogo de cuentas disponibles para recibir cobranzas</div>
           </div>
-          <button id="gc-x" style="background:none;border:none;font-size:22px;cursor:pointer;color:#9ca3af">×</button>
+          <button id="gc-x" title="Cerrar gestión de cuentas" aria-label="Cerrar" style="background:none;border:none;font-size:22px;cursor:pointer;color:#9ca3af">×</button>
         </div>
 
         <div style="padding:16px 22px">
@@ -588,7 +588,7 @@ async function modalGastosBancarios() {
                 <td style="padding:6px">${g.concepto}</td>
                 <td style="padding:6px;text-align:right;color:#dc2626;font-weight:600">-${fMoney(g.monto, g.moneda)}</td>
                 <td style="padding:6px;text-align:center">
-                  <button class="btn-del-gb" data-id="${g.id_gasto_bancario}" style="color:#dc2626;background:none;border:none;cursor:pointer;font-size:14px">🗑</button>
+                  <button class="btn-del-gb" data-id="${g.id_gasto_bancario}" title="Eliminar este gasto bancario (ITF, comisión). Repone el saldo de la cuenta y borra el movimiento del libro bancos." aria-label="Eliminar gasto bancario" style="color:#dc2626;background:none;border:none;cursor:pointer;font-size:14px">🗑</button>
                 </td>
               </tr>`;
             }).join('')}
@@ -758,10 +758,10 @@ async function modalLibroBancos() {
           <td style="padding:6px;text-align:center">${estadoBadgeM(m.estado_conciliacion)}<br>${fuenteBadge(m.fuente)}</td>
           <td style="padding:6px;text-align:center;white-space:nowrap">
             ${m.estado_conciliacion === 'POR_CONCILIAR'
-              ? `<button class="btn-conc-m" data-id="${m.id_movimiento}" title="Conciliar manual" style="color:#16a34a;background:none;border:none;cursor:pointer">✓</button>
-                 <button class="btn-ign-m" data-id="${m.id_movimiento}" title="Ignorar" style="color:#6b7280;background:none;border:none;cursor:pointer">⊘</button>` : ''}
+              ? `<button class="btn-conc-m" data-id="${m.id_movimiento}" title="Marcar este movimiento como conciliado contra el extracto bancario" aria-label="Conciliar" style="color:#16a34a;background:none;border:none;cursor:pointer">✓</button>
+                 <button class="btn-ign-m" data-id="${m.id_movimiento}" title="Ignorar este movimiento (no aparecerá en pendientes pero sigue en el libro)" aria-label="Ignorar" style="color:#6b7280;background:none;border:none;cursor:pointer">⊘</button>` : ''}
             ${m.fuente !== 'AUTO'
-              ? `<button class="btn-del-m" data-id="${m.id_movimiento}" title="Eliminar" style="color:#dc2626;background:none;border:none;cursor:pointer">🗑</button>` : ''}
+              ? `<button class="btn-del-m" data-id="${m.id_movimiento}" title="Eliminar este movimiento manual / importado del libro bancos (no se puede eliminar movimientos AUTO generados desde cobranzas/gastos)" aria-label="Eliminar movimiento" style="color:#dc2626;background:none;border:none;cursor:pointer">🗑</button>` : ''}
           </td>
         </tr>
       `;
@@ -1179,9 +1179,9 @@ async function modalConciliacion() {
                 <td style="padding:6px;text-align:center">${estadoBadge(m.estado_conciliacion)}</td>
                 <td style="padding:6px;text-align:center;white-space:nowrap">
                   ${m.estado_conciliacion === 'POR_CONCILIAR' ? `
-                    <button class="btn-match" data-id="${m.id_movimiento}" style="background:#16a34a;color:#fff;border:none;padding:3px 8px;border-radius:3px;font-size:10px;cursor:pointer;margin-right:3px">🔗 Match</button>
-                    <button class="btn-ignorar" data-id="${m.id_movimiento}" style="background:#6b7280;color:#fff;border:none;padding:3px 8px;border-radius:3px;font-size:10px;cursor:pointer">Ignorar</button>
-                  ` : `<button class="btn-del-mov" data-id="${m.id_movimiento}" style="color:#dc2626;background:none;border:none;cursor:pointer;font-size:14px">🗑</button>`}
+                    <button class="btn-match" data-id="${m.id_movimiento}" title="Buscar y vincular este movimiento bancario con una cobranza/gasto del ERP que coincida en monto y fecha" style="background:#16a34a;color:#fff;border:none;padding:3px 8px;border-radius:3px;font-size:10px;cursor:pointer;margin-right:3px">🔗 Match</button>
+                    <button class="btn-ignorar" data-id="${m.id_movimiento}" title="Marcar como ignorado (sin contraparte en el ERP). Sale de la lista de pendientes." style="background:#6b7280;color:#fff;border:none;padding:3px 8px;border-radius:3px;font-size:10px;cursor:pointer">Ignorar</button>
+                  ` : `<button class="btn-del-mov" data-id="${m.id_movimiento}" title="Eliminar este movimiento del libro bancos" aria-label="Eliminar movimiento" style="color:#dc2626;background:none;border:none;cursor:pointer;font-size:14px">🗑</button>`}
                 </td>
               </tr>
             `).join('')}
@@ -1380,7 +1380,7 @@ async function modalPagoIGV(dashboard) {
                 <td style="padding:6px;font-size:11px">${p.cuenta_nombre || '—'}</td>
                 <td style="padding:6px;text-align:right;color:#dc2626;font-weight:600">-${fMoney(p.monto, p.moneda)}</td>
                 <td style="padding:6px;text-align:center">
-                  <button class="btn-del-igv" data-id="${p.id_pago}" style="color:#dc2626;background:none;border:none;cursor:pointer;font-size:14px">🗑</button>
+                  <button class="btn-del-igv" data-id="${p.id_pago}" title="Eliminar este pago de impuesto. Repone el saldo a la cuenta y borra el movimiento bancario asociado." aria-label="Eliminar pago de impuesto" style="color:#dc2626;background:none;border:none;cursor:pointer;font-size:14px">🗑</button>
                 </td>
               </tr>
             `).join('')}
@@ -1606,7 +1606,7 @@ async function modalDetalle(id) {
           <h3 style="margin:0 0 3px 0;font-size:15px">Detalle de cobranza · ${c.nro_cotizacion}</h3>
           <div style="font-size:12px;color:var(--text-secondary)">${c.cliente} · ${c.proyecto || ''}</div>
         </div>
-        <button id="det-x" style="background:none;border:none;font-size:22px;cursor:pointer;color:#9ca3af">×</button>
+        <button id="det-x" title="Cerrar detalle de cobranza" aria-label="Cerrar" style="background:none;border:none;font-size:22px;cursor:pointer;color:#9ca3af">×</button>
       </div>
 
       <div style="padding:16px 22px">

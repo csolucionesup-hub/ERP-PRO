@@ -266,7 +266,7 @@ async function modalEmitirFactura(preview, opts = {}) {
           <td style="padding:4px"><textarea data-f="descripcion" rows="2" style="width:100%;padding:5px;border:1px solid #d1d5db;border-radius:4px;font-size:12px;resize:vertical">${d.descripcion}</textarea></td>
           <td style="padding:4px"><input data-f="precio_unitario" type="number" step="0.01" min="0" value="${d.precio_unitario}" style="width:90px;padding:5px;border:1px solid #d1d5db;border-radius:4px;text-align:right;font-size:12px"></td>
           <td style="padding:4px;text-align:center">
-            <button type="button" data-act="del" style="background:none;border:none;color:#dc2626;cursor:pointer;font-size:16px">×</button>
+            <button type="button" data-act="del" title="Quitar esta línea de la factura" aria-label="Quitar línea" style="background:none;border:none;color:#dc2626;cursor:pointer;font-size:16px">×</button>
           </td>
         </tr>
       `).join('');
@@ -634,7 +634,7 @@ function formNueva(marca, tcHoy, opts = {}) {
                 <input type="file" id="file-foto-${idp}" accept="image/*" style="display:none">
                 <span id="foto-status-${idp}" style="font-size:11px;color:var(--text-secondary)">Ninguna foto seleccionada</span>
                 <img id="foto-preview-${idp}" style="display:none;width:36px;height:36px;object-fit:cover;border-radius:4px;border:1px solid #e5e7eb">
-                <button type="button" id="foto-clear-${idp}" style="display:none;background:none;border:none;color:#dc2626;cursor:pointer;font-size:14px">✕</button>
+                <button type="button" id="foto-clear-${idp}" title="Quitar esta foto" aria-label="Quitar foto" style="display:none;background:none;border:none;color:#dc2626;cursor:pointer;font-size:14px">✕</button>
               </div>
               <div style="display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:5px;align-items:end">
                 <input name="unidad" placeholder="Unidad"
@@ -1908,7 +1908,7 @@ export const Comercial = async () => {
       ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9998;display:flex;align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto';
       ov.innerHTML = `
         <div style="background:#fff;border-radius:8px;max-width:820px;width:100%;box-shadow:0 20px 50px rgba(0,0,0,.3);position:relative;margin:auto">
-          <button id="edit-cot-close" style="position:absolute;top:10px;right:14px;background:none;border:none;font-size:22px;cursor:pointer;color:#666;z-index:2">✕</button>
+          <button id="edit-cot-close" title="Cerrar editor sin guardar cambios" aria-label="Cerrar" style="position:absolute;top:10px;right:14px;background:none;border:none;font-size:22px;cursor:pointer;color:#666;z-index:2">✕</button>
           <div style="padding:20px">
             ${formNueva(marca, { valor_venta: data.tipo_cambio, es_hoy: false, fecha: data.fecha }, { editData: data, idp: idpEdit })}
           </div>
@@ -1946,7 +1946,7 @@ export const Comercial = async () => {
             if (u.rol === 'GERENTE') {
               return `<button onclick="window.resetComercial()"
                 style="padding:6px 10px;border:1px dashed #ddd;background:transparent;color:#999;border-radius:4px;cursor:pointer;font-size:11px"
-                title="Borra TODAS las cotizaciones. Solo Gerente.">
+                title="⚠ ZONA PELIGROSA (solo GERENTE) — Borra TODAS las cotizaciones de la BD, sus líneas, cobranzas y costos. Reinicia los correlativos. Las fotos en Cloudinary y los PDFs en Drive NO se borran. Pide tipear 'BORRAR TODO' para confirmar. Usar solo en migración inicial.">
                 ⟲ Reset
               </button>`;
             }

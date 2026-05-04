@@ -197,7 +197,7 @@ function renderPreview(entidad, preview) {
     <div class="card" style="margin-top:20px">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
         <h3 style="margin:0;font-size:15px">📊 Preview — ${entidad.toUpperCase()}</h3>
-        <button onclick="document.getElementById('preview-container').innerHTML=''" style="background:transparent;border:none;font-size:18px;cursor:pointer">✕</button>
+        <button onclick="document.getElementById('preview-container').innerHTML=''" title="Cerrar previsualización" aria-label="Cerrar" style="background:transparent;border:none;font-size:18px;cursor:pointer">✕</button>
       </div>
 
       <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px">

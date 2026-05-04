@@ -339,7 +339,7 @@ function reporteROC() {
       <div style="background:white;padding:26px;border-radius:12px;width:460px;max-width:90vw">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px">
           <h2 style="margin:0">📊 Generar ROC Semanal</h2>
-          <button onclick="document.getElementById('ov-roc').remove()" style="background:none;border:none;font-size:22px;cursor:pointer">✕</button>
+          <button onclick="document.getElementById('ov-roc').remove()" title="Cerrar reporte sin descargar" aria-label="Cerrar" style="background:none;border:none;font-size:22px;cursor:pointer">✕</button>
         </div>
         <p style="color:var(--text-secondary);font-size:13px;margin:0 0 18px">
           Descarga el Reporte de Órdenes de Compra en Excel, agrupado por semanas y con totales en S/ y $, para el centro de costo seleccionado.
@@ -1479,7 +1479,7 @@ function nuevaOC(editData) {
         <input placeholder="UND" value="${l.unidad}" oninput="OC._setL(${i},'unidad',this.value)">
         <input type="number" step="0.01" placeholder="Cant" value="${l.cantidad}" oninput="OC._setL(${i},'cantidad',Number(this.value))">
         <input type="number" step="0.01" placeholder="P.Unit" value="${l.precio_unitario}" oninput="OC._setL(${i},'precio_unitario',Number(this.value))">
-        <button type="button" onclick="OC._delL(${i})" style="background:transparent;border:none;color:#dc2626;cursor:pointer;font-size:18px">×</button>
+        <button type="button" onclick="OC._delL(${i})" title="Quitar esta línea de la OC" aria-label="Quitar línea" style="background:transparent;border:none;color:#dc2626;cursor:pointer;font-size:18px">×</button>
       </div>
     `).join('');
   }

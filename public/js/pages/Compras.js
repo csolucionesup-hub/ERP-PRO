@@ -55,7 +55,7 @@ export const Compras = async () => {
              <td>${l.cantidad}</td>
              <td style="text-align:right">${formatCurrency(l.precio || 0)}</td>
              <td style="text-align:right">${formatCurrency(rowSubtotal || 0)}</td>
-             <td><button type="button" class="action-btn" style="color:red; border:none" onclick="window.removeLinea(${i})">X</button></td>
+             <td><button type="button" class="action-btn" title="Quitar este ítem de la compra" aria-label="Quitar ítem" style="color:red; border:none" onclick="window.removeLinea(${i})">X</button></td>
          </tr>`;
        });
        tbody.innerHTML = html;
@@ -284,7 +284,7 @@ export const Compras = async () => {
              <td style="text-align:center">${l.cantidad}</td>
              <td style="text-align:right">${formatCurrency(l.precio)}</td>
              <td style="text-align:right">${formatCurrency(rowSub)}</td>
-             <td><button type="button" style="background:none;border:none;color:red;cursor:pointer;font-size:12px;padding:2px 6px" onclick="window.editRemoveLinea(${i})">✕</button></td>
+             <td><button type="button" title="Quitar este ítem del detalle de la compra" aria-label="Quitar ítem" style="background:none;border:none;color:red;cursor:pointer;font-size:12px;padding:2px 6px" onclick="window.editRemoveLinea(${i})">✕</button></td>
            </tr>`;
          });
          tbody.innerHTML = html;

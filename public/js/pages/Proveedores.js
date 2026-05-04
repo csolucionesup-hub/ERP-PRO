@@ -46,8 +46,8 @@ export const Proveedores = async () => {
         <td>${metodosHTML}</td>
         <td>
           <div style="display:flex;gap:4px">
-            <button class="action-btn" style="background:var(--info);color:white" onclick="window.editarProveedor(${p.id_proveedor})">Editar</button>
-            <button class="action-btn" style="background:#ef4444;color:white" onclick="window.eliminarProveedor(${p.id_proveedor},'${(p.razon_social || '').replace(/'/g, "\\'")}')">×</button>
+            <button class="action-btn" style="background:var(--info);color:white" title="Editar datos del proveedor: razón social, RUC, contactos, cuentas bancarias, dirección. Los cambios se ven reflejados en próximas OCs (no toca documentos históricos)." onclick="window.editarProveedor(${p.id_proveedor})">Editar</button>
+            <button class="action-btn" style="background:#ef4444;color:white" title="Eliminar proveedor (solo si no tiene OCs, compras o gastos asociados). Si está vinculado, anulalo en sus documentos primero." aria-label="Eliminar proveedor" onclick="window.eliminarProveedor(${p.id_proveedor},'${(p.razon_social || '').replace(/'/g, "\\'")}')">×</button>
           </div>
         </td>
       </tr>
@@ -247,7 +247,7 @@ export const Proveedores = async () => {
         <div style="background:white;border-radius:10px;padding:24px;width:560px;max-height:90vh;overflow-y:auto;box-shadow:0 12px 40px rgba(0,0,0,0.25)">
           <div style="display:flex;justify-content:space-between;align-items:center;margin:0 0 14px">
             <h3 style="margin:0;font-size:15px;font-weight:700">Editar Proveedor</h3>
-            <button onclick="document.getElementById('modal-editar-prov').remove()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#999">×</button>
+            <button onclick="document.getElementById('modal-editar-prov').remove()" title="Cerrar sin guardar cambios" aria-label="Cerrar" style="background:none;border:none;font-size:20px;cursor:pointer;color:#999">×</button>
           </div>
           ${renderProveedorForm(p, 'form-editar-prov')}
         </div>

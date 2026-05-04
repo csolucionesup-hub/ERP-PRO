@@ -187,7 +187,7 @@ window.toggleAlertas = () => {
   panel.innerHTML = `
     <div style="padding:12px 14px;border-bottom:1px solid #e5e7eb;display:flex;justify-content:space-between;align-items:center;background:#fafafa">
       <strong style="font-size:13px">🔔 Alertas (${_alertasCache.length})</strong>
-      <button onclick="document.getElementById('alertas-panel')?.remove()" style="background:none;border:none;font-size:18px;cursor:pointer;color:#999">×</button>
+      <button onclick="document.getElementById('alertas-panel')?.remove()" title="Cerrar panel de alertas" aria-label="Cerrar" style="background:none;border:none;font-size:18px;cursor:pointer;color:#999">×</button>
     </div>
     ${items}
   `;
