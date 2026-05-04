@@ -2,13 +2,13 @@
 
 > **LEER PRIMERO.** Este documento es la fuente de verdad sobre qué está hecho, qué falta y dónde estamos parados. Se actualiza al cierre de cada sesión de trabajo.
 
-**Última actualización:** 2026-05-03 (noche larga — sesión "todo lo conveniente": UI Facturas Emitidas + UI Gastos del periodo + NCs entrantes del proveedor con migración 055)
+**Última actualización:** 2026-05-04 (sesión maratón 20 commits — préstamos históricos, auto-refresh sesión, 4 decimales OC, kanban CERRADA_SIN_FACTURA, Fase 1 Rendiciones de Gastos, fix + Crear nuevo SyntaxError)
 **Rama activa:** `main`
-**Último commit pusheado:** `263d9b8 feat(finanzas): NCs entrantes del proveedor — registro local + ajuste a Compra/Gasto`
+**Último commit pusheado:** `f3cbf67 fix(rendiciones): JOIN Proveedores para obtener proveedor_nombre`
 **Servidor dev:** `npx ts-node index.ts` en `D:\proyectos\ERP-PRO` → `http://localhost:3000`
 **Producción:** `erp-pro-production-e4c0.up.railway.app` — Railway (deploy automático desde main)
-**Cache buster JS actual:** `v=20260503r8` (app.js) — **convención**: hardcoded en CADA import dentro de app.js. Ver gotcha #36 en CLAUDE.md.
-**Migraciones BD:** 001 → 037 + 042 → 055 aplicadas (Supabase Postgres project `fhlrxlsscerfiuuyiejw`). Migraciones 051-054 fueron aplicadas por Julio el 03/05 (correlativo manual flag, OC.id_cotizacion, CostoServicio.id_cotizacion, OC.estado CERRADA_SIN_FACTURA). Migración 055 aplicada en esta sesión (NCs entrantes — extiende NotasCredito).
+**Cache buster JS actual:** `v=20260504r7` (app.js) — **convención**: hardcoded en CADA import dentro de app.js. Ver gotcha #36 en CLAUDE.md.
+**Migraciones BD:** 001 → 037 + 042 → 056 aplicadas (Supabase Postgres project `fhlrxlsscerfiuuyiejw`). Migración 055 (NCs entrantes — extiende NotasCredito) y 056 (Rendiciones de Gastos — Rendiciones + RendicionItems + RendicionAdjuntos) aplicadas en estas sesiones.
 
 ---
 
@@ -707,6 +707,97 @@ Acciones manuales pendientes (no código):
 
 ---
 
+## Sesión 04/05/2026 — Maratón (10 commits + 1 fix de cierre)
+
+Sesión muy larga con Julio probando en producción y reportando issues + features nuevas. **10 commits pusheados a `main`** (`0dc578a..f3cbf67`).
+
+### Bloque 1 — Préstamos: carga histórica con abonos previos
+
+| Commit | Cambio |
+|---|---|
+| `0dc578a` | **Feature**: campo opcional "Pagado/Cobrado a la fecha" en form de Préstamos Tomados/Otorgados. Caso real Julio: cargando préstamos 2023-2024 con abonos parciales ya hechos. Bloque amarillo "Carga histórica" con input + saldo restante calculado en vivo. Backend `createTomado`/`createOtorgado` aceptan `monto_pagado_inicial` (Tomado) y `monto_cobrado_inicial` (Otorgado), validan vs total, calculan saldo y estado correcto (PENDIENTE/PARCIAL/PAGADO). |
+| `344d6cc` | **Fix**: blindar schemas Zod (`prestamoTomadoCreateSchema` y `prestamoOtorgadoCreateSchema`) declarando `monto_pagado_inicial`/`monto_cobrado_inicial`. El flujo HOY funcionaba porque Zod modo strip elimina extras silenciosamente, pero quedaba sin validación formal. Si alguien agrega `.strict()` después rompería sin warning. Smoke test E2E vía MCP confirmó que el flujo guarda saldo y estado correctos. |
+
+### Bloque 2 — Fix sesión stale (Luis sin botones GERENTE)
+
+| Commit | Cambio |
+|---|---|
+| `40fed5c` | **Bug crítico fixed**: Luis tenía rol GERENTE en BD pero no veía los botones que solo muestra a GERENTE en OCs/Cotizaciones/Compras. Causa: `localStorage.erp_user` y JWT se setean SOLO al login. Si el GERENTE cambia el rol de un usuario después, los chequeos en frontend (todos leen `localStorage.erp_user.rol`) ven el rol viejo hasta que el usuario haga logout/login. Fix: `AuthService.getProfileFromDB(id_usuario, jwtPayload)` lee BD fresca y emite nuevo JWT si detecta cambio. `GET /api/auth/me` reescrito para usar este método. `app.js init()` llama `refreshSessionFromServer()` antes de pintar la SPA — si hay cambio de rol, actualiza localStorage automático. Si /me responde 401 (usuario desactivado) redirige a login. |
+| `327429c` | **Mejora**: `refreshSessionFromServer()` también se llama en cada `navigate()`. Si detecta cambio de rol/flags hace `window.location.reload()` automático con toast "Tus permisos fueron actualizados" — única forma 100% segura porque varias páginas leen rol al renderizar y guardan en variables locales. Una recarga manual única (Ctrl+Shift+R) deja el flujo robusto para siempre. |
+
+### Bloque 3 — UX OC: editar líneas + 4 decimales
+
+| Commit | Cambio |
+|---|---|
+| `6428cf8` | **Bug 1 fixed**: dropdown de proveedor vacío al editar OC desde otros módulos (kanban en Logística). Causa: `_proveedores`/`_servicios`/`_cfg` solo se cargan en init de OrdenesCompra; al llegar al modal sin pasar por ahí quedaban en `[]`. Fix: `nuevaOC()` ahora es async y lazy-loadea esas listas si están vacías. **Bug 2 fixed**: 33 inputs de monto con `step="0.01"` no permitían tipear más de 2 decimales. Find/replace global a `step="0.0001"` en 9 archivos pages/. |
+| `2d76600` | **Feature**: precios unitarios de OC aceptan 4 decimales mientras IGV apagado (caso real: proveedor cotiza S/ 23.7899/u). Al marcar checkbox "Aplica IGV 18%" se redondean precios y cantidades a 2 decimales (norma SUNAT/SIRE), con toast informativo "Precios redondeados a 2 decimales (norma SUNAT al aplicar IGV)". Tooltip nuevo al lado del checkbox explica la regla. Aplicado en form Logistica.js + modal Editar OC en OrdenesCompra.js. BD ya soportaba 4 decimales en `detalleordencompra.precio_unitario` (DECIMAL(14,4)) — sin migración. |
+
+### Bloque 4 — Kanban: estado faltante
+
+| Commit | Cambio |
+|---|---|
+| `297dd07` | **Bug fixed**: una OC pagada en efectivo (cerrada con `cerrarSinFactura()`, estado `CERRADA_SIN_FACTURA` introducido en mig 054) aparecía en pestaña "Sin facturar" pero NO en el kanban de OCs porque el array `estadosOrden` la excluía. Fix: agregar `'CERRADA_SIN_FACTURA'` al final del array (después de PAGADA) + cambiar grid de 7 columnas fijas a `repeat(${estadosOrden.length},1fr)` para que escale. ESTADO_COLOR ya tenía la entrada (icon 🗂, naranja-tierra). Cubre también el kanban embebido en Logística → tab OC (que delega a `OrdenesCompra()`). |
+
+### Bloque 5 — Fase 1 Rendiciones de Gastos por OC
+
+| Commit | Cambio |
+|---|---|
+| `0933058` | **Feature grande — MVP de Rendiciones de Gastos** (módulo Administración). Caso de uso: tras pagar una OC (típicamente reembolso a colaborador para que compre items en efectivo), el responsable arma un expediente consolidado con comprobantes, firmas y resumen — exportable como PDF para archivo interno + entrega al contador. Decisiones acordadas con Julio: 1 OC = 1 rendición (id_oc UNIQUE), cualquier usuario firma cualquier casillero (auditado), adjuntos como referencia visual NO crean Compras/Gastos auto, numeración usa N° de OC. Migración 056 aplicada (Rendiciones + RendicionItems + RendicionAdjuntos con FKs CASCADE). `RendicionService.ts` con CRUD + cálculo automático de total_gastos/saldo_disponible + firmas con audit. `RendicionPDFService.ts` con cabecera + items + 3 firmas (texto en MVP, firma escaneada en Fase 2). 12 endpoints `/api/rendiciones/*` + multer para adjuntos a Cloudinary. Tab nueva "🧾 Rendiciones de Gastos" en Administración con modal "+ Nueva desde OC" (dropdown filtrado) + modal de edición con cabecera editable, items CRUD, adjuntos drag&drop, 3 checkboxes de firma con confirmación, botón Ver PDF + Eliminar (solo GERENTE). |
+
+### Bloque 6 — Cierre de bugs sueltos
+
+| Commit | Cambio |
+|---|---|
+| `df4120a` | **Bug fixed**: botón "+ Crear nuevo" en modal "Resolver ítems del catálogo" (al recibir OC ALMACEN sin id_item asignado) lanzaba `Uncaught SyntaxError: Invalid or unexpected token` → pantalla blanca. Causa: `onclick="window.OC._crearItem(${id}, '${desc.replace(/'/g, "\\'")}', ...)"` solo escapaba comillas simples; saltos de línea, comillas dobles y backslash rompían la sintaxis JS al renderizar. Fix: refactor a `data-crear-item="${id_detalle}"` + wire-up con `wireCrearItemButtons()` que busca la línea en `lineasPendientes` (objeto JS, no HTML) y llama `_crearItem` con args resueltos. Helper `escHtml()` agregado para escapar la descripción al renderizar la celda. Re-engancha handlers tras cada `renderTabla()`. Smoke test E2E con MCP: login + POST /api/inventario + cleanup confirmó flujo completo OK. |
+| `f3cbf67` | **Bug fixed**: pestaña "Rendiciones de Gastos" mostraba toast "Error ejecutando consulta en BD" porque las queries `listar()` y `obtener()` hacían `SELECT oc.proveedor_nombre`, columna que NO existe en `OrdenesCompra` (solo guarda id_proveedor — el nombre vive en Proveedores.razon_social). Fix: agregar `LEFT JOIN Proveedores prov ON prov.id_proveedor = oc.id_proveedor` y reemplazar `oc.proveedor_nombre` por `prov.razon_social AS proveedor_nombre`. Verificado vía MCP que la query corregida ejecuta OK. |
+
+### Lo que queda PENDIENTE de Rendiciones
+
+| Fase | Alcance | Esfuerzo |
+|---|---|---|
+| **Fase 2** | Firmas escaneadas embebidas en PDF — agregar `firma_url` a Usuarios + UI para subir firma una vez en perfil + check que embebe la imagen al firmar | 1.5h |
+| **Fase 3** | Merge de adjuntos al PDF final — usar `pdf-lib` para mergear constancia + OC + facturas en un solo expediente descargable | 2-2.5h |
+| **Test real** | Julio probó la creación pero el feedback completo está pendiente. Caso concreto: OC 013-2026 con 3 comprobantes (2 facturas Peruvian Screw + 1 boleta Restaurante Yaiza) | (test usuario) |
+
+### Resumen de bugs resueltos en la sesión 04/05
+
+| Bug | Commit | Categoría |
+|---|---|---|
+| ROC Logística usaba prompt() nativo feo | `35477b2` (03/05 noche) | UX |
+| KPI Caja Finanzas ≠ alerta CAJA_BAJA | `041569e` (03/05 noche) | Coherencia datos |
+| PurchaseService usa INGRESO en kárdex | `4883fa6` (03/05) | Convención BD |
+| Página Servicios legacy en router | `ad94323` (03/05) | Limpieza |
+| Backend Fase B sin UI listado facturas | `4024eb1` (03/05) | Cierre Fase B |
+| Sin vista cruzada de gastos auditoría | `cc330b9` (03/05) | Feature |
+| Faltaba módulo NCs entrantes | `263d9b8` (03/05) | Feature + mig 055 |
+| Préstamos no soportan abonos previos | `0dc578a` (04/05) | Carga histórica |
+| Schemas Zod préstamos no declaraban monto_pagado_inicial | `344d6cc` (04/05) | Convención 3 capas |
+| Luis (GERENTE) no veía botones | `40fed5c` + `327429c` (04/05) | Auth — sesión stale |
+| Dropdown proveedor vacío al editar OC | `6428cf8` (04/05) | UX |
+| Inputs P.U. con step=0.01 | `6428cf8` (04/05) | UX |
+| Falta redondeo automático al marcar IGV | `2d76600` (04/05) | UX SUNAT |
+| OC CERRADA_SIN_FACTURA invisible en kanban | `297dd07` (04/05) | UX |
+| Sin módulo Rendiciones de Gastos | `0933058` (04/05) | Feature + mig 056 |
+| "+ Crear nuevo" en Resolver ítems lanzaba SyntaxError | `df4120a` (04/05) | Bug crítico |
+| Pestaña Rendiciones tira "Error consulta BD" | `f3cbf67` (04/05) | Bug crítico |
+
+### Pendientes priorizados al cierre 04/05
+
+| Prio | Tarea | Esfuerzo |
+|---|---|---|
+| **TEST** | **Julio probará Rendición de OC 013-2026** con sus 3 comprobantes reales (2 facturas Peruvian Screw + 1 boleta Restaurante Yaiza). Feedback antes de avanzar a Fase 2. | (usuario) |
+| ALTA | **Fase 2 Rendiciones**: firma escaneada del usuario embebida en el PDF al marcar el check (subir una vez al perfil + Cloudinary) | 1.5h |
+| MEDIA | **Fase 3 Rendiciones**: merge de adjuntos al PDF final con `pdf-lib` (expediente único descargable) | 2-2.5h |
+| GRANDE | **Fase D Contabilidad** — Plan de Cuentas + asientos automáticos | 2-3 semanas |
+| MUY BAJA | Fase 2 OC edit pesado en RECIBIDA/FACTURADA con reverso automático | 6h+ |
+
+**Acciones manuales Julio** (no código):
+- Rotar `CLOUDINARY_API_SECRET` en Cloudinary console + Railway env var
+- Gestionar certificado digital SUNAT + Usuario Secundario SOL (desbloquea Nubefact REAL + envío SIRE + emisión NCs salientes)
+- QA mobile real iPhone Safari + Android Chrome con dispositivo físico
+
+---
+
 ## Auditoría 02/05/2026 — donde estamos parados (post-cierre Fase C)
 
 | Fase del Plan Maestro | Estado | Notas |
@@ -752,9 +843,9 @@ Acciones manuales pendientes (no código):
 
 ---
 
-## Snapshot de `git status` (al 2026-05-03 noche larga)
+## Snapshot de `git status` (al 2026-05-04 sesión maratón)
 
-**Working tree de este worktree limpio.** Todo pusheado a `origin/main`. Railway desplegado, sirviendo `v=20260503r8`.
+**Working tree de este worktree limpio.** Todo pusheado a `origin/main`. Railway desplegado, sirviendo `v=20260504r7`.
 
 **Acumulado de commits desde 27/04:**
 - 10 commits rediseño Enterprise UI (27/04)
@@ -773,9 +864,10 @@ Acciones manuales pendientes (no código):
 - 4 commits sesión 03/05 mañana+tarde (universal edit/delete + tooltips, `b76abf7..97a7e8e`)
 - 2 commits sesión 03/05 noche (modal ROC Logística + unificar Caja KPI vs alerta, `35477b2..041569e`)
 - 2 commits sesión 03/05 noche tarde (bug INGRESO→ENTRADA + cleanup Servicios legacy, `4883fa6..ad94323`)
-- **3 commits sesión 03/05 noche larga (UI Facturas Emitidas + UI Gastos del periodo + NCs entrantes con migración 055, `4024eb1..263d9b8`)**
+- 3 commits sesión 03/05 noche larga (UI Facturas Emitidas + UI Gastos del periodo + NCs entrantes con migración 055, `4024eb1..263d9b8`)
+- **10 commits sesión 04/05 maratón (préstamos histórico + auto-refresh sesión + 4 decimales OC + kanban + Fase 1 Rendiciones + fix SyntaxError, `0dc578a..f3cbf67`)**
 
-**Total: 78 commits** desde el rediseño Enterprise.
+**Total: 88 commits** desde el rediseño Enterprise.
 
 ## Para Claude (próxima sesión)
 
@@ -795,6 +887,10 @@ Si Julio dice "sigamos con cotizaciones" o reporta un bug del módulo Comercial:
 9. ~~Bug latente PurchaseService INGRESO vs ENTRADA~~ → cerrado en `4883fa6` (03/05 noche tarde). Convención: `MovimientosInventario.tipo_movimiento` usa `'ENTRADA'`/`'SALIDA'`/`'AJUSTE'`/`'ANULACION_*'`. `Transacciones.tipo_movimiento` usa `'INGRESO'`/`'EGRESO'` (financieras). No mezclar.
 10. **Saldos de Caja — fuente única `CobranzasService.calcularSaldosNetos()`** (desde `041569e` 03/05 noche). Cualquier KPI o alerta que mencione "saldo en caja", "Caja Soles", "Caja Dólares" debe consumir este helper, NO leer `Cuentas.saldo_actual` directamente (ese campo es snapshot legacy y diverge). Fórmula: `cobranzas DEPOSITO_BANCO - GastoBancario - PagosImpuestos` por moneda. NO incluye Banco de la Nación (detracciones se manejan en `bn` del dashboard). Si Julio reporta un mismatch entre alerta y dashboard de Finanzas, lo primero que hay que verificar es que ambos lados consuman el helper.
 11. **NCs (Notas de Crédito) — tabla `NotasCredito` modela DOS direcciones** (desde `263d9b8` 03/05). Columna `direccion`: `'EMITIDA'` (Metal Engineers → SUNAT vía Nubefact, bloqueado por certificado) y `'RECIBIDA'` (proveedor → registro local que ajusta Compra/Gasto). Para RECIBIDAS: se llena `proveedor_ruc/razon_social` + `id_compra_referencia` o `id_gasto_referencia`; estado_sunat = `'REGISTRADA'`. UNIQUE serie+numero es índice parcial: solo aplica a EMITIDAS (RECIBIDAS pueden colisionar entre proveedores distintos). Para emitir NCs SALIENTES cuando llegue el certificado, extender `NotaCreditoService` con método `emitirSaliente()` usando `NubefactPayloadBuilder.buildNotaCredito` que ya existe.
+12. **Auto-refresh de sesión** (desde `40fed5c` + `327429c` 04/05). `localStorage.erp_user` se setea SOLO al login. Si el GERENTE cambia el rol/módulos/permisos de un usuario después, el localStorage queda stale hasta logout. Solucionado: `app.js init()` y `navigate()` llaman `refreshSessionFromServer()` que va a `GET /api/auth/me` (que ahora lee BD fresca con `AuthService.getProfileFromDB`). Si detecta cambio de rol/flags hace `window.location.reload()` automático con toast. Si /me devuelve 401 (usuario desactivado) redirige a login. Para que un usuario afectado vea los cambios necesita UN solo Ctrl+Shift+R; después funciona automático para siempre.
+13. **OrdenesCompra NO guarda `proveedor_nombre`** — solo `id_proveedor`. Para mostrar el nombre, JOIN con `Proveedores prov ON prov.id_proveedor = oc.id_proveedor` y usar `prov.razon_social`. Bug histórico: queries que asumen snapshot del nombre en OC fallan. Fix aplicado en RendicionService (`f3cbf67` 04/05). Si vas a hacer otra query nueva contra OC y necesitás el proveedor, recordá el JOIN.
+14. **Rendiciones de Gastos — Fase 1 MVP en producción** (desde `0933058` 04/05). 1 OC = 1 rendición (id_oc UNIQUE). Tab "🧾 Rendiciones de Gastos" en módulo Administración. PDF horizontal con cabecera + items + 3 firmas (texto). Adjuntos en Cloudinary (carpeta `metalengineers/rendiciones/{id}`). Cualquier usuario firma cualquier casillero (auditado), GERENTE puede quitar firma de cualquiera. Eliminar rendición es solo GERENTE. **Fases siguientes**: Fase 2 = firma escaneada embebida (1.5h), Fase 3 = merge de anexos al PDF (2-2.5h con `pdf-lib`).
+15. **Patrón onclick inline con strings = peligroso**. Si pasás un string al onclick interpolando con `${variable.replace(/'/g, "\\'")}`, vas a romper si la variable tiene comillas dobles, saltos de línea o backslash. Síntoma típico: `Uncaught SyntaxError: Invalid or unexpected token` + pantalla blanca. Patrón seguro: usar `data-attribute="${id}"` y wire-up post-render con `querySelectorAll('button[data-x]')` + `forEach(b => b.onclick = ...)`. Resolver los strings desde la fuente de datos JS, no del HTML. Caso histórico: `df4120a` (modal Resolver ítems del catálogo).
 
 ### Estado del filesystem (worktree principal)
 - Working tree limpio en este worktree (`elegant-herschel-050bb4`).
