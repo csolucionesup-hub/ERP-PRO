@@ -33,6 +33,7 @@ import AdjuntosService from './app/modules/configuracion/AdjuntosService';
 import NubefactService from './app/modules/facturacion/NubefactService';
 import FacturaService from './app/modules/facturacion/FacturaService';
 import FacturaPDFService from './app/modules/facturacion/FacturaPDFService';
+import NotaCreditoService from './app/modules/notas-credito/NotaCreditoService';
 import PLEExporter from './app/modules/facturacion/PLEExporter';
 import { FacturacionCron } from './app/modules/facturacion/FacturacionCron';
 import ImportadorService, { EntidadImportable } from './app/modules/importador/ImportadorService';
@@ -1028,6 +1029,45 @@ facturasRouter.get('/:id/pdf', validateIdParam, async (req: Request, res: Respon
 });
 
 app.use('/api/facturas', facturasRouter);
+
+// ===== NOTAS DE CRÉDITO =====
+// Hoy cubre NCs RECIBIDAS del proveedor (registro local que ajusta
+// Compra/Gasto). NCs SALIENTES (emisión vía Nubefact) bloqueadas por
+// certificado digital + Usuario Secundario SOL.
+const notasCreditoRouter = express.Router();
+notasCreditoRouter.use(requireAuth);
+notasCreditoRouter.use(requireModulo('FINANZAS'));
+
+notasCreditoRouter.get('/', async (req: Request, res: Response) => {
+  res.json(await NotaCreditoService.listar({
+    direccion:    req.query.direccion as any,
+    desde:        req.query.desde as string | undefined,
+    hasta:        req.query.hasta as string | undefined,
+    proveedor_ruc:req.query.proveedor_ruc as string | undefined,
+    estado_sunat: req.query.estado_sunat as string | undefined,
+    limit:        req.query.limit ? Number(req.query.limit) : undefined,
+  }));
+});
+
+notasCreditoRouter.get('/:id', validateIdParam, async (req: Request, res: Response) => {
+  res.json(await NotaCreditoService.obtener(parseInt(req.params.id as string)));
+});
+
+notasCreditoRouter.post('/recibida', auditLog('NotaCredito', 'CREATE'), async (req: any, res: Response) => {
+  const result = await NotaCreditoService.registrarEntrante(req.body, {
+    id_usuario_emisor: req.user?.id_usuario,
+  });
+  res.json(result);
+});
+
+notasCreditoRouter.delete('/:id', validateIdParam, auditLog('NotaCredito', 'DELETE'), async (req: any, res: Response) => {
+  if (req.user?.rol !== 'GERENTE') {
+    return res.status(403).json({ error: 'Solo el GERENTE puede eliminar NCs.' });
+  }
+  res.json(await NotaCreditoService.eliminarEntrante(parseInt(req.params.id as string)));
+});
+
+app.use('/api/notas-credito', notasCreditoRouter);
 
 // ===== LIBROS ELECTRÓNICOS (PLE) SUNAT =====
 const pleRouter = express.Router();

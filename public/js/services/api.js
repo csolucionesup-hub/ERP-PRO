@@ -323,6 +323,16 @@ export const api = {
     consultarEstado:  (id)    => post(`/facturas/${id}/consultar-estado`),
     pdfUrl:           (id)    => `/api/facturas/${id}/pdf`,
   },
+  notasCredito: {
+    list: (filtros = {}) => {
+      const p = new URLSearchParams();
+      Object.entries(filtros).forEach(([k, v]) => { if (v != null && v !== '') p.append(k, v); });
+      return get(`/notas-credito${p.toString() ? '?' + p : ''}`);
+    },
+    get:              (id)    => get(`/notas-credito/${id}`),
+    registrarEntrante:(data)  => post('/notas-credito/recibida', data),
+    eliminar:         (id)    => del(`/notas-credito/${id}`),
+  },
   centrosCosto: {
     list:    (soloActivos = false) => get(`/centros-costo${soloActivos ? '?activos=1' : ''}`),
     resumen: (anio)    => get(`/centros-costo/resumen${anio ? '?anio=' + anio : ''}`),

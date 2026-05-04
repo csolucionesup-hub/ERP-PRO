@@ -2285,6 +2285,373 @@ async function modalGastosPeriodo() {
   cargar();
 }
 
+// ── Modal: Notas de Crédito recibidas del proveedor ──────────
+async function modalNotasCreditoRecibidas() {
+  const ov = document.createElement('div');
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
+  const box = document.createElement('div');
+  box.style.cssText = 'background:#fff;border-radius:8px;padding:22px;max-width:1180px;width:100%;max-height:92vh;overflow:auto';
+  ov.appendChild(box);
+
+  // ── Helpers de formato ──
+  const fmtDate = (s) => s ? String(s).slice(0,10).split('-').reverse().join('/') : '—';
+  const fmtMoney = (m, mon) => (mon === 'USD' ? '$' : 'S/') + ' ' + Number(m || 0).toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+  // Catálogo de motivos SUNAT para Notas de Crédito
+  const MOTIVOS = [
+    { c: '01', d: 'Anulación de la operación' },
+    { c: '02', d: 'Anulación por error en el RUC' },
+    { c: '03', d: 'Corrección por error en la descripción' },
+    { c: '04', d: 'Descuento global' },
+    { c: '05', d: 'Descuento por ítem' },
+    { c: '06', d: 'Devolución total' },
+    { c: '07', d: 'Devolución por ítem' },
+    { c: '08', d: 'Bonificación' },
+    { c: '09', d: 'Disminución en el valor' },
+    { c: '10', d: 'Otros' },
+  ];
+
+  let _ncs = [];
+  let _docs = [];   // catálogo combinado de Compras+Gastos para el dropdown
+  let userRol = '';
+  try { userRol = JSON.parse(localStorage.getItem('erp_user') || '{}').rol || ''; } catch {}
+
+  // ── Cargar lista de NCs RECIBIDAS ──
+  const cargar = async () => {
+    const tabla = box.querySelector('#tabla-nc');
+    if (tabla) tabla.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:25px;color:#6b7280">⏳ Cargando…</td></tr>`;
+    try {
+      _ncs = await api.notasCredito.list({ direccion: 'RECIBIDA' });
+      const filas = (_ncs || []).map(n => `
+        <tr style="border-bottom:1px solid #f3f4f6">
+          <td style="padding:7px 8px;font-size:11px;font-weight:600">${n.serie}-${String(n.numero).padStart(6,'0')}</td>
+          <td style="padding:7px 8px;font-size:11px">${fmtDate(n.fecha_emision)}</td>
+          <td style="padding:7px 8px;font-size:11px">
+            <div style="font-weight:600">${n.proveedor_razon_social || '—'}</div>
+            <div style="font-size:10px;color:#6b7280">${n.proveedor_ruc || ''}</div>
+          </td>
+          <td style="padding:7px 8px;font-size:11px">
+            ${n.tipo_doc_referencia} ${n.serie_referencia}-${String(n.numero_referencia).padStart(6,'0')}
+            <div style="font-size:10px;color:#6b7280">
+              ${n.id_compra_referencia ? `→ Compra #${n.id_compra_referencia}` : ''}
+              ${n.id_gasto_referencia  ? `→ Gasto #${n.id_gasto_referencia}`   : ''}
+            </div>
+          </td>
+          <td style="padding:7px 8px;font-size:10px">
+            <span style="background:#fef3c7;color:#92400e;padding:1px 6px;border-radius:6px">${n.motivo_codigo}</span>
+            <span style="margin-left:4px">${n.motivo_descripcion}</span>
+          </td>
+          <td style="padding:7px 8px;font-size:11px;text-align:right;font-variant-numeric:tabular-nums;font-weight:600">${fmtMoney(n.total, n.moneda)}</td>
+          <td style="padding:7px 8px;font-size:10px;text-align:center">
+            <span style="background:#d1fae5;color:#065f46;padding:2px 7px;border-radius:8px">📥 RECIBIDA</span>
+          </td>
+          <td style="padding:7px 8px;text-align:right">
+            ${userRol === 'GERENTE' ? `<button data-eliminar-nc="${n.id_nota}"
+              title="Eliminar NC y revertir el ajuste a la Compra/Gasto"
+              style="padding:3px 7px;font-size:11px;background:#fee2e2;color:#991b1b;border:1px solid #fecaca;border-radius:4px;cursor:pointer">🗑</button>` : ''}
+          </td>
+        </tr>
+      `).join('');
+      const totalNCs = (_ncs || []).reduce((acc, n) => {
+        const m = n.moneda || 'PEN';
+        acc[m] = (acc[m] || 0) + Number(n.total || 0);
+        return acc;
+      }, {});
+      const resumenTxt = Object.entries(totalNCs).map(([m, v]) => fmtMoney(v, m)).join(' · ') || '—';
+      const resumen = box.querySelector('#nc-resumen');
+      if (resumen) resumen.textContent = `${(_ncs || []).length} NC(s) registradas · Total: ${resumenTxt}`;
+      if (tabla) {
+        tabla.innerHTML = filas || `<tr><td colspan="8" style="text-align:center;padding:30px;color:#6b7280">Sin NCs recibidas registradas</td></tr>`;
+        tabla.querySelectorAll('button[data-eliminar-nc]').forEach(btn => {
+          btn.onclick = async () => {
+            const id = Number(btn.dataset.eliminarNc);
+            if (!confirm(`¿Eliminar esta NC?\n\nEsto REVIERTE el ajuste sobre la Compra/Gasto vinculado: el total volverá al monto previo y se recalculará el estado de pago.`)) return;
+            try {
+              await api.notasCredito.eliminar(id);
+              showSuccess('NC eliminada y ajuste revertido');
+              cargar();
+            } catch (e) { showError(e?.message || 'Error eliminando NC'); }
+          };
+        });
+      }
+    } catch (e) {
+      if (tabla) tabla.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:30px;color:#dc2626">Error: ${e.message}</td></tr>`;
+    }
+  };
+
+  // ── Cargar catálogo combinado Compras + Gastos para el dropdown ──
+  const cargarDocs = async () => {
+    try {
+      const [compras, gastos] = await Promise.all([
+        api.purchases.getCompras().catch(() => []),
+        api.finances.getGastos().catch(() => []),
+      ]);
+      const fromCompras = (compras || [])
+        .filter(c => c.estado !== 'ANULADA' && c.estado !== 'ANULADO' && Number(c.total_base) > 0)
+        .map(c => ({
+          tipo: 'COMPRA',
+          id: c.id_compra,
+          label: `🧾 Compra ${c.nro_comprobante || '#' + c.id_compra} · ${c.proveedor_nombre || ''} · ${fmtMoney(c.total_base, c.moneda)}`,
+          ruc: c.proveedor_ruc || c.ruc_proveedor || '',
+          razon: c.proveedor_nombre || '',
+          moneda: c.moneda || 'PEN',
+          serie_ref: (c.nro_comprobante || '').split('-')[0] || '',
+          numero_ref: Number((c.nro_comprobante || '').split('-')[1]) || 0,
+          total: c.total_base,
+        }));
+      const fromGastos = (gastos || [])
+        .filter(g => g.estado !== 'ANULADO' && Number(g.total_base) > 0)
+        .map(g => ({
+          tipo: 'GASTO',
+          id: g.id_gasto,
+          label: `💰 Gasto ${g.nro_comprobante || '#' + g.id_gasto} · ${g.proveedor_nombre || g.concepto || ''} · ${fmtMoney(g.total_base, g.moneda)}`,
+          ruc: '',
+          razon: g.proveedor_nombre || '',
+          moneda: g.moneda || 'PEN',
+          serie_ref: (g.nro_comprobante || '').split('-')[0] || '',
+          numero_ref: Number((g.nro_comprobante || '').split('-')[1]) || 0,
+          total: g.total_base,
+        }));
+      _docs = [...fromCompras, ...fromGastos];
+    } catch (e) {
+      _docs = [];
+    }
+  };
+
+  // ── Form: registrar NC entrante ──
+  const renderForm = () => {
+    const sel = box.querySelector('#nc-doc-sel');
+    const opts = ['<option value="">— Seleccionar Compra o Gasto a ajustar —</option>',
+      ..._docs.map((d, i) => `<option value="${i}">${d.label}</option>`)
+    ].join('');
+    if (sel) sel.innerHTML = opts;
+  };
+
+  const aplicarDocSeleccionado = () => {
+    const idx = Number(box.querySelector('#nc-doc-sel').value);
+    const d = _docs[idx];
+    if (!d) return;
+    box.querySelector('#nc-prov-ruc').value     = d.ruc || '';
+    box.querySelector('#nc-prov-razon').value   = d.razon || '';
+    box.querySelector('#nc-moneda').value       = d.moneda;
+    box.querySelector('#nc-serie-ref').value    = d.serie_ref;
+    box.querySelector('#nc-numero-ref').value   = d.numero_ref || '';
+    box.querySelector('#nc-tipo-ref').value     = 'FACTURA';
+    box.querySelector('#nc-hint-total').textContent = `Total del documento: ${fmtMoney(d.total, d.moneda)}`;
+  };
+
+  const calcularTotales = () => {
+    const sub = Number(box.querySelector('#nc-subtotal').value || 0);
+    const ig  = Number(box.querySelector('#nc-igv').value || 0);
+    box.querySelector('#nc-total').value = (sub + ig).toFixed(2);
+  };
+
+  const submitForm = async (e) => {
+    e.preventDefault();
+    const idx = Number(box.querySelector('#nc-doc-sel').value);
+    const d = _docs[idx];
+    if (!d) return showError('Falta seleccionar la Compra o Gasto a ajustar.');
+
+    const data = {
+      vincular_a: { tipo: d.tipo, id: d.id },
+      serie:           box.querySelector('#nc-serie').value.trim().toUpperCase(),
+      numero:          Number(box.querySelector('#nc-numero').value),
+      fecha_emision:   box.querySelector('#nc-fecha').value,
+      tipo_doc_referencia: box.querySelector('#nc-tipo-ref').value,
+      serie_referencia:    box.querySelector('#nc-serie-ref').value.trim().toUpperCase(),
+      numero_referencia:   Number(box.querySelector('#nc-numero-ref').value),
+      motivo_codigo:       box.querySelector('#nc-motivo').value,
+      motivo_descripcion:  box.querySelector('#nc-motivo-desc').value.trim()
+                            || (MOTIVOS.find(m => m.c === box.querySelector('#nc-motivo').value)?.d || ''),
+      proveedor_ruc:           box.querySelector('#nc-prov-ruc').value.trim(),
+      proveedor_razon_social:  box.querySelector('#nc-prov-razon').value.trim(),
+      moneda:       box.querySelector('#nc-moneda').value,
+      tipo_cambio:  Number(box.querySelector('#nc-tc').value || 1),
+      subtotal:     Number(box.querySelector('#nc-subtotal').value),
+      igv:          Number(box.querySelector('#nc-igv').value),
+      total:        Number(box.querySelector('#nc-total').value),
+      observaciones: box.querySelector('#nc-obs').value.trim() || undefined,
+    };
+
+    if (!data.serie || !data.numero) return showError('Falta serie y/o número de la NC del proveedor.');
+    if (!data.proveedor_ruc || !data.proveedor_razon_social) return showError('Falta RUC y/o razón social del proveedor.');
+    if (data.total <= 0) return showError('El total debe ser positivo.');
+
+    const btn = box.querySelector('#btn-guardar-nc');
+    btn.disabled = true;
+    btn.textContent = '⏳ Guardando…';
+    try {
+      await api.notasCredito.registrarEntrante(data);
+      showSuccess('NC registrada y ajuste aplicado');
+      // Limpiar form, recargar lista
+      box.querySelector('#form-nc').reset();
+      box.querySelector('#nc-hint-total').textContent = '';
+      box.querySelector('#nc-fecha').value = new Date().toISOString().slice(0, 10);
+      btn.disabled = false;
+      btn.textContent = '💾 Registrar NC';
+      cargar();
+    } catch (e) {
+      showError(e?.error || e?.message || 'Error registrando NC');
+      btn.disabled = false;
+      btn.textContent = '💾 Registrar NC';
+    }
+  };
+
+  // ── Render principal ──
+  await cargarDocs();
+
+  box.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px;gap:12px">
+      <div>
+        <div style="font-size:18px;font-weight:700">📥 Notas de Crédito recibidas</div>
+        <div style="font-size:11px;color:#6b7280;margin-top:2px">Cuando un proveedor te emite una NC (devolución, descuento, error), regístrala acá. Ajusta automáticamente el total de la Compra/Gasto vinculado.</div>
+        <div id="nc-resumen" style="margin-top:8px;font-size:12px;color:#374151;font-weight:600"></div>
+      </div>
+      <button id="btn-cerrar-nc" title="Cerrar listado" aria-label="Cerrar"
+        style="background:none;border:none;font-size:22px;cursor:pointer;color:#999">×</button>
+    </div>
+
+    <!-- Form de registro -->
+    <details style="margin-bottom:18px;border:1px solid #d1d5db;border-radius:6px;background:#fafafa" open>
+      <summary style="padding:12px;cursor:pointer;font-weight:600;font-size:13px;background:#f3f4f6;border-radius:6px 6px 0 0;user-select:none">
+        ➕ Registrar nueva NC del proveedor
+      </summary>
+      <form id="form-nc" style="padding:14px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">
+        <div style="grid-column:1 / -1">
+          <label style="font-size:11px;font-weight:600;color:#374151;display:block;margin-bottom:3px">Documento a ajustar (Compra o Gasto) *</label>
+          <select id="nc-doc-sel" required style="width:100%;padding:7px 10px;border:1px solid #d1d5db;border-radius:4px;font-size:12px"></select>
+          <div id="nc-hint-total" style="font-size:11px;color:#6b7280;margin-top:3px"></div>
+        </div>
+
+        <div>
+          <label style="font-size:11px;font-weight:600;color:#374151;display:block;margin-bottom:3px">Tipo doc referencia</label>
+          <select id="nc-tipo-ref" style="width:100%;padding:7px 10px;border:1px solid #d1d5db;border-radius:4px;font-size:12px">
+            <option value="FACTURA">Factura</option>
+            <option value="BOLETA">Boleta</option>
+          </select>
+        </div>
+        <div>
+          <label style="font-size:11px;font-weight:600;color:#374151;display:block;margin-bottom:3px">Serie ref. *</label>
+          <input id="nc-serie-ref" type="text" maxlength="5" required style="width:100%;padding:7px 10px;border:1px solid #d1d5db;border-radius:4px;font-size:12px;text-transform:uppercase">
+        </div>
+        <div>
+          <label style="font-size:11px;font-weight:600;color:#374151;display:block;margin-bottom:3px">Número ref. *</label>
+          <input id="nc-numero-ref" type="number" min="1" required style="width:100%;padding:7px 10px;border:1px solid #d1d5db;border-radius:4px;font-size:12px">
+        </div>
+
+        <div>
+          <label style="font-size:11px;font-weight:600;color:#374151;display:block;margin-bottom:3px">Serie NC *</label>
+          <input id="nc-serie" type="text" maxlength="5" required placeholder="FC01, BC01..." style="width:100%;padding:7px 10px;border:1px solid #d1d5db;border-radius:4px;font-size:12px;text-transform:uppercase">
+        </div>
+        <div>
+          <label style="font-size:11px;font-weight:600;color:#374151;display:block;margin-bottom:3px">Número NC *</label>
+          <input id="nc-numero" type="number" min="1" required style="width:100%;padding:7px 10px;border:1px solid #d1d5db;border-radius:4px;font-size:12px">
+        </div>
+        <div>
+          <label style="font-size:11px;font-weight:600;color:#374151;display:block;margin-bottom:3px">Fecha emisión *</label>
+          <input id="nc-fecha" type="date" required value="${new Date().toISOString().slice(0,10)}" style="width:100%;padding:7px 10px;border:1px solid #d1d5db;border-radius:4px;font-size:12px">
+        </div>
+
+        <div>
+          <label style="font-size:11px;font-weight:600;color:#374151;display:block;margin-bottom:3px">RUC proveedor *</label>
+          <input id="nc-prov-ruc" type="text" maxlength="11" required style="width:100%;padding:7px 10px;border:1px solid #d1d5db;border-radius:4px;font-size:12px">
+        </div>
+        <div style="grid-column:span 2">
+          <label style="font-size:11px;font-weight:600;color:#374151;display:block;margin-bottom:3px">Razón social proveedor *</label>
+          <input id="nc-prov-razon" type="text" required style="width:100%;padding:7px 10px;border:1px solid #d1d5db;border-radius:4px;font-size:12px">
+        </div>
+
+        <div>
+          <label style="font-size:11px;font-weight:600;color:#374151;display:block;margin-bottom:3px">Motivo SUNAT *</label>
+          <select id="nc-motivo" required style="width:100%;padding:7px 10px;border:1px solid #d1d5db;border-radius:4px;font-size:12px">
+            ${MOTIVOS.map(m => `<option value="${m.c}">${m.c} — ${m.d}</option>`).join('')}
+          </select>
+        </div>
+        <div style="grid-column:span 2">
+          <label style="font-size:11px;font-weight:600;color:#374151;display:block;margin-bottom:3px">Descripción del motivo (opcional, override)</label>
+          <input id="nc-motivo-desc" type="text" placeholder="Si vacío, usa el texto SUNAT del código seleccionado" style="width:100%;padding:7px 10px;border:1px solid #d1d5db;border-radius:4px;font-size:12px">
+        </div>
+
+        <div>
+          <label style="font-size:11px;font-weight:600;color:#374151;display:block;margin-bottom:3px">Moneda</label>
+          <select id="nc-moneda" style="width:100%;padding:7px 10px;border:1px solid #d1d5db;border-radius:4px;font-size:12px">
+            <option value="PEN">S/ Soles</option>
+            <option value="USD">$ Dólares</option>
+          </select>
+        </div>
+        <div>
+          <label style="font-size:11px;font-weight:600;color:#374151;display:block;margin-bottom:3px">Tipo cambio (si USD)</label>
+          <input id="nc-tc" type="number" step="0.0001" value="1" style="width:100%;padding:7px 10px;border:1px solid #d1d5db;border-radius:4px;font-size:12px">
+        </div>
+        <div></div>
+
+        <div>
+          <label style="font-size:11px;font-weight:600;color:#374151;display:block;margin-bottom:3px">Subtotal *</label>
+          <input id="nc-subtotal" type="number" step="0.01" min="0" required style="width:100%;padding:7px 10px;border:1px solid #d1d5db;border-radius:4px;font-size:12px;text-align:right">
+        </div>
+        <div>
+          <label style="font-size:11px;font-weight:600;color:#374151;display:block;margin-bottom:3px">IGV</label>
+          <input id="nc-igv" type="number" step="0.01" min="0" value="0" style="width:100%;padding:7px 10px;border:1px solid #d1d5db;border-radius:4px;font-size:12px;text-align:right">
+        </div>
+        <div>
+          <label style="font-size:11px;font-weight:600;color:#374151;display:block;margin-bottom:3px">Total (calculado)</label>
+          <input id="nc-total" type="number" step="0.01" readonly style="width:100%;padding:7px 10px;border:1px solid #d1d5db;border-radius:4px;font-size:12px;text-align:right;background:#f3f4f6;font-weight:600">
+        </div>
+
+        <div style="grid-column:1 / -1">
+          <label style="font-size:11px;font-weight:600;color:#374151;display:block;margin-bottom:3px">Observaciones (opcional)</label>
+          <textarea id="nc-obs" rows="2" style="width:100%;padding:7px 10px;border:1px solid #d1d5db;border-radius:4px;font-size:12px;resize:vertical"></textarea>
+        </div>
+
+        <div style="grid-column:1 / -1;display:flex;justify-content:flex-end;gap:8px;padding-top:6px">
+          <button type="submit" id="btn-guardar-nc"
+            style="padding:9px 22px;background:#065f46;color:#fff;border:none;border-radius:5px;cursor:pointer;font-weight:600;font-size:13px">
+            💾 Registrar NC
+          </button>
+        </div>
+      </form>
+    </details>
+
+    <!-- Tabla de NCs ya registradas -->
+    <div style="border:1px solid #e5e7eb;border-radius:6px;overflow:auto;max-height:50vh">
+      <table style="width:100%;border-collapse:collapse;font-size:12px">
+        <thead style="background:#f9fafb;position:sticky;top:0;z-index:1">
+          <tr>
+            <th style="padding:8px;text-align:left;font-size:10px;color:#6b7280;font-weight:600">Comprobante NC</th>
+            <th style="padding:8px;text-align:left;font-size:10px;color:#6b7280;font-weight:600">Fecha</th>
+            <th style="padding:8px;text-align:left;font-size:10px;color:#6b7280;font-weight:600">Proveedor</th>
+            <th style="padding:8px;text-align:left;font-size:10px;color:#6b7280;font-weight:600">Doc ajustado</th>
+            <th style="padding:8px;text-align:left;font-size:10px;color:#6b7280;font-weight:600">Motivo</th>
+            <th style="padding:8px;text-align:right;font-size:10px;color:#6b7280;font-weight:600">Total</th>
+            <th style="padding:8px;text-align:center;font-size:10px;color:#6b7280;font-weight:600">Estado</th>
+            <th style="padding:8px;text-align:right;font-size:10px;color:#6b7280;font-weight:600">Acción</th>
+          </tr>
+        </thead>
+        <tbody id="tabla-nc"></tbody>
+      </table>
+    </div>
+
+    <div style="display:flex;justify-content:flex-end;margin-top:14px">
+      <button id="btn-cerrar-nc-2" style="padding:8px 18px;background:#f3f4f6;border:1px solid #d1d5db;border-radius:4px;cursor:pointer;font-size:12px">Cerrar</button>
+    </div>
+  `;
+
+  document.body.appendChild(ov);
+
+  // Wire-up
+  const cerrar = () => ov.remove();
+  box.querySelector('#btn-cerrar-nc').onclick   = cerrar;
+  box.querySelector('#btn-cerrar-nc-2').onclick = cerrar;
+
+  renderForm();
+  box.querySelector('#nc-doc-sel').onchange    = aplicarDocSeleccionado;
+  box.querySelector('#nc-subtotal').oninput     = calcularTotales;
+  box.querySelector('#nc-igv').oninput          = calcularTotales;
+  box.querySelector('#form-nc').onsubmit        = submitForm;
+
+  cargar();
+}
+
 // ── Página principal ────────────────────────────────────────────
 function renderDashboard(d) {
   // Adapter legacy → helper enterprise. Mapea color hex → variante accent.
@@ -2399,6 +2766,10 @@ export const Finanzas = async () => {
           style="padding:8px 14px;border:1px solid #d1d5db;background:#fff;border-radius:5px;cursor:pointer;font-size:12px;font-weight:600">
           📋 Gastos del periodo
         </button>
+        <button id="btn-ncs-recibidas" title="Registrar Notas de Crédito que el proveedor te emitió por devolución / descuento / corrección"
+          style="padding:8px 14px;border:1px solid #d1d5db;background:#fff;border-radius:5px;cursor:pointer;font-size:12px;font-weight:600">
+          📥 NCs proveedor
+        </button>
         <button id="btn-pago-igv" style="padding:8px 14px;border:1px solid #d1d5db;background:#fff;border-radius:5px;cursor:pointer;font-size:12px;font-weight:600">
           🏛️ Pago IGV SUNAT
         </button>
@@ -2487,6 +2858,10 @@ function bindHandlers(cuentas, dashboard) {
   // Gastos del periodo (auditoría)
   const btnGP = document.getElementById('btn-gastos-periodo');
   if (btnGP) btnGP.onclick = () => modalGastosPeriodo();
+
+  // NCs recibidas del proveedor
+  const btnNC = document.getElementById('btn-ncs-recibidas');
+  if (btnNC) btnNC.onclick = () => modalNotasCreditoRecibidas();
 
   // Registrar cobranza
   document.querySelectorAll('.btn-registrar').forEach(btn => {
