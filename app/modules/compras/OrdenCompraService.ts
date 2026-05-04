@@ -927,11 +927,12 @@ class OrdenCompraService {
         );
       }
 
-      // 4. UPDATE OC
+      // 4. UPDATE OC. OrdenesCompra NO tiene columna estado_pago — el estado
+      // terminal "pagado" se refleja con estado='CERRADA_SIN_FACTURA' (la
+      // tabla Gastos sí tiene estado_pago='PAGADO' que ya seteamos arriba).
       await conn.query(
         `UPDATE OrdenesCompra
             SET estado = 'CERRADA_SIN_FACTURA',
-                estado_pago = 'PAGADO',
                 observaciones = COALESCE(?, observaciones)
           WHERE id_oc = ?`,
         [
