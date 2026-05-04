@@ -425,7 +425,15 @@ function semanaISOHoy() {
 // ──────── Tab Kanban ────────
 function renderKanban(panel) {
   panel.dataset.rendered = '1';
-  const estadosOrden = ['BORRADOR', 'APROBADA', 'ENVIADA', 'RECIBIDA_PARCIAL', 'RECIBIDA', 'FACTURADA', 'PAGADA'];
+  // CERRADA_SIN_FACTURA va al final, después de PAGADA: representa OCs ya
+  // pagadas pero sin sustento documental (caja chica, marketing, etc).
+  // Ver migración 054 + OrdenCompraService.cerrarSinFactura().
+  const estadosOrden = [
+    'BORRADOR', 'APROBADA', 'ENVIADA',
+    'RECIBIDA_PARCIAL', 'RECIBIDA',
+    'FACTURADA', 'PAGADA',
+    'CERRADA_SIN_FACTURA',
+  ];
   const porEstado = {};
   estadosOrden.forEach(e => porEstado[e] = []);
   _ocs.forEach(oc => {
@@ -433,7 +441,7 @@ function renderKanban(panel) {
   });
 
   panel.innerHTML = `
-    <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:10px;margin-top:16px;overflow-x:auto">
+    <div style="display:grid;grid-template-columns:repeat(${estadosOrden.length},1fr);gap:10px;margin-top:16px;overflow-x:auto">
       ${estadosOrden.map(estado => {
         const color = ESTADO_COLOR[estado];
         const ocs = porEstado[estado];
