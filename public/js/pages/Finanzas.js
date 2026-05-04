@@ -2015,6 +2015,276 @@ async function modalFacturasEmitidas() {
   cargar();
 }
 
+// ── Modal: Gastos del periodo (vista cruzada de auditoría) ────
+async function modalGastosPeriodo() {
+  const ov = document.createElement('div');
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
+  const box = document.createElement('div');
+  box.style.cssText = 'background:#fff;border-radius:8px;padding:22px;max-width:1280px;width:100%;max-height:92vh;overflow:auto';
+  ov.appendChild(box);
+
+  const hoy = new Date();
+  const inicioMes = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
+  let filtros = {
+    desde: inicioMes.toISOString().slice(0, 10),
+    hasta: hoy.toISOString().slice(0, 10),
+    centro_costo: '',
+    tipo: '',                  // 'GENERAL' | 'SERVICIO' | 'ALMACEN' | 'OPERATIVO'
+    estado_pago: '',           // 'PENDIENTE' | 'PARCIAL' | 'PAGADO'
+    incluir_anulados: false,
+    busqueda: '',              // proveedor / concepto / nro_comprobante / nro_oc
+  };
+
+  let _gastos = [];      // cache crudo del backend
+  let _centros = [];     // dropdown CC
+
+  const fmtDate = (s) => s ? String(s).slice(0,10).split('-').reverse().join('/') : '—';
+  const fmtMoney = (m, mon) => (mon === 'USD' ? '$' : 'S/') + ' ' + Number(m || 0).toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+  const tipoBadge = (t) => {
+    const map = {
+      GENERAL:   { bg: '#dbeafe', fg: '#1e40af' },
+      SERVICIO:  { bg: '#fef3c7', fg: '#92400e' },
+      ALMACEN:   { bg: '#d1fae5', fg: '#065f46' },
+      OPERATIVO: { bg: '#f3e8ff', fg: '#6b21a8' },
+    };
+    const c = map[t] || { bg: '#f3f4f6', fg: '#374151' };
+    return `<span style="background:${c.bg};color:${c.fg};padding:2px 7px;border-radius:8px;font-size:10px;font-weight:600">${t || '—'}</span>`;
+  };
+  const estadoBadge = (e) => {
+    const map = {
+      PAGADO:    { bg: '#d1fae5', fg: '#065f46', label: '✅ PAGADO' },
+      PARCIAL:   { bg: '#fef3c7', fg: '#92400e', label: '◐ PARCIAL' },
+      PENDIENTE: { bg: '#fee2e2', fg: '#991b1b', label: '⏳ PENDIENTE' },
+      ANULADO:   { bg: '#f3f4f6', fg: '#6b7280', label: '⊘ ANULADO' },
+    };
+    const c = map[e] || { bg: '#f3f4f6', fg: '#374151', label: e || '—' };
+    return `<span style="background:${c.bg};color:${c.fg};padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600">${c.label}</span>`;
+  };
+
+  const aplicarFiltros = (gastos) => {
+    return gastos.filter(g => {
+      const f = String(g.fecha).slice(0, 10);
+      if (filtros.desde && f < filtros.desde) return false;
+      if (filtros.hasta && f > filtros.hasta) return false;
+      if (filtros.centro_costo && (g.centro_costo || '') !== filtros.centro_costo) return false;
+      if (filtros.tipo) {
+        const t = g.tipo_gasto_logistica || g.tipo_gasto || '';
+        if (t !== filtros.tipo) return false;
+      }
+      if (filtros.estado_pago && g.estado_pago !== filtros.estado_pago) return false;
+      if (!filtros.incluir_anulados && g.estado === 'ANULADO') return false;
+      if (filtros.busqueda) {
+        const q = filtros.busqueda.toLowerCase();
+        const blob = [
+          g.proveedor_nombre, g.concepto, g.nro_comprobante, g.nro_oc, g.servicio_codigo, g.servicio_cliente
+        ].filter(Boolean).join(' ').toLowerCase();
+        if (!blob.includes(q)) return false;
+      }
+      return true;
+    });
+  };
+
+  const cargar = async () => {
+    const tabla = box.querySelector('#tabla-gastos');
+    if (tabla) tabla.innerHTML = `<tr><td colspan="11" style="text-align:center;padding:30px;color:#6b7280">⏳ Cargando…</td></tr>`;
+
+    if (_gastos.length === 0) {
+      try {
+        _gastos = await api.finances.getGastos();
+      } catch (e) {
+        if (tabla) tabla.innerHTML = `<tr><td colspan="11" style="text-align:center;padding:30px;color:#dc2626">Error: ${e.message}</td></tr>`;
+        return;
+      }
+    }
+
+    const filtrados = aplicarFiltros(_gastos);
+
+    // Resumen por moneda
+    const totales = filtrados.reduce((acc, g) => {
+      const m = g.moneda || 'PEN';
+      if (!acc[m]) acc[m] = { count: 0, sub: 0, igv: 0, total: 0, pagado: 0 };
+      acc[m].count++;
+      acc[m].sub    += Number(g.monto_base || 0);
+      acc[m].igv    += Number(g.igv_base || 0);
+      acc[m].total  += Number(g.total_base || 0);
+      acc[m].pagado += Number(g.pagado || 0);
+      return acc;
+    }, {});
+    const resumen = Object.entries(totales).map(([m, v]) =>
+      `<span style="margin-right:14px"><b>${v.count}</b> · ${fmtMoney(v.total, m)} <span style="color:#6b7280">(IGV: ${fmtMoney(v.igv, m)} · Pagado: ${fmtMoney(v.pagado, m)})</span></span>`
+    ).join('') || `<span style="color:#6b7280">Sin gastos en el rango</span>`;
+    const cabecera = box.querySelector('#gastos-resumen');
+    if (cabecera) cabecera.innerHTML = resumen;
+
+    const filas = filtrados.map(g => {
+      const tipo = g.tipo_gasto_logistica || g.tipo_gasto || '—';
+      const saldo = Number(g.total_base || 0) - Number(g.pagado || 0);
+      const docCli = g.servicio_codigo
+        ? `<span style="color:#92400e">${g.servicio_codigo}</span><br><span style="font-size:10px;color:#6b7280">${g.servicio_cliente || ''}</span>`
+        : (g.nro_oc ? `<span style="color:#1e40af;font-size:11px">OC ${g.nro_oc}</span>` : '—');
+      return `
+        <tr style="border-bottom:1px solid #f3f4f6">
+          <td style="padding:7px 8px;font-size:11px;white-space:nowrap">${fmtDate(g.fecha)}</td>
+          <td style="padding:7px 8px;font-size:11px">
+            ${g.nro_comprobante ? `<div style="font-weight:600">${g.nro_comprobante}</div>` : ''}
+            <div style="font-size:10px;color:#6b7280">${g.proveedor_nombre || '—'}</div>
+          </td>
+          <td style="padding:7px 8px;font-size:11px;max-width:280px">
+            <div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${(g.concepto || '').replace(/"/g, '&quot;')}">${g.concepto || '—'}</div>
+          </td>
+          <td style="padding:7px 8px;font-size:10px;color:#374151">${g.centro_costo || '—'}</td>
+          <td style="padding:7px 8px;text-align:center">${tipoBadge(tipo)}</td>
+          <td style="padding:7px 8px;font-size:11px">${docCli}</td>
+          <td style="padding:7px 8px;font-size:11px;text-align:right;font-variant-numeric:tabular-nums">${fmtMoney(g.monto_base, g.moneda)}</td>
+          <td style="padding:7px 8px;font-size:11px;text-align:right;font-variant-numeric:tabular-nums;color:#6b7280">${g.aplica_igv ? fmtMoney(g.igv_base, g.moneda) : '—'}</td>
+          <td style="padding:7px 8px;font-size:11px;text-align:right;font-variant-numeric:tabular-nums;font-weight:600">${fmtMoney(g.total_base, g.moneda)}</td>
+          <td style="padding:7px 8px;font-size:11px;text-align:right;font-variant-numeric:tabular-nums">
+            <div>${fmtMoney(g.pagado, g.moneda)}</div>
+            ${saldo > 0.01 ? `<div style="font-size:10px;color:#dc2626">Falta: ${fmtMoney(saldo, g.moneda)}</div>` : ''}
+          </td>
+          <td style="padding:7px 8px;text-align:center">${estadoBadge(g.estado === 'ANULADO' ? 'ANULADO' : g.estado_pago)}</td>
+        </tr>
+      `;
+    }).join('');
+
+    if (tabla) {
+      tabla.innerHTML = filas || `<tr><td colspan="11" style="text-align:center;padding:30px;color:#6b7280">Sin gastos que coincidan con los filtros</td></tr>`;
+    }
+  };
+
+  // Construcción inicial — primero traemos centros (para el dropdown)
+  try { _centros = await api.centrosCosto.list(false); }
+  catch { _centros = []; }
+
+  const optsCC = ['<option value="">Todos los centros</option>',
+    ..._centros.map(c => `<option value="${c.nombre}">${c.nombre}</option>`)
+  ].join('');
+
+  box.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px;gap:12px">
+      <div>
+        <div style="font-size:18px;font-weight:700">📋 Gastos del periodo</div>
+        <div style="font-size:11px;color:#6b7280;margin-top:2px">Vista cruzada para auditoría contable mensual · todos los centros + tipos en una sola pantalla</div>
+        <div id="gastos-resumen" style="margin-top:8px;font-size:12px"></div>
+      </div>
+      <button id="btn-cerrar-gastos" title="Cerrar listado" aria-label="Cerrar"
+        style="background:none;border:none;font-size:22px;cursor:pointer;color:#999">×</button>
+    </div>
+
+    <!-- Filtros -->
+    <div style="display:grid;grid-template-columns:repeat(6, 1fr) auto;gap:8px;margin-bottom:12px;padding:12px;background:#f9fafb;border-radius:6px;align-items:end">
+      <div>
+        <label style="font-size:11px;font-weight:600;color:#374151;display:block;margin-bottom:3px">Desde</label>
+        <input id="g-desde" type="date" value="${filtros.desde}" style="width:100%;padding:6px 8px;border:1px solid #d1d5db;border-radius:4px;font-size:12px">
+      </div>
+      <div>
+        <label style="font-size:11px;font-weight:600;color:#374151;display:block;margin-bottom:3px">Hasta</label>
+        <input id="g-hasta" type="date" value="${filtros.hasta}" style="width:100%;padding:6px 8px;border:1px solid #d1d5db;border-radius:4px;font-size:12px">
+      </div>
+      <div>
+        <label style="font-size:11px;font-weight:600;color:#374151;display:block;margin-bottom:3px">Centro de costo</label>
+        <select id="g-cc" style="width:100%;padding:6px 8px;border:1px solid #d1d5db;border-radius:4px;font-size:12px">${optsCC}</select>
+      </div>
+      <div>
+        <label style="font-size:11px;font-weight:600;color:#374151;display:block;margin-bottom:3px">Tipo</label>
+        <select id="g-tipo" style="width:100%;padding:6px 8px;border:1px solid #d1d5db;border-radius:4px;font-size:12px">
+          <option value="">Todos</option>
+          <option value="GENERAL">General</option>
+          <option value="SERVICIO">Servicio</option>
+          <option value="ALMACEN">Almacén</option>
+          <option value="OPERATIVO">Operativo (legacy)</option>
+        </select>
+      </div>
+      <div>
+        <label style="font-size:11px;font-weight:600;color:#374151;display:block;margin-bottom:3px">Estado pago</label>
+        <select id="g-estado" style="width:100%;padding:6px 8px;border:1px solid #d1d5db;border-radius:4px;font-size:12px">
+          <option value="">Todos</option>
+          <option value="PENDIENTE">Pendiente</option>
+          <option value="PARCIAL">Parcial</option>
+          <option value="PAGADO">Pagado</option>
+        </select>
+      </div>
+      <div>
+        <label style="font-size:11px;font-weight:600;color:#374151;display:block;margin-bottom:3px">Búsqueda libre</label>
+        <input id="g-busq" type="text" placeholder="Proveedor / concepto / N°" style="width:100%;padding:6px 8px;border:1px solid #d1d5db;border-radius:4px;font-size:12px">
+      </div>
+      <button id="btn-aplicar-g" title="Aplicar filtros y refrescar tabla"
+        style="padding:7px 14px;background:#111827;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:12px;font-weight:600">
+        🔍 Aplicar
+      </button>
+    </div>
+
+    <div style="margin-bottom:10px">
+      <label style="font-size:11px;color:#374151;display:inline-flex;gap:6px;align-items:center;cursor:pointer">
+        <input id="g-anul" type="checkbox" ${filtros.incluir_anulados ? 'checked' : ''}>
+        Incluir anulados en el listado
+      </label>
+    </div>
+
+    <!-- Tabla -->
+    <div style="border:1px solid #e5e7eb;border-radius:6px;overflow:auto;max-height:60vh">
+      <table style="width:100%;border-collapse:collapse;font-size:12px">
+        <thead style="background:#f9fafb;position:sticky;top:0;z-index:1">
+          <tr>
+            <th style="padding:8px;text-align:left;font-size:10px;color:#6b7280;font-weight:600">Fecha</th>
+            <th style="padding:8px;text-align:left;font-size:10px;color:#6b7280;font-weight:600">Comprobante / Proveedor</th>
+            <th style="padding:8px;text-align:left;font-size:10px;color:#6b7280;font-weight:600">Concepto</th>
+            <th style="padding:8px;text-align:left;font-size:10px;color:#6b7280;font-weight:600">CC</th>
+            <th style="padding:8px;text-align:center;font-size:10px;color:#6b7280;font-weight:600">Tipo</th>
+            <th style="padding:8px;text-align:left;font-size:10px;color:#6b7280;font-weight:600">Origen</th>
+            <th style="padding:8px;text-align:right;font-size:10px;color:#6b7280;font-weight:600">Subtotal</th>
+            <th style="padding:8px;text-align:right;font-size:10px;color:#6b7280;font-weight:600">IGV</th>
+            <th style="padding:8px;text-align:right;font-size:10px;color:#6b7280;font-weight:600">Total</th>
+            <th style="padding:8px;text-align:right;font-size:10px;color:#6b7280;font-weight:600">Pagado</th>
+            <th style="padding:8px;text-align:center;font-size:10px;color:#6b7280;font-weight:600">Estado</th>
+          </tr>
+        </thead>
+        <tbody id="tabla-gastos"></tbody>
+      </table>
+    </div>
+
+    <div style="margin-top:10px;font-size:10px;color:#6b7280;line-height:1.4">
+      Tip: para editar, anular o eliminar un gasto, ir a la OC origen en Logística (cada Gasto se generó al facturar una OC).
+      Si un Gasto no tiene OC asociada, se puede manipular vía las acciones disponibles ahí.
+    </div>
+
+    <div style="display:flex;justify-content:flex-end;margin-top:14px">
+      <button id="btn-cerrar-gastos-2" style="padding:8px 18px;background:#f3f4f6;border:1px solid #d1d5db;border-radius:4px;cursor:pointer;font-size:12px">Cerrar</button>
+    </div>
+  `;
+
+  document.body.appendChild(ov);
+
+  const cerrar = () => ov.remove();
+  box.querySelector('#btn-cerrar-gastos').onclick   = cerrar;
+  box.querySelector('#btn-cerrar-gastos-2').onclick = cerrar;
+
+  box.querySelector('#btn-aplicar-g').onclick = () => {
+    filtros = {
+      desde: box.querySelector('#g-desde').value,
+      hasta: box.querySelector('#g-hasta').value,
+      centro_costo: box.querySelector('#g-cc').value,
+      tipo:  box.querySelector('#g-tipo').value,
+      estado_pago: box.querySelector('#g-estado').value,
+      incluir_anulados: box.querySelector('#g-anul').checked,
+      busqueda: box.querySelector('#g-busq').value.trim(),
+    };
+    cargar();
+  };
+  // Búsqueda en vivo (debounced) sobre el cache local
+  let tDeb;
+  box.querySelector('#g-busq').addEventListener('input', () => {
+    clearTimeout(tDeb);
+    tDeb = setTimeout(() => {
+      filtros.busqueda = box.querySelector('#g-busq').value.trim();
+      cargar();
+    }, 250);
+  });
+
+  cargar();
+}
+
 // ── Página principal ────────────────────────────────────────────
 function renderDashboard(d) {
   // Adapter legacy → helper enterprise. Mapea color hex → variante accent.
@@ -2125,6 +2395,10 @@ export const Finanzas = async () => {
           style="padding:8px 14px;border:1px solid #d1d5db;background:#fff;border-radius:5px;cursor:pointer;font-size:12px;font-weight:600">
           🧾 Facturas Emitidas
         </button>
+        <button id="btn-gastos-periodo" title="Vista cruzada de todos los gastos del periodo (cierre mensual contable)"
+          style="padding:8px 14px;border:1px solid #d1d5db;background:#fff;border-radius:5px;cursor:pointer;font-size:12px;font-weight:600">
+          📋 Gastos del periodo
+        </button>
         <button id="btn-pago-igv" style="padding:8px 14px;border:1px solid #d1d5db;background:#fff;border-radius:5px;cursor:pointer;font-size:12px;font-weight:600">
           🏛️ Pago IGV SUNAT
         </button>
@@ -2209,6 +2483,10 @@ function bindHandlers(cuentas, dashboard) {
   // Facturas Emitidas
   const btnFE = document.getElementById('btn-facturas-emitidas');
   if (btnFE) btnFE.onclick = () => modalFacturasEmitidas();
+
+  // Gastos del periodo (auditoría)
+  const btnGP = document.getElementById('btn-gastos-periodo');
+  if (btnGP) btnGP.onclick = () => modalGastosPeriodo();
 
   // Registrar cobranza
   document.querySelectorAll('.btn-registrar').forEach(btn => {
