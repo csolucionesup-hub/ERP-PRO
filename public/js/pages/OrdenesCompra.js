@@ -929,11 +929,21 @@ async function abrirModalResolucionItems(id_oc, lineasPendientes) {
       .map(i => `<option value="${i.id_item}">${i.nombre} (${i.unidad || 'UND'}) — stock: ${Number(i.stock_actual || 0)}</option>`)
       .join('');
 
+    // Helper: escapa HTML para mostrar texto seguro en innerHTML.
+    // El onclick inline previo solo escapaba comillas simples y se rompía
+    // si la descripción tenía saltos de línea, comillas dobles o backslash
+    // (Uncaught SyntaxError: Invalid or unexpected token). Ahora pasamos
+    // solo data-id-detalle y resolvemos los argumentos desde lineasPendientes
+    // en el wire-up.
+    const escHtml = (s) => String(s ?? '')
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+
     const renderTabla = () => lineasPendientes.map(l => `
       <tr style="border-bottom:1px solid #e5e7eb">
         <td style="padding:10px;font-size:13px;vertical-align:top">
-          <strong>${l.descripcion}</strong><br>
-          <span style="font-size:11px;color:#6b7280">Pedido: ${Number(l.cantidad)} ${l.unidad || ''} · ${fPEN(Number(l.precio_unitario))}</span>
+          <strong>${escHtml(l.descripcion)}</strong><br>
+          <span style="font-size:11px;color:#6b7280">Pedido: ${Number(l.cantidad)} ${escHtml(l.unidad || '')} · ${fPEN(Number(l.precio_unitario))}</span>
         </td>
         <td style="padding:10px;vertical-align:top">
           <select id="asig-item-${l.id_detalle}" data-detalle="${l.id_detalle}" style="width:100%;padding:8px;border-radius:6px;border:1px solid #d1d5db;font-size:12px">
@@ -942,7 +952,7 @@ async function abrirModalResolucionItems(id_oc, lineasPendientes) {
           </select>
         </td>
         <td style="padding:10px;vertical-align:top">
-          <button type="button" onclick="window.OC._crearItem(${l.id_detalle}, '${(l.descripcion || '').replace(/'/g, "\\'")}', '${l.unidad || 'UND'}')" style="padding:7px 11px;background:#059669;color:white;border:none;border-radius:6px;cursor:pointer;font-size:11px;font-weight:600;white-space:nowrap">+ Crear nuevo</button>
+          <button type="button" data-crear-item="${l.id_detalle}" style="padding:7px 11px;background:#059669;color:white;border:none;border-radius:6px;cursor:pointer;font-size:11px;font-weight:600;white-space:nowrap">+ Crear nuevo</button>
         </td>
       </tr>
     `).join('');
@@ -1039,6 +1049,8 @@ async function abrirModalResolucionItems(id_oc, lineasPendientes) {
           // Actualizar catálogo local + redibujar tabla
           catalogo.push({ id_item: nuevo.id_item, nombre, unidad, stock_actual: 0 });
           document.getElementById('resolver-tbody').innerHTML = renderTabla();
+          // Re-enganchar handlers porque innerHTML reescribe los botones
+          wireCrearItemButtons();
           const sel = document.getElementById(`asig-item-${id_detalle}`);
           if (sel) sel.value = String(nuevo.id_item);
           ov.remove();
@@ -1049,6 +1061,20 @@ async function abrirModalResolucionItems(id_oc, lineasPendientes) {
         }
       };
     };
+
+    // Wire-up de los botones "+ Crear nuevo" (re-engancha tras cada renderTabla
+     // porque renderTabla() reescribe el innerHTML de #resolver-tbody).
+    const wireCrearItemButtons = () => {
+      ov.querySelectorAll('button[data-crear-item]').forEach(btn => {
+        btn.onclick = () => {
+          const idDet = Number(btn.dataset.crearItem);
+          const linea = lineasPendientes.find(x => Number(x.id_detalle) === idDet);
+          if (!linea) return;
+          window.OC._crearItem(idDet, linea.descripcion || '', linea.unidad || 'UND');
+        };
+      });
+    };
+    wireCrearItemButtons();
 
     document.getElementById('resolver-cancelar').onclick = () => {
       ov.remove();
