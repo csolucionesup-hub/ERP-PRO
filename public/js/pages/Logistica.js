@@ -956,7 +956,29 @@ function bindFormOCMulti(panel, tipoOC) {
   }
 
   btnAddLinea.onclick = () => addLinea();
-  igvCheckbox.onchange = recalc;
+  // Pedido Julio (04/05): mientras IGV esté apagado, los precios unitarios y
+  // cantidades admiten 4 decimales (caso real: proveedor cotiza S/ 23.7899/u).
+  // Al marcar "Aplica IGV 18%", redondeamos precios y cantidades a 2 decimales
+  // (norma SUNAT/SIRE para ítems de comprobante electrónico).
+  igvCheckbox.onchange = () => {
+    if (igvCheckbox.checked) {
+      let cambios = 0;
+      [...lineasWrap.children].forEach(row => {
+        const cantInput = row.querySelector('.l-cant');
+        const puInput   = row.querySelector('.l-pu');
+        const cant = Number(cantInput?.value) || 0;
+        const pu   = Number(puInput?.value) || 0;
+        const cantR = Math.round(cant * 100) / 100;
+        const puR   = Math.round(pu   * 100) / 100;
+        if (cantR !== cant && cantInput) { cantInput.value = cantR.toFixed(2); cambios++; }
+        if (puR   !== pu   && puInput)   { puInput.value   = puR.toFixed(2);   cambios++; }
+      });
+      if (cambios > 0) {
+        try { window.showToast?.('Precios y cantidades redondeados a 2 decimales (norma SUNAT al aplicar IGV)', 'info'); } catch {}
+      }
+    }
+    recalc();
+  };
 
   // ── Auto-fill datos del proveedor al elegirlo ──
   provSelect.onchange = () => {

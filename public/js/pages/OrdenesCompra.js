@@ -1459,7 +1459,10 @@ async function nuevaOC(editData) {
           </div>
           <div style="grid-column:span 3">
             <label style="display:flex;gap:6px;align-items:center;font-size:12px">
-              <input type="checkbox" name="aplica_igv" ${aplicaIgv ? 'checked' : ''}> Aplica IGV 18%
+              <input type="checkbox" name="aplica_igv" id="oc-aplica-igv" ${aplicaIgv ? 'checked' : ''}> Aplica IGV 18%
+              <span style="font-size:10px;color:#6b7280;margin-left:8px">
+                ${tip('Mientras el IGV esté apagado, los precios unitarios admiten hasta 4 decimales (útil para cotizaciones precisas). Al marcarlo, los precios y cantidades se redondean a 2 decimales según norma SUNAT/SIRE para facturación.')}
+              </span>
             </label>
           </div>
           <div style="grid-column:span 3;display:flex;justify-content:space-between;align-items:center;margin-top:8px">
@@ -1509,6 +1512,34 @@ async function nuevaOC(editData) {
   // En modo create arrancamos con una línea vacía.
   if (esEdit) renderLineas();
   else        window.OC._addLinea();
+
+  // Pedido Julio (04/05): mientras el IGV esté apagado, los inputs de
+  // precio_unitario y cantidad permiten hasta 4 decimales (caso real:
+  // proveedor cotiza con S/ 23.7899 por unidad). Cuando el usuario marca
+  // "Aplica IGV 18%", el sistema redondea precios y cantidades a 2 decimales
+  // — la regla SUNAT/SIRE para facturación electrónica exige 2 decimales en
+  // ítems del comprobante. Al desmarcar IGV no se "des-redondea", el usuario
+  // puede volver a escribir 4 decimales si lo necesita.
+  setTimeout(() => {
+    const chkIgv = document.getElementById('oc-aplica-igv');
+    if (!chkIgv) return;
+    chkIgv.addEventListener('change', (e) => {
+      if (!e.target.checked) return;
+      let cambios = 0;
+      lineas.forEach(l => {
+        const pu  = Number(l.precio_unitario) || 0;
+        const cnt = Number(l.cantidad) || 0;
+        const puR  = Math.round(pu  * 100) / 100;
+        const cntR = Math.round(cnt * 100) / 100;
+        if (puR  !== pu)  { l.precio_unitario = puR;  cambios++; }
+        if (cntR !== cnt) { l.cantidad        = cntR; cambios++; }
+      });
+      if (cambios > 0) {
+        renderLineas();
+        try { window.showToast?.('Precios y cantidades redondeados a 2 decimales (norma SUNAT al aplicar IGV)', 'info'); } catch {}
+      }
+    });
+  }, 50);
 
   // ── Picker de proyecto (cotización vinculada) ─────────────────
   // Carga cotizaciones APROBADAS/TERMINADAS/TRABAJO_EN_RIESGO filtradas por
