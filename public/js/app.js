@@ -1,28 +1,28 @@
 // Cache busting para imports ES module: cada path lleva su ?v=YYYYMMDDr#
 // hardcodeado. Si se cambia CUALQUIER archivo de pages/components/services
 // hay que bumpear el sufijo en TODAS las líneas (Find/Replace de v=2026...).
-import { renderSidebar } from './components/Sidebar.js?v=20260504r1';
-import { Dashboard }   from './pages/Dashboard.js?v=20260504r1';
-import { Finanzas }    from './pages/Finanzas.js?v=20260504r1';
-import { Inventario }  from './pages/Inventario.js?v=20260504r1';
-import { Usuarios }    from './pages/Usuarios.js?v=20260504r1';
-import { Compras }       from './pages/Compras.js?v=20260504r1';
+import { renderSidebar } from './components/Sidebar.js?v=20260504r2';
+import { Dashboard }   from './pages/Dashboard.js?v=20260504r2';
+import { Finanzas }    from './pages/Finanzas.js?v=20260504r2';
+import { Inventario }  from './pages/Inventario.js?v=20260504r2';
+import { Usuarios }    from './pages/Usuarios.js?v=20260504r2';
+import { Compras }       from './pages/Compras.js?v=20260504r2';
 // Servicios — módulo deprecado al cierre 03/05/2026 (Camino A vació la tabla
 // en producción; flujo migrado a Cotizaciones APROBADAS + OCs). El backend
 // sigue vivo porque Logística/OC consumen api.services.getServiciosActivos()
 // para popular dropdowns, pero la página ya no se navega.
-import { Proveedores }   from './pages/Proveedores.js?v=20260504r1';
-import { Prestamos }     from './pages/Prestamos.js?v=20260504r1';
-import { Comercial }     from './pages/Comercial.js?v=20260504r1';
-import { ConfiguracionComercial } from './pages/ConfiguracionComercial.js?v=20260504r1';
-import { Logistica }     from './pages/Logistica.js?v=20260504r1';
-import { Administracion } from './pages/Administracion.js?v=20260504r1';
-import { Configuracion }  from './pages/Configuracion.js?v=20260504r1';
-import { Contabilidad }   from './pages/Contabilidad.js?v=20260504r1';
-import { Importador }     from './pages/Importador.js?v=20260504r1';
-import { OrdenesCompra }  from './pages/OrdenesCompra.js?v=20260504r1';
-import { Alertas }        from './pages/Alertas.js?v=20260504r1';
-import { showSuccess, showError, showToast } from './services/ui.js?v=20260504r1';
+import { Proveedores }   from './pages/Proveedores.js?v=20260504r2';
+import { Prestamos }     from './pages/Prestamos.js?v=20260504r2';
+import { Comercial }     from './pages/Comercial.js?v=20260504r2';
+import { ConfiguracionComercial } from './pages/ConfiguracionComercial.js?v=20260504r2';
+import { Logistica }     from './pages/Logistica.js?v=20260504r2';
+import { Administracion } from './pages/Administracion.js?v=20260504r2';
+import { Configuracion }  from './pages/Configuracion.js?v=20260504r2';
+import { Contabilidad }   from './pages/Contabilidad.js?v=20260504r2';
+import { Importador }     from './pages/Importador.js?v=20260504r2';
+import { OrdenesCompra }  from './pages/OrdenesCompra.js?v=20260504r2';
+import { Alertas }        from './pages/Alertas.js?v=20260504r2';
+import { showSuccess, showError, showToast } from './services/ui.js?v=20260504r2';
 
 // Exponer helpers de toast globalmente (los modules ES no tienen acceso
 // directo desde otros modules sin import; varios usan window.showSuccess?.()
@@ -159,6 +159,14 @@ async function navigate(page) {
     window.location.hash = REDIRECTS_LEGACY[page];
     return;
   }
+
+  // Re-chequea sesión contra BD en cada cambio de página (sin bloquear).
+  // Si el GERENTE cambió rol/módulos, los pickea aquí. Si hay cambio de
+  // rol/flags, hace reload automático para garantizar que TODOS los
+  // componentes vean el localStorage fresco.
+  const cambio = await refreshSessionFromServer({ reloadOnChange: true });
+  if (cambio) return; // reload en curso, no seguimos pintando la SPA
+
   const user = getUser();
   if (!tieneAcceso(user, page)) {
     renderSidebar(page);
@@ -218,10 +226,10 @@ async function configEmpresaExiste() {
  * el flujo legacy con el JWT existente sigue funcionando hasta que el
  * usuario haga logout o el token expire.
  */
-async function refreshSessionFromServer() {
+async function refreshSessionFromServer({ reloadOnChange = false } = {}) {
   try {
     const token = localStorage.getItem('erp_token');
-    if (!token) return;
+    if (!token) return false;
     const r = await fetch('/api/auth/me', {
       headers: { 'Authorization': 'Bearer ' + token }
     });
@@ -230,17 +238,37 @@ async function refreshSessionFromServer() {
       localStorage.removeItem('erp_token');
       localStorage.removeItem('erp_user');
       window.location.replace('/login.html');
-      return;
+      return false;
     }
-    if (!r.ok) return;
+    if (!r.ok) return false;
     const data = await r.json();
-    if (!data?.usuario) return;
+    if (!data?.usuario) return false;
+
+    // Detectar si el rol o flags cambiaron contra el localStorage actual.
+    // Si cambian, varias páginas leyeron el rol viejo en variables locales
+    // y la única forma 100% segura es recargar.
+    let prev = {};
+    try { prev = JSON.parse(localStorage.getItem('erp_user') || '{}'); } catch {}
+    const cambioRolOFlags =
+      prev.rol !== data.usuario.rol ||
+      !!prev.puede_contabilidad !== !!data.usuario.puede_contabilidad ||
+      !!prev.puede_importar     !== !!data.usuario.puede_importar;
+
     localStorage.setItem('erp_user', JSON.stringify(data.usuario));
     if (data.cambio && data.token) {
       localStorage.setItem('erp_token', data.token);
     }
+
+    if (cambioRolOFlags && reloadOnChange) {
+      // Aviso visible 1.5s antes del reload para que el usuario sepa qué pasa.
+      try { window.showToast?.('Tus permisos fueron actualizados. Refrescando…', 'info'); } catch {}
+      setTimeout(() => window.location.reload(), 1500);
+      return true;
+    }
+    return cambioRolOFlags;
   } catch {
     // sin red / endpoint caído → no bloqueamos
+    return false;
   }
 }
 
