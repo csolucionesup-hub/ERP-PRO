@@ -312,14 +312,105 @@ async function eliminarCC(id, nombre) {
   } catch (e) { showError(e?.error || 'Error'); }
 }
 
+function semanaISOActual() {
+  const hoy = new Date();
+  const d = new Date(Date.UTC(hoy.getFullYear(), hoy.getMonth(), hoy.getDate()));
+  const diaSem = d.getUTCDay() || 7;
+  d.setUTCDate(d.getUTCDate() + 4 - diaSem);
+  const anioIni = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  return Math.ceil((((d.getTime() - anioIni.getTime()) / 86400000) + 1) / 7);
+}
+
 async function descargarROC(centroNombre) {
-  const anio = new Date().getFullYear();
-  const semana = prompt(`ROC Semanal — ${centroNombre}\n\nNº de semana del año (1-52, vacío = semana actual):`);
-  if (semana === null) return; // canceló
-  try {
-    await api.ordenesCompra.descargarROC({ centro_costo: centroNombre, anio, semana: semana || undefined });
-    showSuccess('ROC descargado');
-  } catch (e) { showError(e?.message || 'Error generando ROC'); }
+  const anioActual = new Date().getFullYear();
+  const semanaHoy = semanaISOActual();
+
+  const overlay = document.createElement('div');
+  overlay.id = 'modal-roc';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1500;display:flex;align-items:center;justify-content:center;padding:20px';
+  overlay.innerHTML = `
+    <div style="background:white;border-radius:10px;padding:24px;width:460px;max-width:95vw">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <h3 style="margin:0;font-size:16px">📊 ROC Semanal — ${centroNombre}</h3>
+        <button id="roc-close" title="Cerrar sin descargar" aria-label="Cerrar" style="background:none;border:none;font-size:20px;cursor:pointer;color:#999">×</button>
+      </div>
+      <p style="margin:0 0 14px 0;font-size:12px;color:#6b7280;line-height:1.5">
+        Genera un Excel con todas las OCs del centro <b>acumuladas hasta la semana indicada</b> (no es semana puntual).
+        Incluye totales en S/ y $, columnas de aprobación, pago, factura y banco.
+      </p>
+      <form id="form-roc" style="display:flex;flex-direction:column;gap:12px">
+        <div>
+          <label style="font-size:12px;color:#374151;font-weight:600;display:block;margin-bottom:4px">Año</label>
+          <select name="anio" style="padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;width:100%">
+            <option value="${anioActual}" selected>${anioActual} (actual)</option>
+            <option value="${anioActual - 1}">${anioActual - 1}</option>
+          </select>
+        </div>
+        <div>
+          <label style="font-size:12px;color:#374151;font-weight:600;display:block;margin-bottom:4px">
+            Semana de corte (1-52)
+          </label>
+          <div style="display:flex;gap:8px;align-items:center">
+            <input
+              name="semana"
+              type="number"
+              min="1"
+              max="53"
+              placeholder="Vacío = semana actual (${semanaHoy})"
+              style="padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;flex:1"
+            >
+            <button type="button" id="roc-semana-actual" title="Usar semana ISO de hoy" style="padding:8px 12px;background:#f3f4f6;border:1px solid #d1d5db;border-radius:6px;cursor:pointer;font-size:12px">
+              Semana actual (${semanaHoy})
+            </button>
+          </div>
+          <p style="margin:6px 0 0 0;font-size:11px;color:#6b7280">
+            Ej: <b>15</b> = todas las OCs desde enero hasta la semana 15 inclusive.
+          </p>
+        </div>
+        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:6px">
+          <button type="button" id="roc-cancel" style="padding:10px 16px;background:#f3f4f6;border:1px solid #d1d5db;border-radius:6px;cursor:pointer">Cancelar</button>
+          <button type="submit" id="roc-submit" style="padding:10px 18px;background:#065f46;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">📥 Descargar Excel</button>
+        </div>
+      </form>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+
+  const cerrar = () => overlay.remove();
+  document.getElementById('roc-close').onclick = cerrar;
+  document.getElementById('roc-cancel').onclick = cerrar;
+
+  document.getElementById('roc-semana-actual').onclick = () => {
+    const inp = document.querySelector('#form-roc input[name="semana"]');
+    if (inp) inp.value = '';
+  };
+
+  document.getElementById('form-roc').onsubmit = async (e) => {
+    e.preventDefault();
+    const f = e.target;
+    const anio = Number(f.anio.value) || anioActual;
+    const semanaRaw = (f.semana.value || '').trim();
+    const semana = semanaRaw === '' ? undefined : Number(semanaRaw);
+
+    if (semana !== undefined && (isNaN(semana) || semana < 1 || semana > 53)) {
+      showError('Semana debe ser un número entre 1 y 53');
+      return;
+    }
+
+    const btn = document.getElementById('roc-submit');
+    btn.disabled = true;
+    btn.textContent = '⏳ Generando…';
+
+    try {
+      await api.ordenesCompra.descargarROC({ centro_costo: centroNombre, anio, semana });
+      showSuccess('ROC descargado');
+      cerrar();
+    } catch (err) {
+      showError(err?.message || 'Error generando ROC');
+      btn.disabled = false;
+      btn.textContent = '📥 Descargar Excel';
+    }
+  };
 }
 
 // ─── TAB Gastos Generales / Servicios (ambos comparten layout multi-línea) ──
