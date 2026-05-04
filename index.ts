@@ -34,6 +34,8 @@ import NubefactService from './app/modules/facturacion/NubefactService';
 import FacturaService from './app/modules/facturacion/FacturaService';
 import FacturaPDFService from './app/modules/facturacion/FacturaPDFService';
 import NotaCreditoService from './app/modules/notas-credito/NotaCreditoService';
+import RendicionService from './app/modules/admin/RendicionService';
+import RendicionPDFService from './app/modules/admin/RendicionPDFService';
 import PLEExporter from './app/modules/facturacion/PLEExporter';
 import { FacturacionCron } from './app/modules/facturacion/FacturacionCron';
 import ImportadorService, { EntidadImportable } from './app/modules/importador/ImportadorService';
@@ -1077,6 +1079,115 @@ notasCreditoRouter.delete('/:id', validateIdParam, auditLog('NotaCredito', 'DELE
 });
 
 app.use('/api/notas-credito', notasCreditoRouter);
+
+// ===== RENDICIONES DE GASTOS (módulo Administración) =====
+// Una OC = una rendición. Cualquier usuario puede firmar cualquier
+// casillero (auditado con id_usuario + fecha). Adjuntos a Cloudinary.
+// Decisiones definidas con Julio el 04/05/2026 — ver migración 056.
+const uploadRendicion = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB por archivo
+});
+
+const rendicionesRouter = express.Router();
+rendicionesRouter.use(requireAuth);
+rendicionesRouter.use(requireModulo('ADMINISTRACION'));
+
+rendicionesRouter.get('/', async (req: Request, res: Response) => {
+  res.json(await RendicionService.listar({
+    estado: req.query.estado as string | undefined,
+    desde:  req.query.desde  as string | undefined,
+    hasta:  req.query.hasta  as string | undefined,
+    limit:  req.query.limit  ? Number(req.query.limit) : undefined,
+  }));
+});
+
+rendicionesRouter.get('/:id', validateIdParam, async (req: Request, res: Response) => {
+  res.json(await RendicionService.obtener(Number(req.params.id)));
+});
+
+rendicionesRouter.get('/oc/:id_oc', async (req: Request, res: Response) => {
+  const idOc = Number(req.params.id_oc);
+  if (!idOc) return res.status(400).json({ error: 'id_oc inválido' });
+  res.json(await RendicionService.obtenerPorOC(idOc));
+});
+
+rendicionesRouter.post('/', auditLog('Rendicion', 'CREATE'), async (req: Request, res: Response) => {
+  res.json(await RendicionService.crearDesdeOC(req.body));
+});
+
+rendicionesRouter.put('/:id/metadata', validateIdParam, auditLog('Rendicion', 'UPDATE'), async (req: Request, res: Response) => {
+  res.json(await RendicionService.editarMetadata(Number(req.params.id), req.body));
+});
+
+// Items
+rendicionesRouter.post('/:id/items', validateIdParam, auditLog('Rendicion', 'UPDATE'), async (req: Request, res: Response) => {
+  res.json(await RendicionService.agregarItem(Number(req.params.id), req.body));
+});
+rendicionesRouter.put('/:id/items/:id_item', validateIdParam, auditLog('Rendicion', 'UPDATE'), async (req: Request, res: Response) => {
+  res.json(await RendicionService.editarItem(Number(req.params.id), Number(req.params.id_item), req.body));
+});
+rendicionesRouter.delete('/:id/items/:id_item', validateIdParam, auditLog('Rendicion', 'UPDATE'), async (req: Request, res: Response) => {
+  res.json(await RendicionService.eliminarItem(Number(req.params.id), Number(req.params.id_item)));
+});
+
+// Adjuntos
+rendicionesRouter.post(
+  '/:id/adjuntos',
+  validateIdParam,
+  uploadRendicion.single('file'),
+  auditLog('Rendicion', 'UPDATE'),
+  async (req: any, res: Response) => {
+    if (!req.file) return res.status(400).json({ error: 'Archivo requerido (campo "file")' });
+    const r = await RendicionService.subirAdjunto(Number(req.params.id), {
+      buffer: req.file.buffer,
+      nombre_archivo: req.file.originalname,
+      mime_type: req.file.mimetype,
+      tipo: (req.body.tipo as any) || 'OTRO',
+      subido_por_id: req.user?.id_usuario,
+    });
+    res.json(r);
+  }
+);
+rendicionesRouter.delete('/:id/adjuntos/:id_adj', validateIdParam, auditLog('Rendicion', 'UPDATE'), async (req: Request, res: Response) => {
+  res.json(await RendicionService.eliminarAdjunto(Number(req.params.id), Number(req.params.id_adj)));
+});
+
+// Firmas
+rendicionesRouter.post('/:id/firmar', validateIdParam, auditLog('Rendicion', 'UPDATE'), async (req: any, res: Response) => {
+  const tipo = (req.body.tipo as 'preparado' | 'revisado' | 'autorizado');
+  if (!['preparado', 'revisado', 'autorizado'].includes(tipo)) {
+    return res.status(400).json({ error: 'tipo inválido (preparado/revisado/autorizado)' });
+  }
+  res.json(await RendicionService.firmar(Number(req.params.id), tipo, req.user!.id_usuario));
+});
+rendicionesRouter.post('/:id/desfirmar', validateIdParam, auditLog('Rendicion', 'UPDATE'), async (req: any, res: Response) => {
+  const tipo = (req.body.tipo as 'preparado' | 'revisado' | 'autorizado');
+  if (!['preparado', 'revisado', 'autorizado'].includes(tipo)) {
+    return res.status(400).json({ error: 'tipo inválido (preparado/revisado/autorizado)' });
+  }
+  res.json(await RendicionService.desfirmar(Number(req.params.id), tipo, req.user!.id_usuario, req.user!.rol));
+});
+
+// Eliminar (solo GERENTE)
+rendicionesRouter.delete('/:id', validateIdParam, auditLog('Rendicion', 'DELETE'), async (req: any, res: Response) => {
+  if (req.user?.rol !== 'GERENTE') {
+    return res.status(403).json({ error: 'Solo GERENTE puede eliminar rendiciones.' });
+  }
+  res.json(await RendicionService.eliminar(Number(req.params.id)));
+});
+
+// PDF
+rendicionesRouter.get('/:id/pdf', validateIdParam, async (req: Request, res: Response) => {
+  const id = Number(req.params.id);
+  const buf = await RendicionPDFService.generar(id);
+  const r = await RendicionService.obtener(id);
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `inline; filename="RENDICION_OC_${r.nro_oc_referencia.replace(/\s+/g, '_')}.pdf"`);
+  res.send(buf);
+});
+
+app.use('/api/rendiciones', rendicionesRouter);
 
 // ===== LIBROS ELECTRÓNICOS (PLE) SUNAT =====
 const pleRouter = express.Router();

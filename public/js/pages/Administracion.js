@@ -27,8 +27,9 @@ export const Administracion = async () => {
       </div>
     </header>
     <div id="adm-tabbar" style="margin-top:20px"></div>
-    <div id="adm-tab-detalle"   class="adm-tab-content"></div>
-    <div id="adm-tab-dashboard" class="adm-tab-content" style="display:none"></div>
+    <div id="adm-tab-detalle"     class="adm-tab-content"></div>
+    <div id="adm-tab-rendiciones" class="adm-tab-content" style="display:none"></div>
+    <div id="adm-tab-dashboard"   class="adm-tab-content" style="display:none"></div>
   `;
 };
 
@@ -36,16 +37,18 @@ function initTabs() {
   TabBar({
     container: '#adm-tabbar',
     tabs: [
-      { id: 'detalle',   label: '📋 Detalle por mes' },
-      { id: 'dashboard', label: '📊 Dashboard histórico' },
+      { id: 'detalle',     label: '📋 Detalle por mes' },
+      { id: 'rendiciones', label: '🧾 Rendiciones de Gastos' },
+      { id: 'dashboard',   label: '📊 Dashboard histórico' },
     ],
     defaultTab: 'detalle',
     onChange: async (id) => {
       document.querySelectorAll('.adm-tab-content').forEach(t => t.style.display = 'none');
       const panel = document.getElementById('adm-tab-' + id);
       if (panel) panel.style.display = 'block';
-      if (id === 'detalle'   && !panel.dataset.rendered) await renderDetalle(panel);
-      if (id === 'dashboard') await renderDashboard(panel);
+      if (id === 'detalle'     && !panel.dataset.rendered) await renderDetalle(panel);
+      if (id === 'rendiciones')                            await renderRendiciones(panel);
+      if (id === 'dashboard')                              await renderDashboard(panel);
     },
   });
 }
@@ -320,4 +323,509 @@ function renderTopList(items, labelKey, valueKey, countKey) {
       </div>
     `;
   }).join('');
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// TAB Rendiciones de Gastos
+// ═══════════════════════════════════════════════════════════════════
+
+const fmtDate = (s) => s ? String(s).slice(0, 10).split('-').reverse().join('/') : '—';
+const fmtMoney = (n, mon = 'PEN') => (mon === 'USD' ? '$' : 'S/') + ' ' + Number(n || 0).toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+async function renderRendiciones(panel) {
+  panel.innerHTML = '<div style="padding:30px;text-align:center;color:#6b7280">⏳ Cargando rendiciones…</div>';
+  let lista = [];
+  try { lista = await api.rendiciones.list(); } catch (e) { return showError(e?.message || 'Error cargando'); }
+
+  const estadoBadge = (e) => {
+    const map = {
+      BORRADOR:    { bg: '#f3f4f6', fg: '#374151', label: '📝 BORRADOR' },
+      EN_REVISION: { bg: '#fef3c7', fg: '#92400e', label: '🔍 EN REVISIÓN' },
+      AUTORIZADA:  { bg: '#d1fae5', fg: '#065f46', label: '✅ AUTORIZADA' },
+      CERRADA:     { bg: '#dbeafe', fg: '#1e40af', label: '🔒 CERRADA' },
+      ANULADA:     { bg: '#fee2e2', fg: '#991b1b', label: '⊘ ANULADA' },
+    };
+    const c = map[e] || { bg: '#f3f4f6', fg: '#374151', label: e || '—' };
+    return `<span style="background:${c.bg};color:${c.fg};padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600">${c.label}</span>`;
+  };
+
+  const filas = (lista || []).map(r => `
+    <tr style="border-bottom:1px solid #f3f4f6">
+      <td style="padding:8px;font-size:11px;font-weight:600">${r.nro_oc_referencia}</td>
+      <td style="padding:8px;font-size:11px">${fmtDate(r.fecha_rendicion)}</td>
+      <td style="padding:8px;font-size:11px">${r.proveedor_nombre || '—'}</td>
+      <td style="padding:8px;font-size:11px">${r.centro_costo || '—'}</td>
+      <td style="padding:8px;font-size:11px">${r.cuenta_a_cargo_de_nombre || '—'}<br><span style="font-size:10px;color:#6b7280">${r.cargo || ''}</span></td>
+      <td style="padding:8px;font-size:11px;text-align:right;font-variant-numeric:tabular-nums">${fmtMoney(r.fondo_asignado, r.moneda)}</td>
+      <td style="padding:8px;font-size:11px;text-align:right;font-variant-numeric:tabular-nums">${fmtMoney(r.total_gastos, r.moneda)}</td>
+      <td style="padding:8px;font-size:11px;text-align:right;font-variant-numeric:tabular-nums;${Number(r.saldo_disponible) < 0 ? 'color:#dc2626' : ''}">${fmtMoney(r.saldo_disponible, r.moneda)}</td>
+      <td style="padding:8px;text-align:center">${estadoBadge(r.estado)}</td>
+      <td style="padding:8px;text-align:right;white-space:nowrap">
+        <button data-abrir-rendicion="${r.id_rendicion}" title="Ver / Editar rendición"
+          style="padding:4px 10px;background:#111827;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:11px">Abrir</button>
+        <button data-pdf-rendicion="${r.id_rendicion}" title="Ver PDF en pestaña nueva"
+          style="padding:4px 10px;background:#fff;border:1px solid #d1d5db;border-radius:4px;cursor:pointer;font-size:11px">📄 PDF</button>
+      </td>
+    </tr>
+  `).join('');
+
+  panel.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin:18px 0 14px">
+      <div>
+        <h3 style="margin:0;font-size:15px">🧾 Rendiciones de Gastos por OC</h3>
+        <div style="font-size:11px;color:#6b7280;margin-top:2px">Una OC = una rendición. Adjuntá comprobantes, marcá las firmas y descargá el expediente en PDF.</div>
+      </div>
+      <button id="btn-nueva-rendicion" style="padding:9px 16px;background:#111827;color:#fff;border:none;border-radius:5px;cursor:pointer;font-size:12px;font-weight:600">+ Nueva desde OC</button>
+    </div>
+
+    <div style="border:1px solid #e5e7eb;border-radius:6px;overflow:auto">
+      <table style="width:100%;border-collapse:collapse;font-size:12px">
+        <thead style="background:#f9fafb">
+          <tr>
+            <th style="padding:8px;text-align:left;font-size:10px;color:#6b7280;font-weight:600">N° OC</th>
+            <th style="padding:8px;text-align:left;font-size:10px;color:#6b7280;font-weight:600">Fecha</th>
+            <th style="padding:8px;text-align:left;font-size:10px;color:#6b7280;font-weight:600">Proveedor</th>
+            <th style="padding:8px;text-align:left;font-size:10px;color:#6b7280;font-weight:600">Centro Costo</th>
+            <th style="padding:8px;text-align:left;font-size:10px;color:#6b7280;font-weight:600">Responsable</th>
+            <th style="padding:8px;text-align:right;font-size:10px;color:#6b7280;font-weight:600">Fondo</th>
+            <th style="padding:8px;text-align:right;font-size:10px;color:#6b7280;font-weight:600">Gastos</th>
+            <th style="padding:8px;text-align:right;font-size:10px;color:#6b7280;font-weight:600">Saldo</th>
+            <th style="padding:8px;text-align:center;font-size:10px;color:#6b7280;font-weight:600">Estado</th>
+            <th style="padding:8px;text-align:right;font-size:10px;color:#6b7280;font-weight:600">Acciones</th>
+          </tr>
+        </thead>
+        <tbody>${filas || `<tr><td colspan="10" style="padding:30px;text-align:center;color:#6b7280">Sin rendiciones — usa "+ Nueva desde OC"</td></tr>`}</tbody>
+      </table>
+    </div>
+  `;
+
+  document.getElementById('btn-nueva-rendicion').onclick = abrirModalNueva;
+  panel.querySelectorAll('button[data-abrir-rendicion]').forEach(b => {
+    b.onclick = () => abrirModalEditar(Number(b.dataset.abrirRendicion));
+  });
+  panel.querySelectorAll('button[data-pdf-rendicion]').forEach(b => {
+    b.onclick = () => window.open(api.rendiciones.pdfUrl(Number(b.dataset.pdfRendicion)), '_blank');
+  });
+}
+
+// ─── Modal: Nueva rendición desde OC ──────────────────────────
+async function abrirModalNueva() {
+  let ocs = [];
+  try { ocs = await api.ordenesCompra.list(); } catch (e) { return showError('Error cargando OCs'); }
+  // Solo OCs APROBADAS / RECIBIDAS / FACTURADAS / PAGADAS / CERRADA_SIN_FACTURA
+  const elegibles = (ocs || []).filter(o =>
+    ['APROBADA', 'ENVIADA', 'RECIBIDA_PARCIAL', 'RECIBIDA', 'FACTURADA', 'PAGADA', 'CERRADA_SIN_FACTURA'].includes(o.estado)
+  );
+
+  const ov = document.createElement('div');
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
+  ov.innerHTML = `
+    <div style="background:#fff;border-radius:10px;padding:24px;width:540px;max-width:95vw">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+        <h3 style="margin:0;font-size:16px">🧾 Nueva rendición desde OC</h3>
+        <button id="btn-cerrar-nr" title="Cerrar" aria-label="Cerrar" style="background:none;border:none;font-size:22px;cursor:pointer;color:#999">×</button>
+      </div>
+      <form id="form-nr" style="display:flex;flex-direction:column;gap:10px">
+        <div>
+          <label style="font-size:11px;font-weight:600;color:#374151">Orden de Compra *</label>
+          <select id="nr-oc" required style="width:100%;padding:8px;border:1px solid #d1d5db;border-radius:4px;font-size:12px">
+            <option value="">— Seleccionar —</option>
+            ${elegibles.map(o => `<option value="${o.id_oc}">OC ${o.nro_oc} · ${o.proveedor_nombre || '—'} · ${fmtMoney(o.total, o.moneda)} · ${o.estado}</option>`).join('')}
+          </select>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          <div>
+            <label style="font-size:11px;font-weight:600;color:#374151">Banco</label>
+            <input id="nr-banco" placeholder="Ej: INTERBANK" style="width:100%;padding:8px;border:1px solid #d1d5db;border-radius:4px;font-size:12px">
+          </div>
+          <div>
+            <label style="font-size:11px;font-weight:600;color:#374151">Nº operación</label>
+            <input id="nr-nro-op" placeholder="48956081" style="width:100%;padding:8px;border:1px solid #d1d5db;border-radius:4px;font-size:12px">
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          <div>
+            <label style="font-size:11px;font-weight:600;color:#374151">Fecha de operación</label>
+            <input id="nr-fecha-op" type="date" style="width:100%;padding:8px;border:1px solid #d1d5db;border-radius:4px;font-size:12px">
+          </div>
+          <div>
+            <label style="font-size:11px;font-weight:600;color:#374151">Cargo del responsable</label>
+            <input id="nr-cargo" placeholder="Ej: ADMINISTRADOR" style="width:100%;padding:8px;border:1px solid #d1d5db;border-radius:4px;font-size:12px">
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:6px">
+          <button type="button" id="btn-cancel-nr" style="padding:9px 16px;background:#f3f4f6;border:1px solid #d1d5db;border-radius:4px;cursor:pointer">Cancelar</button>
+          <button type="submit" style="padding:9px 18px;background:#111827;color:#fff;border:none;border-radius:4px;cursor:pointer;font-weight:600">Crear rendición</button>
+        </div>
+      </form>
+    </div>`;
+  document.body.appendChild(ov);
+  const cerrar = () => ov.remove();
+  ov.querySelector('#btn-cerrar-nr').onclick = cerrar;
+  ov.querySelector('#btn-cancel-nr').onclick = cerrar;
+
+  ov.querySelector('#form-nr').onsubmit = async (e) => {
+    e.preventDefault();
+    const id_oc = Number(ov.querySelector('#nr-oc').value);
+    if (!id_oc) return showError('Falta seleccionar OC');
+    try {
+      const r = await api.rendiciones.crearDesdeOC({
+        id_oc,
+        banco:           ov.querySelector('#nr-banco').value.trim() || undefined,
+        nro_operacion:   ov.querySelector('#nr-nro-op').value.trim() || undefined,
+        fecha_operacion: ov.querySelector('#nr-fecha-op').value || undefined,
+        cargo:           ov.querySelector('#nr-cargo').value.trim() || undefined,
+      });
+      cerrar();
+      window.showSuccess?.('Rendición creada');
+      // Re-render del tab + abrir el modal de edición de la nueva
+      const panel = document.getElementById('adm-tab-rendiciones');
+      if (panel) await renderRendiciones(panel);
+      abrirModalEditar(r.id_rendicion);
+    } catch (err) { showError(err?.error || err?.message || 'Error al crear'); }
+  };
+}
+
+// ─── Modal: Editar / Ver rendición (items + adjuntos + firmas) ──
+async function abrirModalEditar(id_rendicion) {
+  let r;
+  try { r = await api.rendiciones.get(id_rendicion); } catch (e) { return showError(e?.message || 'No se pudo cargar'); }
+
+  const u = (() => { try { return JSON.parse(localStorage.getItem('erp_user') || '{}'); } catch { return {}; } })();
+  const idUser = u.id_usuario;
+  const esGerente = u.rol === 'GERENTE';
+
+  const ov = document.createElement('div');
+  ov.id = 'modal-rendicion';
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;display:flex;align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto';
+  ov.innerHTML = `<div style="background:#fff;border-radius:10px;padding:24px;width:1100px;max-width:98vw;margin:auto"></div>`;
+  const box = ov.firstElementChild;
+  document.body.appendChild(ov);
+
+  const render = () => {
+    const isMine = (id) => id && id === idUser;
+    const itemsHtml = (r.items || []).map((it, i) => `
+      <tr style="border-bottom:1px solid #f3f4f6">
+        <td style="padding:6px 4px;text-align:center;font-size:11px">${i + 1}</td>
+        <td style="padding:6px 4px;font-size:11px">${fmtDate(it.fecha)}</td>
+        <td style="padding:6px 4px;font-size:11px">${it.nro_documento || '—'}</td>
+        <td style="padding:6px 4px;font-size:11px">${it.beneficiario || '—'}</td>
+        <td style="padding:6px 4px;font-size:11px">${it.concepto}</td>
+        <td style="padding:6px 4px;text-align:right;font-size:11px;font-variant-numeric:tabular-nums">${fmtMoney(it.subtotal, r.moneda)}</td>
+        <td style="padding:6px 4px;text-align:right;font-size:11px;font-variant-numeric:tabular-nums">${fmtMoney(it.igv, r.moneda)}</td>
+        <td style="padding:6px 4px;text-align:right;font-size:11px;font-variant-numeric:tabular-nums;font-weight:600">${fmtMoney(it.importe_total, r.moneda)}</td>
+        <td style="padding:6px 4px;font-size:10px;color:#6b7280">${it.observaciones || ''}</td>
+        <td style="padding:6px 4px;text-align:right">
+          <button data-del-item="${it.id_item}" title="Eliminar línea" style="background:transparent;border:none;color:#dc2626;cursor:pointer;font-size:14px">×</button>
+        </td>
+      </tr>
+    `).join('');
+
+    const adjuntosHtml = (r.adjuntos || []).map(a => `
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:8px;border:1px solid #e5e7eb;border-radius:6px;margin-bottom:6px">
+        <div style="display:flex;gap:10px;align-items:center">
+          <span style="background:#dbeafe;color:#1e40af;padding:2px 8px;border-radius:6px;font-size:10px;font-weight:600">${a.tipo}</span>
+          <a href="${a.url}" target="_blank" style="color:#1e40af;font-size:12px;text-decoration:none">${a.nombre_archivo}</a>
+          <span style="font-size:10px;color:#6b7280">${a.subido_por_nombre || ''} · ${fmtDate(a.subido_at)}</span>
+        </div>
+        <button data-del-adj="${a.id_adjunto}" title="Eliminar adjunto" style="background:transparent;border:none;color:#dc2626;cursor:pointer;font-size:14px">×</button>
+      </div>
+    `).join('');
+
+    const firmaCheck = (tipo, label, nombre, fecha, idFirmante) => {
+      const firmado = !!nombre;
+      const puedeQuitar = firmado && (isMine(idFirmante) || esGerente);
+      return `
+        <div style="border:1px solid ${firmado ? '#10b981' : '#d1d5db'};border-radius:8px;padding:14px;background:${firmado ? '#ecfdf5' : '#fff'}">
+          <div style="font-size:11px;font-weight:700;color:#374151;margin-bottom:8px;text-transform:uppercase;letter-spacing:.4px">${label}</div>
+          ${firmado
+            ? `<div style="font-size:13px;font-weight:600">${nombre}</div>
+               <div style="font-size:10px;color:#6b7280;margin-bottom:8px">firmado: ${fmtDate(fecha)}</div>
+               ${puedeQuitar ? `<button data-desfirmar="${tipo}" style="padding:5px 10px;background:#fff;border:1px solid #dc2626;color:#dc2626;border-radius:4px;cursor:pointer;font-size:11px">Quitar firma</button>` : ''}`
+            : `<label style="display:flex;gap:6px;align-items:center;cursor:pointer;font-size:12px">
+                 <input type="checkbox" data-firmar="${tipo}">
+                 Marcar para firmar como <strong>${u.nombre || 'yo'}</strong>
+               </label>`}
+        </div>`;
+    };
+
+    box.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px">
+        <div>
+          <h3 style="margin:0;font-size:18px">🧾 Rendición OC ${r.nro_oc_referencia}</h3>
+          <div style="font-size:11px;color:#6b7280;margin-top:2px">${r.proveedor_nombre || ''} · ${r.centro_costo} · ${fmtMoney(r.importe_recibido, r.moneda)}</div>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button id="btn-pdf-r" style="padding:7px 14px;background:#fff;border:1px solid #d1d5db;border-radius:5px;cursor:pointer;font-size:12px">📄 Ver PDF</button>
+          ${esGerente ? `<button id="btn-eliminar-r" style="padding:7px 14px;background:#fff;border:1px solid #dc2626;color:#dc2626;border-radius:5px;cursor:pointer;font-size:12px">🗑 Eliminar</button>` : ''}
+          <button id="btn-cerrar-r" title="Cerrar" aria-label="Cerrar" style="background:none;border:none;font-size:22px;cursor:pointer;color:#999">×</button>
+        </div>
+      </div>
+
+      <!-- Cabecera editable -->
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;background:#f9fafb;padding:12px;border-radius:6px;margin-bottom:14px">
+        <div>
+          <label style="font-size:10px;font-weight:600;color:#374151">Banco</label>
+          <input id="meta-banco" value="${r.banco || ''}" style="width:100%;padding:6px;border:1px solid #d1d5db;border-radius:4px;font-size:12px">
+        </div>
+        <div>
+          <label style="font-size:10px;font-weight:600;color:#374151">Nº operación</label>
+          <input id="meta-nro-op" value="${r.nro_operacion || ''}" style="width:100%;padding:6px;border:1px solid #d1d5db;border-radius:4px;font-size:12px">
+        </div>
+        <div>
+          <label style="font-size:10px;font-weight:600;color:#374151">Fecha de operación</label>
+          <input id="meta-fecha-op" type="date" value="${r.fecha_operacion ? String(r.fecha_operacion).slice(0,10) : ''}" style="width:100%;padding:6px;border:1px solid #d1d5db;border-radius:4px;font-size:12px">
+        </div>
+        <div>
+          <label style="font-size:10px;font-weight:600;color:#374151">Cargo</label>
+          <input id="meta-cargo" value="${r.cargo || ''}" style="width:100%;padding:6px;border:1px solid #d1d5db;border-radius:4px;font-size:12px">
+        </div>
+        <div style="grid-column:span 4;text-align:right">
+          <button id="btn-guardar-meta" style="padding:6px 14px;background:#111827;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:11px">💾 Guardar cabecera</button>
+        </div>
+      </div>
+
+      <!-- Items -->
+      <div style="margin-bottom:14px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+          <h4 style="margin:0;font-size:13px">Items de gasto</h4>
+          <button id="btn-add-item" style="padding:5px 12px;background:#10b981;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:11px">+ Agregar línea</button>
+        </div>
+        <div style="border:1px solid #e5e7eb;border-radius:6px;overflow:auto;max-height:35vh">
+          <table style="width:100%;border-collapse:collapse;font-size:11px">
+            <thead style="background:#f9fafb;position:sticky;top:0">
+              <tr>
+                <th style="padding:6px 4px;text-align:center;font-size:10px;color:#6b7280">#</th>
+                <th style="padding:6px 4px;text-align:left;font-size:10px;color:#6b7280">Fecha</th>
+                <th style="padding:6px 4px;text-align:left;font-size:10px;color:#6b7280">N° Doc</th>
+                <th style="padding:6px 4px;text-align:left;font-size:10px;color:#6b7280">Beneficiario</th>
+                <th style="padding:6px 4px;text-align:left;font-size:10px;color:#6b7280">Concepto</th>
+                <th style="padding:6px 4px;text-align:right;font-size:10px;color:#6b7280">Subtotal</th>
+                <th style="padding:6px 4px;text-align:right;font-size:10px;color:#6b7280">IGV</th>
+                <th style="padding:6px 4px;text-align:right;font-size:10px;color:#6b7280">Total</th>
+                <th style="padding:6px 4px;text-align:left;font-size:10px;color:#6b7280">Observ.</th>
+                <th style="padding:6px 4px"></th>
+              </tr>
+            </thead>
+            <tbody>${itemsHtml || `<tr><td colspan="10" style="padding:20px;text-align:center;color:#6b7280">Sin items — usa "+ Agregar línea"</td></tr>`}</tbody>
+          </table>
+        </div>
+        <div style="display:flex;justify-content:flex-end;gap:18px;margin-top:8px;font-size:12px">
+          <span><b>Fondo asignado:</b> ${fmtMoney(r.fondo_asignado, r.moneda)}</span>
+          <span><b>Total gastos:</b> ${fmtMoney(r.total_gastos, r.moneda)}</span>
+          <span style="${Number(r.saldo_disponible) < 0 ? 'color:#dc2626' : 'color:#065f46'};font-weight:700"><b>Saldo disponible:</b> ${fmtMoney(r.saldo_disponible, r.moneda)}</span>
+        </div>
+      </div>
+
+      <!-- Adjuntos -->
+      <div style="margin-bottom:14px">
+        <h4 style="margin:0 0 8px 0;font-size:13px">Adjuntos (constancia, facturas, boletas)</h4>
+        ${adjuntosHtml || '<div style="font-size:11px;color:#6b7280;padding:6px">Sin adjuntos.</div>'}
+        <div style="display:flex;gap:8px;align-items:center;margin-top:10px;padding:10px;background:#f9fafb;border-radius:6px">
+          <select id="adj-tipo" style="padding:6px;border:1px solid #d1d5db;border-radius:4px;font-size:12px">
+            <option value="CONSTANCIA">Constancia bancaria</option>
+            <option value="FACTURA">Factura</option>
+            <option value="BOLETA">Boleta</option>
+            <option value="OC">OC</option>
+            <option value="COMPROBANTE">Comprobante</option>
+            <option value="OTRO">Otro</option>
+          </select>
+          <input type="file" id="adj-file" accept="image/*,application/pdf" style="flex:1;font-size:12px">
+          <button id="btn-subir-adj" style="padding:7px 14px;background:#10b981;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:11px">📎 Subir</button>
+        </div>
+      </div>
+
+      <!-- Firmas -->
+      <div>
+        <h4 style="margin:0 0 8px 0;font-size:13px">Firmas</h4>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">
+          ${firmaCheck('preparado',  'Preparado por',  r.preparado_por_nombre,  r.preparado_at,  r.preparado_por_id)}
+          ${firmaCheck('revisado',   'Revisado por',   r.revisado_por_nombre,   r.revisado_at,   r.revisado_por_id)}
+          ${firmaCheck('autorizado', 'Autorizado por', r.autorizado_por_nombre, r.autorizado_at, r.autorizado_por_id)}
+        </div>
+      </div>
+
+      <div style="display:flex;justify-content:flex-end;margin-top:18px">
+        <button id="btn-cerrar-r-2" style="padding:9px 20px;background:#f3f4f6;border:1px solid #d1d5db;border-radius:4px;cursor:pointer;font-size:12px">Cerrar</button>
+      </div>
+    `;
+
+    // Wire-up
+    const cerrar = () => ov.remove();
+    box.querySelector('#btn-cerrar-r').onclick = cerrar;
+    box.querySelector('#btn-cerrar-r-2').onclick = cerrar;
+    box.querySelector('#btn-pdf-r').onclick = () => window.open(api.rendiciones.pdfUrl(id_rendicion), '_blank');
+    if (esGerente) {
+      box.querySelector('#btn-eliminar-r')?.addEventListener('click', async () => {
+        if (!confirm(`¿Eliminar la rendición de la OC ${r.nro_oc_referencia}? Se borrarán items y adjuntos. La OC NO se toca.`)) return;
+        try {
+          await api.rendiciones.eliminar(id_rendicion);
+          window.showSuccess?.('Rendición eliminada');
+          cerrar();
+          const panel = document.getElementById('adm-tab-rendiciones');
+          if (panel) await renderRendiciones(panel);
+        } catch (e) { showError(e?.message || 'Error'); }
+      });
+    }
+
+    box.querySelector('#btn-guardar-meta').onclick = async () => {
+      try {
+        await api.rendiciones.editarMetadata(id_rendicion, {
+          banco:           box.querySelector('#meta-banco').value,
+          nro_operacion:   box.querySelector('#meta-nro-op').value,
+          fecha_operacion: box.querySelector('#meta-fecha-op').value || null,
+          cargo:           box.querySelector('#meta-cargo').value,
+        });
+        window.showSuccess?.('Cabecera guardada');
+        await reload();
+      } catch (e) { showError(e?.message || 'Error'); }
+    };
+
+    box.querySelector('#btn-add-item').onclick = () => abrirModalItem(id_rendicion, reload);
+    box.querySelectorAll('button[data-del-item]').forEach(b => {
+      b.onclick = async () => {
+        if (!confirm('¿Eliminar esta línea?')) return;
+        try { await api.rendiciones.eliminarItem(id_rendicion, Number(b.dataset.delItem)); await reload(); }
+        catch (e) { showError(e?.message || 'Error'); }
+      };
+    });
+    box.querySelectorAll('button[data-del-adj]').forEach(b => {
+      b.onclick = async () => {
+        if (!confirm('¿Eliminar este adjunto?')) return;
+        try { await api.rendiciones.eliminarAdjunto(id_rendicion, Number(b.dataset.delAdj)); await reload(); }
+        catch (e) { showError(e?.message || 'Error'); }
+      };
+    });
+
+    box.querySelector('#btn-subir-adj').onclick = async () => {
+      const fi = box.querySelector('#adj-file');
+      const tipo = box.querySelector('#adj-tipo').value;
+      if (!fi.files || !fi.files[0]) return showError('Seleccioná un archivo');
+      const btn = box.querySelector('#btn-subir-adj');
+      btn.disabled = true; btn.textContent = '⏳ Subiendo…';
+      try {
+        await api.rendiciones.subirAdjunto(id_rendicion, fi.files[0], tipo);
+        window.showSuccess?.('Adjunto subido');
+        await reload();
+      } catch (e) { showError(e?.message || 'Error'); }
+      finally { btn.disabled = false; btn.textContent = '📎 Subir'; }
+    };
+
+    box.querySelectorAll('input[data-firmar]').forEach(chk => {
+      chk.addEventListener('change', async (e) => {
+        if (!e.target.checked) return;
+        const tipo = e.target.dataset.firmar;
+        if (!confirm(`Vas a firmar como "${tipo.toUpperCase()}". Esto queda auditado con tu nombre y la hora. ¿Continuar?`)) {
+          e.target.checked = false;
+          return;
+        }
+        try { await api.rendiciones.firmar(id_rendicion, tipo); window.showSuccess?.('Firmado'); await reload(); }
+        catch (err) { showError(err?.message || 'Error al firmar'); }
+      });
+    });
+    box.querySelectorAll('button[data-desfirmar]').forEach(b => {
+      b.onclick = async () => {
+        const tipo = b.dataset.desfirmar;
+        if (!confirm(`¿Quitar firma "${tipo.toUpperCase()}"?`)) return;
+        try { await api.rendiciones.desfirmar(id_rendicion, tipo); window.showSuccess?.('Firma quitada'); await reload(); }
+        catch (e) { showError(e?.message || 'Error'); }
+      };
+    });
+  };
+
+  const reload = async () => {
+    try { r = await api.rendiciones.get(id_rendicion); render(); }
+    catch (e) { showError(e?.message || 'Error recargando'); }
+  };
+
+  render();
+}
+
+// ─── Modal: agregar item ──────────────────────────────────────
+function abrirModalItem(id_rendicion, onSaved) {
+  const ov = document.createElement('div');
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:10000;display:flex;align-items:center;justify-content:center;padding:20px';
+  ov.innerHTML = `
+    <div style="background:#fff;border-radius:10px;padding:22px;width:520px;max-width:95vw">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+        <h4 style="margin:0;font-size:15px">+ Agregar línea de gasto</h4>
+        <button id="btn-x-it" title="Cerrar" aria-label="Cerrar" style="background:none;border:none;font-size:22px;cursor:pointer;color:#999">×</button>
+      </div>
+      <form id="form-it" style="display:flex;flex-direction:column;gap:8px">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <div>
+            <label style="font-size:10px;font-weight:600;color:#374151">Fecha *</label>
+            <input id="it-fecha" type="date" required value="${new Date().toISOString().slice(0,10)}" style="width:100%;padding:6px;border:1px solid #d1d5db;border-radius:4px;font-size:12px">
+          </div>
+          <div>
+            <label style="font-size:10px;font-weight:600;color:#374151">Nº documento</label>
+            <input id="it-nro" placeholder="F004-0052624" style="width:100%;padding:6px;border:1px solid #d1d5db;border-radius:4px;font-size:12px">
+          </div>
+        </div>
+        <div>
+          <label style="font-size:10px;font-weight:600;color:#374151">Beneficiario / Proveedor</label>
+          <input id="it-bene" placeholder="Razón social" style="width:100%;padding:6px;border:1px solid #d1d5db;border-radius:4px;font-size:12px">
+        </div>
+        <div>
+          <label style="font-size:10px;font-weight:600;color:#374151">Concepto *</label>
+          <input id="it-concepto" required placeholder="HERRAMIENTAS, ALMUERZO..." style="width:100%;padding:6px;border:1px solid #d1d5db;border-radius:4px;font-size:12px">
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
+          <div>
+            <label style="font-size:10px;font-weight:600;color:#374151">Subtotal</label>
+            <input id="it-sub" type="number" step="0.0001" value="0" style="width:100%;padding:6px;border:1px solid #d1d5db;border-radius:4px;font-size:12px;text-align:right">
+          </div>
+          <div>
+            <label style="font-size:10px;font-weight:600;color:#374151">IGV</label>
+            <input id="it-igv" type="number" step="0.0001" value="0" style="width:100%;padding:6px;border:1px solid #d1d5db;border-radius:4px;font-size:12px;text-align:right">
+          </div>
+          <div>
+            <label style="font-size:10px;font-weight:600;color:#374151">Total *</label>
+            <input id="it-total" type="number" step="0.0001" required style="width:100%;padding:6px;border:1px solid #d1d5db;border-radius:4px;font-size:12px;text-align:right;font-weight:600">
+          </div>
+        </div>
+        <div>
+          <label style="font-size:10px;font-weight:600;color:#374151">Observaciones</label>
+          <input id="it-obs" placeholder="Detalle del gasto..." style="width:100%;padding:6px;border:1px solid #d1d5db;border-radius:4px;font-size:12px">
+        </div>
+        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px">
+          <button type="button" id="btn-c-it" style="padding:8px 14px;background:#f3f4f6;border:1px solid #d1d5db;border-radius:4px;cursor:pointer">Cancelar</button>
+          <button type="submit" style="padding:8px 16px;background:#10b981;color:#fff;border:none;border-radius:4px;cursor:pointer;font-weight:600">Agregar</button>
+        </div>
+      </form>
+    </div>`;
+  document.body.appendChild(ov);
+  const cerrar = () => ov.remove();
+  ov.querySelector('#btn-x-it').onclick = cerrar;
+  ov.querySelector('#btn-c-it').onclick = cerrar;
+
+  // Auto-calcular total = sub + igv
+  const recalc = () => {
+    const sub = Number(ov.querySelector('#it-sub').value || 0);
+    const igv = Number(ov.querySelector('#it-igv').value || 0);
+    const totalInput = ov.querySelector('#it-total');
+    if (!totalInput.dataset.tocado) totalInput.value = (sub + igv).toFixed(2);
+  };
+  ov.querySelector('#it-sub').oninput = recalc;
+  ov.querySelector('#it-igv').oninput = recalc;
+  ov.querySelector('#it-total').oninput = (e) => { e.target.dataset.tocado = '1'; };
+
+  ov.querySelector('#form-it').onsubmit = async (e) => {
+    e.preventDefault();
+    try {
+      await api.rendiciones.agregarItem(id_rendicion, {
+        fecha:         ov.querySelector('#it-fecha').value,
+        nro_documento: ov.querySelector('#it-nro').value,
+        beneficiario:  ov.querySelector('#it-bene').value,
+        concepto:      ov.querySelector('#it-concepto').value,
+        subtotal:      Number(ov.querySelector('#it-sub').value || 0),
+        igv:           Number(ov.querySelector('#it-igv').value || 0),
+        importe_total: Number(ov.querySelector('#it-total').value),
+        observaciones: ov.querySelector('#it-obs').value || null,
+      });
+      cerrar();
+      window.showSuccess?.('Línea agregada');
+      onSaved && await onSaved();
+    } catch (err) { showError(err?.message || 'Error'); }
+  };
 }

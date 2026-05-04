@@ -333,6 +333,41 @@ export const api = {
     registrarEntrante:(data)  => post('/notas-credito/recibida', data),
     eliminar:         (id)    => del(`/notas-credito/${id}`),
   },
+  rendiciones: {
+    list: (filtros = {}) => {
+      const p = new URLSearchParams();
+      Object.entries(filtros).forEach(([k, v]) => { if (v != null && v !== '') p.append(k, v); });
+      return get(`/rendiciones${p.toString() ? '?' + p : ''}`);
+    },
+    get:              (id)    => get(`/rendiciones/${id}`),
+    getPorOC:         (id_oc) => get(`/rendiciones/oc/${id_oc}`),
+    crearDesdeOC:     (data)  => post('/rendiciones', data),
+    editarMetadata:   (id, d) => put(`/rendiciones/${id}/metadata`, d),
+    agregarItem:      (id, item) => post(`/rendiciones/${id}/items`, item),
+    editarItem:       (id, idItem, item) => put(`/rendiciones/${id}/items/${idItem}`, item),
+    eliminarItem:     (id, idItem) => del(`/rendiciones/${id}/items/${idItem}`),
+    firmar:           (id, tipo) => post(`/rendiciones/${id}/firmar`, { tipo }),
+    desfirmar:        (id, tipo) => post(`/rendiciones/${id}/desfirmar`, { tipo }),
+    eliminar:         (id)    => del(`/rendiciones/${id}`),
+    pdfUrl:           (id)    => `/api/rendiciones/${id}/pdf`,
+    eliminarAdjunto:  (id, idAdj) => del(`/rendiciones/${id}/adjuntos/${idAdj}`),
+    subirAdjunto: async (id, file, tipo = 'OTRO') => {
+      const token = localStorage.getItem('erp_token');
+      const fd = new FormData();
+      fd.append('file', file);
+      fd.append('tipo', tipo);
+      const r = await fetch(`${API_BASE_URL}/rendiciones/${id}/adjuntos`, {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: fd,
+      });
+      if (!r.ok) {
+        const err = await r.json().catch(() => ({}));
+        throw new Error(err.error || `Error HTTP ${r.status}`);
+      }
+      return r.json();
+    },
+  },
   centrosCosto: {
     list:    (soloActivos = false) => get(`/centros-costo${soloActivos ? '?activos=1' : ''}`),
     resumen: (anio)    => get(`/centros-costo/resumen${anio ? '?anio=' + anio : ''}`),
