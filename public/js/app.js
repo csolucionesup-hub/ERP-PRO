@@ -1,28 +1,28 @@
 // Cache busting para imports ES module: cada path lleva su ?v=YYYYMMDDr#
 // hardcodeado. Si se cambia CUALQUIER archivo de pages/components/services
 // hay que bumpear el sufijo en TODAS las líneas (Find/Replace de v=2026...).
-import { renderSidebar } from './components/Sidebar.js?v=20260503r9';
-import { Dashboard }   from './pages/Dashboard.js?v=20260503r9';
-import { Finanzas }    from './pages/Finanzas.js?v=20260503r9';
-import { Inventario }  from './pages/Inventario.js?v=20260503r9';
-import { Usuarios }    from './pages/Usuarios.js?v=20260503r9';
-import { Compras }       from './pages/Compras.js?v=20260503r9';
+import { renderSidebar } from './components/Sidebar.js?v=20260504r1';
+import { Dashboard }   from './pages/Dashboard.js?v=20260504r1';
+import { Finanzas }    from './pages/Finanzas.js?v=20260504r1';
+import { Inventario }  from './pages/Inventario.js?v=20260504r1';
+import { Usuarios }    from './pages/Usuarios.js?v=20260504r1';
+import { Compras }       from './pages/Compras.js?v=20260504r1';
 // Servicios — módulo deprecado al cierre 03/05/2026 (Camino A vació la tabla
 // en producción; flujo migrado a Cotizaciones APROBADAS + OCs). El backend
 // sigue vivo porque Logística/OC consumen api.services.getServiciosActivos()
 // para popular dropdowns, pero la página ya no se navega.
-import { Proveedores }   from './pages/Proveedores.js?v=20260503r9';
-import { Prestamos }     from './pages/Prestamos.js?v=20260503r9';
-import { Comercial }     from './pages/Comercial.js?v=20260503r9';
-import { ConfiguracionComercial } from './pages/ConfiguracionComercial.js?v=20260503r9';
-import { Logistica }     from './pages/Logistica.js?v=20260503r9';
-import { Administracion } from './pages/Administracion.js?v=20260503r9';
-import { Configuracion }  from './pages/Configuracion.js?v=20260503r9';
-import { Contabilidad }   from './pages/Contabilidad.js?v=20260503r9';
-import { Importador }     from './pages/Importador.js?v=20260503r9';
-import { OrdenesCompra }  from './pages/OrdenesCompra.js?v=20260503r9';
-import { Alertas }        from './pages/Alertas.js?v=20260503r9';
-import { showSuccess, showError, showToast } from './services/ui.js?v=20260503r9';
+import { Proveedores }   from './pages/Proveedores.js?v=20260504r1';
+import { Prestamos }     from './pages/Prestamos.js?v=20260504r1';
+import { Comercial }     from './pages/Comercial.js?v=20260504r1';
+import { ConfiguracionComercial } from './pages/ConfiguracionComercial.js?v=20260504r1';
+import { Logistica }     from './pages/Logistica.js?v=20260504r1';
+import { Administracion } from './pages/Administracion.js?v=20260504r1';
+import { Configuracion }  from './pages/Configuracion.js?v=20260504r1';
+import { Contabilidad }   from './pages/Contabilidad.js?v=20260504r1';
+import { Importador }     from './pages/Importador.js?v=20260504r1';
+import { OrdenesCompra }  from './pages/OrdenesCompra.js?v=20260504r1';
+import { Alertas }        from './pages/Alertas.js?v=20260504r1';
+import { showSuccess, showError, showToast } from './services/ui.js?v=20260504r1';
 
 // Exponer helpers de toast globalmente (los modules ES no tienen acceso
 // directo desde otros modules sin import; varios usan window.showSuccess?.()
@@ -206,11 +206,54 @@ async function configEmpresaExiste() {
   }
 }
 
+/**
+ * Refresca rol/módulos/permisos contra la BD. El JWT y el localStorage se
+ * setean SOLO al hacer login — si el GERENTE cambia el rol/módulos de un
+ * usuario después, sin esto la pantalla queda stale hasta logout/login.
+ *
+ * /api/auth/me ahora consulta BD fresca y devuelve `{ usuario, cambio, token }`.
+ * Si `cambio: true`, regrabamos `erp_user` y `erp_token` en localStorage.
+ *
+ * Best-effort: si falla (sin red, 401, etc.), no bloqueamos el arranque —
+ * el flujo legacy con el JWT existente sigue funcionando hasta que el
+ * usuario haga logout o el token expire.
+ */
+async function refreshSessionFromServer() {
+  try {
+    const token = localStorage.getItem('erp_token');
+    if (!token) return;
+    const r = await fetch('/api/auth/me', {
+      headers: { 'Authorization': 'Bearer ' + token }
+    });
+    if (r.status === 401) {
+      // JWT inválido o usuario desactivado → al login.
+      localStorage.removeItem('erp_token');
+      localStorage.removeItem('erp_user');
+      window.location.replace('/login.html');
+      return;
+    }
+    if (!r.ok) return;
+    const data = await r.json();
+    if (!data?.usuario) return;
+    localStorage.setItem('erp_user', JSON.stringify(data.usuario));
+    if (data.cambio && data.token) {
+      localStorage.setItem('erp_token', data.token);
+    }
+  } catch {
+    // sin red / endpoint caído → no bloqueamos
+  }
+}
+
 async function init() {
   if (!localStorage.getItem('erp_token')) {
     window.location.replace('/login.html');
     return;
   }
+
+  // Refresca antes de pintar la SPA, así Sidebar y todos los chequeos de
+  // rol leen valores frescos de BD. Si el rol cambió y el usuario quedó
+  // sin acceso a la página actual, navigate() se encarga del redirect.
+  await refreshSessionFromServer();
 
   const user = getUser();
 

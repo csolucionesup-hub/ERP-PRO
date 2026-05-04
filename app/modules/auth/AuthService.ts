@@ -40,6 +40,60 @@ class AuthService {
     return { token, usuario: payload };
   }
 
+  /**
+   * Lee el perfil del usuario directo de BD (rol, flags, módulos asignados).
+   * Usado por GET /api/auth/me para detectar cambios post-login (ej: el GERENTE
+   * cambió el rol de un usuario y su JWT/localStorage quedaron stale).
+   *
+   * Devuelve `cambio: true` cuando el payload nuevo difiere del JWT actual,
+   * para que el cliente sepa que debe regrabar `erp_user` y `erp_token`.
+   */
+  async getProfileFromDB(id_usuario: number, jwtPayload: any) {
+    const [rows]: any = await db.query(
+      'SELECT id_usuario, nombre, email, rol, activo, puede_contabilidad, puede_importar FROM Usuarios WHERE id_usuario = ?',
+      [id_usuario]
+    );
+    const user = (rows as any[])[0];
+    if (!user) throw new Error('Usuario no encontrado.');
+    if (!user.activo) throw new Error('Usuario desactivado.');
+
+    const [modRows]: any = await db.query(
+      'SELECT modulo FROM UsuarioModulos WHERE id_usuario = ?',
+      [id_usuario]
+    );
+    const modulos = (modRows as any[]).map(r => r.modulo);
+
+    const usuario = {
+      id_usuario: user.id_usuario,
+      nombre: user.nombre,
+      email: user.email,
+      rol: user.rol,
+      modulos,
+      puede_contabilidad: user.rol === 'GERENTE' || !!user.puede_contabilidad,
+      puede_importar:     user.rol === 'GERENTE' || !!user.puede_importar,
+    };
+
+    // Detectar cambios contra el payload del JWT
+    const jwtMods: string[] = Array.isArray(jwtPayload?.modulos) ? [...jwtPayload.modulos].sort() : [];
+    const newMods = [...modulos].sort();
+    const cambio =
+      !jwtPayload ||
+      jwtPayload.rol !== usuario.rol ||
+      !!jwtPayload.puede_contabilidad !== usuario.puede_contabilidad ||
+      !!jwtPayload.puede_importar     !== usuario.puede_importar ||
+      jwtMods.length !== newMods.length ||
+      jwtMods.some((m, i) => m !== newMods[i]);
+
+    // Si hubo cambio, emitimos un nuevo JWT con los datos frescos para que
+    // el cliente pueda reemplazar el viejo sin requerir logout/login.
+    let token: string | null = null;
+    if (cambio) {
+      token = jwt.sign(usuario, JWT_SECRET, { expiresIn: JWT_EXPIRES });
+    }
+
+    return { usuario, cambio, token };
+  }
+
   async crearUsuario(
     data: {
       nombre: string;
