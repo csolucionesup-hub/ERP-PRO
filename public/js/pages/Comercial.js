@@ -1023,30 +1023,35 @@ function archivoTable(cotizaciones, filtroMarca) {
         <td style="text-align:center">
           <div style="display:flex;flex-direction:column;gap:4px">
             <button class="action-btn"
+              title="Previsualizar el PDF de la cotización en una ventana modal."
               onclick="window.previewPDFCotizacion(${c.id_cotizacion},'${c.nro_cotizacion.replace(/'/g, "\\'")}')">👁️ Ver</button>
             <button class="action-btn" style="background:#dc2626;color:#fff"
+              title="Descargar el PDF de la cotización con el formato oficial Metal Engineers / Perfotools."
               onclick="window.descargarPDFCotizacion(${c.id_cotizacion},'${c.nro_cotizacion.replace(/'/g, "\\'")}')">📄 PDF</button>
             ${!anulada && (c.estado === 'APROBADA' || c.estado === 'TERMINADA') && !c.nro_factura ? `
             <button class="action-btn" style="background:#16a34a;color:#fff;font-weight:600"
+              title="Emitir la factura electrónica al cliente desde esta cotización. Genera el comprobante en SUNAT (vía Nubefact) y lo asocia automáticamente."
               onclick="window.emitirFacturaDesdeCot(${c.id_cotizacion},'${c.nro_cotizacion.replace(/'/g, "\\'")}')">🧾 Emitir Factura</button>
             ` : ''}
             ${c.nro_factura ? `
-            <span style="background:#dcfce7;color:#166534;padding:3px 6px;border-radius:4px;font-size:11px;font-weight:600;border:1px solid #86efac">
+            <span style="background:#dcfce7;color:#166534;padding:3px 6px;border-radius:4px;font-size:11px;font-weight:600;border:1px solid #86efac"
+              title="Factura ya emitida y asociada a esta cotización.">
               ✅ ${c.nro_factura}
             </span>` : ''}
             ${!anulada && ESTADOS_EDITABLES.includes(c.estado) ? `
             <button class="action-btn" style="background:#3b82f6;color:#fff"
-              title="Editar líneas, montos y todos los datos (solo en estados iniciales)"
+              title="Edición completa: cambiar items, descripciones, cantidades, precios, fotos. Solo disponible en EN_PROCESO o A_ESPERA_RESPUESTA (antes de enviar al cliente)."
               onclick="window.editarCotizacion(${c.id_cotizacion},'${c.nro_cotizacion.replace(/'/g, "\\'")}')">✎ Editar líneas</button>
             ` : ''}
             ${!anulada ? `
             <button class="action-btn"
               style="background:#fff;color:#3b82f6;border:1px solid #93c5fd;font-size:11px"
-              title="Editar cliente, atención, contactos y condiciones (no toca números)"
+              title="Edición segura disponible en cualquier estado: cliente, atención, teléfono, correo, proyecto, condiciones (forma de pago, validez, plazos, lugar entrega), referencias y comentarios. NO toca números, items ni cobranzas."
               onclick="window.editarMetadataCotizacion(${c.id_cotizacion},'${c.nro_cotizacion.replace(/'/g, "\\'")}')">✎ Editar datos</button>
             ` : ''}
             ${!anulada ? `
             <button class="action-btn action-btn-anular"
+              title="Anular la cotización (cambia estado a ANULADA, no borra). El número correlativo queda quemado y la cotización pasa al archivo de anuladas."
               onclick="window.anularCotizacion(${c.id_cotizacion},'${c.nro_cotizacion.replace(/'/g, "\\'")}')">Anular</button>
             ` : `<span style="font-size:11px;color:var(--text-secondary)">Anulada</span>`}
             ${(() => {
@@ -1056,7 +1061,7 @@ function archivoTable(cotizaciones, filtroMarca) {
                 if (u.rol === 'GERENTE') {
                   return `<button class="action-btn"
                     style="background:#fff;color:#7f1d1d;border:1px solid #7f1d1d;font-size:11px"
-                    title="Eliminar definitivamente con cascada (cobranzas, costos, mov. bancarios)"
+                    title="Eliminar permanente con cascada total (solo GERENTE). Borra cotización + items + cobranzas registradas + movimientos bancarios automáticos + Tx caja + costos de servicio. Las OCs vinculadas se desvinculan (no se borran). Pide tipear el N° de cotización."
                     onclick="window.eliminarCotizacion(${c.id_cotizacion},'${c.nro_cotizacion.replace(/'/g, "\\'")}')">🗑 Eliminar</button>`;
                 }
               } catch {}

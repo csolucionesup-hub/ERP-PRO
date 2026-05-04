@@ -89,9 +89,9 @@ function renderCatalogo(panel) {
         <td style="text-align:right">${fPEN(i.costo_promedio || 0)}</td>
         <td style="text-align:right">${fPEN(i.valorizado || 0)}</td>
         <td style="display:flex;gap:4px;flex-wrap:wrap">
-          <button class="action-btn" onclick="window.Inventario.verKardex(${i.id_item}, '${(i.nombre || '').replace(/'/g, "\\'")}')">Kárdex</button>
-          <button class="action-btn" style="background:#fff;color:#3b82f6;border:1px solid #93c5fd" title="Editar nombre, categoría, unidad y stock mínimo" onclick="window.Inventario.editarMetadataItem(${i.id_item}, '${(i.nombre || '').replace(/'/g, "\\'")}')">✎</button>
-          <button class="action-btn" style="background:#ef4444;color:white" title="Eliminar (con cascada forzada para GERENTE si tiene dependencias)" onclick="window.Inventario.eliminarItem(${i.id_item}, '${(i.nombre || '').replace(/'/g, "\\'")}')">×</button>
+          <button class="action-btn" title="Ver el kárdex completo del ítem: todas las entradas/salidas con fecha, cantidad, precio y saldo. Sirve para auditar el stock o explicar diferencias." onclick="window.Inventario.verKardex(${i.id_item}, '${(i.nombre || '').replace(/'/g, "\\'")}')">Kárdex</button>
+          <button class="action-btn" style="background:#fff;color:#3b82f6;border:1px solid #93c5fd" title="Edición segura: corregir nombre, categoría, unidad o stock mínimo. NO toca el stock actual ni el costo promedio (eso viene del kárdex automáticamente)." onclick="window.Inventario.editarMetadataItem(${i.id_item}, '${(i.nombre || '').replace(/'/g, "\\'")}')">✎</button>
+          <button class="action-btn" style="background:#ef4444;color:white" title="Eliminar el ítem. Modo NORMAL bloquea si tiene stock, compras o costos. Modo FORZADO (solo GERENTE, te lo ofrece si hay dependencias) borra todo en cascada y recalcula totales de Compras." onclick="window.Inventario.eliminarItem(${i.id_item}, '${(i.nombre || '').replace(/'/g, "\\'")}')">×</button>
         </td>
       </tr>
     `;

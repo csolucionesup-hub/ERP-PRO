@@ -480,10 +480,10 @@ export const Compras = async () => {
       </td>
       <td>${getStatusBadge(c.estado_pago)}</td>
       <td style="display:flex;gap:4px;flex-wrap:wrap">
-        ${c.estado_pago !== 'ANULADO' ? `<button class="action-btn" style="background:var(--info);color:white" title="Editar items, montos y todo" onclick="window.editarCompra(${c.id_compra})">Editar líneas</button>` : ''}
-        ${c.estado_pago !== 'ANULADO' ? `<button class="action-btn" style="background:#fff;color:#3b82f6;border:1px solid #93c5fd" title="Editar nro comprobante / fecha / OC referencia (no toca números)" onclick="window.editarMetadataCompra(${c.id_compra}, '${c.nro_comprobante}')">Editar datos</button>` : ''}
+        ${c.estado_pago !== 'ANULADO' ? `<button class="action-btn" style="background:var(--info);color:white" title="Edición completa: cambiar proveedor, items, cantidades, precios y totales. Recalcula stock e IGV." onclick="window.editarCompra(${c.id_compra})">Editar líneas</button>` : ''}
+        ${c.estado_pago !== 'ANULADO' ? `<button class="action-btn" style="background:#fff;color:#3b82f6;border:1px solid #93c5fd" title="Edición segura: corregir N° de comprobante (factura/boleta), N° OC referencia, fecha y centro de costo. NO toca proveedor, items, montos ni inventario." onclick="window.editarMetadataCompra(${c.id_compra}, '${c.nro_comprobante}')">Editar datos</button>` : ''}
         ${c.estado_pago !== 'ANULADO' ? `<button class="action-btn action-btn-anular" onclick="window.anularCompra(${c.id_compra}, '${c.nro_comprobante}')">Anular</button>` : ''}
-        <button class="action-btn" style="background:#ef4444;color:white" title="Eliminar definitivamente con cascada (solo GERENTE)" onclick="window.eliminarCompra(${c.id_compra}, '${c.nro_comprobante}')">Eliminar</button>
+        <button class="action-btn" style="background:#ef4444;color:white" title="Eliminar permanente con cascada (solo GERENTE). Si la compra estaba CONFIRMADA, revierte el stock. Borra DetalleCompra, Tx caja COMPRA, MovInv y desvincula la OC origen. Pide tipear el N° de comprobante exacto." onclick="window.eliminarCompra(${c.id_compra}, '${c.nro_comprobante}')">Eliminar</button>
       </td>
     </tr>
   `;

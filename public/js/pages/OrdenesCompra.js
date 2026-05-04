@@ -667,49 +667,49 @@ function accionesSegunEstado(oc) {
   const esGerente = getUserRol() === 'GERENTE';
   const nroSafe = String(oc.nro_oc).replace(/'/g, "\\'");
   // Ver (preview en modal) + Descargar PDF — siempre disponibles.
-  btns.push(`<button onclick="window.previewPDFOC(${oc.id_oc}, '${nroSafe}')" style="padding:10px 18px;background:#fff;color:#374151;border:1px solid #d1d5db;border-radius:6px;cursor:pointer;font-weight:600">👁️ Ver</button>`);
-  btns.push(`<button onclick="OC.descargarPDF(${oc.id_oc})" style="padding:10px 18px;background:#dc2626;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">📄 Descargar PDF</button>`);
+  btns.push(`<button onclick="window.previewPDFOC(${oc.id_oc}, '${nroSafe}')" title="Previsualizar el PDF de la OC en una ventana modal sin descargarlo." style="padding:10px 18px;background:#fff;color:#374151;border:1px solid #d1d5db;border-radius:6px;cursor:pointer;font-weight:600">👁️ Ver</button>`);
+  btns.push(`<button onclick="OC.descargarPDF(${oc.id_oc})" title="Descargar el PDF de la OC con el formato oficial Metal Engineers / Perfotools." style="padding:10px 18px;background:#dc2626;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">📄 Descargar PDF</button>`);
   if (oc.estado === 'BORRADOR') {
-    btns.push(`<button onclick="OC.aprobar(${oc.id_oc})" style="padding:10px 18px;background:#16a34a;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">✓ Aprobar</button>`);
+    btns.push(`<button onclick="OC.aprobar(${oc.id_oc})" title="Aprobar la OC. Pasa de BORRADOR a APROBADA y queda lista para enviar al proveedor." style="padding:10px 18px;background:#16a34a;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">✓ Aprobar</button>`);
   }
   if (oc.estado === 'APROBADA') {
-    btns.push(`<button onclick="OC.enviar(${oc.id_oc})" style="padding:10px 18px;background:#3b82f6;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">📤 Marcar como Enviada</button>`);
+    btns.push(`<button onclick="OC.enviar(${oc.id_oc})" title="Marcar la OC como enviada al proveedor (no envía mail automático — es un cambio de estado para el seguimiento). Después solo se podrá editar metadata, no items." style="padding:10px 18px;background:#3b82f6;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">📤 Marcar como Enviada</button>`);
   }
   if (['APROBADA', 'ENVIADA', 'RECIBIDA_PARCIAL'].includes(oc.estado)) {
-    btns.push(`<button onclick="OC.recibir(${oc.id_oc})" style="padding:10px 18px;background:#059669;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">📦 Registrar recepción</button>`);
+    btns.push(`<button onclick="OC.recibir(${oc.id_oc})" title="Marcar la mercadería/servicio como recibido. Si es OC de ALMACEN: ingresa el stock al inventario y registra el kárdex." style="padding:10px 18px;background:#059669;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">📦 Registrar recepción</button>`);
   }
   if (['RECIBIDA', 'RECIBIDA_PARCIAL'].includes(oc.estado)) {
-    btns.push(`<button onclick="OC.facturar(${oc.id_oc})" style="padding:10px 18px;background:#7c3aed;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">🧾 Recibí factura</button>`);
+    btns.push(`<button onclick="OC.facturar(${oc.id_oc})" title="Cargar la factura/boleta del proveedor. Genera la Compra (ALMACEN) o el Gasto (GENERAL/SERVICIO) y la Tx en caja. Después de esto la OC ya no se puede anular." style="padding:10px 18px;background:#7c3aed;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">🧾 Recibí factura</button>`);
     // "Cerrar sin facturar" solo aplica a GENERAL/SERVICIO (no ALMACEN).
     // ALMACEN siempre requiere comprobante porque genera stock valorizado.
     if (oc.tipo_oc !== 'ALMACEN') {
-      btns.push(`<button onclick="OC.cerrarSinFactura(${oc.id_oc}, '${nroSafe}')" style="padding:10px 18px;background:#ea580c;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">🗂 Cerrar sin facturar</button>`);
+      btns.push(`<button onclick="OC.cerrarSinFactura(${oc.id_oc}, '${nroSafe}')" title="Cerrar la OC sin factura formal (compra al contado, caja chica, etc). Genera el Gasto contable pero deja la OC en bandeja 'Sin facturar' por si después llega el comprobante." style="padding:10px 18px;background:#ea580c;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">🗂 Cerrar sin facturar</button>`);
     }
   }
   // OC cerrada sin factura — ofrecer asociar factura tardía
   if (oc.estado === 'CERRADA_SIN_FACTURA') {
-    btns.push(`<button onclick="OC.asociarFactura(${oc.id_oc}, '${nroSafe}')" style="padding:10px 18px;background:#7c3aed;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">🧾 Asociar factura tardía</button>`);
+    btns.push(`<button onclick="OC.asociarFactura(${oc.id_oc}, '${nroSafe}')" title="El proveedor mandó la factura después de cerrar. Vinculala a esta OC y pasa al estado FACTURADA." style="padding:10px 18px;background:#7c3aed;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">🧾 Asociar factura tardía</button>`);
   }
   // Editar líneas/montos — hasta ENVIADA inclusive (después la mercadería ya fue recibida).
   if (['BORRADOR', 'APROBADA', 'ENVIADA'].includes(oc.estado)) {
-    btns.push(`<button onclick="OC.editar(${oc.id_oc})" style="padding:10px 18px;background:#f59e0b;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">✎ Editar líneas</button>`);
+    btns.push(`<button onclick="OC.editar(${oc.id_oc})" title="Edición completa: cambiar items, cantidades, precios, totales, proveedor. Solo disponible antes de recibir mercadería." style="padding:10px 18px;background:#f59e0b;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">✎ Editar líneas</button>`);
   }
   // Editar metadata segura (centro_costo, concepto, observaciones, contactos) —
   // disponible en CUALQUIER estado salvo ANULADA. No toca números.
   if (oc.estado !== 'ANULADA') {
-    btns.push(`<button onclick="OC.editarMetadata(${oc.id_oc}, '${nroSafe}')" style="padding:10px 18px;background:#fff;color:#7c3aed;border:1px solid #c4b5fd;border-radius:6px;cursor:pointer;font-weight:600">✎ Editar concepto/CC</button>`);
+    btns.push(`<button onclick="OC.editarMetadata(${oc.id_oc}, '${nroSafe}')" title="Edición segura en cualquier estado: corregir centro de costo, concepto, atención, contactos. NO toca números ni inventario." style="padding:10px 18px;background:#fff;color:#7c3aed;border:1px solid #c4b5fd;border-radius:6px;cursor:pointer;font-weight:600">✎ Editar concepto/CC</button>`);
   }
   // Eliminar físico — disponible en CUALQUIER estado, solo GERENTE.
   // Backend hace cascada completa (Tx, Compras/Gastos, Inventario, CostosServicio).
   if (esGerente) {
-    btns.push(`<button onclick="OC.eliminarOC(${oc.id_oc}, '${nroSafe}')" style="padding:10px 18px;background:transparent;color:#7f1d1d;border:1px solid #7f1d1d;border-radius:6px;cursor:pointer;font-weight:600">🗑 Eliminar</button>`);
+    btns.push(`<button onclick="OC.eliminarOC(${oc.id_oc}, '${nroSafe}')" title="Eliminar permanente con cascada total (solo GERENTE). Borra OC + Compra/Gasto generado + Tx caja + Movimientos inventario + reverso de stock. Pide tipear el N° de OC para confirmar." style="padding:10px 18px;background:transparent;color:#7f1d1d;border:1px solid #7f1d1d;border-radius:6px;cursor:pointer;font-weight:600">🗑 Eliminar</button>`);
   }
   if (!['FACTURADA', 'PAGADA', 'ANULADA'].includes(oc.estado)) {
-    btns.push(`<button onclick="OC.anular(${oc.id_oc})" style="padding:10px 18px;background:transparent;color:#dc2626;border:1px solid #dc2626;border-radius:6px;cursor:pointer;font-weight:600">Anular</button>`);
+    btns.push(`<button onclick="OC.anular(${oc.id_oc})" title="Anular la OC (cambia el estado, no borra nada). El correlativo queda quemado y la OC pasa al archivo. Disponible hasta antes de facturar." style="padding:10px 18px;background:transparent;color:#dc2626;border:1px solid #dc2626;border-radius:6px;cursor:pointer;font-weight:600">Anular</button>`);
   }
   // Reactivar — solo si está ANULADA y eres GERENTE. Vuelve la OC a BORRADOR.
   if (oc.estado === 'ANULADA' && esGerente) {
-    btns.push(`<button onclick="OC.reactivar(${oc.id_oc}, '${nroSafe}')" style="padding:10px 18px;background:#0891b2;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">♻ Reactivar</button>`);
+    btns.push(`<button onclick="OC.reactivar(${oc.id_oc}, '${nroSafe}')" title="Devolver la OC anulada a BORRADOR para retomar su flujo (solo GERENTE)." style="padding:10px 18px;background:#0891b2;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">♻ Reactivar</button>`);
   }
   return btns.join('');
 }
@@ -1071,12 +1071,20 @@ async function abrirModalResolucionItems(id_oc, lineasPendientes) {
 }
 
 async function facturar(id) {
-  // Una vez FACTURADA, ya no se puede anular (debe usarse Nota de Crédito).
+  // Una vez FACTURADA, el botón Anular desaparece. Para corregir hay dos
+  // caminos según ya entró al SIRE de SUNAT o no.
   const ok = await confirmarAccion({
     titulo: '🧾 Registrar factura del proveedor',
-    mensaje: 'Una vez facturada, esta OC <strong style="color:#dc2626">ya no podrá anularse</strong> — para revertirla deberás emitir una Nota de Crédito. ¿Estás seguro?',
+    mensaje:
+      `Vas a registrar la factura del proveedor sobre esta OC. Después:` +
+      `<ul style="margin:8px 0 8px 20px;line-height:1.6;font-size:13px">` +
+      `<li>El botón <strong>Anular</strong> desaparece (la factura ya entró a Compras y al cálculo del IGV).</li>` +
+      `<li>Si te equivocás: <strong>🗑 Eliminar</strong> sigue disponible para GERENTE — borra todo en cascada (Compra, Gasto, Tx, Inventario).</li>` +
+      `<li>Si la factura ya fue declarada al <strong>SIRE de SUNAT</strong>, el ajuste correcto es pedirle al proveedor una <strong>Nota de Crédito</strong> y registrarla cuando llegue (módulo aún por construir).</li>` +
+      `</ul>` +
+      `¿Continuamos?`,
     tipo: 'warning',
-    textoBoton: 'Sí, continuar',
+    textoBoton: 'Sí, registrar factura',
   });
   if (!ok) return;
   const nro = prompt('N° factura del proveedor (ej. F001-00123):');
