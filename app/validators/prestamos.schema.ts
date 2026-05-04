@@ -22,6 +22,9 @@ export const prestamoTomadoCreateSchema = z.object({
     nro_oc:            z.string().optional(),
     descripcion:       z.string().optional(),
     comentario:        z.string().optional(),
+    // Carga histórica: si el préstamo viene con abonos previos. Default 0.
+    // Validación adicional contra `total` se hace en createTomado del Service.
+    monto_pagado_inicial: z.coerce.number().min(0).default(0).optional(),
   })
 });
 
@@ -61,6 +64,10 @@ export const prestamoOtorgadoCreateSchema = z.object({
     nro_oc:            z.string().optional(),
     descripcion:       z.string().optional(),
     comentario:        z.string().optional(),
+    // Carga histórica: si el préstamo otorgado ya tuvo cobros previos.
+    // El Service acepta tanto `monto_cobrado_inicial` como `monto_pagado_inicial`.
+    monto_cobrado_inicial: z.coerce.number().min(0).default(0).optional(),
+    monto_pagado_inicial:  z.coerce.number().min(0).default(0).optional(),
   })
 });
 
