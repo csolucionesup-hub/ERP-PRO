@@ -2,13 +2,13 @@
 
 > **LEER PRIMERO.** Este documento es la fuente de verdad sobre qué está hecho, qué falta y dónde estamos parados. Se actualiza al cierre de cada sesión de trabajo.
 
-**Última actualización:** 2026-05-03 (madrugada — cierre maratón post-Fase C: 21 commits adicionales en sesión continuada — fixes UX recepción OC + edición cobranzas + Tx Dashboard Gerencial + estado TRABAJO_EN_RIESGO + Form multi-item Factura + PDF SUNAT + fechas editables)
+**Última actualización:** 2026-05-03 (tarde — sesión universal edit/delete + tooltips: 4 commits adicionales — Fase 1 OC editar metadata + eliminar cascada total, Fase 3 mismo patrón en Cotizaciones/Compras/Gastos/Items, modal facturar OC honesto sobre NC, tooltip sweep en iconos discretos)
 **Rama activa:** `main`
-**Último commit pusheado:** `dbc9440 feat(oc): botón 📅 para editar fecha de emisión en cualquier estado`
+**Último commit pusheado:** `97a7e8e ux: tooltips + aria-label en iconos discretos sin texto (×, ✕, 🗑, ✓, ⊘, 📅, ⟲)`
 **Servidor dev:** `npx ts-node index.ts` en `D:\proyectos\ERP-PRO` → `http://localhost:3000`
 **Producción:** `erp-pro-production-e4c0.up.railway.app` — Railway (deploy automático desde main)
-**Cache buster JS actual:** `v=20260502r13` (app.js) — **convención**: hardcoded en CADA import dentro de app.js. Ver gotcha #36 en CLAUDE.md.
-**Migraciones BD:** 001 → 037 + 042 → 050 aplicadas (Supabase Postgres project `fhlrxlsscerfiuuyiejw`). Migraciones nuevas hoy: 045-050.
+**Cache buster JS actual:** `v=20260503r3` (app.js) — **convención**: hardcoded en CADA import dentro de app.js. Ver gotcha #36 en CLAUDE.md.
+**Migraciones BD:** 001 → 037 + 042 → 050 aplicadas (Supabase Postgres project `fhlrxlsscerfiuuyiejw`). Sin migraciones nuevas hoy (todo el trabajo fue Service + UI; el patrón de cascada usa los CHECKs/FKs existentes).
 
 ---
 
@@ -126,6 +126,14 @@ Railway desplegado y operativo con 41 tablas. Build limpio (`npx tsc --noEmit` p
 - [x] ~~Form multi-item Factura + PDF estilo SUNAT~~ → `311f4f7` + migraciones 048-050
 - [x] ~~Fechas editables en cotización (form + botón 📅)~~ → `52a98d5` + `1fd8d98`
 - [x] ~~Fechas editables en OC (botón 📅)~~ → `dbc9440`
+- [x] ~~OC editar metadata + eliminar con cascada total (Fase 1)~~ → `b76abf7` (03/05)
+- [x] ~~Replicar editar/eliminar universal a Cotizaciones, Compras, Gastos, Items (Fase 3)~~ → `2119ec2` (03/05)
+- [x] ~~Modal "Recibí factura" honesto sobre NC (no prometer pantalla inexistente)~~ → `337b20b` (03/05)
+- [x] ~~Tooltips en todos los iconos discretos (×, ✕, 🗑, ✓, ⊘, 📅, ⟲)~~ → `97a7e8e` (03/05)
+- [ ] **PRIORIDAD ALTA — Módulo NCs entrantes (recibir NC del proveedor):** 2-3 horas. Cierra loop "y si me equivoco después de facturar" + es prerequisito SUNAT SIRE Fase B. Tablas `NotasCredito`/`NotasDebito` ya creadas (migración 026), builder de payload SUNAT ya listo (`NubefactPayloadBuilder.buildNotaCredito`). Falta: NotaCreditoService + rutas + pantalla.
+- [ ] **PRIORIDAD MEDIA — UI directa de Gastos:** 1.5 horas. Backend listo (`FinanceService.editarMetadata` + `deleteGasto` con cascada + endpoints + api client). Falta: tab en Logística o Finanzas con vista cruzada de TODOS los gastos para revisión contable mensual.
+- [ ] **PRIORIDAD BAJA — Limpiar Servicios legacy:** 30 min. La tabla tiene 0 rows en producción (Camino A vació su uso). Sacar `Servicios.js` del `app.js` + archivar `CatalogService.ts`. Ya no está en el sidebar (90% deprecada de facto).
+- [ ] **PRIORIDAD MUY BAJA — Fase 2 OC edit pesado en estados avanzados:** 6+ horas, alto riesgo. Cambiar items/montos en RECIBIDA/FACTURADA con reverso/regenerate automático de Tx/Compras/Inventario. Workaround actual (Fase 1 + 🗑 Eliminar) ya cubre el 90% de casos reales.
 - [ ] **Bonus Fase C:** agregar campo opcional "Item del catálogo" en form de creación de OC (no urgente — modal de resolución cubre el caso al recibir).
 - [ ] **Bug latente alineado pero sin fix:** `PurchaseService.registrarCompra()` usa `'INGRESO'` mientras dashboards filtran `'ENTRADA'`. La nueva ruta de recibir OC ya usa `'ENTRADA'`. Cuando se haga la primera compra directa, los dashboards no la verán hasta que se alinee. **Fix sugerido:** cambiar `INGRESO` → `ENTRADA` en `PurchaseService.ts:208` y `:277`. No urgente (0 compras directas en producción).
 - [ ] Replicar hints contextuales (`.app-form-hint`) en Cotización/Logística OC/Compras/Cobranzas (cosmético, valor marginal — Comercial y OC ya tienen tooltips inline `tip()`)
@@ -460,6 +468,122 @@ Sesión muy larga con Julio testing en producción y reportando issues + feature
 
 ---
 
+## Sesión 03/05 mañana+tarde — Universal edit/delete + Tooltips sweep (4 commits)
+
+Sesión enfocada en darle a Julio control total sobre los datos cargados en producción. Pedido textual: *"todas las ordenes en todas las etapas deben poder editar y eliminarse y asi para todo, solo con el aviso bastara y el factor de escribir algo para borrar suficiente"* + después *"creo que la opcion 1 para empesar esta bien, y ver el tema de los tip tools es bueno en todo lo que vamos creando"*. **4 commits pusheados a `main`** (`b76abf7..97a7e8e`).
+
+### Bloque 1 — Fase 1 OC: editar metadata + eliminar con cascada total (commit `b76abf7`)
+
+Hasta ahora, OC solo tenía `editar líneas` (BORRADOR/APROBADA/ENVIADA) y `eliminar` (BORRADOR/APROBADA). Pedido: que GERENTE pueda eliminar en cualquier estado y que cualquier usuario pueda corregir metadata sin romper números.
+
+Backend `OrdenCompraService`:
+- **`editarMetadata(id_oc, data)`** nuevo: UPDATE seguro de `centro_costo`, `observaciones`, `atencion`, `contactos`, `firmas`, `lugar_entrega`, `fecha_entrega_esperada` en cualquier estado salvo ANULADA. Si la OC tiene `Gasto` asociado por `nro_oc`, propaga `centro_costo` + `concepto` al Gasto.
+- **`eliminar(id_oc)` rediseñado** con cascada total. Tx atómica:
+  1. Si `tipo_oc='ALMACEN'`: revierte stock por cada `MovimientoInventario` con `referencia_tipo='ORDEN_COMPRA'` + DELETE esos movimientos (kárdex limpio).
+  2. Si `id_compra_generada`: DELETE Tx COMPRA + DetalleCompra + Compras.
+  3. DELETE Gastos por `nro_oc` + sus Tx GASTO.
+  4. DELETE CostosServicio matching `%nro_oc%` en concepto.
+  5. DELETE OC (DetalleOrdenCompra + AprobacionesOC vía FK CASCADE).
+
+API:
+- `PUT /api/ordenes-compra/:id/metadata` — editarMetadata.
+- `DELETE /api/ordenes-compra/:id` — guard GERENTE.
+
+Frontend `OrdenesCompra.js`:
+- ✎ Editar líneas — sigue limitado a BORRADOR/APROBADA/ENVIADA.
+- ✎ Editar concepto/CC — botón nuevo, visible en todos los estados salvo ANULADA. Modal mini con datalist de centros activos + textarea observaciones + atención.
+- 🗑 Eliminar — siempre visible para GERENTE. Modal `confirmarTexto` con cascada visible y tipeo del N° OC obligatorio.
+
+### Bloque 2 — Fase 3: replicar patrón a Cotizaciones, Compras, Gastos, Items (commit `2119ec2`)
+
+Cada uno expone `editarMetadata()` + `delete()` con cascada total, solo GERENTE en delete.
+
+**Cotizaciones (`CotizacionService`):**
+- `editarMetadata`: cliente, atencion, telefono, correo, proyecto, forma_pago, validez_oferta, plazo_entrega, lugar_entrega, nro_oc_cliente, nro_factura, comentarios.
+- `deleteCotizacion` universal con cascada:
+  1. Cobranzas → DELETE Tx COBRANZA + MovBancario AUTO + CobranzasCotizacion.
+  2. CostosServicio que solo tenían `id_cotizacion` (sin `id_servicio`) — DELETE explícito antes del FK SET NULL para no romper el CHECK constraint `chk_costoservicio_origen`.
+  3. DELETE Cotización: arrastra DetalleCotizacion (CASCADE), deja en NULL `id_cotizacion` en OrdenesCompra y CostosServicio restantes (SET NULL del FK).
+- **Drive PDF + fotos Cloudinary se quedan** (consistente con `resetTodo`).
+- Frontend: botón "✎ Editar datos" en cualquier estado, "🗑 Eliminar" para GERENTE en cualquier estado (incluida pestaña Anuladas).
+
+**Compras (`PurchaseService`):**
+- `editarMetadata`: nro_comprobante, nro_oc, fecha, centro_costo.
+- `deleteCompra` universal: si CONFIRMADA reversa stock → DELETE Tx COMPRA + MovInv + DetalleCompra → desvincula OC origen (`id_compra_generada=NULL`) → DELETE Compras.
+- Frontend: botón "Editar datos", botón "Eliminar" exige tipear el N° de comprobante exacto.
+
+**Gastos (`FinanceService`):**
+- `editarMetadata`: nro_factura, nro_oc, concepto, fecha, centro_costo, tipo_gasto_logistica.
+- `deleteGasto` universal: DELETE Tx GASTO + CostosServicio matching → DELETE Gasto.
+- DELETE endpoint ahora exige rol GERENTE.
+- **Backend listo como fallback. UI directa de Gastos no construida** (acceso vía OC sigue siendo el flujo principal).
+
+**Items inventario (`InventoryService`):**
+- `editarMetadata`: nombre, categoria, unidad, stock_minimo. NO toca stock actual ni costo promedio.
+- `deleteItem` con dos modos:
+  - **NORMAL**: bloquea si stock>0, hay compras activas o costos en servicios. Mensajes informan al GERENTE que existe modo forzado.
+  - **FORCE (`?force=1`, solo GERENTE)**: borra cascada DetalleCompra + MovInv + CostosServicio + Inventario. Recalcula totales de las Compras afectadas (las Compras siguen vivas con totales recalculados desde los detalles restantes).
+
+API client:
+- `cotizaciones.editarMetadata`, `purchases.editarMetadataCompra`, `finances.editarMetadataGasto`, `inventory.editarMetadataItem`.
+- `inventory.deleteInventarioItem(id, {force:true})`.
+
+### Bloque 3 — Modal facturar OC honesto sobre NC + tooltips primer pase (commit `337b20b`)
+
+Caso real: Julio abrió la pantalla "🧾 Recibí factura" en una OC de Compra y vio el mensaje *"para revertirla deberás emitir una Nota de Crédito"* — pero **el módulo de NC no existe construido** (solo migración 026 con tablas + builder de payload SUNAT). El modal estaba prometiendo una pantalla que no existe.
+
+Reescribí el texto para que sea honesto:
+- Una vez facturada, el botón **Anular** desaparece.
+- Si te equivocaste: **🗑 Eliminar** sigue disponible para GERENTE — borra todo en cascada.
+- Si la factura ya fue declarada al **SIRE de SUNAT**, el ajuste correcto es pedirle al proveedor una **NC** y registrarla cuando llegue (módulo aún por construir).
+
+**Tooltips agregados** (atributo `title=`) en:
+- OC modal de detalle: 13 botones (Ver, PDF, Aprobar, Enviar, Recepción, Recibí factura, Cerrar sin facturar, Asociar factura tardía, Editar líneas, Editar concepto/CC, Eliminar, Anular, Reactivar). Cada uno explica alcance + qué pasa con registros derivados.
+- Cotizaciones tabla: 8 botones (Ver, PDF, Emitir Factura, badge ✅ Factura, Editar líneas, Editar datos, Anular, Eliminar).
+- Compras tabla: Editar líneas (recalcula stock+IGV) vs Editar datos (refs).
+- Inventario tabla: Kárdex (auditoría), ✎ (alcance), × (NORMAL vs FORZADO).
+
+### Bloque 4 — Tooltips sweep en iconos discretos sin texto (commit `97a7e8e`)
+
+Pedido del usuario tras ver que pasaba el mouse por algunos iconos chiquitos (×, ✕, 🗑, etc.) y no había orientación.
+
+Barrido completo del frontend. Cualquier botón icon-only ahora trae `title=` + `aria-label=` para accesibilidad:
+
+| Archivo | Iconos cubiertos |
+|---|---|
+| `Sidebar.js` | × cierre del panel de alertas |
+| `Comercial.js` | × quitar línea factura · ✕ quitar foto del item · ✕ cerrar editor cotización · ⟲ Reset (tooltip ampliado describiendo cascada y excepciones) |
+| `OrdenesCompra.js` | ✕ cerrar reporte ROC · × quitar línea OC |
+| `Compras.js` | X quitar línea (form crear) · ✕ quitar línea (form editar) |
+| `Logistica.js` | × eliminar CC · × cerrar modal CC · ✕ anular OC · ✕ quitar línea · ♻ Reactivar · Editar/Activar/Desactivar CC |
+| `Proveedores.js` | × eliminar proveedor · × cerrar modal · Editar (alcance vs históricos) |
+| `Finanzas.js` | × cerrar gestión cuentas · 🗑 gasto bancario / pago IGV / mov manual · ✓ conciliar · ⊘ ignorar · 🔗 Match · × cerrar detalle |
+| `Importador.js` | ✕ cerrar preview |
+
+### Patrón UX común al cierre
+
+| Acción | Cuándo aparece | Quién lo ve | Confirmación |
+|---|---|---|---|
+| ✎ Editar líneas/items | Estados iniciales (antes de impactar números) | Cualquiera con módulo | Modal de confirmación si edita data importante |
+| ✎ Editar datos (metadata) | Cualquier estado salvo ANULADA | Cualquiera con módulo | Modal mini con campos prefilled |
+| 🗑 Eliminar con cascada | **Cualquier estado** | Solo GERENTE | Tipear N° exacto |
+| Anular | Hasta antes de facturar | Cualquiera con módulo | Modal `confirmarAccion` |
+| ♻ Reactivar | Solo en ANULADA | Solo GERENTE | Modal de confirmación |
+| Force delete (Items) | Cuando NORMAL bloquea por dependencias | Solo GERENTE | Confirm() con detalle de cascada |
+
+### Pendientes que quedaron priorizados al cierre de hoy
+
+| Prioridad | Tarea | Esfuerzo | Bloqueante? |
+|---|---|---|---|
+| **ALTA** | Construir módulo **NCs entrantes** (recibir NC del proveedor → ajusta Compras + libro Compras + estado_pago del Gasto) | 2-3 horas | Cierra loop "me equivoqué después de facturar" + es prerequisito SUNAT SIRE Fase B |
+| **MEDIA** | UI directa de Gastos (vista cruzada para auditoría contable mensual) | 1.5 horas (backend listo) | No — el flujo OC sigue cubriendo todo |
+| **BAJA** | Limpiar Servicios legacy (sacar del router, archivar `Servicios.js` y `CatalogService.ts`) | 30 min | No — ya no está en el sidebar (90% deprecada de facto) |
+| **MUY BAJA** | Fase 2 OC: edit pesado en RECIBIDA/FACTURADA con reverso/regenerate automático de Tx/Compras/Inventario | 6+ horas (alto riesgo) | No — Fase 1 + 🗑 Eliminar ya cubre el 90% de casos reales |
+
+**Recomendación** que le di a Julio: dejar la Fase 2 OC y la limpieza de Servicios para más adelante (no bloquean nada hoy). Si quiere cerrar otro frente, **NCs entrantes** da el cierre real para "y si me equivoco después de facturar" + es prerequisito de SUNAT SIRE Fase B.
+
+---
+
 ## Auditoría 02/05/2026 — donde estamos parados (post-cierre Fase C)
 
 | Fase del Plan Maestro | Estado | Notas |
@@ -505,9 +629,9 @@ Sesión muy larga con Julio testing en producción y reportando issues + feature
 
 ---
 
-## Snapshot de `git status` (al 2026-05-02)
+## Snapshot de `git status` (al 2026-05-03 tarde)
 
-**Working tree de este worktree limpio.** Todo pusheado a `origin/main`. Railway desplegado y verificado (Last-Modified 2026-05-03 02:01 GMT, sirviendo `v=20260502r2`).
+**Working tree de este worktree limpio.** Todo pusheado a `origin/main`. Railway desplegado, sirviendo `v=20260503r3`.
 
 **Acumulado de commits desde 27/04:**
 - 10 commits rediseño Enterprise UI (27/04)
@@ -523,8 +647,9 @@ Sesión muy larga con Julio testing en producción y reportando issues + feature
 - 5 commits sesión 02/05 mañana (housekeeping + 2 bugs + auditoría V3 + cierre Fase C, `192f452..58f7aec`)
 - 1 commit cierre 02/05 mañana (`0086dfc` — docs Fase C)
 - 15 commits sesión 02/05 noche → 03/05 madrugada (modal recepción OC + edición cobranzas + Tx Dashboard + TRABAJO_EN_RIESGO + Form factura SUNAT + fechas editables, `18db593..dbc9440`)
+- **4 commits sesión 03/05 mañana+tarde (universal edit/delete + tooltips, `b76abf7..97a7e8e`)**
 
-**Total: 67 commits** desde el rediseño Enterprise.
+**Total: 71 commits** desde el rediseño Enterprise.
 
 ## Para Claude (próxima sesión)
 
