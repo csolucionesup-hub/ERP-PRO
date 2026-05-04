@@ -515,22 +515,79 @@ class CobranzasService {
     }
   }
 
+  /**
+   * Saldos netos en cuentas regulares (NO incluye Banco de la Nación).
+   *   ingresos = SUM(CobranzasCotizacion WHERE tipo='DEPOSITO_BANCO')
+   *   egresos  = SUM(GastoBancario) + SUM(PagosImpuestos)
+   *   neto     = ingresos - egresos
+   *
+   * Fuente única para el KPI "Caja" del dashboard de Finanzas
+   * y la alerta CAJA_BAJA. Mantiene ambos coherentes.
+   * No lee Cuentas.saldo_actual (snapshot legacy).
+   */
+  async calcularSaldosNetos(): Promise<{
+    PEN: { ingresos: number; egresos: number; neto: number };
+    USD: { ingresos: number; egresos: number; neto: number };
+  }> {
+    const out = {
+      PEN: { ingresos: 0, egresos: 0, neto: 0 },
+      USD: { ingresos: 0, egresos: 0, neto: 0 },
+    };
+
+    // INGRESOS — depósitos cobrados a cuentas regulares
+    const [cobRows]: any = await db.query(`
+      SELECT moneda, COALESCE(SUM(monto), 0) AS total
+        FROM CobranzasCotizacion
+       WHERE tipo = 'DEPOSITO_BANCO'
+       GROUP BY moneda
+    `);
+    for (const r of (cobRows as any[])) {
+      const m = r.moneda as 'PEN' | 'USD';
+      if (m === 'PEN' || m === 'USD') out[m].ingresos = Number(r.total) || 0;
+    }
+
+    // EGRESOS — gastos bancarios (ITF, comisiones, portes)
+    try {
+      const [gbRows]: any = await db.query(`
+        SELECT moneda, COALESCE(SUM(monto), 0) AS total
+          FROM GastoBancario
+         GROUP BY moneda
+      `);
+      for (const r of (gbRows as any[])) {
+        const m = r.moneda as 'PEN' | 'USD';
+        if (m === 'PEN' || m === 'USD') out[m].egresos += Number(r.total) || 0;
+      }
+    } catch (_) { /* tabla puede no existir aún */ }
+
+    // EGRESOS — pagos de impuestos (IGV/Renta) desde la caja
+    try {
+      const [pagoRows]: any = await db.query(`
+        SELECT moneda, COALESCE(SUM(monto), 0) AS total
+          FROM PagosImpuestos
+         GROUP BY moneda
+      `);
+      for (const r of (pagoRows as any[])) {
+        const m = r.moneda as 'PEN' | 'USD';
+        if (m === 'PEN' || m === 'USD') out[m].egresos += Number(r.total) || 0;
+      }
+    } catch (_) { /* tabla puede no existir aún */ }
+
+    out.PEN.neto = out.PEN.ingresos - out.PEN.egresos;
+    out.USD.neto = out.USD.ingresos - out.USD.egresos;
+    return out;
+  }
+
   // ── Dashboard ejecutivo de Finanzas ───────────────────────
   async getDashboardFinanzas() {
     const now = new Date();
     const mesActual = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 
-    // Caja real por moneda (lo cobrado a cuentas regulares)
-    const [cajaRows] = await db.query(`
-      SELECT moneda, COALESCE(SUM(monto),0) AS total
-        FROM CobranzasCotizacion
-       WHERE tipo = 'DEPOSITO_BANCO'
-       GROUP BY moneda
-    `);
-    const caja: Record<'PEN'|'USD', number> = { PEN: 0, USD: 0 };
-    for (const r of (cajaRows as any[])) {
-      caja[r.moneda as 'PEN'|'USD'] = Number(r.total) || 0;
-    }
+    // Caja neta por moneda — fuente única (compartida con AlertasService)
+    const saldos = await this.calcularSaldosNetos();
+    const caja: Record<'PEN'|'USD', number> = {
+      PEN: saldos.PEN.neto,
+      USD: saldos.USD.neto,
+    };
 
     // Banco de la Nación (detracciones recibidas)
     const [[bnRow]]: any = await db.query(`

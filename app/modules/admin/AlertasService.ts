@@ -1,4 +1,5 @@
 import { db } from '../../../database/connection';
+import CobranzasService from '../finance/CobranzasService';
 
 /**
  * AlertasService — agrega notificaciones/alertas activas del ERP.
@@ -295,34 +296,31 @@ class AlertasService {
         }
       } catch (_) { /* tabla puede no existir */ }
 
-      // 10. Caja con saldo bajo (cuentas activas)
+      // 10. Caja con saldo bajo — saldo neto (cobranzas - gastos bancarios - pagos IGV).
+      //     Usa misma fórmula que el KPI "Caja" del dashboard de Finanzas (fuente única).
       try {
-        const [cajas]: any = await db.query(`
-          SELECT id_cuenta, nombre, tipo, moneda, saldo_actual
-          FROM Cuentas
-          WHERE estado = 'ACTIVA'
-            AND (
-              (moneda = 'PEN' AND saldo_actual < 1000)
-              OR (moneda = 'USD' AND saldo_actual < 300)
-            )
-          ORDER BY saldo_actual ASC
-          LIMIT 5
-        `);
-        for (const r of (cajas as any[])) {
-          const sym = r.moneda === 'USD' ? '$' : 'S/';
-          const saldo = Number(r.saldo_actual);
-          const limite = r.moneda === 'USD' ? 300 : 1000;
-          alertas.push({
-            id: `caja-${r.id_cuenta}`,
-            modulo: 'FINANZAS',
-            tipo: 'CAJA_BAJA',
-            severidad: saldo < limite / 2 ? 'danger' : 'warn',
-            titulo: `🏦 Saldo bajo: ${r.nombre}`,
-            detalle: `${sym} ${saldo.toFixed(2)} · recargar caja`,
-            link: '#finanzas',
-          });
+        const saldos = await CobranzasService.calcularSaldosNetos();
+        const monedas: Array<{ moneda: 'PEN'|'USD'; nombre: string; sym: string; limite: number }> = [
+          { moneda: 'PEN', nombre: 'Caja General Soles',  sym: 'S/', limite: 1000 },
+          { moneda: 'USD', nombre: 'Caja General Dólares', sym: '$',  limite: 300  },
+        ];
+        for (const m of monedas) {
+          const neto = saldos[m.moneda].neto;
+          if (neto < m.limite) {
+            alertas.push({
+              id: `caja-${m.moneda}`,
+              modulo: 'FINANZAS',
+              tipo: 'CAJA_BAJA',
+              severidad: neto < m.limite / 2 ? 'danger' : 'warn',
+              titulo: `🏦 Saldo bajo: ${m.nombre}`,
+              detalle: `${m.sym} ${neto.toFixed(2)} · recargar caja`,
+              link: '#finanzas',
+            });
+          }
         }
-      } catch (_) { /* schema cuentas puede variar */ }
+      } catch (e) {
+        console.warn('[AlertasService] CAJA_BAJA falló:', (e as Error).message);
+      }
 
       // 11. IGV próximo a vencer: día 11+ del mes y sin pago de IGV registrado
       //    para el periodo del mes anterior. Vence el día 15 del mes siguiente.
