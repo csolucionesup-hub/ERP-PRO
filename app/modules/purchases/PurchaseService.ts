@@ -201,11 +201,14 @@ class PurchaseService {
            WHERE id_item = ?
         `, [nuevoStock, nuevoCostoPromedio.toFixed(4), item.id_item]);
 
-        // Guardamos el Log Transaccional del Kárdex (Income)
+        // Guardamos el Log Transaccional del Kárdex (Income).
+        // Convención: kárdex usa ENTRADA/SALIDA (no INGRESO/EGRESO — ese par
+        // pertenece a Transacciones financieras). Coherente con
+        // OrdenCompraService.recibir() y dashboards que filtran por 'ENTRADA'.
         await conn.query(`
           INSERT INTO MovimientosInventario (
             id_item, referencia_tipo, referencia_id, tipo_movimiento, cantidad, saldo_posterior, fecha_movimiento
-          ) VALUES (?, 'COMPRA', ?, 'INGRESO', ?, ?, ?)
+          ) VALUES (?, 'COMPRA', ?, 'ENTRADA', ?, ?, ?)
         `, [item.id_item, idCompra, item.cantidad, nuevoStock, data.fecha]);
       }
 
