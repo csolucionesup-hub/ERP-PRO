@@ -2,12 +2,12 @@
 
 > **LEER PRIMERO.** Este documento es la fuente de verdad sobre qué está hecho, qué falta y dónde estamos parados. Se actualiza al cierre de cada sesión de trabajo.
 
-**Última actualización:** 2026-05-03 (tarde — sesión universal edit/delete + tooltips: 4 commits adicionales — Fase 1 OC editar metadata + eliminar cascada total, Fase 3 mismo patrón en Cotizaciones/Compras/Gastos/Items, modal facturar OC honesto sobre NC, tooltip sweep en iconos discretos)
+**Última actualización:** 2026-05-03 (noche — sesión continuación: modal ROC en Logística + unificar cálculo de Caja entre KPI Finanzas y alerta CAJA_BAJA)
 **Rama activa:** `main`
-**Último commit pusheado:** `97a7e8e ux: tooltips + aria-label en iconos discretos sin texto (×, ✕, 🗑, ✓, ⊘, 📅, ⟲)`
+**Último commit pusheado:** `041569e fix: unificar cálculo de Caja entre KPI Finanzas y alerta CAJA_BAJA`
 **Servidor dev:** `npx ts-node index.ts` en `D:\proyectos\ERP-PRO` → `http://localhost:3000`
 **Producción:** `erp-pro-production-e4c0.up.railway.app` — Railway (deploy automático desde main)
-**Cache buster JS actual:** `v=20260503r3` (app.js) — **convención**: hardcoded en CADA import dentro de app.js. Ver gotcha #36 en CLAUDE.md.
+**Cache buster JS actual:** `v=20260503r4` (app.js) — **convención**: hardcoded en CADA import dentro de app.js. Ver gotcha #36 en CLAUDE.md.
 **Migraciones BD:** 001 → 037 + 042 → 050 aplicadas (Supabase Postgres project `fhlrxlsscerfiuuyiejw`). Sin migraciones nuevas hoy (todo el trabajo fue Service + UI; el patrón de cascada usa los CHECKs/FKs existentes).
 
 ---
@@ -584,6 +584,46 @@ Barrido completo del frontend. Cualquier botón icon-only ahora trae `title=` + 
 
 ---
 
+## Sesión 03/05 noche — Modal ROC + unificar Caja (2 commits)
+
+Sesión corta de pulido UX + bugfix de coherencia. **2 commits pusheados a `main`** (`35477b2..041569e`).
+
+| Commit | Cambio |
+|---|---|
+| `35477b2` | UX: Modal ROC en Logística reemplaza `prompt()` nativo. Selector año (actual/anterior), input semana ISO 1-53 con placeholder mostrando la semana de hoy, botón "Semana actual (NN)" para reset, hint sobre corte acumulado, validación, loader `⏳ Generando…`, modal solo cierra con × / Cancelar (gotcha #28). `OrdenesCompra.reporteROC()` ya tenía modal — solo faltaba el de Logística → Centros de Costo. Cache buster `v=20260503r4`. |
+| `041569e` | **Bug coherencia:** Finanzas dashboard mostraba S/18,120 en KPI "Caja Soles" mientras la alerta decía "Saldo bajo S/0.00" — dos fuentes distintas leyendo cosas distintas. KPI sumaba cobranzas brutas (`CobranzasCotizacion DEPOSITO_BANCO`); alerta leía `Cuentas.saldo_actual` (snapshot legacy nunca poblado). Fix: helper compartido `CobranzasService.calcularSaldosNetos()` que devuelve `{ PEN, USD: { ingresos, egresos, neto } }` con la fórmula `cobranzas DEPOSITO_BANCO - GastoBancario - PagosImpuestos`. KPI y alerta ahora consumen la misma fuente. **Sin tocar `Cuentas.saldo_actual`** — la data subida queda intacta. Umbrales alerta: PEN < 1000 (warn) / < 500 (danger), USD < 300 / < 150. |
+
+### Detalles técnicos del helper unificado
+
+`CobranzasService.calcularSaldosNetos()` (público, agregado antes de `getDashboardFinanzas`):
+- `ingresos`: `SUM(CobranzasCotizacion.monto WHERE tipo='DEPOSITO_BANCO') GROUP BY moneda`
+- `egresos`: `SUM(GastoBancario.monto) GROUP BY moneda` + `SUM(PagosImpuestos.monto) GROUP BY moneda`
+- `neto`: `ingresos - egresos`
+- Solo cuentas regulares — NO incluye Banco de la Nación (las detracciones siguen contabilizándose aparte en `bn` del dashboard)
+- `try/catch` defensivo en GastoBancario y PagosImpuestos (por si la tabla aún no existiera, aunque sí está en producción)
+
+**Consumers:**
+- `getDashboardFinanzas()` línea ~520: KPI "Caja Soles" / "Caja Dólares"
+- `AlertasService._computeAll()` punto 10 (CAJA_BAJA): import `CobranzasService` + iteración por moneda con título "Caja General Soles" / "Caja General Dólares"
+
+**Comportamiento esperado tras deploy:**
+- Si solo se registraron cobranzas (sin gastos bancarios ni IGV pagado) → KPI y alerta coinciden, alerta no dispara mientras > umbral
+- Si hay gastos bancarios o pagos IGV registrados → KPI baja al neto real (más correcto), alerta dispara solo si neto < umbral
+- `Cuentas.saldo_actual` queda intocado — sigue siendo válido para `FinanceService.getResumenOperativo()` (Dashboard Gerencial) que mezcla snapshot + Tx
+
+### Pendientes que siguen vigentes
+
+| Prio | Tarea |
+|---|---|
+| ALTA | Módulo NCs entrantes (recibir NC del proveedor) — 2-3h. Tablas + builder Nubefact ya listos (mig 026 + `NubefactPayloadBuilder.buildNotaCredito`). Falta Service + rutas + UI. |
+| MEDIA | UI directa de Gastos (vista cruzada para auditoría contable) — 1.5h, backend listo. |
+| BAJA | Limpiar Servicios legacy — 30min, 0 rows en producción. |
+| MUY BAJA | Fase 2 OC edit pesado en RECIBIDA/FACTURADA — 6h+. |
+
+(Sin cambio respecto a cierre 03/05 tarde.)
+
+---
+
 ## Auditoría 02/05/2026 — donde estamos parados (post-cierre Fase C)
 
 | Fase del Plan Maestro | Estado | Notas |
@@ -629,9 +669,9 @@ Barrido completo del frontend. Cualquier botón icon-only ahora trae `title=` + 
 
 ---
 
-## Snapshot de `git status` (al 2026-05-03 tarde)
+## Snapshot de `git status` (al 2026-05-03 noche)
 
-**Working tree de este worktree limpio.** Todo pusheado a `origin/main`. Railway desplegado, sirviendo `v=20260503r3`.
+**Working tree de este worktree limpio.** Todo pusheado a `origin/main`. Railway desplegado, sirviendo `v=20260503r4`.
 
 **Acumulado de commits desde 27/04:**
 - 10 commits rediseño Enterprise UI (27/04)
@@ -647,9 +687,10 @@ Barrido completo del frontend. Cualquier botón icon-only ahora trae `title=` + 
 - 5 commits sesión 02/05 mañana (housekeeping + 2 bugs + auditoría V3 + cierre Fase C, `192f452..58f7aec`)
 - 1 commit cierre 02/05 mañana (`0086dfc` — docs Fase C)
 - 15 commits sesión 02/05 noche → 03/05 madrugada (modal recepción OC + edición cobranzas + Tx Dashboard + TRABAJO_EN_RIESGO + Form factura SUNAT + fechas editables, `18db593..dbc9440`)
-- **4 commits sesión 03/05 mañana+tarde (universal edit/delete + tooltips, `b76abf7..97a7e8e`)**
+- 4 commits sesión 03/05 mañana+tarde (universal edit/delete + tooltips, `b76abf7..97a7e8e`)
+- **2 commits sesión 03/05 noche (modal ROC Logística + unificar Caja KPI vs alerta, `35477b2..041569e`)**
 
-**Total: 71 commits** desde el rediseño Enterprise.
+**Total: 73 commits** desde el rediseño Enterprise.
 
 ## Para Claude (próxima sesión)
 
@@ -667,6 +708,7 @@ Si Julio dice "sigamos con cotizaciones" o reporta un bug del módulo Comercial:
    - GENERAL → tabla `Gastos` + `Transacciones (referencia_tipo='GASTO')`
    Nota que solo ALMACEN setea `OrdenesCompra.id_compra_generada`. Para SERVICIO/GENERAL la trazabilidad es vía `Gastos.nro_oc`.
 9. **Bug latente conocido (PurchaseService.ts:208 y :277)**: usa `tipo_movimiento='INGRESO'` mientras dashboards filtran `'ENTRADA'`. La nueva ruta de OC ya usa `'ENTRADA'`. Si Julio empieza a hacer compras directas (sin OC) y no aparecen en los dashboards de Inventario, este es el motivo. Fix trivial — alinear ambas líneas a `'ENTRADA'`.
+10. **Saldos de Caja — fuente única `CobranzasService.calcularSaldosNetos()`** (desde `041569e` 03/05 noche). Cualquier KPI o alerta que mencione "saldo en caja", "Caja Soles", "Caja Dólares" debe consumir este helper, NO leer `Cuentas.saldo_actual` directamente (ese campo es snapshot legacy y diverge). Fórmula: `cobranzas DEPOSITO_BANCO - GastoBancario - PagosImpuestos` por moneda. NO incluye Banco de la Nación (detracciones se manejan en `bn` del dashboard). Si Julio reporta un mismatch entre alerta y dashboard de Finanzas, lo primero que hay que verificar es que ambos lados consuman el helper.
 
 ### Estado del filesystem (worktree principal)
 - Working tree limpio en este worktree (`elegant-herschel-050bb4`).
