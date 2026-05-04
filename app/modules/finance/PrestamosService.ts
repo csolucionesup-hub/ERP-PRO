@@ -19,14 +19,28 @@ class PrestamosService {
     const total = capital + interes;
     const moneda = (data.moneda || 'PEN').toUpperCase();
     const tipo_cambio = moneda === 'USD' ? Number(data.tipo_cambio) || 1 : 1;
+
+    // Carga histórica: si el préstamo viene con abonos previos ya hechos,
+    // se acepta `monto_pagado_inicial` opcional. Caso típico: préstamos
+    // del 2023-2024 que se cargan ahora con saldo actual reflejado.
+    const pagadoInicial = Math.max(0, Number(data.monto_pagado_inicial || 0));
+    if (pagadoInicial > total + 0.01) {
+      throw new Error(`El monto pagado a la fecha (${pagadoInicial}) no puede exceder el total del préstamo (${total}).`);
+    }
+    const saldo = Math.max(total - pagadoInicial, 0);
+    const estado =
+      pagadoInicial <= 0.01      ? 'PENDIENTE' :
+      saldo        <= 0.01       ? 'PAGADO'    :
+      'PARCIAL';
+
     const [res] = await db.query(`
       INSERT INTO PrestamosTomados (nro_oc, acreedor, descripcion, comentario,
         fecha_emision, fecha_vencimiento, moneda, tipo_cambio,
         monto_capital, tasa_interes, monto_interes, monto_total, monto_pagado, saldo, estado)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, 'PENDIENTE')
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `, [data.nro_oc || null, data.acreedor, data.descripcion || '', data.comentario || '',
         data.fecha_emision, data.fecha_vencimiento || null, moneda, tipo_cambio,
-        capital, Number(data.tasa_interes || 0), interes, total, total]);
+        capital, Number(data.tasa_interes || 0), interes, total, pagadoInicial, saldo, estado]);
     return { success: true, id: (res as any).insertId };
   }
 
@@ -112,14 +126,27 @@ class PrestamosService {
     const total = capital + interes;
     const moneda = (data.moneda || 'PEN').toUpperCase();
     const tipo_cambio = moneda === 'USD' ? Number(data.tipo_cambio) || 1 : 1;
+
+    // Carga histórica: si el préstamo otorgado ya tuvo cobros parciales,
+    // aceptar `monto_cobrado_inicial` para reflejar el saldo real al día.
+    const cobradoInicial = Math.max(0, Number(data.monto_cobrado_inicial || data.monto_pagado_inicial || 0));
+    if (cobradoInicial > total + 0.01) {
+      throw new Error(`El monto cobrado a la fecha (${cobradoInicial}) no puede exceder el total del préstamo (${total}).`);
+    }
+    const saldo = Math.max(total - cobradoInicial, 0);
+    const estado =
+      cobradoInicial <= 0.01     ? 'PENDIENTE' :
+      saldo          <= 0.01     ? 'PAGADO'    :
+      'PARCIAL';
+
     const [res] = await db.query(`
       INSERT INTO PrestamosOtorgados (nro_oc, deudor, descripcion, comentario,
         fecha_emision, fecha_vencimiento, moneda, tipo_cambio,
         monto_capital, tasa_interes, monto_interes, monto_total, monto_pagado, saldo, estado)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, 'PENDIENTE')
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `, [data.nro_oc || null, data.deudor, data.descripcion || '', data.comentario || '',
         data.fecha_emision, data.fecha_vencimiento || null, moneda, tipo_cambio,
-        capital, Number(data.tasa_interes || 0), interes, total, total]);
+        capital, Number(data.tasa_interes || 0), interes, total, cobradoInicial, saldo, estado]);
     return { success: true, id: (res as any).insertId };
   }
 

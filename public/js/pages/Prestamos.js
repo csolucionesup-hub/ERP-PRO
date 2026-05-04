@@ -143,6 +143,19 @@ const formCrear = (tipo, tcVenta = 1, tcFecha = '') => {
           <input name="monto_total_display" readonly placeholder="0.00" style="${inputStyle};background:#f8f9fa;font-weight:bold">
         </div>
       </div>
+
+      <!-- Carga histórica: si el préstamo ya tuvo abonos antes de cargarse al ERP -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;background:#fefce8;border:1px solid #fde68a;padding:10px;border-radius:6px">
+        <div>
+          <label style="font-size:11px;color:#92400e;font-weight:600">📅 ${esTomado ? 'Pagado' : 'Cobrado'} a la fecha (opcional) ${tip('Solo para carga HISTÓRICA: si ya ' + (esTomado ? 'pagaste abonos' : 'cobraste cuotas') + ' antes de subir el préstamo al sistema, ponelos acá. El saldo restante se calcula automáticamente. Si es un préstamo nuevo, dejalo en 0.')}</label>
+          <input name="monto_pagado_inicial" type="number" step="0.01" min="0" value="0" placeholder="0.00" style="${inputStyle}" oninput="window.calcSaldoInicial_${tipo}(this.form)">
+        </div>
+        <div>
+          <label style="font-size:11px;color:#92400e;font-weight:600">Saldo restante (al día de hoy)</label>
+          <input name="saldo_inicial_display" readonly placeholder="0.00" style="${inputStyle};background:#fff7ed;font-weight:bold;color:#78350f">
+        </div>
+      </div>
+
       <button type="submit" style="padding:11px;border:none;background:var(--bg-sidebar);color:white;border-radius:var(--radius-sm);cursor:pointer;font-weight:bold;font-size:13px;margin-top:4px;">
         ${esTomado ? 'Registrar Deuda' : 'Registrar Préstamo'}
       </button>
@@ -237,18 +250,30 @@ export const Prestamos = async () => {
     console.error('[Prestamos] Error:', err);
   }
 
+  // Helper compartido: recalcula saldo restante en el bloque de carga histórica
+  const recalcSaldoInicial = (form) => {
+    const total = Number(form.monto_total_display.value) || 0;
+    const pagadoInicial = Math.max(0, Number(form.monto_pagado_inicial?.value) || 0);
+    const saldo = Math.max(total - pagadoInicial, 0);
+    if (form.saldo_inicial_display) form.saldo_inicial_display.value = saldo.toFixed(2);
+  };
+
   setTimeout(() => {
     // Calcular total en formulario crear tomado
     window.calcTotal_tomado = (form) => {
       const c = Number(form.monto_capital.value) || 0;
       const i = Number(form.monto_interes.value) || 0;
       form.monto_total_display.value = (c + i).toFixed(2);
+      recalcSaldoInicial(form);
     };
     window.calcTotal_otorgado = (form) => {
       const c = Number(form.monto_capital.value) || 0;
       const i = Number(form.monto_interes.value) || 0;
       form.monto_total_display.value = (c + i).toFixed(2);
+      recalcSaldoInicial(form);
     };
+    window.calcSaldoInicial_tomado   = recalcSaldoInicial;
+    window.calcSaldoInicial_otorgado = recalcSaldoInicial;
 
     // Calcular total en modal editar
     window.calcEditTotal = () => {
@@ -478,7 +503,8 @@ export const Prestamos = async () => {
           tipo_cambio: moneda === 'USD' ? Number(f.tipo_cambio?.value) || 1 : 1,
           monto_capital: f.monto_capital.value,
           monto_interes: f.monto_interes.value || 0,
-          tasa_interes: 0
+          tasa_interes: 0,
+          monto_pagado_inicial: Number(f.monto_pagado_inicial?.value) || 0,
         });
         showSuccess('Préstamo tomado registrado');
         window.navigate('prestamos');
@@ -503,7 +529,8 @@ export const Prestamos = async () => {
           tipo_cambio: moneda === 'USD' ? Number(f.tipo_cambio?.value) || 1 : 1,
           monto_capital: f.monto_capital.value,
           monto_interes: f.monto_interes.value || 0,
-          tasa_interes: 0
+          tasa_interes: 0,
+          monto_cobrado_inicial: Number(f.monto_pagado_inicial?.value) || 0,
         });
         showSuccess('Préstamo otorgado registrado');
         window.navigate('prestamos');
