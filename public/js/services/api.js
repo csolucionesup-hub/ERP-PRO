@@ -341,6 +341,7 @@ export const api = {
     },
     get:              (id)    => get(`/rendiciones/${id}`),
     getPorOC:         (id_oc) => get(`/rendiciones/oc/${id_oc}`),
+    ocsPendientes:    ()      => get('/rendiciones/oc-pendientes'),
     crearDesdeOC:     (data)  => post('/rendiciones', data),
     editarMetadata:   (id, d) => put(`/rendiciones/${id}/metadata`, d),
     agregarItem:      (id, item) => post(`/rendiciones/${id}/items`, item),

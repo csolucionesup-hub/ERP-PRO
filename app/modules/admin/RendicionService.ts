@@ -133,6 +133,25 @@ class RendicionService {
     return (rows as any[])[0] || null;
   }
 
+  // ── OCs candidatas a rendición (PAGADA / CERRADA_SIN_FACTURA sin rendición ya creada) ──
+  // Lógica acordada con Julio (04/05): solo OCs que ya consumieron caja real.
+  // FACTURADA aún no pagada NO entra (todavía no hubo desembolso).
+  async listarOCsPendientesDeRendir() {
+    const sql = `
+      SELECT oc.id_oc, oc.nro_oc, oc.fecha_emision, oc.total, oc.moneda,
+             oc.estado, oc.centro_costo, oc.empresa,
+             prov.razon_social AS proveedor_nombre,
+             prov.ruc          AS proveedor_ruc
+      FROM OrdenesCompra oc
+      LEFT JOIN Proveedores prov ON prov.id_proveedor = oc.id_proveedor
+      LEFT JOIN Rendiciones r    ON r.id_oc = oc.id_oc
+      WHERE oc.estado IN ('PAGADA', 'CERRADA_SIN_FACTURA')
+        AND r.id_rendicion IS NULL
+      ORDER BY oc.fecha_emision DESC, oc.id_oc DESC`;
+    const [rows] = await db.query(sql);
+    return rows;
+  }
+
   // ── Crear rendición desde OC ──────────────────────────────────
   async crearDesdeOC(data: CrearRendicionInput) {
     const conn = await db.getConnection();

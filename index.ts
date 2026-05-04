@@ -1102,6 +1102,11 @@ rendicionesRouter.get('/', async (req: Request, res: Response) => {
   }));
 });
 
+// IMPORTANTE: rutas específicas ANTES de /:id (gotcha #21 CLAUDE.md).
+rendicionesRouter.get('/oc-pendientes', async (_req: Request, res: Response) => {
+  res.json(await RendicionService.listarOCsPendientesDeRendir());
+});
+
 rendicionesRouter.get('/:id', validateIdParam, async (req: Request, res: Response) => {
   res.json(await RendicionService.obtener(Number(req.params.id)));
 });

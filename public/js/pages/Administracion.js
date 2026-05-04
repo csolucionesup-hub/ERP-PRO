@@ -335,7 +335,13 @@ const fmtMoney = (n, mon = 'PEN') => (mon === 'USD' ? '$' : 'S/') + ' ' + Number
 async function renderRendiciones(panel) {
   panel.innerHTML = '<div style="padding:30px;text-align:center;color:#6b7280">⏳ Cargando rendiciones…</div>';
   let lista = [];
-  try { lista = await api.rendiciones.list(); } catch (e) { return showError(e?.message || 'Error cargando'); }
+  let pendientes = [];
+  try {
+    [lista, pendientes] = await Promise.all([
+      api.rendiciones.list(),
+      api.rendiciones.ocsPendientes(),
+    ]);
+  } catch (e) { return showError(e?.message || 'Error cargando'); }
 
   const estadoBadge = (e) => {
     const map = {
@@ -349,6 +355,30 @@ async function renderRendiciones(panel) {
     return `<span style="background:${c.bg};color:${c.fg};padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600">${c.label}</span>`;
   };
 
+  const ocEstadoBadge = (e) => {
+    if (e === 'PAGADA')                return `<span style="background:#dcfce7;color:#166534;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600">💵 PAGADA</span>`;
+    if (e === 'CERRADA_SIN_FACTURA')   return `<span style="background:#fed7aa;color:#9a3412;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600">🗂 CERRADA SIN FACTURA</span>`;
+    return `<span style="background:#f3f4f6;color:#374151;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600">${e || '—'}</span>`;
+  };
+
+  // ── Filas: pendientes de rendir (OCs PAGADA / CERRADA_SIN_FACTURA sin rendición) ──
+  const filasPendientes = (pendientes || []).map(o => `
+    <tr style="border-bottom:1px solid #fde68a;background:#fffbeb">
+      <td style="padding:8px;font-size:11px;font-weight:600">${o.nro_oc}</td>
+      <td style="padding:8px;font-size:11px">${fmtDate(o.fecha_emision)}</td>
+      <td style="padding:8px;font-size:11px">${o.proveedor_nombre || '—'}</td>
+      <td style="padding:8px;font-size:11px">${o.centro_costo || '—'}</td>
+      <td style="padding:8px;font-size:11px;text-align:right;font-variant-numeric:tabular-nums;font-weight:600">${fmtMoney(o.total, o.moneda)}</td>
+      <td style="padding:8px;text-align:center">${ocEstadoBadge(o.estado)}</td>
+      <td style="padding:8px;text-align:right;white-space:nowrap">
+        <button data-iniciar-oc="${o.id_oc}" title="Crear rendición auto-poblada desde la OC y abrir editor"
+          aria-label="Iniciar rendición"
+          style="padding:5px 12px;background:#111827;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:11px;font-weight:600">▶ Iniciar rendición</button>
+      </td>
+    </tr>
+  `).join('');
+
+  // ── Filas: rendiciones ya creadas ──
   const filas = (lista || []).map(r => `
     <tr style="border-bottom:1px solid #f3f4f6">
       <td style="padding:8px;font-size:11px;font-weight:600">${r.nro_oc_referencia}</td>
@@ -369,15 +399,49 @@ async function renderRendiciones(panel) {
     </tr>
   `).join('');
 
+  // Bloque pendientes solo si hay alguna
+  const bloquePendientes = (pendientes && pendientes.length) ? `
+    <div style="margin:18px 0 12px">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+        <h4 style="margin:0;font-size:13px;color:#92400e">⏳ Pendientes de rendir</h4>
+        <span style="background:#f59e0b;color:#fff;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600">${pendientes.length}</span>
+        <span style="font-size:11px;color:#6b7280">OCs ya pagadas o cerradas en efectivo que aún no tienen rendición creada.</span>
+      </div>
+      <div style="border:1px solid #fde68a;border-radius:6px;overflow:auto">
+        <table style="width:100%;border-collapse:collapse;font-size:12px">
+          <thead style="background:#fef3c7">
+            <tr>
+              <th style="padding:8px;text-align:left;font-size:10px;color:#92400e;font-weight:600">N° OC</th>
+              <th style="padding:8px;text-align:left;font-size:10px;color:#92400e;font-weight:600">Fecha</th>
+              <th style="padding:8px;text-align:left;font-size:10px;color:#92400e;font-weight:600">Proveedor</th>
+              <th style="padding:8px;text-align:left;font-size:10px;color:#92400e;font-weight:600">Centro Costo</th>
+              <th style="padding:8px;text-align:right;font-size:10px;color:#92400e;font-weight:600">Total OC</th>
+              <th style="padding:8px;text-align:center;font-size:10px;color:#92400e;font-weight:600">Estado OC</th>
+              <th style="padding:8px;text-align:right;font-size:10px;color:#92400e;font-weight:600">Acción</th>
+            </tr>
+          </thead>
+          <tbody>${filasPendientes}</tbody>
+        </table>
+      </div>
+    </div>
+  ` : '';
+
   panel.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:center;margin:18px 0 14px">
       <div>
         <h3 style="margin:0;font-size:15px">🧾 Rendiciones de Gastos por OC</h3>
         <div style="font-size:11px;color:#6b7280;margin-top:2px">Una OC = una rendición. Adjuntá comprobantes, marcá las firmas y descargá el expediente en PDF.</div>
       </div>
-      <button id="btn-nueva-rendicion" style="padding:9px 16px;background:#111827;color:#fff;border:none;border-radius:5px;cursor:pointer;font-size:12px;font-weight:600">+ Nueva desde OC</button>
+      <button id="btn-nueva-rendicion"
+        title="Crear rendición desde cualquier OC (incluye no pagadas) — fallback manual"
+        style="padding:9px 16px;background:#fff;color:#111827;border:1px solid #d1d5db;border-radius:5px;cursor:pointer;font-size:12px;font-weight:600">+ Nueva desde OC</button>
     </div>
 
+    ${bloquePendientes}
+
+    <div style="margin:14px 0 8px">
+      <h4 style="margin:0;font-size:13px;color:#374151">📋 Rendiciones registradas</h4>
+    </div>
     <div style="border:1px solid #e5e7eb;border-radius:6px;overflow:auto">
       <table style="width:100%;border-collapse:collapse;font-size:12px">
         <thead style="background:#f9fafb">
@@ -394,7 +458,7 @@ async function renderRendiciones(panel) {
             <th style="padding:8px;text-align:right;font-size:10px;color:#6b7280;font-weight:600">Acciones</th>
           </tr>
         </thead>
-        <tbody>${filas || `<tr><td colspan="10" style="padding:30px;text-align:center;color:#6b7280">Sin rendiciones — usa "+ Nueva desde OC"</td></tr>`}</tbody>
+        <tbody>${filas || `<tr><td colspan="10" style="padding:30px;text-align:center;color:#6b7280">Sin rendiciones — ${pendientes && pendientes.length ? 'usá "▶ Iniciar rendición" en una OC pendiente arriba' : 'cuando pagues una OC aparecerá acá lista para rendir'}</td></tr>`}</tbody>
       </table>
     </div>
   `;
@@ -405,6 +469,23 @@ async function renderRendiciones(panel) {
   });
   panel.querySelectorAll('button[data-pdf-rendicion]').forEach(b => {
     b.onclick = () => window.open(api.rendiciones.pdfUrl(Number(b.dataset.pdfRendicion)), '_blank');
+  });
+  panel.querySelectorAll('button[data-iniciar-oc]').forEach(b => {
+    b.onclick = async () => {
+      const id_oc = Number(b.dataset.iniciarOc);
+      b.disabled = true;
+      b.textContent = '⏳ Creando…';
+      try {
+        const r = await api.rendiciones.crearDesdeOC({ id_oc });
+        window.showSuccess?.('Rendición iniciada — completá los datos y firmas');
+        await renderRendiciones(panel);
+        abrirModalEditar(r.id_rendicion);
+      } catch (err) {
+        b.disabled = false;
+        b.textContent = '▶ Iniciar rendición';
+        showError(err?.error || err?.message || 'Error al iniciar rendición');
+      }
+    };
   });
 }
 
