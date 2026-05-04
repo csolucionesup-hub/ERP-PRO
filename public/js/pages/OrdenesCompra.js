@@ -249,9 +249,14 @@ function init() {
       if (id === 'dashboard' && !panel.dataset.rendered) renderDashboard(panel);
     },
   });
-
-  window.OC = { nuevaOC, verOC, aprobar, enviar, recibir, facturar, cerrarSinFactura, asociarFactura, anular, reactivar, eliminarOC, editar, editarFecha, descargarPDF, reporteROC };
 }
+
+// Exponer handlers globales como side-effect del módulo (no dentro de init()
+// porque otros módulos como Logistica → tab "Sin facturar" necesitan llamar
+// a OC.verOC sin haber montado el TabBar de OrdenesCompra). Las function
+// declarations se hoistean, así que las referencias funcionan aunque estén
+// definidas más abajo en el archivo.
+window.OC = { nuevaOC, verOC, aprobar, enviar, recibir, facturar, cerrarSinFactura, asociarFactura, anular, reactivar, eliminarOC, editar, editarFecha, descargarPDF, reporteROC };
 
 // Editar SOLO la fecha de emisión (corregir data histórica) — disponible en
 // cualquier estado salvo ANULADA. No toca estado/items/totales/correlativo.
