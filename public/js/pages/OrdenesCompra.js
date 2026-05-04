@@ -593,11 +593,15 @@ async function verOC(id_oc) {
             </div>
           </div>
 
-          <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:20px;font-size:12px">
+          <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:10px;font-size:12px">
             <div style="padding:10px;background:#f9fafb;border-radius:6px"><strong>Empresa:</strong> ${oc.empresa}</div>
             <div style="padding:10px;background:#f9fafb;border-radius:6px"><strong>Tipo:</strong> ${oc.tipo_oc}</div>
             <div style="padding:10px;background:#f9fafb;border-radius:6px"><strong>Moneda:</strong> ${oc.moneda} (TC ${oc.tipo_cambio})</div>
             <div style="padding:10px;background:#f9fafb;border-radius:6px"><strong>Forma pago:</strong> ${oc.forma_pago}${oc.dias_credito ? ` (${oc.dias_credito}d)` : ''}</div>
+          </div>
+          <div style="padding:10px 12px;background:#fef3c7;border:1px solid #fcd34d;border-radius:6px;margin-bottom:20px;font-size:13px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+            <span><strong>📂 Centro de Costo:</strong> ${oc.centro_costo || '<span style="color:#9a3412">— sin asignar</span>'}</span>
+            ${oc.id_servicio ? `<span style="font-size:11px;color:#78350f">· id_servicio: ${oc.id_servicio}</span>` : ''}
           </div>
 
           ${oc.id_cotizacion && oc.cotizacion_nro ? `
