@@ -2,12 +2,12 @@
 
 > **LEER PRIMERO.** Este documento es la fuente de verdad sobre qué está hecho, qué falta y dónde estamos parados. Se actualiza al cierre de cada sesión de trabajo.
 
-**Última actualización:** 2026-05-03 (noche — sesión continuación: modal ROC en Logística + unificar cálculo de Caja entre KPI Finanzas y alerta CAJA_BAJA)
+**Última actualización:** 2026-05-03 (noche tarde — bloque corto: bug PurchaseService INGRESO→ENTRADA + cleanup Servicios legacy del router)
 **Rama activa:** `main`
-**Último commit pusheado:** `041569e fix: unificar cálculo de Caja entre KPI Finanzas y alerta CAJA_BAJA`
+**Último commit pusheado:** `ad94323 chore: desconectar página Servicios del router (legacy)`
 **Servidor dev:** `npx ts-node index.ts` en `D:\proyectos\ERP-PRO` → `http://localhost:3000`
 **Producción:** `erp-pro-production-e4c0.up.railway.app` — Railway (deploy automático desde main)
-**Cache buster JS actual:** `v=20260503r4` (app.js) — **convención**: hardcoded en CADA import dentro de app.js. Ver gotcha #36 en CLAUDE.md.
+**Cache buster JS actual:** `v=20260503r5` (app.js) — **convención**: hardcoded en CADA import dentro de app.js. Ver gotcha #36 en CLAUDE.md.
 **Migraciones BD:** 001 → 037 + 042 → 050 aplicadas (Supabase Postgres project `fhlrxlsscerfiuuyiejw`). Sin migraciones nuevas hoy (todo el trabajo fue Service + UI; el patrón de cascada usa los CHECKs/FKs existentes).
 
 ---
@@ -69,8 +69,10 @@ Railway desplegado y operativo con 41 tablas. Build limpio (`npx tsc --noEmit` p
 7. ~~**Libro Bancos — nro_operacion duplicado**~~ → fixed `783a629` (02/05/2026): scrub global ANTES del tipoMatch. Validar empíricamente al primer EECC importado.
 8. ~~**Libro Bancos — KPI Comisiones = S/ 0.00**~~ → no es bug. `MovimientoBancario` vacío en producción. La heurística `esComisionImportada()` cubre ITF/N/D/COM./PORTE cuando llegue el primer EECC.
 
-**Bugs activos al cierre del 02/05/2026:**
-- (latente, no urgente) `PurchaseService.registrarCompra()` usa `'INGRESO'` cuando dashboards filtran `'ENTRADA'`. La nueva ruta OC ya usa `'ENTRADA'`. Compras directas no aparecerían en KPI hasta alinear (`PurchaseService.ts:208,:277`). Sin impacto hoy: 0 compras directas en producción.
+**Bugs activos al cierre del 03/05/2026 (noche tarde):**
+- ~~(latente) `PurchaseService.registrarCompra()` `'INGRESO'` vs `'ENTRADA'`~~ → **resuelto en `4883fa6` (03/05 noche tarde).** Línea 208 ahora usa `'ENTRADA'`, alineado con `OrdenCompraService:432` y los SELECTs de `InventoryService:124`. Sin compras directas históricas afectadas.
+
+**Sin bugs activos al cierre.**
 
 ---
 
@@ -624,6 +626,29 @@ Sesión corta de pulido UX + bugfix de coherencia. **2 commits pusheados a `main
 
 ---
 
+## Sesión 03/05 noche tarde — bug INGRESO→ENTRADA + cleanup Servicios legacy (2 commits)
+
+Bloque corto pegado a la sesión noche. **2 commits pusheados a `main`** (`4883fa6..ad94323`).
+
+| Commit | Cambio |
+|---|---|
+| `4883fa6` | **Fix #6 latente:** `PurchaseService.registrarCompra()` insertaba `'INGRESO'` en `MovimientosInventario.tipo_movimiento` mientras dashboards filtran `'ENTRADA'`. Resultado: compra directa quedaba huérfana de los SELECTs (`InventoryService:124`, `OrdenCompraService:432` ya usan `'ENTRADA'`). Fix mínimo: cambiar línea 208 a `'ENTRADA'` + comentario explicando convención (kárdex usa ENTRADA/SALIDA, Transacciones financieras usan INGRESO/EGRESO). Sin impacto histórico — 0 compras directas en producción. La línea 391 (`'ANULACION_EGRESO'`) se dejó como audit log: nadie la lee. |
+| `ad94323` | **Cleanup #5 — Servicios legacy desconectado del router visible:** sacar `import { Servicios }` y entrada `servicios: Servicios` del map `PAGES` en `app.js`. Marcar `CatalogService.ts` y `Servicios.js` con bloque `@deprecated` que explica por qué siguen vivos. Bumpear cache buster `v=20260503r4 → r5`. Lo que **NO** se borró: rutas `/api/servicios/*`, `api.services.*`, `CatalogService.ts`. Razón: `Logistica.js:46`, `OrdenesCompra.js:202` e `Inventario.js:28` consumen `getServiciosActivos()` para popular dropdowns. Cuando esos consumers migren a "Cotizaciones APROBADAS sin OC" se elimina todo físicamente. Bookmarks a `#servicios` ya caen al dashboard del usuario por el fallback existente en `navigate()` (`app.js:180-183`). |
+
+### Estado pendientes priorizados (cierre 03/05 noche tarde)
+
+| Prio | Tarea | Esfuerzo |
+|---|---|---|
+| ALTA | NCs entrantes (recibir NC del proveedor) | 2-3h |
+| MEDIA | UI listado facturas emitidas | 1-1.5h |
+| MEDIA | UI directa de Gastos | 1.5h |
+| GRANDE | Fase D — Plan de Cuentas + asientos automáticos | 2-3 semanas |
+| MUY BAJA | Fase 2 OC edit pesado en RECIBIDA/FACTURADA | 6h+ |
+
+#5 y #6 cerradas. La próxima sesión arranca por NCs entrantes según el orden acordado.
+
+---
+
 ## Auditoría 02/05/2026 — donde estamos parados (post-cierre Fase C)
 
 | Fase del Plan Maestro | Estado | Notas |
@@ -669,9 +694,9 @@ Sesión corta de pulido UX + bugfix de coherencia. **2 commits pusheados a `main
 
 ---
 
-## Snapshot de `git status` (al 2026-05-03 noche)
+## Snapshot de `git status` (al 2026-05-03 noche tarde)
 
-**Working tree de este worktree limpio.** Todo pusheado a `origin/main`. Railway desplegado, sirviendo `v=20260503r4`.
+**Working tree de este worktree limpio.** Todo pusheado a `origin/main`. Railway desplegado, sirviendo `v=20260503r5`.
 
 **Acumulado de commits desde 27/04:**
 - 10 commits rediseño Enterprise UI (27/04)
@@ -688,9 +713,10 @@ Sesión corta de pulido UX + bugfix de coherencia. **2 commits pusheados a `main
 - 1 commit cierre 02/05 mañana (`0086dfc` — docs Fase C)
 - 15 commits sesión 02/05 noche → 03/05 madrugada (modal recepción OC + edición cobranzas + Tx Dashboard + TRABAJO_EN_RIESGO + Form factura SUNAT + fechas editables, `18db593..dbc9440`)
 - 4 commits sesión 03/05 mañana+tarde (universal edit/delete + tooltips, `b76abf7..97a7e8e`)
-- **2 commits sesión 03/05 noche (modal ROC Logística + unificar Caja KPI vs alerta, `35477b2..041569e`)**
+- 2 commits sesión 03/05 noche (modal ROC Logística + unificar Caja KPI vs alerta, `35477b2..041569e`)
+- **2 commits sesión 03/05 noche tarde (bug INGRESO→ENTRADA + cleanup Servicios legacy, `4883fa6..ad94323`)**
 
-**Total: 73 commits** desde el rediseño Enterprise.
+**Total: 75 commits** desde el rediseño Enterprise.
 
 ## Para Claude (próxima sesión)
 
@@ -707,7 +733,7 @@ Si Julio dice "sigamos con cotizaciones" o reporta un bug del módulo Comercial:
    - SERVICIO → tabla `Gastos` (con `id_servicio`) + `Transacciones (referencia_tipo='GASTO')` + `CostosServicio (tipo_costo='GASTO_OC')`
    - GENERAL → tabla `Gastos` + `Transacciones (referencia_tipo='GASTO')`
    Nota que solo ALMACEN setea `OrdenesCompra.id_compra_generada`. Para SERVICIO/GENERAL la trazabilidad es vía `Gastos.nro_oc`.
-9. **Bug latente conocido (PurchaseService.ts:208 y :277)**: usa `tipo_movimiento='INGRESO'` mientras dashboards filtran `'ENTRADA'`. La nueva ruta de OC ya usa `'ENTRADA'`. Si Julio empieza a hacer compras directas (sin OC) y no aparecen en los dashboards de Inventario, este es el motivo. Fix trivial — alinear ambas líneas a `'ENTRADA'`.
+9. ~~Bug latente PurchaseService INGRESO vs ENTRADA~~ → cerrado en `4883fa6` (03/05 noche tarde). Convención: `MovimientosInventario.tipo_movimiento` usa `'ENTRADA'`/`'SALIDA'`/`'AJUSTE'`/`'ANULACION_*'`. `Transacciones.tipo_movimiento` usa `'INGRESO'`/`'EGRESO'` (financieras). No mezclar.
 10. **Saldos de Caja — fuente única `CobranzasService.calcularSaldosNetos()`** (desde `041569e` 03/05 noche). Cualquier KPI o alerta que mencione "saldo en caja", "Caja Soles", "Caja Dólares" debe consumir este helper, NO leer `Cuentas.saldo_actual` directamente (ese campo es snapshot legacy y diverge). Fórmula: `cobranzas DEPOSITO_BANCO - GastoBancario - PagosImpuestos` por moneda. NO incluye Banco de la Nación (detracciones se manejan en `bn` del dashboard). Si Julio reporta un mismatch entre alerta y dashboard de Finanzas, lo primero que hay que verificar es que ambos lados consuman el helper.
 
 ### Estado del filesystem (worktree principal)
