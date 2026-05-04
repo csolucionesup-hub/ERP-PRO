@@ -251,6 +251,21 @@ function init() {
   });
 }
 
+// Helper: garantiza que #oc-modal exista en el DOM. Si no está (caso usuario
+// invoca OC.verOC desde otro módulo como Logistica → tab Sin facturar),
+// lo crea on-demand en document.body.
+function ensureOCModal() {
+  let modal = document.getElementById('oc-modal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'oc-modal';
+    document.body.appendChild(modal);
+  }
+  return modal;
+}
+// Lo expongo en window para que se pueda llamar desde otros módulos si hace falta
+window.ensureOCModal = ensureOCModal;
+
 // Exponer handlers globales como side-effect del módulo (no dentro de init()
 // porque otros módulos como Logistica → tab "Sin facturar" necesitan llamar
 // a OC.verOC sin haber montado el TabBar de OrdenesCompra). Las function
@@ -562,7 +577,7 @@ async function verOC(id_oc) {
 
     const botonesAccion = accionesSegunEstado(oc);
 
-    document.getElementById('oc-modal').innerHTML = `
+    ensureOCModal().innerHTML = `
       <div style="position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:2000;display:flex;align-items:center;justify-content:center;padding:20px">
         <div style="background:white;border-radius:12px;width:860px;max-width:95vw;max-height:90vh;overflow:auto;padding:24px">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
@@ -1189,7 +1204,7 @@ async function reactivar(id, nro) {
   try {
     await api.ordenesCompra.reactivar(id);
     showSuccess(`OC ${nro} reactivada — está en BORRADOR`);
-    document.getElementById('oc-modal').innerHTML = '';
+    const m = document.getElementById('oc-modal'); if (m) m.innerHTML = '';
     setTimeout(() => refreshOC(), 400);
   } catch (e) { showError(e.message); }
 }
@@ -1258,7 +1273,7 @@ function nuevaOC(editData) {
   const tituloModal    = esEdit ? `✎ Editar OC ${editData.nro_oc}` : '➕ Nueva Orden de Compra';
   const textoBotonOk   = esEdit ? 'Guardar cambios' : 'Crear OC';
 
-  document.getElementById('oc-modal').innerHTML = `
+  ensureOCModal().innerHTML = `
     <div style="position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:2000;display:flex;align-items:center;justify-content:center;padding:20px">
       <div style="background:white;border-radius:12px;width:900px;max-width:95vw;max-height:90vh;overflow:auto;padding:24px">
         <h2 style="margin-bottom:16px">${tituloModal}</h2>
