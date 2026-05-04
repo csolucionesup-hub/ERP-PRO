@@ -52,6 +52,7 @@ class RendicionService {
     if (filtros.estado) { where.push('r.estado = ?');         vals.push(filtros.estado); }
     if (filtros.desde)  { where.push('r.fecha_rendicion >= ?'); vals.push(filtros.desde); }
     if (filtros.hasta)  { where.push('r.fecha_rendicion <= ?'); vals.push(filtros.hasta); }
+    // OrdenesCompra solo guarda id_proveedor — el nombre vive en Proveedores.razon_social.
     const sql = `
       SELECT r.id_rendicion, r.id_oc, r.nro_oc_referencia, r.centro_costo, r.proyecto,
              r.importe_recibido, r.moneda, r.fecha_rendicion,
@@ -63,13 +64,16 @@ class RendicionService {
              u_aut.nombre   AS autorizado_por_nombre,
              r.preparado_at, r.revisado_at, r.autorizado_at,
              r.created_at, r.updated_at,
-             oc.estado AS oc_estado, oc.proveedor_nombre
+             oc.estado AS oc_estado,
+             prov.razon_social AS proveedor_nombre,
+             prov.ruc AS proveedor_ruc
       FROM Rendiciones r
       LEFT JOIN Usuarios u_cargo ON u_cargo.id_usuario = r.cuenta_a_cargo_de_id
       LEFT JOIN Usuarios u_prep  ON u_prep.id_usuario  = r.preparado_por_id
       LEFT JOIN Usuarios u_rev   ON u_rev.id_usuario   = r.revisado_por_id
       LEFT JOIN Usuarios u_aut   ON u_aut.id_usuario   = r.autorizado_por_id
       LEFT JOIN OrdenesCompra oc ON oc.id_oc = r.id_oc
+      LEFT JOIN Proveedores prov ON prov.id_proveedor = oc.id_proveedor
       ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
       ORDER BY r.fecha_rendicion DESC, r.id_rendicion DESC
       LIMIT ?`;
@@ -88,7 +92,8 @@ class RendicionService {
              u_rev.nombre   AS revisado_por_nombre,
              u_aut.nombre   AS autorizado_por_nombre,
              oc.estado AS oc_estado,
-             oc.proveedor_nombre,
+             prov.razon_social AS proveedor_nombre,
+             prov.ruc AS proveedor_ruc,
              oc.empresa AS oc_empresa,
              oc.fecha_emision AS oc_fecha_emision,
              oc.subtotal AS oc_subtotal,
@@ -100,6 +105,7 @@ class RendicionService {
       LEFT JOIN Usuarios u_rev   ON u_rev.id_usuario   = r.revisado_por_id
       LEFT JOIN Usuarios u_aut   ON u_aut.id_usuario   = r.autorizado_por_id
       LEFT JOIN OrdenesCompra oc ON oc.id_oc = r.id_oc
+      LEFT JOIN Proveedores prov ON prov.id_proveedor = oc.id_proveedor
       WHERE r.id_rendicion = ?`, [id_rendicion]);
     const r = rows[0];
     if (!r) throw new Error('Rendición no encontrada');
