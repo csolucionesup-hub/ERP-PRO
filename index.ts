@@ -1289,6 +1289,12 @@ ocRouter.put('/:id/fecha', validateIdParam, auditLog('OrdenCompra', 'UPDATE'), a
   res.json(await OrdenCompraService.actualizarFecha(id, fecha));
 });
 
+// Editar metadata "segura" (centro_costo, observaciones, contactos, etc.)
+// en cualquier estado. Sin reverso porque no afecta números/contabilidad.
+ocRouter.put('/:id/metadata', validateIdParam, auditLog('OrdenCompra', 'UPDATE'), async (req: Request, res: Response) => {
+  res.json(await OrdenCompraService.editarMetadata(Number(req.params.id), req.body || {}));
+});
+
 // Cerrar OC sin factura formal (gastos caja chica). Genera Gasto + Tx EGRESO.
 ocRouter.post('/:id/cerrar-sin-factura', validateIdParam, auditLog('OrdenCompra', 'UPDATE'), async (req: any, res: Response) => {
   res.json(await OrdenCompraService.cerrarSinFactura(
@@ -1341,8 +1347,10 @@ ocRouter.put('/:id', validateIdParam, auditLog('OrdenCompra', 'UPDATE'), async (
   res.json(await OrdenCompraService.actualizar(Number(req.params.id), req.body));
 });
 
-// ELIMINAR OC físico — permitido hasta APROBADA, solo GERENTE.
-// El Service también valida el estado; este check de rol es la barrera primaria.
+// ELIMINAR OC físico — permitido en CUALQUIER estado (excepto que ya esté
+// borrada), solo GERENTE. El Service hace cascada completa: reverso de
+// stock+kárdex (ALMACEN), DELETE de Compras/Gastos generados, Transacciones
+// de caja asociadas, CostosServicio vinculados.
 ocRouter.delete('/:id', validateIdParam, auditLog('OrdenCompra', 'DELETE'), async (req: any, res: Response) => {
   if (req.user?.rol !== 'GERENTE') {
     return res.status(403).json({ error: 'Solo el GERENTE puede eliminar una OC' });

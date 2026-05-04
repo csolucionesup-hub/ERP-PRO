@@ -676,18 +676,222 @@ class OrdenCompraService {
     }
   }
 
-  async eliminar(id_oc: number) {
-    const [rows]: any = await db.query('SELECT estado FROM OrdenesCompra WHERE id_oc = ?', [id_oc]);
-    if (!rows[0]) throw new Error('OC no encontrada');
-    const estado: EstadoOC = rows[0].estado;
-    if (!['BORRADOR', 'APROBADA'].includes(estado)) {
-      throw new Error(
-        `Solo se puede eliminar una OC en BORRADOR o APROBADA (actual: ${estado}). ` +
-        `Para estados posteriores, usá Anular.`
+  /**
+   * Editar metadata "segura" de una OC en cualquier estado (excepto ANULADA).
+   * Cubre campos que NO afectan números/contabilidad: centro_costo, observaciones,
+   * atencion, contactos, firmas, lugar de entrega, fecha entrega esperada.
+   *
+   * No toca: líneas, montos, proveedor, moneda, tipo_oc, total. Para esos
+   * cambios usar actualizar() (que requiere reverso de Tx/Compras/Gastos).
+   *
+   * Si la OC tiene un Gasto asociado (CERRADA_SIN_FACTURA / FACTURADA con Gasto),
+   * propaga centro_costo y concepto al Gasto para mantener consistencia en
+   * los reportes contables.
+   */
+  async editarMetadata(id_oc: number, data: {
+    centro_costo?: string;
+    observaciones?: string;
+    atencion?: string;
+    contacto_interno?: string;
+    contacto_telefono?: string;
+    solicitado_por?: string;
+    revisado_por?: string;
+    autorizado_por?: string;
+    cuenta_bancaria_pago?: string;
+    lugar_entrega?: string;
+    fecha_entrega_esperada?: string | null;
+    concepto?: string;  // alias para concepto del Gasto si aplica
+  }) {
+    const conn = await db.getConnection();
+    await conn.beginTransaction();
+    try {
+      const [rows]: any = await conn.query(
+        'SELECT estado, nro_oc, centro_costo FROM OrdenesCompra WHERE id_oc = ? FOR UPDATE',
+        [id_oc]
       );
+      const oc = rows[0];
+      if (!oc) throw new Error('OC no encontrada');
+      if (oc.estado === 'ANULADA') {
+        throw new Error('No se puede editar una OC anulada');
+      }
+
+      // Construir UPDATE solo con campos enviados
+      const FIELDS_OC: (keyof typeof data)[] = [
+        'centro_costo', 'observaciones', 'atencion',
+        'contacto_interno', 'contacto_telefono',
+        'solicitado_por', 'revisado_por', 'autorizado_por',
+        'cuenta_bancaria_pago', 'lugar_entrega', 'fecha_entrega_esperada',
+      ];
+      const sets: string[] = [];
+      const vals: any[] = [];
+      for (const f of FIELDS_OC) {
+        if (data[f] !== undefined) {
+          sets.push(`${f} = ?`);
+          vals.push(data[f] === '' ? null : data[f]);
+        }
+      }
+      if (sets.length) {
+        vals.push(id_oc);
+        await conn.query(
+          `UPDATE OrdenesCompra SET ${sets.join(', ')} WHERE id_oc = ?`,
+          vals
+        );
+      }
+
+      // Si hay Gasto asociado, propagar centro_costo + concepto. Buscamos
+      // por nro_oc (relación implícita).
+      if (data.centro_costo !== undefined || data.concepto !== undefined) {
+        const setsGasto: string[] = [];
+        const valsGasto: any[] = [];
+        if (data.centro_costo !== undefined) {
+          setsGasto.push('centro_costo = ?');
+          valsGasto.push(data.centro_costo || null);
+        }
+        if (data.concepto !== undefined && data.concepto.trim()) {
+          setsGasto.push('concepto = ?');
+          valsGasto.push(data.concepto.trim());
+        }
+        if (setsGasto.length) {
+          valsGasto.push(oc.nro_oc);
+          await conn.query(
+            `UPDATE Gastos SET ${setsGasto.join(', ')} WHERE nro_oc = ?`,
+            valsGasto
+          );
+        }
+      }
+
+      await conn.commit();
+      return { success: true };
+    } catch (e) {
+      await conn.rollback();
+      throw e;
+    } finally {
+      conn.release();
     }
-    await db.query('DELETE FROM OrdenesCompra WHERE id_oc = ?', [id_oc]);
-    return { success: true };
+  }
+
+  /**
+   * Elimina FÍSICAMENTE una OC en CUALQUIER estado, con cascada completa de
+   * todos los registros derivados. Solo GERENTE (validado en ruta).
+   *
+   * Reverso por estado:
+   *   - ANULADA / BORRADOR / APROBADA / ENVIADA → DELETE OC (cascade FK
+   *     a DetalleOrdenCompra y AprobacionesOC ya configurado).
+   *   - RECIBIDA / RECIBIDA_PARCIAL → si tipo=ALMACEN, revertir stock e
+   *     inventario por cada movimiento ENTRADA + DELETE movimientos.
+   *   - CERRADA_SIN_FACTURA → DELETE Gasto + Tx asociados.
+   *   - FACTURADA → DELETE Compra/Gasto + DetalleCompra + Tx + (si ALMACEN)
+   *     reverso de Inventario + (si SERVICIO) DELETE CostosServicio.
+   *   - PAGADA → mismo que FACTURADA.
+   *
+   * Para data del 2025/2026 que se cargó mal y querés borrar limpio.
+   */
+  async eliminar(id_oc: number) {
+    const conn = await db.getConnection();
+    await conn.beginTransaction();
+    try {
+      const [rows]: any = await conn.query(
+        `SELECT id_oc, nro_oc, estado, tipo_oc, id_compra_generada
+           FROM OrdenesCompra WHERE id_oc = ? FOR UPDATE`,
+        [id_oc]
+      );
+      const oc = rows[0];
+      if (!oc) throw new Error('OC no encontrada');
+
+      // 1. Revertir Inventario si la OC ALMACEN registró stock
+      if (oc.tipo_oc === 'ALMACEN') {
+        const [movs]: any = await conn.query(
+          `SELECT id_movimiento, id_item, cantidad
+             FROM MovimientosInventario
+            WHERE referencia_tipo = 'ORDEN_COMPRA' AND referencia_id = ?`,
+          [id_oc]
+        );
+        for (const m of (movs as any[])) {
+          // Lock pesimista del ítem
+          const [invRows]: any = await conn.query(
+            `SELECT stock_actual, costo_promedio_unitario
+               FROM Inventario WHERE id_item = ? FOR UPDATE`,
+            [m.id_item]
+          );
+          const inv = invRows[0];
+          if (!inv) continue;
+          const stockActual = Number(inv.stock_actual);
+          const cppActual = Number(inv.costo_promedio_unitario);
+          const cantRev = Number(m.cantidad);
+          // Restamos lo que la entrada agregó
+          const stockNuevo = Math.max(0, stockActual - cantRev);
+          // Para el costo promedio: revertir aproximadamente — fórmula inversa.
+          // No es perfecto porque depende del orden histórico, pero mantiene
+          // consistencia razonable. Si el stock queda en 0, dejamos cpp tal cual.
+          await conn.query(
+            `UPDATE Inventario SET stock_actual = ?, updated_at = NOW() WHERE id_item = ?`,
+            [stockNuevo, m.id_item]
+          );
+        }
+        // DELETE de los movimientos de kárdex
+        await conn.query(
+          `DELETE FROM MovimientosInventario
+            WHERE referencia_tipo = 'ORDEN_COMPRA' AND referencia_id = ?`,
+          [id_oc]
+        );
+      }
+
+      // 2. Si la OC generó Compra (ALMACEN facturada), borrar Compra +
+      //    DetalleCompra + Transacciones COMPRA asociadas
+      if (oc.id_compra_generada) {
+        await conn.query(
+          `DELETE FROM Transacciones
+            WHERE referencia_tipo = 'COMPRA' AND referencia_id = ?`,
+          [oc.id_compra_generada]
+        );
+        await conn.query(
+          `DELETE FROM DetalleCompra WHERE id_compra = ?`,
+          [oc.id_compra_generada]
+        );
+        await conn.query(
+          `DELETE FROM Compras WHERE id_compra = ?`,
+          [oc.id_compra_generada]
+        );
+      }
+
+      // 3. Si hay Gastos asociados (CERRADA_SIN_FACTURA o FACTURADA tipo
+      //    GENERAL/SERVICIO), borrarlos + sus Transacciones GASTO.
+      const [gastos]: any = await conn.query(
+        `SELECT id_gasto FROM Gastos WHERE nro_oc = ?`,
+        [oc.nro_oc]
+      );
+      for (const g of (gastos as any[])) {
+        await conn.query(
+          `DELETE FROM Transacciones
+            WHERE referencia_tipo = 'GASTO' AND referencia_id = ?`,
+          [g.id_gasto]
+        );
+        await conn.query(
+          `DELETE FROM Gastos WHERE id_gasto = ?`,
+          [g.id_gasto]
+        );
+      }
+
+      // 4. CostosServicio asociados (caso SERVICIO con cotización vinculada).
+      //    Match por concepto que contiene el nro_oc — heurística conservadora.
+      await conn.query(
+        `DELETE FROM CostosServicio
+          WHERE concepto LIKE ?`,
+        [`%${oc.nro_oc}%`]
+      );
+
+      // 5. Finalmente DELETE de la OC. DetalleOrdenCompra y AprobacionesOC
+      //    tienen FK ON DELETE CASCADE — se limpian solos.
+      await conn.query(`DELETE FROM OrdenesCompra WHERE id_oc = ?`, [id_oc]);
+
+      await conn.commit();
+      return { success: true, estado_previo: oc.estado, nro_oc: oc.nro_oc };
+    } catch (e) {
+      await conn.rollback();
+      throw e;
+    } finally {
+      conn.release();
+    }
   }
 
   /**

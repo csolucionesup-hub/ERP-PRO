@@ -271,7 +271,7 @@ window.ensureOCModal = ensureOCModal;
 // a OC.verOC sin haber montado el TabBar de OrdenesCompra). Las function
 // declarations se hoistean, así que las referencias funcionan aunque estén
 // definidas más abajo en el archivo.
-window.OC = { nuevaOC, verOC, aprobar, enviar, recibir, facturar, cerrarSinFactura, asociarFactura, anular, reactivar, eliminarOC, editar, editarFecha, descargarPDF, reporteROC };
+window.OC = { nuevaOC, verOC, aprobar, enviar, recibir, facturar, cerrarSinFactura, asociarFactura, anular, reactivar, eliminarOC, editar, editarFecha, editarMetadata: editarMetadataOC, descargarPDF, reporteROC };
 
 // Editar SOLO la fecha de emisión (corregir data histórica) — disponible en
 // cualquier estado salvo ANULADA. No toca estado/items/totales/correlativo.
@@ -690,12 +690,18 @@ function accionesSegunEstado(oc) {
   if (oc.estado === 'CERRADA_SIN_FACTURA') {
     btns.push(`<button onclick="OC.asociarFactura(${oc.id_oc}, '${nroSafe}')" style="padding:10px 18px;background:#7c3aed;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">🧾 Asociar factura tardía</button>`);
   }
-  // Editar — hasta ENVIADA inclusive (después la mercadería ya fue recibida).
+  // Editar líneas/montos — hasta ENVIADA inclusive (después la mercadería ya fue recibida).
   if (['BORRADOR', 'APROBADA', 'ENVIADA'].includes(oc.estado)) {
-    btns.push(`<button onclick="OC.editar(${oc.id_oc})" style="padding:10px 18px;background:#f59e0b;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">✎ Editar</button>`);
+    btns.push(`<button onclick="OC.editar(${oc.id_oc})" style="padding:10px 18px;background:#f59e0b;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">✎ Editar líneas</button>`);
   }
-  // Eliminar físico — hasta APROBADA inclusive, solo GERENTE.
-  if (['BORRADOR', 'APROBADA'].includes(oc.estado) && esGerente) {
+  // Editar metadata segura (centro_costo, concepto, observaciones, contactos) —
+  // disponible en CUALQUIER estado salvo ANULADA. No toca números.
+  if (oc.estado !== 'ANULADA') {
+    btns.push(`<button onclick="OC.editarMetadata(${oc.id_oc}, '${nroSafe}')" style="padding:10px 18px;background:#fff;color:#7c3aed;border:1px solid #c4b5fd;border-radius:6px;cursor:pointer;font-weight:600">✎ Editar concepto/CC</button>`);
+  }
+  // Eliminar físico — disponible en CUALQUIER estado, solo GERENTE.
+  // Backend hace cascada completa (Tx, Compras/Gastos, Inventario, CostosServicio).
+  if (esGerente) {
     btns.push(`<button onclick="OC.eliminarOC(${oc.id_oc}, '${nroSafe}')" style="padding:10px 18px;background:transparent;color:#7f1d1d;border:1px solid #7f1d1d;border-radius:6px;cursor:pointer;font-weight:600">🗑 Eliminar</button>`);
   }
   if (!['FACTURADA', 'PAGADA', 'ANULADA'].includes(oc.estado)) {
@@ -1228,14 +1234,93 @@ async function editar(id) {
 async function eliminarOC(id, nro) {
   const ok = await confirmarTexto({
     titulo: '🗑 Eliminar OC permanentemente',
-    mensaje: `Estás por eliminar la OC <strong>${nro}</strong> de la base de datos junto con todas sus líneas y aprobaciones. Esta acción es <strong>irreversible</strong> y libera el correlativo para reuso.`,
+    mensaje:
+      `Estás por eliminar la OC <strong>${nro}</strong> y <strong>TODOS sus registros derivados</strong>:` +
+      `<ul style="margin:8px 0 8px 20px;line-height:1.6">` +
+      `<li>Líneas y aprobaciones de la OC</li>` +
+      `<li>Compras / Gastos generados al facturar (si los hubo)</li>` +
+      `<li>Transacciones de caja asociadas</li>` +
+      `<li>Movimientos de Inventario y reverso de stock (si era ALMACEN)</li>` +
+      `<li>Costos de servicio vinculados</li>` +
+      `</ul>` +
+      `Esta acción es <strong style="color:#dc2626">irreversible</strong>. Para confirmar, tipeá el número de OC exacto.`,
     textoRequerido: nro,
   });
   if (!ok) return;
   try {
     await api.ordenesCompra.eliminar(id);
-    showSuccess('OC eliminada');
-    setTimeout(() => refreshOC(), 600);
+    showSuccess('OC eliminada con cascada completa');
+    setTimeout(() => (window.refreshModule || refreshOC)(), 600);
+  } catch (e) { showError(e.message); }
+}
+
+// Editar metadata "segura" en cualquier estado (centro_costo, concepto, etc.)
+async function editarMetadataOC(id, nro) {
+  // Cargar datos actuales
+  let oc;
+  try { oc = await api.ordenesCompra.get(id); }
+  catch (e) { return showError(e.message); }
+
+  // Lista de centros de costo activos para el datalist
+  let centros = [];
+  try { centros = await api.centrosCosto.list(true); }
+  catch {}
+
+  const data = await new Promise((resolve) => {
+    const ov = document.createElement('div');
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
+    const v = (x) => x == null ? '' : String(x).replace(/"/g, '&quot;');
+    ov.innerHTML = `
+      <div style="background:#fff;border-radius:8px;padding:22px;width:520px;max-width:95vw;max-height:90vh;overflow:auto;box-shadow:0 20px 50px rgba(0,0,0,.3)">
+        <h3 style="margin:0 0 8px;font-size:16px">✎ Editar concepto / centro de costo · OC ${nro}</h3>
+        <p style="margin:0 0 14px;font-size:12px;color:#6b7280">
+          Edición segura: estos campos NO afectan números ni contabilidad.
+          Disponible en cualquier estado (excepto ANULADA).
+          Si hay un Gasto asociado, se actualiza también automáticamente.
+        </p>
+        <div style="display:grid;gap:10px">
+          <div>
+            <label style="font-size:11px;color:#374151;font-weight:600;display:block;margin-bottom:4px">Centro de Costo</label>
+            <input id="em-cc" list="em-cc-list" value="${v(oc.centro_costo)}"
+              style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:5px;font-size:13px">
+            <datalist id="em-cc-list">
+              ${centros.map(c => `<option value="${v(c.nombre)}">${c.tipo}</option>`).join('')}
+            </datalist>
+          </div>
+          <div>
+            <label style="font-size:11px;color:#374151;font-weight:600;display:block;margin-bottom:4px">Concepto / Observaciones</label>
+            <textarea id="em-obs" rows="3" style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:5px;font-size:13px;resize:vertical">${v(oc.observaciones || '')}</textarea>
+          </div>
+          <div>
+            <label style="font-size:11px;color:#374151;font-weight:600;display:block;margin-bottom:4px">Atención</label>
+            <input id="em-atn" value="${v(oc.atencion)}"
+              style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:5px;font-size:13px">
+          </div>
+        </div>
+        <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:18px">
+          <button id="em-cancel" style="padding:8px 16px;background:#fff;border:1px solid #d1d5db;border-radius:5px;cursor:pointer;font-size:13px">Cancelar</button>
+          <button id="em-ok" style="padding:8px 22px;background:#7c3aed;color:#fff;border:none;border-radius:5px;cursor:pointer;font-size:13px;font-weight:600">Guardar</button>
+        </div>
+      </div>`;
+    document.body.appendChild(ov);
+    const close = (val) => { ov.remove(); resolve(val); };
+    ov.querySelector('#em-cancel').onclick = () => close(null);
+    ov.querySelector('#em-ok').onclick = () => {
+      close({
+        centro_costo: ov.querySelector('#em-cc').value.trim() || null,
+        observaciones: ov.querySelector('#em-obs').value.trim() || null,
+        atencion: ov.querySelector('#em-atn').value.trim() || null,
+        // El concepto del Gasto asociado lo igualo a las observaciones
+        // (Julio prefiere un solo campo libre que se propague a ambos lados).
+        concepto: ov.querySelector('#em-obs').value.trim() || undefined,
+      });
+    };
+  });
+  if (!data) return;
+  try {
+    await api.ordenesCompra.editarMetadata(id, data);
+    showSuccess(`OC ${nro} actualizada`);
+    setTimeout(() => (window.refreshModule || refreshOC)(), 600);
   } catch (e) { showError(e.message); }
 }
 
