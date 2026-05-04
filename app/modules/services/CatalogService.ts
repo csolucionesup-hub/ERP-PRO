@@ -1,6 +1,21 @@
 import { db, DEFAULT_ACCOUNT_ID } from '../../../database/connection';
 import { nowSQL } from '../../lib/dateUtils';
 
+/**
+ * @deprecated Módulo Servicios — legacy desde 03/05/2026.
+ *
+ * El flujo "Camino A" (Cotizaciones APROBADAS + OCs) reemplazó por completo
+ * la tabla `Servicios` en producción (0 rows al cierre).
+ *
+ * Este service NO se elimina porque `getServiciosActivos()` aún se usa para
+ * popular dropdowns en Logística (form OC tipo SERVICIO) y OrdenesCompra.
+ * Cuando esos dropdowns se migren a "Cotizaciones APROBADAS sin OC",
+ * todo este archivo + las rutas /api/servicios/* + public/js/pages/Servicios.js
+ * pueden eliminarse físicamente.
+ *
+ * No agregar features nuevos acá. Si se necesita reportería de servicios,
+ * trabajar contra la tabla `Cotizaciones`.
+ */
 class CatalogService {
   /**
    * Extrae el Listado Histórico de Servicios con Matemática Financiera (Cross-Query)

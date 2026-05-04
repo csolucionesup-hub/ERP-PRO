@@ -1,3 +1,8 @@
+// @deprecated Página Servicios — desconectada del router al cierre 03/05/2026.
+// La tabla Servicios quedó vacía en producción tras la migración a "Camino A"
+// (Cotizaciones APROBADAS + OCs). Este archivo permanece en el repo solo
+// como referencia histórica; no se importa desde app.js y no se navega.
+// Cuando el backend CatalogService se desmonte, eliminar también este archivo.
 import { api } from '../services/api.js';
 import { showSuccess, showError } from '../services/ui.js';
 
