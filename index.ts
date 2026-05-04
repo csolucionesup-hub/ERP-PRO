@@ -126,7 +126,15 @@ apiRouter.post('/gastos', validateParams(gastoCreateSchema), periodoGuard('fecha
 apiRouter.put('/gastos/:id', validateIdParam, validateParams(gastoUpdateSchema), periodoGuard('fecha'), auditLog('Gasto', 'UPDATE'), async (req: Request, res: Response) => {
   res.json(await FinanceService.updateGasto(parseInt(req.params.id as string), req.body));
 });
-apiRouter.delete('/gastos/:id', validateIdParam, auditLog('Gasto', 'DELETE'), async (req: Request, res: Response) => {
+// Editar metadata "segura" (refs + clasificación) en cualquier estado.
+apiRouter.put('/gastos/:id/metadata', validateIdParam, auditLog('Gasto', 'UPDATE'), async (req: Request, res: Response) => {
+  res.json(await FinanceService.editarMetadata(parseInt(req.params.id as string), req.body || {}));
+});
+// DELETE físico — solo GERENTE, en CUALQUIER estado.
+apiRouter.delete('/gastos/:id', validateIdParam, auditLog('Gasto', 'DELETE'), async (req: any, res: Response) => {
+  if (req.user?.rol !== 'GERENTE') {
+    return res.status(403).json({ error: 'Solo el GERENTE puede eliminar un gasto' });
+  }
   res.json(await FinanceService.deleteGasto(parseInt(req.params.id as string)));
 });
 apiRouter.post('/gastos/:id/pago', validateIdParam, validateParams(gastoPaymentSchema), auditLog('Gasto', 'UPDATE'), async (req: Request, res: Response) => {
@@ -195,10 +203,20 @@ apiRouter.post('/compras/:id/anular', validateIdParam, auditLog('Compra', 'ANULA
   res.json(await PurchaseService.anularCompra(parseInt(req.params.id as string)));
 });
 
-apiRouter.delete('/compras/:id', async (_req: Request, res: Response) => {
-  res.status(405).json({
-    error: 'Operación no permitida. Las compras confirmadas no pueden eliminarse. Use POST /compras/:id/anular para revertir el inventario correctamente.'
-  });
+// Editar metadata "segura" (nro_comprobante, nro_oc, fecha, centro_costo)
+// en cualquier estado salvo ANULADA. No toca números/inventario.
+apiRouter.put('/compras/:id/metadata', validateIdParam, auditLog('Compra', 'UPDATE'), async (req: Request, res: Response) => {
+  res.json(await PurchaseService.editarMetadata(parseInt(req.params.id as string), req.body || {}));
+});
+
+// DELETE físico — solo GERENTE, en CUALQUIER estado.
+// Cascada: revierte stock (CONFIRMADA), borra Tx COMPRA, MovInv, DetalleCompra,
+// desvincula OC origen (id_compra_generada=NULL).
+apiRouter.delete('/compras/:id', validateIdParam, auditLog('Compra', 'DELETE'), async (req: any, res: Response) => {
+  if (req.user?.rol !== 'GERENTE') {
+    return res.status(403).json({ error: 'Solo el GERENTE puede eliminar una compra' });
+  }
+  res.json(await PurchaseService.deleteCompra(parseInt(req.params.id as string)));
 });
 
 apiRouter.use('/proveedores', requireModulo('LOGISTICA'));
@@ -243,10 +261,23 @@ apiRouter.get('/inventario/:id/kardex', validateIdParam, async (req: Request, re
   res.json(await InventoryService.getKardex(idItem));
 });
 
-apiRouter.delete('/inventario/:id', validateIdParam, async (req: Request, res: Response) => {
+// Editar metadata "segura" de un ítem (nombre, categoria, unidad, stock_minimo).
+// Disponible siempre. NO toca stock ni costo promedio.
+apiRouter.put('/inventario/:id/metadata', validateIdParam, auditLog('Inventario', 'UPDATE'), async (req: Request, res: Response) => {
+  res.json(await InventoryService.editarMetadata(parseInt(req.params.id as string), req.body || {}));
+});
+
+// DELETE de ítem. Modo NORMAL valida invariantes. Modo FORCE (?force=1) solo
+// GERENTE: borra cascada DetalleCompra + MovInv + CostosServicio y recalcula
+// totales de las Compras afectadas. Para data corrupta o duplicados.
+apiRouter.delete('/inventario/:id', validateIdParam, auditLog('Inventario', 'DELETE'), async (req: any, res: Response) => {
   const idItem = parseInt(req.params.id as string);
   if (isNaN(idItem)) throw new Error('ID de ítem inválido');
-  res.json(await InventoryService.deleteItem(idItem));
+  const force = String(req.query.force || '').trim() === '1';
+  if (force && req.user?.rol !== 'GERENTE') {
+    return res.status(403).json({ error: 'Solo el GERENTE puede forzar la eliminación de un ítem' });
+  }
+  res.json(await InventoryService.deleteItem(idItem, { force }));
 });
 
 // ===== PRÉSTAMOS =====
@@ -610,8 +641,16 @@ apiRouter.post('/cotizaciones/:id/anular', validateIdParam, auditLog('Cotizacion
   res.json({ success: true });
 });
 
-// DELETE físico — solo GERENTE, solo para EN_PROCESO/A_ESPERA_RESPUESTA.
-// Caso de uso: borrar duplicados antes de que circulen a clientes.
+// Editar metadata "segura" (cliente, atencion, contactos, condiciones, etc.)
+// en CUALQUIER estado salvo ANULADA. No toca números/correlativo/estado.
+apiRouter.put('/cotizaciones/:id/metadata', validateIdParam, auditLog('Cotizacion', 'UPDATE'), async (req: Request, res: Response) => {
+  const id = parseInt(req.params.id as string);
+  res.json(await CotizacionService.editarMetadata(id, req.body || {}));
+});
+
+// DELETE físico — solo GERENTE, en CUALQUIER estado.
+// Cascada: Cobranzas + MovBancario AUTO + Tx COBRANZA + CostosServicio
+// huérfanos. OCs vinculadas se desvinculan (SET NULL).
 apiRouter.delete('/cotizaciones/:id', validateIdParam, auditLog('Cotizacion', 'DELETE'), async (req: Request, res: Response) => {
   const user = (req as any).user;
   if (!user || user.rol !== 'GERENTE') {

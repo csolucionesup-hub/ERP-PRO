@@ -1036,7 +1036,14 @@ function archivoTable(cotizaciones, filtroMarca) {
             </span>` : ''}
             ${!anulada && ESTADOS_EDITABLES.includes(c.estado) ? `
             <button class="action-btn" style="background:#3b82f6;color:#fff"
-              onclick="window.editarCotizacion(${c.id_cotizacion},'${c.nro_cotizacion.replace(/'/g, "\\'")}')">✎ Editar</button>
+              title="Editar líneas, montos y todos los datos (solo en estados iniciales)"
+              onclick="window.editarCotizacion(${c.id_cotizacion},'${c.nro_cotizacion.replace(/'/g, "\\'")}')">✎ Editar líneas</button>
+            ` : ''}
+            ${!anulada ? `
+            <button class="action-btn"
+              style="background:#fff;color:#3b82f6;border:1px solid #93c5fd;font-size:11px"
+              title="Editar cliente, atención, contactos y condiciones (no toca números)"
+              onclick="window.editarMetadataCotizacion(${c.id_cotizacion},'${c.nro_cotizacion.replace(/'/g, "\\'")}')">✎ Editar datos</button>
             ` : ''}
             ${!anulada ? `
             <button class="action-btn action-btn-anular"
@@ -1045,10 +1052,11 @@ function archivoTable(cotizaciones, filtroMarca) {
             ${(() => {
               try {
                 const u = JSON.parse(localStorage.getItem('erp_user') || '{}');
-                if (u.rol === 'GERENTE' && ESTADOS_EDITABLES.includes(c.estado)) {
+                // GERENTE puede eliminar EN CUALQUIER ESTADO (cascada total).
+                if (u.rol === 'GERENTE') {
                   return `<button class="action-btn"
-                    style="background:#fff;color:#dc2626;border:1px solid #fca5a5;font-size:11px"
-                    title="Eliminar definitivamente (solo duplicados)"
+                    style="background:#fff;color:#7f1d1d;border:1px solid #7f1d1d;font-size:11px"
+                    title="Eliminar definitivamente con cascada (cobranzas, costos, mov. bancarios)"
                     onclick="window.eliminarCotizacion(${c.id_cotizacion},'${c.nro_cotizacion.replace(/'/g, "\\'")}')">🗑 Eliminar</button>`;
                 }
               } catch {}
@@ -1117,6 +1125,18 @@ function renderAnuladasTab(anuladas) {
               onclick="window.previewPDFCotizacion(${c.id_cotizacion},'${c.nro_cotizacion.replace(/'/g, "\\'")}')">👁️ Ver</button>
             <button class="action-btn" style="background:#dc2626;color:#fff"
               onclick="window.descargarPDFCotizacion(${c.id_cotizacion},'${c.nro_cotizacion.replace(/'/g, "\\'")}')">📄 PDF</button>
+            ${(() => {
+              try {
+                const u = JSON.parse(localStorage.getItem('erp_user') || '{}');
+                if (u.rol === 'GERENTE') {
+                  return `<button class="action-btn"
+                    style="background:#fff;color:#7f1d1d;border:1px solid #7f1d1d;font-size:11px"
+                    title="Eliminar definitivamente con cascada"
+                    onclick="window.eliminarCotizacion(${c.id_cotizacion},'${c.nro_cotizacion.replace(/'/g, "\\'")}')">🗑 Eliminar</button>`;
+                }
+              } catch {}
+              return '';
+            })()}
           </div>
         </td>
       </tr>`;
@@ -1687,20 +1707,145 @@ export const Comercial = async () => {
     };
 
     window.eliminarCotizacion = async (id, nro) => {
-      // Eliminación física de duplicados — solo GERENTE, solo EN_PROCESO/A_ESPERA.
-      // Doble barrera: 1) advertencia explícita, 2) tipear el número exacto.
+      // Eliminación física en cualquier estado (solo GERENTE, validado en
+      // backend). Hace cascada: cobranzas → MovBancario AUTO → Tx COBRANZA →
+      // CostosServicio huérfanos → DELETE Cotización (FK CASCADE de
+      // DetalleCotizacion + SET NULL en OCs vinculadas).
+      // Doble barrera: 1) advertencia con cascada visible, 2) tipear el nro exacto.
       const ok = await confirmarTexto({
-        titulo: '🗑 Eliminar cotización definitivamente',
-        mensaje: `Vas a ELIMINAR DEFINITIVAMENTE la cotización ${nro}.\n\nEsta acción NO se puede deshacer. La cotización y sus ítems se borrarán de la base de datos. El número correlativo quedará liberado (puede reutilizarse).\n\nUsá esto SOLO para duplicados creados por error que aún no circulan a clientes. Para todo lo demás, usá Anular.\n\nPara confirmar, escribí el número de cotización exacto:`,
+        titulo: '🗑 Eliminar cotización con cascada total',
+        mensaje:
+          `Vas a ELIMINAR DEFINITIVAMENTE la cotización <strong>${nro}</strong> y todos sus registros derivados:` +
+          `<ul style="margin:8px 0 8px 20px;line-height:1.6">` +
+          `<li>Ítems / detalle</li>` +
+          `<li>Cobranzas registradas (depósitos, detracciones, retenciones)</li>` +
+          `<li>Movimientos bancarios automáticos asociados</li>` +
+          `<li>Transacciones de caja COBRANZA</li>` +
+          `<li>Costos de servicio que dependían solo de esta cotización</li>` +
+          `</ul>` +
+          `Las <strong>Órdenes de Compra vinculadas se desvinculan</strong> (no se borran). El PDF en Drive y las fotos en Cloudinary <strong>quedan</strong> en su lugar.` +
+          `<br><br>Esta acción es <strong style="color:#dc2626">irreversible</strong>. Para confirmar, tipeá el número exacto:`,
         textoRequerido: nro,
-        confirmLabel: 'Sí, eliminar',
+        confirmLabel: 'Sí, eliminar todo',
         tipo: 'danger',
       });
       if (!ok) return;
       try {
-        await api.cotizaciones.deleteCotizacion(id);
-        window.showSuccess?.(`Cotización ${nro} eliminada definitivamente.`);
+        const r = await api.cotizaciones.deleteCotizacion(id);
+        const extra = r?.cobranzas_eliminadas ? ` (${r.cobranzas_eliminadas} cobranza${r.cobranzas_eliminadas !== 1 ? 's' : ''} purgada${r.cobranzas_eliminadas !== 1 ? 's' : ''})` : '';
+        window.showSuccess?.(`Cotización ${nro} eliminada con cascada${extra}.`);
         setTimeout(() => window.navigate('comercial'), 1200);
+      } catch (err) {
+        window.showError?.('Error: ' + (err.message || JSON.stringify(err)));
+      }
+    };
+
+    window.editarMetadataCotizacion = async (id, nro) => {
+      // Edición segura en cualquier estado salvo ANULADA. NO toca números,
+      // correlativo, estado ni cobranzas — solo campos informativos.
+      let cot;
+      try { cot = await api.cotizaciones.getCotizacion(id); }
+      catch (err) { return window.showError?.('Error cargando cotización: ' + err.message); }
+
+      const v = (x) => x == null ? '' : String(x).replace(/"/g, '&quot;');
+      const data = await new Promise((resolve) => {
+        const ov = document.createElement('div');
+        ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
+        ov.innerHTML = `
+          <div style="background:#fff;border-radius:8px;padding:22px;width:640px;max-width:96vw;max-height:90vh;overflow:auto;box-shadow:0 20px 50px rgba(0,0,0,.3)">
+            <h3 style="margin:0 0 6px;font-size:16px">✎ Editar datos · Cotización ${nro}</h3>
+            <p style="margin:0 0 14px;font-size:12px;color:#6b7280">
+              Edición segura: estos campos NO afectan números, correlativo, estado ni cobranzas.
+              Disponible en cualquier estado salvo ANULADA.
+            </p>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+              <div style="grid-column:1/-1">
+                <label style="font-size:11px;color:#374151;font-weight:600">Cliente</label>
+                <input id="ec-cliente" value="${v(cot.cliente)}" style="width:100%;padding:7px 9px;border:1px solid #d1d5db;border-radius:5px;font-size:13px">
+              </div>
+              <div>
+                <label style="font-size:11px;color:#374151;font-weight:600">Atención</label>
+                <input id="ec-atn" value="${v(cot.atencion)}" style="width:100%;padding:7px 9px;border:1px solid #d1d5db;border-radius:5px;font-size:13px">
+              </div>
+              <div>
+                <label style="font-size:11px;color:#374151;font-weight:600">Teléfono</label>
+                <input id="ec-tel" value="${v(cot.telefono)}" style="width:100%;padding:7px 9px;border:1px solid #d1d5db;border-radius:5px;font-size:13px">
+              </div>
+              <div style="grid-column:1/-1">
+                <label style="font-size:11px;color:#374151;font-weight:600">Correo</label>
+                <input id="ec-correo" type="email" value="${v(cot.correo)}" style="width:100%;padding:7px 9px;border:1px solid #d1d5db;border-radius:5px;font-size:13px">
+              </div>
+              <div style="grid-column:1/-1">
+                <label style="font-size:11px;color:#374151;font-weight:600">Proyecto</label>
+                <input id="ec-proy" value="${v(cot.proyecto)}" style="width:100%;padding:7px 9px;border:1px solid #d1d5db;border-radius:5px;font-size:13px">
+              </div>
+              <div>
+                <label style="font-size:11px;color:#374151;font-weight:600">Forma de pago</label>
+                <input id="ec-fp" value="${v(cot.forma_pago)}" style="width:100%;padding:7px 9px;border:1px solid #d1d5db;border-radius:5px;font-size:13px">
+              </div>
+              <div>
+                <label style="font-size:11px;color:#374151;font-weight:600">Validez de oferta</label>
+                <input id="ec-val" value="${v(cot.validez_oferta)}" style="width:100%;padding:7px 9px;border:1px solid #d1d5db;border-radius:5px;font-size:13px">
+              </div>
+              <div>
+                <label style="font-size:11px;color:#374151;font-weight:600">Plazo de entrega</label>
+                <input id="ec-plazo" value="${v(cot.plazo_entrega)}" style="width:100%;padding:7px 9px;border:1px solid #d1d5db;border-radius:5px;font-size:13px">
+              </div>
+              <div>
+                <label style="font-size:11px;color:#374151;font-weight:600">Lugar de entrega</label>
+                <input id="ec-lugar" value="${v(cot.lugar_entrega)}" style="width:100%;padding:7px 9px;border:1px solid #d1d5db;border-radius:5px;font-size:13px">
+              </div>
+              <div>
+                <label style="font-size:11px;color:#374151;font-weight:600">N° OC del cliente</label>
+                <input id="ec-occli" value="${v(cot.nro_oc_cliente)}" style="width:100%;padding:7px 9px;border:1px solid #d1d5db;border-radius:5px;font-size:13px">
+              </div>
+              <div>
+                <label style="font-size:11px;color:#374151;font-weight:600">N° Factura</label>
+                <input id="ec-fac" value="${v(cot.nro_factura)}" style="width:100%;padding:7px 9px;border:1px solid #d1d5db;border-radius:5px;font-size:13px">
+              </div>
+              <div style="grid-column:1/-1">
+                <label style="font-size:11px;color:#374151;font-weight:600">Comentarios</label>
+                <textarea id="ec-com" rows="3" style="width:100%;padding:7px 9px;border:1px solid #d1d5db;border-radius:5px;font-size:13px;resize:vertical">${v(cot.comentarios || '')}</textarea>
+              </div>
+            </div>
+            <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:18px">
+              <button id="ec-cancel" style="padding:8px 16px;background:#fff;border:1px solid #d1d5db;border-radius:5px;cursor:pointer;font-size:13px">Cancelar</button>
+              <button id="ec-ok" style="padding:8px 22px;background:#3b82f6;color:#fff;border:none;border-radius:5px;cursor:pointer;font-size:13px;font-weight:600">Guardar</button>
+            </div>
+          </div>`;
+        document.body.appendChild(ov);
+        const close = (val) => { ov.remove(); resolve(val); };
+        ov.querySelector('#ec-cancel').onclick = () => close(null);
+        ov.querySelector('#ec-ok').onclick = () => {
+          const g = (sel) => {
+            const el = ov.querySelector(sel);
+            return el ? el.value.trim() : '';
+          };
+          close({
+            cliente:        g('#ec-cliente') || null,
+            atencion:       g('#ec-atn'),
+            telefono:       g('#ec-tel'),
+            correo:         g('#ec-correo'),
+            proyecto:       g('#ec-proy'),
+            forma_pago:     g('#ec-fp'),
+            validez_oferta: g('#ec-val'),
+            plazo_entrega:  g('#ec-plazo'),
+            lugar_entrega:  g('#ec-lugar'),
+            nro_oc_cliente: g('#ec-occli'),
+            nro_factura:    g('#ec-fac'),
+            comentarios:    g('#ec-com'),
+          });
+        };
+      });
+      if (!data) return;
+      if (!data.cliente) {
+        window.showError?.('El cliente es obligatorio.');
+        return;
+      }
+      try {
+        await api.cotizaciones.editarMetadata(id, data);
+        window.showSuccess?.(`Cotización ${nro} actualizada.`);
+        setTimeout(() => window.navigate('comercial'), 800);
       } catch (err) {
         window.showError?.('Error: ' + (err.message || JSON.stringify(err)));
       }

@@ -383,29 +383,104 @@ class FinanceService {
     }
   }
 
+  /**
+   * Editar metadata "segura" de un gasto en CUALQUIER estado salvo ANULADO.
+   * Cubre campos que NO afectan números/CxP: nro_factura, nro_oc, concepto,
+   * fecha, centro_costo, tipo_gasto_logistica. NO toca proveedor, moneda,
+   * monto, igv, total. Para eso anular y rehacer.
+   */
+  async editarMetadata(idGasto: number, data: {
+    nro_factura?: string;
+    nro_oc?: string;
+    concepto?: string;
+    fecha?: string;
+    centro_costo?: string;
+    tipo_gasto_logistica?: string;
+  }) {
+    const conn = await db.getConnection();
+    await conn.beginTransaction();
+    try {
+      const [rows] = await conn.query(
+        'SELECT estado FROM Gastos WHERE id_gasto = ? FOR UPDATE',
+        [idGasto]
+      );
+      const gasto = (rows as any)[0];
+      if (!gasto) throw new Error('Gasto no encontrado');
+      if (gasto.estado === 'ANULADO') {
+        throw new Error('No se puede editar un gasto anulado.');
+      }
+
+      const FIELDS: (keyof typeof data)[] = [
+        'nro_factura', 'nro_oc', 'concepto', 'fecha',
+        'centro_costo', 'tipo_gasto_logistica',
+      ];
+      const sets: string[] = [];
+      const vals: any[] = [];
+      for (const f of FIELDS) {
+        if (data[f] !== undefined) {
+          sets.push(`${f} = ?`);
+          vals.push(data[f] === '' ? null : data[f]);
+        }
+      }
+      if (!sets.length) {
+        await conn.commit();
+        return { success: true, sin_cambios: true };
+      }
+      vals.push(idGasto);
+      await conn.query(`UPDATE Gastos SET ${sets.join(', ')} WHERE id_gasto = ?`, vals);
+
+      await conn.commit();
+      return { success: true };
+    } catch (e) {
+      await conn.rollback();
+      throw e;
+    } finally {
+      conn.release();
+    }
+  }
+
+  /**
+   * Elimina FÍSICAMENTE un gasto en CUALQUIER estado, con cascada completa.
+   * Solo GERENTE (validado en ruta).
+   *
+   * Cascada:
+   *   1. DELETE Transacciones GASTO asociadas.
+   *   2. DELETE CostosServicio que matchean este gasto (id_servicio + concepto).
+   *   3. DELETE Gasto.
+   *
+   * NOTA: si el gasto vino de una OC (nro_oc populated), la OC queda en su
+   * estado actual sin el Gasto. La OC mantiene su nro_oc como texto, no hay
+   * FK a romper. Si se quiere consistencia total, eliminar también la OC
+   * desde su módulo.
+   */
   async deleteGasto(idGasto: number) {
     const conn = await db.getConnection();
     await conn.beginTransaction();
     try {
       const [rows] = await conn.query(
-        'SELECT id_gasto, id_servicio, concepto FROM Gastos WHERE id_gasto = ? FOR UPDATE',
+        'SELECT id_gasto, id_servicio, concepto, nro_factura, estado FROM Gastos WHERE id_gasto = ? FOR UPDATE',
         [idGasto]
       );
       const gasto = (rows as any)[0];
       if (!gasto) throw new Error('Gasto no encontrado');
+
       await conn.query(
         "DELETE FROM Transacciones WHERE referencia_tipo='GASTO' AND referencia_id = ?",
         [idGasto]
       );
       if (gasto.id_servicio) {
         await conn.query(
-          "DELETE FROM CostosServicio WHERE id_servicio = ? AND concepto = ? AND tipo_costo = 'GASTO' LIMIT 1",
+          "DELETE FROM CostosServicio WHERE id_servicio = ? AND concepto = ? AND tipo_costo = 'GASTO'",
           [gasto.id_servicio, gasto.concepto]
         );
       }
       await conn.query('DELETE FROM Gastos WHERE id_gasto = ?', [idGasto]);
       await conn.commit();
-      return { success: true };
+      return {
+        success: true,
+        estado_previo: gasto.estado,
+        nro_factura: gasto.nro_factura,
+      };
     } catch (e) {
       await conn.rollback();
       throw e;

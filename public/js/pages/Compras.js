@@ -361,19 +361,99 @@ export const Compras = async () => {
      };
 
      window.eliminarCompra = async (id, doc) => {
-       if (!confirm(`¿Eliminar permanentemente la compra ${doc}?\nEsta acción no se puede deshacer.`)) return;
+       const u = (() => { try { return JSON.parse(localStorage.getItem('erp_user') || '{}'); } catch { return {}; } })();
+       if (u.rol !== 'GERENTE') {
+         return showError('Solo el GERENTE puede eliminar una compra.');
+       }
+       const tipea = prompt(
+         `🗑 ELIMINAR COMPRA ${doc}\n\n` +
+         `Esta acción borra DEFINITIVAMENTE la compra y TODOS sus registros derivados:\n` +
+         `• Detalle de items\n` +
+         `• Movimientos de inventario (kárdex)\n` +
+         `• Transacciones de caja COMPRA\n` +
+         `• Reverso de stock (si estaba CONFIRMADA)\n` +
+         `• Desvincula la OC origen (si la compra venía de una OC)\n\n` +
+         `Para confirmar, escribí el N° de comprobante exacto:`
+       );
+       if (tipea == null) return;
+       if (tipea.trim() !== String(doc)) {
+         return showError(`El texto no coincide. Escribiste "${tipea}" pero el comprobante es "${doc}". No se eliminó nada.`);
+       }
        try {
          await api.purchases.deleteCompra(id);
-         showSuccess('Compra eliminada');
+         showSuccess(`Compra ${doc} eliminada con cascada`);
          window.navigate('compras');
        } catch(e) { showError(e.error || e.message || 'Error al eliminar'); }
      };
+
+     window.editarMetadataCompra = async (id, doc) => {
+       let compra;
+       try { compra = await api.purchases.getCompraDetalle(id); }
+       catch (e) { return showError('Error cargando compra: ' + (e.message || '')); }
+
+       const v = (x) => x == null ? '' : String(x).replace(/"/g, '&quot;');
+       const fechaActual = compra.fecha ? String(compra.fecha).split('T')[0] : '';
+       const data = await new Promise((resolve) => {
+         const ov = document.createElement('div');
+         ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
+         ov.innerHTML = `
+           <div style="background:#fff;border-radius:8px;padding:22px;width:520px;max-width:96vw;box-shadow:0 20px 50px rgba(0,0,0,.3)">
+             <h3 style="margin:0 0 6px;font-size:16px">✎ Editar datos · Compra ${doc}</h3>
+             <p style="margin:0 0 14px;font-size:12px;color:#6b7280">
+               Edición segura: campos informativos / referencias.
+               No toca proveedor, items, montos ni inventario.
+             </p>
+             <div style="display:grid;gap:10px">
+               <div>
+                 <label style="font-size:11px;color:#374151;font-weight:600">N° de Comprobante (Factura/Boleta)</label>
+                 <input id="ec-doc" value="${v(compra.nro_comprobante)}" style="width:100%;padding:7px 9px;border:1px solid #d1d5db;border-radius:5px;font-size:13px">
+               </div>
+               <div>
+                 <label style="font-size:11px;color:#374151;font-weight:600">N° OC (referencia)</label>
+                 <input id="ec-oc" value="${v(compra.nro_oc)}" style="width:100%;padding:7px 9px;border:1px solid #d1d5db;border-radius:5px;font-size:13px">
+               </div>
+               <div>
+                 <label style="font-size:11px;color:#374151;font-weight:600">Fecha</label>
+                 <input id="ec-fec" type="date" value="${v(fechaActual)}" style="width:100%;padding:7px 9px;border:1px solid #d1d5db;border-radius:5px;font-size:13px">
+               </div>
+               <div>
+                 <label style="font-size:11px;color:#374151;font-weight:600">Centro de Costo</label>
+                 <input id="ec-cc" value="${v(compra.centro_costo)}" style="width:100%;padding:7px 9px;border:1px solid #d1d5db;border-radius:5px;font-size:13px">
+               </div>
+             </div>
+             <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:18px">
+               <button id="ec-cancel" style="padding:8px 16px;background:#fff;border:1px solid #d1d5db;border-radius:5px;cursor:pointer;font-size:13px">Cancelar</button>
+               <button id="ec-ok" style="padding:8px 22px;background:#3b82f6;color:#fff;border:none;border-radius:5px;cursor:pointer;font-size:13px;font-weight:600">Guardar</button>
+             </div>
+           </div>`;
+         document.body.appendChild(ov);
+         const close = (val) => { ov.remove(); resolve(val); };
+         ov.querySelector('#ec-cancel').onclick = () => close(null);
+         ov.querySelector('#ec-ok').onclick = () => {
+           close({
+             nro_comprobante: ov.querySelector('#ec-doc').value.trim(),
+             nro_oc:          ov.querySelector('#ec-oc').value.trim(),
+             fecha:           ov.querySelector('#ec-fec').value || null,
+             centro_costo:    ov.querySelector('#ec-cc').value.trim() || null,
+           });
+         };
+       });
+       if (!data) return;
+       if (!data.nro_comprobante) return showError('El N° de comprobante es obligatorio.');
+       try {
+         await api.purchases.editarMetadataCompra(id, data);
+         showSuccess(`Compra ${doc} actualizada`);
+         window.navigate('compras');
+       } catch (e) { showError(e.error || e.message || 'Error al guardar'); }
+     };
+
      // Namespace por módulo
      window.Compras = {
        removeLinea:    window.removeLinea,
        crearItemAlVuelo: window.crearItemAlVuelo,
        cerrarModalItem: window.cerrarModalItem,
        editarCompra:   window.editarCompra,
+       editarMetadataCompra: window.editarMetadataCompra,
        anularCompra:   window.anularCompra,
        eliminarCompra: window.eliminarCompra,
      };
@@ -400,9 +480,10 @@ export const Compras = async () => {
       </td>
       <td>${getStatusBadge(c.estado_pago)}</td>
       <td style="display:flex;gap:4px;flex-wrap:wrap">
-        ${c.estado_pago !== 'ANULADO' ? `<button class="action-btn" style="background:var(--info);color:white" onclick="window.editarCompra(${c.id_compra})">Editar</button>` : ''}
+        ${c.estado_pago !== 'ANULADO' ? `<button class="action-btn" style="background:var(--info);color:white" title="Editar items, montos y todo" onclick="window.editarCompra(${c.id_compra})">Editar líneas</button>` : ''}
+        ${c.estado_pago !== 'ANULADO' ? `<button class="action-btn" style="background:#fff;color:#3b82f6;border:1px solid #93c5fd" title="Editar nro comprobante / fecha / OC referencia (no toca números)" onclick="window.editarMetadataCompra(${c.id_compra}, '${c.nro_comprobante}')">Editar datos</button>` : ''}
         ${c.estado_pago !== 'ANULADO' ? `<button class="action-btn action-btn-anular" onclick="window.anularCompra(${c.id_compra}, '${c.nro_comprobante}')">Anular</button>` : ''}
-        <button class="action-btn" style="background:#ef4444;color:white" onclick="window.eliminarCompra(${c.id_compra}, '${c.nro_comprobante}')">Eliminar</button>
+        <button class="action-btn" style="background:#ef4444;color:white" title="Eliminar definitivamente con cascada (solo GERENTE)" onclick="window.eliminarCompra(${c.id_compra}, '${c.nro_comprobante}')">Eliminar</button>
       </td>
     </tr>
   `;

@@ -254,38 +254,136 @@ class InventoryService {
        conn.release();
     }
   }
-  async deleteItem(idItem: number) {
+  /**
+   * Editar metadata "segura" de un ítem en cualquier momento. Cubre campos
+   * que NO afectan stock ni costos: nombre, categoria, unidad, stock_minimo.
+   * NO toca: stock_actual (eso es kárdex), costo_promedio_unitario (cálculo
+   * automático), sku (correlativo).
+   */
+  async editarMetadata(idItem: number, data: {
+    nombre?: string;
+    categoria?: string;
+    unidad?: string;
+    stock_minimo?: number;
+  }) {
+    const [rows] = await db.query(
+      'SELECT id_item FROM Inventario WHERE id_item = ?',
+      [idItem]
+    );
+    if (!(rows as any)[0]) throw new Error('Ítem no encontrado.');
+
+    const FIELDS: (keyof typeof data)[] = ['nombre', 'categoria', 'unidad', 'stock_minimo'];
+    const sets: string[] = [];
+    const vals: any[] = [];
+    for (const f of FIELDS) {
+      if (data[f] !== undefined) {
+        sets.push(`${f} = ?`);
+        vals.push(data[f] === '' ? null : data[f]);
+      }
+    }
+    if (!sets.length) return { success: true, sin_cambios: true };
+    vals.push(idItem);
+    await db.query(`UPDATE Inventario SET ${sets.join(', ')} WHERE id_item = ?`, vals);
+    return { success: true };
+  }
+
+  /**
+   * Elimina un ítem del catálogo con guards de integridad.
+   *
+   * Modo NORMAL (cualquier usuario): bloquea si:
+   *   - stock_actual > 0
+   *   - tiene compras activas (no anuladas) referenciándolo
+   *   - tiene costos en servicios
+   *
+   * Modo FORZADO (force=true, solo GERENTE): bypassa guards y arrasa con todo:
+   *   - DELETE MovimientosInventario para el ítem (kárdex completo)
+   *   - DELETE CostosServicio (costos huérfanos del ítem)
+   *   - DELETE DetalleCompra → recalcula totales de Compras afectadas
+   *   - DELETE Inventario
+   *   - Si tiene compras vivas: borra los detalles. La Compra sigue viva
+   *     pero con totales recalculados desde el resto de ítems.
+   *
+   * Solo usar force=true para limpiar data corrupta o duplicados con kárdex
+   * histórico. Genera inconsistencias contables si se aplica a items reales
+   * con kárdex válido.
+   */
+  async deleteItem(idItem: number, opts: { force?: boolean } = {}) {
     const [rows] = await db.query(
       'SELECT id_item, stock_actual, nombre FROM Inventario WHERE id_item = ?',
       [idItem]
     );
     const item = (rows as any)[0];
     if (!item) throw new Error('Ítem no encontrado.');
-    if (Number(item.stock_actual) > 0) {
-      throw new Error(`No se puede eliminar "${item.nombre}" porque tiene ${item.stock_actual} unidades en stock. Consuma o ajuste el stock primero.`);
+
+    if (!opts.force) {
+      if (Number(item.stock_actual) > 0) {
+        throw new Error(`No se puede eliminar "${item.nombre}" porque tiene ${item.stock_actual} unidades en stock. Consuma o ajuste el stock primero, o usá Eliminación forzada (GERENTE).`);
+      }
+      const [comprasRows] = await db.query(`
+        SELECT COUNT(*) as total FROM DetalleCompra dc
+        JOIN Compras c ON c.id_compra = dc.id_compra
+        WHERE dc.id_item = ? AND c.estado != 'ANULADO'
+      `, [idItem]);
+      const comprasActivas = Number((comprasRows as any)[0].total);
+      if (comprasActivas > 0) {
+        throw new Error(`No se puede eliminar "${item.nombre}" porque tiene ${comprasActivas} compra(s) activa(s) asociada(s). Anula esas compras o usá Eliminación forzada (GERENTE).`);
+      }
+      const [costos] = await db.query(
+        'SELECT COUNT(*) as n FROM CostosServicio WHERE id_item = ?', [idItem]
+      );
+      if ((costos as any)[0].n > 0) {
+        throw new Error(`No se puede eliminar "${item.nombre}" porque tiene costos registrados en servicios activos. Usá Eliminación forzada (GERENTE) para arrasar.`);
+      }
     }
 
-    // Verificar que no tenga compras activas referenciando este ítem
-    const [comprasRows] = await db.query(`
-      SELECT COUNT(*) as total FROM DetalleCompra dc
-      JOIN Compras c ON c.id_compra = dc.id_compra
-      WHERE dc.id_item = ? AND c.estado != 'ANULADO'
-    `, [idItem]);
-    const comprasActivas = Number((comprasRows as any)[0].total);
-    if (comprasActivas > 0) {
-      throw new Error(`No se puede eliminar "${item.nombre}" porque tiene ${comprasActivas} compra(s) activa(s) asociada(s).`);
-    }
+    // FORCE o sin dependencias: borrado completo
+    const conn = await db.getConnection();
+    await conn.beginTransaction();
+    try {
+      // Capturar compras afectadas para recalcular totales después
+      const [comprasAfectadas]: any = await conn.query(
+        `SELECT DISTINCT id_compra FROM DetalleCompra WHERE id_item = ?`,
+        [idItem]
+      );
+      await conn.query('DELETE FROM CostosServicio WHERE id_item = ?', [idItem]);
+      await conn.query('DELETE FROM DetalleCompra WHERE id_item = ?', [idItem]);
+      await conn.query('DELETE FROM MovimientosInventario WHERE id_item = ?', [idItem]);
+      await conn.query('DELETE FROM Inventario WHERE id_item = ?', [idItem]);
 
-    const [costos] = await db.query(
-      'SELECT COUNT(*) as n FROM CostosServicio WHERE id_item = ?', [idItem]
-    );
-    if ((costos as any)[0].n > 0) {
-      throw new Error('No se puede eliminar el ítem porque tiene costos registrados en servicios activos.');
-    }
+      // Recalcular totales de las Compras afectadas (sumar lo que quede en
+      // DetalleCompra). Si la compra queda sin detalles, total=0.
+      for (const c of (comprasAfectadas as any[])) {
+        const [agg]: any = await conn.query(
+          `SELECT COALESCE(SUM(subtotal), 0) AS sub FROM DetalleCompra WHERE id_compra = ?`,
+          [c.id_compra]
+        );
+        const subtotal = Number(agg[0].sub);
+        await conn.query(
+          `UPDATE Compras SET monto_base = ?, igv_base = ROUND(? * 0.18, 2),
+                  total_base = ROUND(? * 1.18, 2)
+            WHERE id_compra = ? AND aplica_igv = TRUE`,
+          [subtotal, subtotal, subtotal, c.id_compra]
+        );
+        await conn.query(
+          `UPDATE Compras SET monto_base = ?, igv_base = 0, total_base = ?
+            WHERE id_compra = ? AND aplica_igv = FALSE`,
+          [subtotal, subtotal, c.id_compra]
+        );
+      }
 
-    await db.query('DELETE FROM MovimientosInventario WHERE id_item = ?', [idItem]);
-    await db.query('DELETE FROM Inventario WHERE id_item = ?', [idItem]);
-    return { success: true };
+      await conn.commit();
+      return {
+        success: true,
+        nombre: item.nombre,
+        forzado: !!opts.force,
+        compras_afectadas: (comprasAfectadas as any[]).length,
+      };
+    } catch (e) {
+      await conn.rollback();
+      throw e;
+    } finally {
+      conn.release();
+    }
   }
 }
 

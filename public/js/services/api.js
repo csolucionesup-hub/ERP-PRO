@@ -76,6 +76,7 @@ export const api = {
     getGastos:            () => get('/gastos'),
     createGasto:    (data)    => post('/gastos', data),
     updateGasto:    (id, d)   => put(`/gastos/${id}`, d),
+    editarMetadataGasto: (id, d) => put(`/gastos/${id}/metadata`, d),
     pagarGasto:     (id, ab)  => post(`/gastos/${id}/pago`, { abono: ab }),
     anularGasto:    (id)      => post(`/gastos/${id}/anular`),
     deleteGasto:    (id)      => del(`/gastos/${id}`),
@@ -97,6 +98,7 @@ export const api = {
     createCompra:   (data)    => post('/compras', data),
     updateCompra:   (id, d)   => put(`/compras/${id}`, d),
     anularCompra:   (id)      => post(`/compras/${id}/anular`),
+    editarMetadataCompra: (id, d) => put(`/compras/${id}/metadata`, d),
     deleteCompra:   (id)      => del(`/compras/${id}`),
     getProveedores:       () => get('/proveedores'),
     createProveedor:(data)    => post('/proveedores', data),
@@ -136,7 +138,8 @@ export const api = {
     getKardex:       (id)    => get(`/inventario/${id}/kardex`),
     createInventarioItem: (data) => post('/inventario', data),
     consumirInventario:   (data) => post('/inventario/consumo', data),
-    deleteInventarioItem: (id)   => del(`/inventario/${id}`),
+    editarMetadataItem:   (id, d) => put(`/inventario/${id}/metadata`, d),
+    deleteInventarioItem: (id, opts = {}) => del(`/inventario/${id}${opts.force ? '?force=1' : ''}`),
   },
   cotizaciones: {
     getDashboard:     ()          => get('/cotizaciones/dashboard'),
@@ -147,6 +150,7 @@ export const api = {
     updateCotizacion: (id, d)  => put(`/cotizaciones/${id}`, d),
     updateEstado:     (id, e)  => put(`/cotizaciones/${id}/estado`, { estado: e }),
     editarFecha:      (id, f)  => put(`/cotizaciones/${id}/fecha`, { fecha: f }),
+    editarMetadata:   (id, d)  => put(`/cotizaciones/${id}/metadata`, d),
     proyectosActivos: (filtros = {}) => {
       const p = new URLSearchParams();
       if (filtros.moneda) p.append('moneda', filtros.moneda);

@@ -223,19 +223,134 @@ class PurchaseService {
   /**
    * ANULACIÓN PROFESIONAL: Revierte el impacto en Inventario y Finanzas.
    */
+  /**
+   * Editar metadata "segura" de una compra en CUALQUIER estado salvo ANULADA.
+   * Cubre campos que NO afectan números/inventario: nro_comprobante,
+   * nro_oc, fecha, centro_costo. NO toca proveedor, montos, items.
+   * Para reverso de items/montos hay que anular y rehacer.
+   */
+  async editarMetadata(idCompra: number, data: {
+    nro_comprobante?: string;
+    nro_oc?: string;
+    fecha?: string;
+    centro_costo?: string;
+  }) {
+    const conn = await db.getConnection();
+    await conn.beginTransaction();
+    try {
+      const [rows] = await conn.query(
+        'SELECT estado FROM Compras WHERE id_compra = ? FOR UPDATE',
+        [idCompra]
+      );
+      const compra = (rows as any)[0];
+      if (!compra) throw new Error('Compra no encontrada.');
+      if (compra.estado === 'ANULADA' || compra.estado === 'ANULADO') {
+        throw new Error('No se puede editar una compra anulada.');
+      }
+
+      const FIELDS: (keyof typeof data)[] = ['nro_comprobante', 'nro_oc', 'fecha', 'centro_costo'];
+      const sets: string[] = [];
+      const vals: any[] = [];
+      for (const f of FIELDS) {
+        if (data[f] !== undefined) {
+          sets.push(`${f} = ?`);
+          vals.push(data[f] === '' ? null : data[f]);
+        }
+      }
+      if (!sets.length) {
+        await conn.commit();
+        return { success: true, sin_cambios: true };
+      }
+      vals.push(idCompra);
+      await conn.query(`UPDATE Compras SET ${sets.join(', ')} WHERE id_compra = ?`, vals);
+
+      await conn.commit();
+      return { success: true };
+    } catch (e) {
+      await conn.rollback();
+      throw e;
+    } finally {
+      conn.release();
+    }
+  }
+
+  /**
+   * Elimina FÍSICAMENTE una compra en CUALQUIER estado, con cascada
+   * completa. Solo GERENTE (validado en ruta).
+   *
+   * Cascada:
+   *   1. Si estaba CONFIRMADA: revertir stock e insertar movimiento
+   *      ANULACION_EGRESO en kárdex (audit) — pero como vamos a borrar la
+   *      compra, en lugar de anular dejamos el ajuste en stock pero
+   *      eliminamos los MovimientosInventario asociados (kárdex limpio).
+   *   2. DELETE Transacciones COMPRA.
+   *   3. DELETE MovimientosInventario para esta compra.
+   *   4. DELETE DetalleCompra.
+   *   5. DELETE Compras.
+   *
+   * Si la compra fue generada por una OC (id_oc poblado) y la OC sigue
+   * viva, deja el campo id_compra_generada en NULL para que la OC pueda
+   * regenerar la compra si se vuelve a facturar.
+   */
   async deleteCompra(idCompra: number) {
     const conn = await db.getConnection();
     await conn.beginTransaction();
     try {
-      const [rows] = await conn.query('SELECT id_compra, estado FROM Compras WHERE id_compra = ? FOR UPDATE', [idCompra]);
+      const [rows] = await conn.query(
+        'SELECT id_compra, estado, nro_comprobante, nro_oc FROM Compras WHERE id_compra = ? FOR UPDATE',
+        [idCompra]
+      );
       const compra = (rows as any)[0];
       if (!compra) throw new Error('Compra no encontrada.');
-      if (compra.estado === 'CONFIRMADA') throw new Error('No se puede eliminar una compra confirmada. Use anularCompra() para revertir el inventario.');
+
+      // Si está CONFIRMADA, revertir stock antes de borrar
+      if (compra.estado === 'CONFIRMADA') {
+        const [detalles] = await conn.query(
+          'SELECT id_item, cantidad FROM DetalleCompra WHERE id_compra = ?',
+          [idCompra]
+        );
+        for (const item of (detalles as any[])) {
+          const [invRows] = await conn.query(
+            'SELECT stock_actual, nombre FROM Inventario WHERE id_item = ? FOR UPDATE',
+            [item.id_item]
+          );
+          const inv = (invRows as any)[0];
+          if (!inv) continue;
+          if (Number(inv.stock_actual) < Number(item.cantidad)) {
+            throw new Error(
+              `Imposible eliminar: stock de "${inv.nombre}" (${inv.stock_actual}) insuficiente para revertir la entrada de ${item.cantidad}. Hay consumos posteriores.`
+            );
+          }
+          const nuevoStock = Number(inv.stock_actual) - Number(item.cantidad);
+          await conn.query(
+            'UPDATE Inventario SET stock_actual = ? WHERE id_item = ?',
+            [nuevoStock, item.id_item]
+          );
+        }
+      }
+
+      // Limpieza en cascada
+      await conn.query(
+        "DELETE FROM Transacciones WHERE referencia_tipo='COMPRA' AND referencia_id = ?",
+        [idCompra]
+      );
+      await conn.query(
+        `DELETE FROM MovimientosInventario WHERE referencia_tipo = 'COMPRA' AND referencia_id = ?`,
+        [idCompra]
+      );
       await conn.query('DELETE FROM DetalleCompra WHERE id_compra = ?', [idCompra]);
-      await conn.query("DELETE FROM Transacciones WHERE referencia_tipo='COMPRA' AND referencia_id = ?", [idCompra]);
+
+      // Desvincular de OC si existía
+      if (compra.nro_oc) {
+        await conn.query(
+          `UPDATE OrdenesCompra SET id_compra_generada = NULL WHERE id_compra_generada = ?`,
+          [idCompra]
+        );
+      }
+
       await conn.query('DELETE FROM Compras WHERE id_compra = ?', [idCompra]);
       await conn.commit();
-      return { success: true };
+      return { success: true, estado_previo: compra.estado, nro_comprobante: compra.nro_comprobante };
     } catch (e) {
       await conn.rollback();
       throw e;

@@ -906,15 +906,100 @@ class CotizacionService {
   }
 
   /**
-   * Elimina FÍSICAMENTE una cotización (DELETE de BD).
-   * Caso de uso: cotización duplicada por error que el GERENTE quiere borrar
-   * antes de que circule a clientes. Libera el correlativo (puede reutilizarse).
+   * Editar metadata "segura" de una cotización en cualquier estado salvo
+   * ANULADA. Cubre campos que NO afectan números, correlativo, estado ni
+   * cobranzas: cliente (display), atencion, contactos, proyecto, condiciones
+   * comerciales (forma_pago, plazo, validez, lugar de entrega), referencias
+   * externas (nro_oc_cliente, nro_factura) y comentarios libres.
    *
-   * Reglas:
-   * - Solo cotizaciones en estado EN_PROCESO o A_ESPERA_RESPUESTA pueden borrarse.
-   *   El resto (ENVIADA / APROBADA / etc.) requiere ANULAR.
-   * - El control de rol GERENTE se hace en la ruta (index.ts).
-   * - Borra primero DetalleCotizacion (FK), después Cotizaciones.
+   * Para cambiar montos/items se usa updateCotizacion() en estados editables.
+   * Para corregir fecha histórica, actualizarFecha(). Para estado, updateEstado().
+   */
+  async editarMetadata(id: number, data: {
+    cliente?: string;
+    atencion?: string;
+    telefono?: string;
+    correo?: string;
+    proyecto?: string;
+    forma_pago?: string;
+    validez_oferta?: string;
+    plazo_entrega?: string;
+    lugar_entrega?: string;
+    nro_oc_cliente?: string;
+    nro_factura?: string;
+    comentarios?: string;
+  }) {
+    const conn = await db.getConnection();
+    await conn.beginTransaction();
+    try {
+      const [rows] = await conn.query(
+        `SELECT estado FROM Cotizaciones WHERE id_cotizacion = ? FOR UPDATE`,
+        [id]
+      );
+      const cot = (rows as any)[0];
+      if (!cot) throw new Error('Cotización no encontrada');
+      if (cot.estado === 'ANULADA') {
+        throw new Error('No se puede editar una cotización ANULADA. Reactivala primero si querés tocarla.');
+      }
+
+      const FIELDS: (keyof typeof data)[] = [
+        'cliente', 'atencion', 'telefono', 'correo', 'proyecto',
+        'forma_pago', 'validez_oferta', 'plazo_entrega', 'lugar_entrega',
+        'nro_oc_cliente', 'nro_factura', 'comentarios',
+      ];
+      const sets: string[] = [];
+      const vals: any[] = [];
+      for (const f of FIELDS) {
+        if (data[f] !== undefined) {
+          sets.push(`${f} = ?`);
+          vals.push(data[f] === '' ? null : data[f]);
+        }
+      }
+      if (!sets.length) {
+        await conn.commit();
+        return { id, sin_cambios: true };
+      }
+      vals.push(id);
+      await conn.query(
+        `UPDATE Cotizaciones SET ${sets.join(', ')} WHERE id_cotizacion = ?`,
+        vals
+      );
+
+      await conn.commit();
+      return { id };
+    } catch (e) {
+      await conn.rollback();
+      throw e;
+    } finally {
+      conn.release();
+    }
+  }
+
+  /**
+   * Elimina FÍSICAMENTE una cotización en CUALQUIER estado, con cascada
+   * completa de todos los registros derivados. Solo GERENTE (validado en ruta).
+   *
+   * Cascada:
+   *   1. Cobranzas: DELETE Transacciones COBRANZA + DELETE MovimientoBancario
+   *      AUTO de cada cobranza (por ref_tipo='COBRANZA' + ref_id). Después
+   *      DELETE CobranzasCotizacion (también haría CASCADE solo, pero lo
+   *      hacemos explícito para auditar).
+   *   2. CostosServicio que solo tenían id_cotizacion (id_servicio NULL):
+   *      DELETE explícito porque el CHECK constraint chk_costoservicio_origen
+   *      bloquearía SET NULL automático. Los CostosServicio que tenían
+   *      id_servicio se quedan vivos con id_cotizacion=NULL.
+   *   3. OrdenesCompra vinculadas (id_cotizacion): el FK ON DELETE SET NULL
+   *      las desvincula automáticamente. Las OCs siguen vivas — pueden
+   *      tener su propio ciclo (ya recibidas, facturadas).
+   *   4. DetalleCotizacion: FK ON DELETE CASCADE.
+   *   5. DELETE de Cotizaciones.
+   *
+   * Drive file: NO se borra (queda huérfano en el Shared Drive). Decisión
+   * coherente con resetTodo() — fotos/PDFs en CDN/Drive no se limpian al
+   * borrar registros de BD.
+   *
+   * Libera el correlativo solo si era el último (AUTO_INCREMENT no se
+   * resetea acá, queda gap).
    */
   async deleteCotizacion(id: number) {
     const conn = await db.getConnection();
@@ -927,19 +1012,50 @@ class CotizacionService {
       const cot = (rows as any)[0];
       if (!cot) throw new Error('Cotización no encontrada');
 
-      const ESTADOS_BORRABLES = ['EN_PROCESO', 'A_ESPERA_RESPUESTA'];
-      if (!ESTADOS_BORRABLES.includes(cot.estado)) {
-        throw new Error(
-          `Solo se pueden eliminar cotizaciones en estado EN_PROCESO o A_ESPERA_RESPUESTA. ` +
-          `Esta cotización está en ${cot.estado} — usá Anular en su lugar.`
+      // 1. Cobranzas: limpiar Tx + MovBancario AUTO antes del CASCADE
+      const [cobranzas]: any = await conn.query(
+        `SELECT id_cobranza FROM CobranzasCotizacion WHERE id_cotizacion = ?`,
+        [id]
+      );
+      const cobIds = (cobranzas as any[]).map(c => c.id_cobranza);
+      if (cobIds.length) {
+        const placeholders = cobIds.map(() => '?').join(',');
+        await conn.query(
+          `DELETE FROM Transacciones
+            WHERE referencia_tipo = 'COBRANZA' AND referencia_id IN (${placeholders})`,
+          cobIds
+        );
+        await conn.query(
+          `DELETE FROM MovimientoBancario
+            WHERE ref_tipo = 'COBRANZA' AND ref_id IN (${placeholders}) AND fuente = 'AUTO'`,
+          cobIds
+        );
+        await conn.query(
+          `DELETE FROM CobranzasCotizacion WHERE id_cotizacion = ?`,
+          [id]
         );
       }
 
-      await conn.query(`DELETE FROM DetalleCotizacion WHERE id_cotizacion = ?`, [id]);
+      // 2. CostosServicio que dependían SOLO de la cotización: el SET NULL
+      //    automático rompería el CHECK constraint, así que borramos a mano.
+      await conn.query(
+        `DELETE FROM CostosServicio
+          WHERE id_cotizacion = ? AND id_servicio IS NULL`,
+        [id]
+      );
+
+      // 3-5. DELETE Cotización: arrastra DetalleCotizacion (CASCADE), pone
+      //      en NULL id_cotizacion en OrdenesCompra y CostosServicio
+      //      restantes (SET NULL).
       await conn.query(`DELETE FROM Cotizaciones WHERE id_cotizacion = ?`, [id]);
 
       await conn.commit();
-      return { id, nro_cotizacion: cot.nro_cotizacion };
+      return {
+        id,
+        nro_cotizacion: cot.nro_cotizacion,
+        estado_previo: cot.estado,
+        cobranzas_eliminadas: cobIds.length,
+      };
     } catch (e) {
       await conn.rollback();
       throw e;

@@ -64,7 +64,7 @@ function initTabs() {
       if (id === 'dashboard') await renderDashboard(panel);
     },
   });
-  window.Inventario = { verKardex, eliminarItem };
+  window.Inventario = { verKardex, eliminarItem, editarMetadataItem };
 }
 
 // ─── TAB Catálogo ────────────────────────────────────────────────────
@@ -88,9 +88,10 @@ function renderCatalogo(panel) {
         </td>
         <td style="text-align:right">${fPEN(i.costo_promedio || 0)}</td>
         <td style="text-align:right">${fPEN(i.valorizado || 0)}</td>
-        <td style="display:flex;gap:4px">
+        <td style="display:flex;gap:4px;flex-wrap:wrap">
           <button class="action-btn" onclick="window.Inventario.verKardex(${i.id_item}, '${(i.nombre || '').replace(/'/g, "\\'")}')">Kárdex</button>
-          <button class="action-btn" style="background:#ef4444;color:white" onclick="window.Inventario.eliminarItem(${i.id_item}, '${(i.nombre || '').replace(/'/g, "\\'")}')">×</button>
+          <button class="action-btn" style="background:#fff;color:#3b82f6;border:1px solid #93c5fd" title="Editar nombre, categoría, unidad y stock mínimo" onclick="window.Inventario.editarMetadataItem(${i.id_item}, '${(i.nombre || '').replace(/'/g, "\\'")}')">✎</button>
+          <button class="action-btn" style="background:#ef4444;color:white" title="Eliminar (con cascada forzada para GERENTE si tiene dependencias)" onclick="window.Inventario.eliminarItem(${i.id_item}, '${(i.nombre || '').replace(/'/g, "\\'")}')">×</button>
         </td>
       </tr>
     `;
@@ -445,11 +446,112 @@ async function verKardex(id, name) {
 }
 
 async function eliminarItem(id, nombre) {
-  if (!confirm(`¿Eliminar permanentemente "${nombre}"?\nEsta acción no se puede deshacer.`)) return;
+  // Modo NORMAL primero. Si el backend bloquea por dependencias (stock,
+  // compras, costos), ofrecemos al GERENTE el modo FORCE.
+  const tipea = prompt(
+    `🗑 ELIMINAR ÍTEM "${nombre}"\n\n` +
+    `Para confirmar, escribí el nombre exacto del ítem:`
+  );
+  if (tipea == null) return;
+  if (tipea.trim() !== nombre) {
+    return showError(`El nombre no coincide. Escribiste "${tipea}" pero el ítem es "${nombre}".`);
+  }
   try {
     await api.inventory.deleteInventarioItem(id);
+    window.showSuccess?.(`Ítem "${nombre}" eliminado`);
     window.navigate('inventario');
   } catch (e) {
-    showError(e.error || e.message || 'Error al eliminar');
+    const msg = e.error || e.message || 'Error al eliminar';
+    // Si el bloqueo es por dependencias, ofrecer modo FORCE al GERENTE
+    const u = (() => { try { return JSON.parse(localStorage.getItem('erp_user') || '{}'); } catch { return {}; } })();
+    const tieneDeps = /stock|compra|costos|servicios/i.test(msg);
+    if (u.rol === 'GERENTE' && tieneDeps) {
+      const ok = confirm(
+        `${msg}\n\n` +
+        `⚠ ELIMINACIÓN FORZADA (solo GERENTE)\n\n` +
+        `Esto borrará el ítem junto con TODOS sus registros derivados:\n` +
+        `• Movimientos de inventario / kárdex completo\n` +
+        `• Líneas de Compras (las Compras se quedan vivas pero con totales recalculados)\n` +
+        `• Costos en servicios\n\n` +
+        `¿Confirmás la eliminación forzada?`
+      );
+      if (!ok) return;
+      try {
+        await api.inventory.deleteInventarioItem(id, { force: true });
+        window.showSuccess?.(`Ítem "${nombre}" eliminado con cascada (forzado)`);
+        window.navigate('inventario');
+      } catch (err2) {
+        showError(err2.error || err2.message || 'Error al forzar eliminación');
+      }
+      return;
+    }
+    showError(msg);
   }
+}
+
+async function editarMetadataItem(id, nombre) {
+  // Cargar el item para prefill
+  let inv;
+  try { inv = await api.inventory.getInventario(); }
+  catch (e) { return showError('Error cargando inventario: ' + (e.message || '')); }
+  const item = (inv || []).find(x => x.id_item === id);
+  if (!item) return showError('Ítem no encontrado');
+
+  const v = (x) => x == null ? '' : String(x).replace(/"/g, '&quot;');
+  const data = await new Promise((resolve) => {
+    const ov = document.createElement('div');
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
+    ov.innerHTML = `
+      <div style="background:#fff;border-radius:8px;padding:22px;width:480px;max-width:96vw;box-shadow:0 20px 50px rgba(0,0,0,.3)">
+        <h3 style="margin:0 0 6px;font-size:16px">✎ Editar ítem · ${v(item.sku)}</h3>
+        <p style="margin:0 0 14px;font-size:12px;color:#6b7280">
+          Edición segura: NO toca stock actual ni costo promedio (eso sale del kárdex automáticamente).
+        </p>
+        <div style="display:grid;gap:10px">
+          <div>
+            <label style="font-size:11px;color:#374151;font-weight:600">Nombre</label>
+            <input id="ei-nombre" value="${v(item.nombre)}" style="width:100%;padding:7px 9px;border:1px solid #d1d5db;border-radius:5px;font-size:13px">
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+            <div>
+              <label style="font-size:11px;color:#374151;font-weight:600">Categoría</label>
+              <select id="ei-cat" style="width:100%;padding:7px 9px;border:1px solid #d1d5db;border-radius:5px;font-size:13px">
+                ${['Material','Consumible','Herramienta','Equipo','EPP'].map(c =>
+                  `<option value="${c}" ${item.categoria === c ? 'selected' : ''}>${c}</option>`).join('')}
+              </select>
+            </div>
+            <div>
+              <label style="font-size:11px;color:#374151;font-weight:600">Unidad</label>
+              <input id="ei-uni" value="${v(item.unidad)}" style="width:100%;padding:7px 9px;border:1px solid #d1d5db;border-radius:5px;font-size:13px">
+            </div>
+          </div>
+          <div>
+            <label style="font-size:11px;color:#374151;font-weight:600">Stock mínimo</label>
+            <input id="ei-min" type="number" min="0" step="0.01" value="${item.stock_minimo}" style="width:100%;padding:7px 9px;border:1px solid #d1d5db;border-radius:5px;font-size:13px">
+          </div>
+        </div>
+        <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:18px">
+          <button id="ei-cancel" style="padding:8px 16px;background:#fff;border:1px solid #d1d5db;border-radius:5px;cursor:pointer;font-size:13px">Cancelar</button>
+          <button id="ei-ok" style="padding:8px 22px;background:#3b82f6;color:#fff;border:none;border-radius:5px;cursor:pointer;font-size:13px;font-weight:600">Guardar</button>
+        </div>
+      </div>`;
+    document.body.appendChild(ov);
+    const close = (val) => { ov.remove(); resolve(val); };
+    ov.querySelector('#ei-cancel').onclick = () => close(null);
+    ov.querySelector('#ei-ok').onclick = () => {
+      close({
+        nombre:       ov.querySelector('#ei-nombre').value.trim(),
+        categoria:    ov.querySelector('#ei-cat').value,
+        unidad:       ov.querySelector('#ei-uni').value.trim(),
+        stock_minimo: Number(ov.querySelector('#ei-min').value) || 0,
+      });
+    };
+  });
+  if (!data) return;
+  if (!data.nombre) return showError('El nombre es obligatorio');
+  try {
+    await api.inventory.editarMetadataItem(id, data);
+    window.showSuccess?.(`Ítem actualizado`);
+    window.navigate('inventario');
+  } catch (e) { showError(e.error || e.message || 'Error al actualizar'); }
 }
