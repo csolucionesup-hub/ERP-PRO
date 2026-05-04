@@ -2,13 +2,13 @@
 
 > **LEER PRIMERO.** Este documento es la fuente de verdad sobre qué está hecho, qué falta y dónde estamos parados. Se actualiza al cierre de cada sesión de trabajo.
 
-**Última actualización:** 2026-05-03 (noche tarde — bloque corto: bug PurchaseService INGRESO→ENTRADA + cleanup Servicios legacy del router)
+**Última actualización:** 2026-05-03 (noche larga — sesión "todo lo conveniente": UI Facturas Emitidas + UI Gastos del periodo + NCs entrantes del proveedor con migración 055)
 **Rama activa:** `main`
-**Último commit pusheado:** `ad94323 chore: desconectar página Servicios del router (legacy)`
+**Último commit pusheado:** `263d9b8 feat(finanzas): NCs entrantes del proveedor — registro local + ajuste a Compra/Gasto`
 **Servidor dev:** `npx ts-node index.ts` en `D:\proyectos\ERP-PRO` → `http://localhost:3000`
 **Producción:** `erp-pro-production-e4c0.up.railway.app` — Railway (deploy automático desde main)
-**Cache buster JS actual:** `v=20260503r5` (app.js) — **convención**: hardcoded en CADA import dentro de app.js. Ver gotcha #36 en CLAUDE.md.
-**Migraciones BD:** 001 → 037 + 042 → 050 aplicadas (Supabase Postgres project `fhlrxlsscerfiuuyiejw`). Sin migraciones nuevas hoy (todo el trabajo fue Service + UI; el patrón de cascada usa los CHECKs/FKs existentes).
+**Cache buster JS actual:** `v=20260503r8` (app.js) — **convención**: hardcoded en CADA import dentro de app.js. Ver gotcha #36 en CLAUDE.md.
+**Migraciones BD:** 001 → 037 + 042 → 055 aplicadas (Supabase Postgres project `fhlrxlsscerfiuuyiejw`). Migraciones 051-054 fueron aplicadas por Julio el 03/05 (correlativo manual flag, OC.id_cotizacion, CostoServicio.id_cotizacion, OC.estado CERRADA_SIN_FACTURA). Migración 055 aplicada en esta sesión (NCs entrantes — extiende NotasCredito).
 
 ---
 
@@ -649,6 +649,64 @@ Bloque corto pegado a la sesión noche. **2 commits pusheados a `main`** (`4883f
 
 ---
 
+## Sesión 03/05 noche larga — UI Facturas + Gastos + NCs entrantes (3 commits + docs)
+
+Sesión de "ve tú lo más conveniente" siguiendo el orden propuesto: dos UI cortas visibles primero (Facturas Emitidas, Gastos del periodo) y NCs entrantes como cierre del bloque grande de la sesión. **3 commits de feature + 1 de docs pusheados a `main`** (`4024eb1..263d9b8`).
+
+| Commit | Cambio |
+|---|---|
+| `4024eb1` | **UI Facturas Emitidas** — botón 🧾 en header de Finanzas. Backend ya estaba completo (commit `311f4f7` 02/05 + `api.facturas.list/get/pdfUrl/consultarEstado`); solo faltaba pantalla. Modal con tabla (comprobante, fecha, tipo, cliente+RUC, total, badge SUNAT, origen cotización), filtros (rango fechas default 90 días, tipo F/B, estado SUNAT, RUC), resumen totales por moneda, acciones 📄 PDF (`/api/facturas/:id/pdf` en pestaña nueva) y 🔄 Refrescar (solo en PENDIENTE/ERROR, llama POST /:id/consultar-estado). Cache `r5→r6`. |
+| `cc330b9` | **UI Gastos del periodo** — botón 📋 en header de Finanzas. Vista cruzada para auditoría contable mensual de Luis/Jorge. Modal con tabla 11 columnas (fecha, comprobante+proveedor, concepto, CC, tipo badge, origen servicio/OC, subtotal, IGV, total, pagado con saldo, estado_pago badge), filtros (rango default mes actual, CC desde `api.centrosCosto.list`, tipo GENERAL/SERVICIO/ALMACEN/OPERATIVO, estado_pago, búsqueda libre con debounce 250ms, checkbox incluir anulados), resumen por moneda con desglose IGV+pagado. READ-only — para editar va a la OC origen. Cache `r6→r7`. |
+| `263d9b8` | **NCs entrantes del proveedor** — bloque grande con migración + Service + rutas + UI completa. Detalle abajo. Cache `r7→r8`. |
+
+### Detalle del bloque NCs entrantes (`263d9b8`)
+
+**Problema que resuelve:** hasta ahora `NotasCredito` (mig 026) modelaba solo NCs SALIENTES (las que Metal Engineers emite vía Nubefact — bloqueado por certificado). Faltaba el caso del día a día: cuando el **proveedor** envía una NC por devolución/descuento/error de RUC, no había forma de registrarla en el sistema y se desincronizaban los totales de Compras/Gastos.
+
+**Migración 055** (aplicada en Supabase vía MCP):
+- `direccion ENUM('EMITIDA','RECIBIDA')` default 'EMITIDA' — preserva data existente.
+- `proveedor_ruc` + `proveedor_razon_social` — snapshot del emisor.
+- `id_compra_referencia` + `id_gasto_referencia` — vínculo a Compra/Gasto local (FK ON DELETE SET NULL).
+- `estado_sunat` ahora acepta `'REGISTRADA'` (NC ya viene firmada por proveedor).
+- UNIQUE `serie+numero` migra a índice parcial: aplica a EMITIDAS. Para RECIBIDAS el UNIQUE es `(proveedor_ruc, serie, numero)`.
+
+**`app/modules/notas-credito/NotaCreditoService.ts` nuevo:**
+- `listar(filtros)`, `obtener(id)`.
+- `registrarEntrante(data)` atómico: valida vínculo, INSERT cabecera+detalle, rebaja `total_base` del Compra/Gasto, recalcula `estado_pago`. NO crea Tx — el reembolso se registra aparte como cobranza.
+- `eliminarEntrante(id)` cascada inversa: revierte ajuste sumando el total y recalcula estado_pago.
+
+**Rutas API `/api/notas-credito`** (requireModulo FINANZAS):
+- `GET /` listar con filtros.
+- `GET /:id` ficha con detalle.
+- `POST /recibida` registrar (audit CREATE).
+- `DELETE /:id` eliminar (audit DELETE, GERENTE only).
+
+**API client:** `api.notasCredito.list/get/registrarEntrante/eliminar`.
+
+**UI en Finanzas — botón 📥 NCs proveedor:**
+- Modal con form colapsable "+ Registrar nueva NC" arriba: dropdown que combina Compras + Gastos no anulados (con monto + proveedor en label), autofill RUC/razón/moneda/serie+nro al elegir, motivos SUNAT (01-10), inputs serie/número/fecha de la NC del proveedor, montos con cálculo automático del total.
+- Tabla de NCs registradas debajo: comprobante, fecha, proveedor, doc ajustado, motivo (badge), total, badge "📥 RECIBIDA", botón 🗑 (solo GERENTE — confirm con explicación de reverso).
+- Resumen header con cantidad + totales por moneda.
+- Modal solo cierra con × / Cerrar (gotcha #28).
+
+**Próximo paso (cuando llegue certificado SUNAT):** emitir NCs SALIENTES vía `NubefactPayloadBuilder.buildNotaCredito` (ya existe). El Service ya queda listo para extender con un método `emitirSaliente()`.
+
+### Estado pendientes priorizados (cierre 03/05 noche larga)
+
+| Prio | Tarea | Esfuerzo |
+|---|---|---|
+| GRANDE | Fase D — Plan de Cuentas + asientos automáticos | 2-3 semanas |
+| MUY BAJA | Fase 2 OC edit pesado en RECIBIDA/FACTURADA | 6h+ |
+
+#5, #6, UI Facturas, UI Gastos y NCs entrantes cerradas. Ya no hay tareas cortas pendientes — el siguiente bloque grande es Fase D (Contabilidad PCGE) o esperar feedback de Julio sobre testing de las features nuevas.
+
+Acciones manuales pendientes (no código):
+- Rotar `CLOUDINARY_API_SECRET` (Julio en console.cloudinary.com + Railway env var).
+- Gestionar certificado digital SUNAT + Usuario Secundario SOL para desbloquear Nubefact REAL + envío directo SIRE + emisión de NCs salientes.
+- QA mobile real iPhone Safari + Android Chrome con dispositivo físico.
+
+---
+
 ## Auditoría 02/05/2026 — donde estamos parados (post-cierre Fase C)
 
 | Fase del Plan Maestro | Estado | Notas |
@@ -694,9 +752,9 @@ Bloque corto pegado a la sesión noche. **2 commits pusheados a `main`** (`4883f
 
 ---
 
-## Snapshot de `git status` (al 2026-05-03 noche tarde)
+## Snapshot de `git status` (al 2026-05-03 noche larga)
 
-**Working tree de este worktree limpio.** Todo pusheado a `origin/main`. Railway desplegado, sirviendo `v=20260503r5`.
+**Working tree de este worktree limpio.** Todo pusheado a `origin/main`. Railway desplegado, sirviendo `v=20260503r8`.
 
 **Acumulado de commits desde 27/04:**
 - 10 commits rediseño Enterprise UI (27/04)
@@ -714,9 +772,10 @@ Bloque corto pegado a la sesión noche. **2 commits pusheados a `main`** (`4883f
 - 15 commits sesión 02/05 noche → 03/05 madrugada (modal recepción OC + edición cobranzas + Tx Dashboard + TRABAJO_EN_RIESGO + Form factura SUNAT + fechas editables, `18db593..dbc9440`)
 - 4 commits sesión 03/05 mañana+tarde (universal edit/delete + tooltips, `b76abf7..97a7e8e`)
 - 2 commits sesión 03/05 noche (modal ROC Logística + unificar Caja KPI vs alerta, `35477b2..041569e`)
-- **2 commits sesión 03/05 noche tarde (bug INGRESO→ENTRADA + cleanup Servicios legacy, `4883fa6..ad94323`)**
+- 2 commits sesión 03/05 noche tarde (bug INGRESO→ENTRADA + cleanup Servicios legacy, `4883fa6..ad94323`)
+- **3 commits sesión 03/05 noche larga (UI Facturas Emitidas + UI Gastos del periodo + NCs entrantes con migración 055, `4024eb1..263d9b8`)**
 
-**Total: 75 commits** desde el rediseño Enterprise.
+**Total: 78 commits** desde el rediseño Enterprise.
 
 ## Para Claude (próxima sesión)
 
@@ -735,6 +794,7 @@ Si Julio dice "sigamos con cotizaciones" o reporta un bug del módulo Comercial:
    Nota que solo ALMACEN setea `OrdenesCompra.id_compra_generada`. Para SERVICIO/GENERAL la trazabilidad es vía `Gastos.nro_oc`.
 9. ~~Bug latente PurchaseService INGRESO vs ENTRADA~~ → cerrado en `4883fa6` (03/05 noche tarde). Convención: `MovimientosInventario.tipo_movimiento` usa `'ENTRADA'`/`'SALIDA'`/`'AJUSTE'`/`'ANULACION_*'`. `Transacciones.tipo_movimiento` usa `'INGRESO'`/`'EGRESO'` (financieras). No mezclar.
 10. **Saldos de Caja — fuente única `CobranzasService.calcularSaldosNetos()`** (desde `041569e` 03/05 noche). Cualquier KPI o alerta que mencione "saldo en caja", "Caja Soles", "Caja Dólares" debe consumir este helper, NO leer `Cuentas.saldo_actual` directamente (ese campo es snapshot legacy y diverge). Fórmula: `cobranzas DEPOSITO_BANCO - GastoBancario - PagosImpuestos` por moneda. NO incluye Banco de la Nación (detracciones se manejan en `bn` del dashboard). Si Julio reporta un mismatch entre alerta y dashboard de Finanzas, lo primero que hay que verificar es que ambos lados consuman el helper.
+11. **NCs (Notas de Crédito) — tabla `NotasCredito` modela DOS direcciones** (desde `263d9b8` 03/05). Columna `direccion`: `'EMITIDA'` (Metal Engineers → SUNAT vía Nubefact, bloqueado por certificado) y `'RECIBIDA'` (proveedor → registro local que ajusta Compra/Gasto). Para RECIBIDAS: se llena `proveedor_ruc/razon_social` + `id_compra_referencia` o `id_gasto_referencia`; estado_sunat = `'REGISTRADA'`. UNIQUE serie+numero es índice parcial: solo aplica a EMITIDAS (RECIBIDAS pueden colisionar entre proveedores distintos). Para emitir NCs SALIENTES cuando llegue el certificado, extender `NotaCreditoService` con método `emitirSaliente()` usando `NubefactPayloadBuilder.buildNotaCredito` que ya existe.
 
 ### Estado del filesystem (worktree principal)
 - Working tree limpio en este worktree (`elegant-herschel-050bb4`).
