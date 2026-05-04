@@ -1108,7 +1108,10 @@ async function cerrarSinFactura(id, nro) {
   try {
     await api.ordenesCompra.cerrarSinFactura(id, data);
     showSuccess(`OC ${nro} cerrada sin factura — registrada como gasto`);
-    setTimeout(() => refreshOC(), 800);
+    // refreshModule() re-renderiza el módulo actual (sea OrdenesCompra o
+    // Logística), refreshOC() solo cubre el primero. Esto resuelve el caso
+    // de cerrar OC desde el modal abierto dentro del hub de Logística.
+    setTimeout(() => (window.refreshModule || refreshOC)(), 600);
   } catch (e) { showError(e.message); }
 }
 
@@ -1155,7 +1158,7 @@ async function asociarFactura(id, nro) {
   try {
     await api.ordenesCompra.asociarFacturaTardia(id, data);
     showSuccess(`Factura ${data.nro_comprobante} asociada — OC pasa a FACTURADA`);
-    setTimeout(() => refreshOC(), 800);
+    setTimeout(() => (window.refreshModule || refreshOC)(), 600);
   } catch (e) { showError(e.message); }
 }
 

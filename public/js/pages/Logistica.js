@@ -382,8 +382,14 @@ function renderTabAlmacen(panel) {
 // ─── TAB Sin facturar ──────────────────────────────────────────────────
 // Bandeja de OCs cerradas sin factura formal (caja chica). Permite asociar
 // la factura tardía cuando aparezca, moviendo la OC a FACTURADA.
-function renderTabSinFactura(panel) {
+async function renderTabSinFactura(panel) {
   panel.dataset.rendered = '1';
+  // Asegurar que window.OC esté inicializado (los botones del template usan
+  // OC.verOC y OC.asociarFactura). El módulo OrdenesCompra registra el
+  // namespace como side-effect; llamamos por eso aunque descartemos el HTML.
+  if (!window.OC) {
+    try { await OrdenesCompra(); } catch {}
+  }
   const total = _ocsSinFactura.reduce((s, oc) => {
     const t = oc.moneda === 'USD' ? Number(oc.total) * (Number(oc.tipo_cambio) || 1) : Number(oc.total);
     return s + (t || 0);
