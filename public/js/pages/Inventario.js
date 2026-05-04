@@ -161,7 +161,7 @@ function renderCatalogo(panel) {
               <option value="LOTE">LOTE</option><option value="HRA">HRA</option><option value="DIA">DIA</option><option value="NIU">NIU</option>
             </select>
             <label style="font-size:12px;color:var(--text-secondary)">Alerta de Stock Mínimo ${tip('Cuando el stock baje a este número, te llegará una alerta para reponer. Ej: si tu mínimo es 10 y bajás a 8, ⚠️ alerta de stock bajo. Si llega a 0, 🚫 sin stock.')}</label>
-            <input name="stock_minimo" type="number" step="0.01" value="10" required style="padding:10px;border-radius:6px;border:1px solid #d1d5db">
+            <input name="stock_minimo" type="number" step="0.0001" value="10" required style="padding:10px;border-radius:6px;border:1px solid #d1d5db">
             <p style="font-size:11px;color:var(--text-secondary);margin:0">El SKU se genera automáticamente según categoría.</p>
             <button type="submit" style="padding:10px;border:none;background:var(--bg-sidebar);border-radius:6px;cursor:pointer;font-weight:bold;color:black">Crear Catálogo</button>
           </form>
@@ -179,7 +179,7 @@ function renderCatalogo(panel) {
               <option value="">— Material utilizado —</option>
               ${itemOptions}
             </select>
-            <input name="cantidad" type="number" step="0.01" placeholder="Volumen retirado" required style="padding:10px;border-radius:6px;border:1px solid #d1d5db">
+            <input name="cantidad" type="number" step="0.0001" placeholder="Volumen retirado" required style="padding:10px;border-radius:6px;border:1px solid #d1d5db">
             <button type="submit" style="padding:12px;border:none;background:var(--danger);color:white;border-radius:6px;cursor:pointer;font-weight:bold;font-size:14px">Mermar Material</button>
           </form>
         </div>
@@ -527,7 +527,7 @@ async function editarMetadataItem(id, nombre) {
           </div>
           <div>
             <label style="font-size:11px;color:#374151;font-weight:600">Stock mínimo</label>
-            <input id="ei-min" type="number" min="0" step="0.01" value="${item.stock_minimo}" style="width:100%;padding:7px 9px;border:1px solid #d1d5db;border-radius:5px;font-size:13px">
+            <input id="ei-min" type="number" min="0" step="0.0001" value="${item.stock_minimo}" style="width:100%;padding:7px 9px;border:1px solid #d1d5db;border-radius:5px;font-size:13px">
           </div>
         </div>
         <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:18px">

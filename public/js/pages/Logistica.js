@@ -919,8 +919,8 @@ function bindFormOCMulti(panel, tipoOC) {
         </div>
       </div>
       <input class="l-und" value="${data.unidad || undDefault}" style="font-size:12px;text-align:center;padding:6px;border:1px solid #d1d5db;border-radius:4px">
-      <input class="l-cant" type="number" step="0.01" min="0.01" value="${data.cantidad || 1}" required style="font-size:12px;text-align:right;padding:6px;border:1px solid #d1d5db;border-radius:4px">
-      <input class="l-pu" type="number" step="0.01" min="0" placeholder="P/U" required style="font-size:12px;text-align:right;padding:6px;border:1px solid #d1d5db;border-radius:4px">
+      <input class="l-cant" type="number" step="0.0001" min="0.01" value="${data.cantidad || 1}" required style="font-size:12px;text-align:right;padding:6px;border:1px solid #d1d5db;border-radius:4px">
+      <input class="l-pu" type="number" step="0.0001" min="0" placeholder="P/U" required style="font-size:12px;text-align:right;padding:6px;border:1px solid #d1d5db;border-radius:4px">
       <span class="l-total" style="text-align:right;font-weight:600;padding-top:8px">S/ 0.00</span>
       <button type="button" class="l-del" title="Quitar esta línea de la OC" aria-label="Quitar línea" style="color:#dc2626;background:transparent;border:none;cursor:pointer;padding-top:6px;font-size:14px">✕</button>
     `;

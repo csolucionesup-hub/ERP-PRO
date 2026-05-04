@@ -233,8 +233,8 @@ export const Compras = async () => {
                </table>
                <div style="display:flex;gap:8px;margin-top:8px;align-items:center">
                  <select id="edit-item-select" style="flex:3;padding:7px;border:1px solid var(--border-light);border-radius:4px;font-size:12px">${itemOpts}</select>
-                 <input id="edit-item-qty" type="number" step="0.01" placeholder="Cant." style="flex:1;padding:7px;border:1px solid var(--border-light);border-radius:4px;font-size:12px">
-                 <input id="edit-item-price" type="number" step="0.01" placeholder="P.Unit" style="flex:1.5;padding:7px;border:1px solid var(--border-light);border-radius:4px;font-size:12px">
+                 <input id="edit-item-qty" type="number" step="0.0001" placeholder="Cant." style="flex:1;padding:7px;border:1px solid var(--border-light);border-radius:4px;font-size:12px">
+                 <input id="edit-item-price" type="number" step="0.0001" placeholder="P.Unit" style="flex:1.5;padding:7px;border:1px solid var(--border-light);border-radius:4px;font-size:12px">
                  <button type="button" id="edit-btn-add-item" style="background:var(--primary-color);color:white;border:none;padding:7px 12px;border-radius:4px;cursor:pointer;font-weight:bold">+</button>
                </div>
              </div>
@@ -608,8 +608,8 @@ export const Compras = async () => {
                     </div>
                     <select id="item-select" style="width:100%; padding:8px; margin-bottom:8px; border-radius:4px; border:1px solid var(--border-light)">${itemOptions}</select>
                     <div style="display:flex; gap:10px;">
-                       <input id="item-qty" type="number" step="0.01" placeholder="Cant." style="flex:1; padding:8px; border-radius:4px; border:1px solid var(--border-light)">
-                       <input id="item-price" type="number" step="0.01" placeholder="P.Unit (sin IGV)" style="flex:2; padding:8px; border-radius:4px; border:1px solid var(--border-light)">
+                       <input id="item-qty" type="number" step="0.0001" placeholder="Cant." style="flex:1; padding:8px; border-radius:4px; border:1px solid var(--border-light)">
+                       <input id="item-price" type="number" step="0.0001" placeholder="P.Unit (sin IGV)" style="flex:2; padding:8px; border-radius:4px; border:1px solid var(--border-light)">
                        <button type="button" id="btn-new-item-line" style="background:var(--primary-color); color:white; border:none; padding:8px 12px; border-radius:4px; font-weight:bold; cursor:pointer">+</button>
                     </div>
                     <table style="width:100%; margin-top:10px; font-size:11px; border-collapse:collapse;" border="0">

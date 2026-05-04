@@ -264,7 +264,7 @@ async function modalEmitirFactura(preview, opts = {}) {
           <td style="padding:4px"><input data-f="cantidad" type="number" step="0.001" min="0.001" value="${d.cantidad}" style="width:60px;padding:5px;border:1px solid #d1d5db;border-radius:4px;text-align:right;font-size:12px"></td>
           <td style="padding:4px"><input data-f="unidad_sunat" value="${v(d.unidad_sunat)}" placeholder="NIU" style="width:55px;padding:5px;border:1px solid #d1d5db;border-radius:4px;font-size:12px"></td>
           <td style="padding:4px"><textarea data-f="descripcion" rows="2" style="width:100%;padding:5px;border:1px solid #d1d5db;border-radius:4px;font-size:12px;resize:vertical">${d.descripcion}</textarea></td>
-          <td style="padding:4px"><input data-f="precio_unitario" type="number" step="0.01" min="0" value="${d.precio_unitario}" style="width:90px;padding:5px;border:1px solid #d1d5db;border-radius:4px;text-align:right;font-size:12px"></td>
+          <td style="padding:4px"><input data-f="precio_unitario" type="number" step="0.0001" min="0" value="${d.precio_unitario}" style="width:90px;padding:5px;border:1px solid #d1d5db;border-radius:4px;text-align:right;font-size:12px"></td>
           <td style="padding:4px;text-align:center">
             <button type="button" data-act="del" title="Quitar esta línea de la factura" aria-label="Quitar línea" style="background:none;border:none;color:#dc2626;cursor:pointer;font-size:16px">×</button>
           </td>
@@ -641,7 +641,7 @@ function formNueva(marca, tcHoy, opts = {}) {
                   style="padding:7px;border:1px solid #ddd;border-radius:4px;font-size:12px;min-width:0">
                 <input name="cantidad" type="number" step="0.001" min="0.001" placeholder="Cant.*"
                   style="padding:7px;border:1px solid #ddd;border-radius:4px;font-size:12px;min-width:0">
-                <input name="precio_unitario" type="number" step="0.01" min="0" placeholder="P. Unit. (${curSym})*"
+                <input name="precio_unitario" type="number" step="0.0001" min="0" placeholder="P. Unit. (${curSym})*"
                   style="padding:7px;border:1px solid #ddd;border-radius:4px;font-size:12px;min-width:0">
                 <button type="button" id="btn-add-${idp}"
                   style="padding:7px 14px;background:${cfg.color};color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:12px;white-space:nowrap">

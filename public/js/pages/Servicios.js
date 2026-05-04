@@ -165,7 +165,7 @@ export const Servicios = async () => {
                  </div>
                  <div style="flex:1">
                    <label style="font-size:12px;color:var(--text-secondary)">Monto Base (sin IGV)</label>
-                   <input name="monto_base" type="number" step="0.01" value="${srv.ingreso_neto || 0}" required style="width:100%;padding:10px;border:1px solid #ddd;border-radius:6px">
+                   <input name="monto_base" type="number" step="0.0001" value="${srv.ingreso_neto || 0}" required style="width:100%;padding:10px;border:1px solid #ddd;border-radius:6px">
                  </div>
                </div>
                <div style="display:flex;gap:10px;align-items:center;background:#f8f9fa;padding:10px;border-radius:6px">
@@ -325,7 +325,7 @@ export const Servicios = async () => {
                  <div style="display:flex; gap:10px;">
                     <div style="flex:1">
                        <label style="font-size:11px; color:var(--text-secondary)">Monto Neto (Base)</label>
-                       <input name="monto_base" type="number" step="0.01" required style="width:100%; padding:10px; border-radius:var(--radius-sm); border:1px solid var(--border-light)">
+                       <input name="monto_base" type="number" step="0.0001" required style="width:100%; padding:10px; border-radius:var(--radius-sm); border:1px solid var(--border-light)">
                     </div>
                  </div>
 

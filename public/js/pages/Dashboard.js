@@ -752,14 +752,14 @@ export const Dashboard = async () => {
 
             <div style="flex:1; min-width:140px;">
               <label style="font-size:10px; color:var(--text-secondary); display:block; margin-bottom:3px; text-transform:uppercase; letter-spacing:0.5px;">Caja Soles (PEN)</label>
-              <input id="saldo-inicial-pen" type="number" step="0.01" min="0" placeholder="0.00"
+              <input id="saldo-inicial-pen" type="number" step="0.0001" min="0" placeholder="0.00"
                 style="width:100%; padding:7px 9px; border:1px solid #86efac; border-radius:4px; box-sizing:border-box; font-size:13px;">
               <span id="saldo-actual-pen" style="font-size:10px; color:var(--text-secondary); margin-top:2px; display:block;">Cargando...</span>
             </div>
 
             <div style="flex:1; min-width:140px;">
               <label style="font-size:10px; color:var(--text-secondary); display:block; margin-bottom:3px; text-transform:uppercase; letter-spacing:0.5px;">Caja Dólares (USD)</label>
-              <input id="saldo-inicial-usd" type="number" step="0.01" min="0" placeholder="0.00"
+              <input id="saldo-inicial-usd" type="number" step="0.0001" min="0" placeholder="0.00"
                 style="width:100%; padding:7px 9px; border:1px solid #86efac; border-radius:4px; box-sizing:border-box; font-size:13px;">
               <span id="saldo-actual-usd" style="font-size:10px; color:var(--text-secondary); margin-top:2px; display:block;">Cargando...</span>
             </div>

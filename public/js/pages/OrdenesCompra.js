@@ -994,7 +994,7 @@ async function abrirModalResolucionItems(id_oc, lineasPendientes) {
                 </div>
                 <div>
                   <label style="font-size:12px;color:#374151;font-weight:600;display:block;margin-bottom:4px">Stock mínimo</label>
-                  <input id="ci-min" type="number" min="0" step="0.01" value="10" style="width:100%;padding:9px 11px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
+                  <input id="ci-min" type="number" min="0" step="0.0001" value="10" style="width:100%;padding:9px 11px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
                 </div>
               </div>
               <div id="ci-error" style="display:none;background:#fee2e2;color:#991b1b;padding:8px 11px;border-radius:6px;font-size:12px"></div>
@@ -1342,7 +1342,27 @@ async function descargarPDF(id) {
 // ──────── Modal: Nueva / Editar OC ────────
 // Si recibe `editData` (objeto OC con .detalle), abre en modo edición y al
 // guardar llama a `actualizar` en lugar de `create`. Sin argumentos = creación.
-function nuevaOC(editData) {
+async function nuevaOC(editData) {
+  // Lazy-load: si el usuario llegó al modal sin pasar por el init de
+  // OrdenesCompra (ej: clickeó "Editar líneas" desde el modal de detalle
+  // que se abre en otros módulos como Logística → kanban), las variables
+  // _proveedores/_servicios/_cfg quedaron vacías. Cargamos en demanda.
+  try {
+    const necesitaProv = !_proveedores || _proveedores.length === 0;
+    const necesitaSrv  = !_servicios   || _servicios.length === 0;
+    const necesitaCfg  = !_cfg         || Object.keys(_cfg).length === 0;
+    if (necesitaProv || necesitaSrv || necesitaCfg) {
+      const [provs, srvs, cfg] = await Promise.all([
+        necesitaProv ? api.purchases.getProveedores().catch(() => []) : Promise.resolve(_proveedores),
+        necesitaSrv  ? api.services.getServiciosActivos().catch(() => []) : Promise.resolve(_servicios),
+        necesitaCfg  ? api.config.get().catch(() => ({ aplica_igv: 1, tasa_igv: 18, monto_limite_sin_aprobacion: 5000, permitir_correlativo_manual: false })) : Promise.resolve(_cfg),
+      ]);
+      _proveedores = provs;
+      _servicios   = srvs;
+      _cfg         = cfg;
+    }
+  } catch (e) { console.error('[OC] lazy-load falló:', e); }
+
   const esEdit = !!editData;
   const hoy = new Date().toISOString().slice(0, 10);
   const sel = (current, value) => current === value ? 'selected' : '';
@@ -1477,8 +1497,8 @@ function nuevaOC(editData) {
       <div style="display:grid;grid-template-columns:3fr 1fr 1fr 1fr 40px;gap:6px">
         <input placeholder="Descripción" value="${l.descripcion}" oninput="OC._setL(${i},'descripcion',this.value)">
         <input placeholder="UND" value="${l.unidad}" oninput="OC._setL(${i},'unidad',this.value)">
-        <input type="number" step="0.01" placeholder="Cant" value="${l.cantidad}" oninput="OC._setL(${i},'cantidad',Number(this.value))">
-        <input type="number" step="0.01" placeholder="P.Unit" value="${l.precio_unitario}" oninput="OC._setL(${i},'precio_unitario',Number(this.value))">
+        <input type="number" step="0.0001" placeholder="Cant" value="${l.cantidad}" oninput="OC._setL(${i},'cantidad',Number(this.value))">
+        <input type="number" step="0.0001" placeholder="P.Unit" value="${l.precio_unitario}" oninput="OC._setL(${i},'precio_unitario',Number(this.value))">
         <button type="button" onclick="OC._delL(${i})" title="Quitar esta línea de la OC" aria-label="Quitar línea" style="background:transparent;border:none;color:#dc2626;cursor:pointer;font-size:18px">×</button>
       </div>
     `).join('');

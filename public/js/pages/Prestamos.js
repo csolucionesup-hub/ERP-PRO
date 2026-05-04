@@ -58,11 +58,11 @@ const modalEditar = () => `
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">
         <div>
           <label style="font-size:11px;color:var(--text-secondary)">Capital (S/.)</label>
-          <input id="edit-monto_capital" type="number" step="0.01" required style="${inputStyle}" oninput="window.calcEditTotal()">
+          <input id="edit-monto_capital" type="number" step="0.0001" required style="${inputStyle}" oninput="window.calcEditTotal()">
         </div>
         <div>
           <label style="font-size:11px;color:var(--text-secondary)">Interés (S/.)</label>
-          <input id="edit-monto_interes" type="number" step="0.01" value="0" style="${inputStyle}" oninput="window.calcEditTotal()">
+          <input id="edit-monto_interes" type="number" step="0.0001" value="0" style="${inputStyle}" oninput="window.calcEditTotal()">
         </div>
         <div>
           <label style="font-size:11px;color:var(--text-secondary)">Total</label>
@@ -132,11 +132,11 @@ const formCrear = (tipo, tcVenta = 1, tcFecha = '') => {
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">
         <div>
           <label style="font-size:11px;color:var(--text-secondary)">Capital ${tip('Monto principal del préstamo (sin intereses).')}</label>
-          <input name="monto_capital" type="number" step="0.01" min="0.01" required placeholder="0.00" style="${inputStyle}" oninput="window.calcTotal_${tipo}(this.form)">
+          <input name="monto_capital" type="number" step="0.0001" min="0.01" required placeholder="0.00" style="${inputStyle}" oninput="window.calcTotal_${tipo}(this.form)">
         </div>
         <div>
           <label style="font-size:11px;color:var(--text-secondary)">Interés ${tip('Monto total de intereses sobre el capital. Si el préstamo es a S/ 10.000 con S/ 1.200 de intereses, va 1200 acá. 0 si no hay intereses.')}</label>
-          <input name="monto_interes" type="number" step="0.01" value="0" style="${inputStyle}" oninput="window.calcTotal_${tipo}(this.form)">
+          <input name="monto_interes" type="number" step="0.0001" value="0" style="${inputStyle}" oninput="window.calcTotal_${tipo}(this.form)">
         </div>
         <div>
           <label style="font-size:11px;color:var(--text-secondary)">Total ${tip('Capital + Intereses. Se calcula automáticamente. Es la deuda total a pagar/cobrar.')}</label>
@@ -148,7 +148,7 @@ const formCrear = (tipo, tcVenta = 1, tcFecha = '') => {
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;background:#fefce8;border:1px solid #fde68a;padding:10px;border-radius:6px">
         <div>
           <label style="font-size:11px;color:#92400e;font-weight:600">📅 ${esTomado ? 'Pagado' : 'Cobrado'} a la fecha (opcional) ${tip('Solo para carga HISTÓRICA: si ya ' + (esTomado ? 'pagaste abonos' : 'cobraste cuotas') + ' antes de subir el préstamo al sistema, ponelos acá. El saldo restante se calcula automáticamente. Si es un préstamo nuevo, dejalo en 0.')}</label>
-          <input name="monto_pagado_inicial" type="number" step="0.01" min="0" value="0" placeholder="0.00" style="${inputStyle}" oninput="window.calcSaldoInicial_${tipo}(this.form)">
+          <input name="monto_pagado_inicial" type="number" step="0.0001" min="0" value="0" placeholder="0.00" style="${inputStyle}" oninput="window.calcSaldoInicial_${tipo}(this.form)">
         </div>
         <div>
           <label style="font-size:11px;color:#92400e;font-weight:600">Saldo restante (al día de hoy)</label>

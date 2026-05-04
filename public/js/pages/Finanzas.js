@@ -298,7 +298,7 @@ async function modalRegistrarCobranza(cot, cuentas, existing = null) {
               </div>
               <div>
                 <label style="font-size:11px;color:var(--text-secondary)">Monto (${cot.moneda}) *</label>
-                <input name="monto" type="number" step="0.01" required min="0.01" value="${isEdit ? Number(existing.monto).toFixed(2) : faltaBanco.toFixed(2)}"
+                <input name="monto" type="number" step="0.0001" required min="0.01" value="${isEdit ? Number(existing.monto).toFixed(2) : faltaBanco.toFixed(2)}"
                   style="width:100%;padding:8px;border:1px solid #d1d5db;border-radius:5px">
               </div>
             </div>
@@ -557,7 +557,7 @@ async function modalGastosBancarios() {
             <option value="">— cuenta —</option>
             ${cuentasBanco.map(c => `<option value="${c.id_cuenta}" data-moneda="${c.moneda}">${c.nombre} (${c.moneda})</option>`).join('')}
           </select>
-          <input type="number" step="0.01" name="monto" placeholder="Monto" required style="padding:6px;font-size:12px;border:1px solid #d1d5db;border-radius:4px">
+          <input type="number" step="0.0001" name="monto" placeholder="Monto" required style="padding:6px;font-size:12px;border:1px solid #d1d5db;border-radius:4px">
         </div>
         <input type="text" name="concepto" placeholder="Concepto (ej: ITF octubre BCP)" required style="width:100%;padding:6px;font-size:12px;border:1px solid #d1d5db;border-radius:4px;margin-bottom:8px">
         <button type="submit" style="background:#dc2626;color:#fff;border:none;padding:8px 16px;border-radius:4px;font-weight:600;font-size:12px;cursor:pointer">Registrar gasto</button>
@@ -1065,7 +1065,7 @@ function nuevoMovManual(idCuenta, moneda, onDone) {
         </select>
       </div>
       <input type="text" name="descripcion_banco" placeholder="Descripción" required style="width:100%;padding:8px;border:1px solid #d1d5db;border-radius:4px;margin-bottom:8px">
-      <input type="number" step="0.01" name="monto" placeholder="Monto" required style="width:100%;padding:8px;border:1px solid #d1d5db;border-radius:4px;margin-bottom:8px">
+      <input type="number" step="0.0001" name="monto" placeholder="Monto" required style="width:100%;padding:8px;border:1px solid #d1d5db;border-radius:4px;margin-bottom:8px">
       <input type="text" name="comentario" placeholder="Comentario (opcional)" style="width:100%;padding:8px;border:1px solid #d1d5db;border-radius:4px;margin-bottom:12px">
       <div style="display:flex;justify-content:flex-end;gap:8px">
         <button type="button" id="cancel-mov" style="padding:8px 16px;border:1px solid #d1d5db;background:#fff;border-radius:4px;cursor:pointer">Cancelar</button>
@@ -1134,7 +1134,7 @@ async function modalConciliacion() {
             <option value="">— cuenta —</option>
             ${cuentasBanco.map(c => `<option value="${c.id_cuenta}">${c.nombre} (${c.moneda})</option>`).join('')}
           </select>
-          <input type="number" step="0.01" name="monto" placeholder="Monto" required style="padding:6px;font-size:12px;border:1px solid #d1d5db;border-radius:4px">
+          <input type="number" step="0.0001" name="monto" placeholder="Monto" required style="padding:6px;font-size:12px;border:1px solid #d1d5db;border-radius:4px">
         </div>
         <input type="text" name="descripcion_banco" placeholder="Descripción del extracto (ej: TRANS BCP 00123 YURA SA)" required style="width:100%;padding:6px;font-size:12px;border:1px solid #d1d5db;border-radius:4px;margin-bottom:8px">
         <button type="submit" style="background:#2563eb;color:#fff;border:none;padding:8px 16px;border-radius:4px;font-weight:600;font-size:12px;cursor:pointer">Cargar movimiento</button>
@@ -1350,7 +1350,7 @@ async function modalPagoIGV(dashboard) {
           </div>
           <div>
             <label style="font-size:10px;color:#6b7280;font-weight:600">Monto pagado (PEN)</label>
-            <input type="number" step="0.01" name="monto" placeholder="0.00" required style="width:100%;padding:6px;font-size:12px;border:1px solid #d1d5db;border-radius:4px">
+            <input type="number" step="0.0001" name="monto" placeholder="0.00" required style="width:100%;padding:6px;font-size:12px;border:1px solid #d1d5db;border-radius:4px">
           </div>
         </div>
         <input type="text" name="descripcion" placeholder="Descripción (opcional)" style="width:100%;padding:6px;font-size:12px;border:1px solid #d1d5db;border-radius:4px;margin-bottom:8px">
@@ -1469,7 +1469,7 @@ async function modalEditarTributario(cot) {
                   <option value="12">12% (Construcción / Transporte bienes)</option>
                   <option value="15">15%</option>
                 </select>
-                <input name="detraccion_porcentaje" type="number" step="0.01" min="0" max="100"
+                <input name="detraccion_porcentaje" type="number" step="0.0001" min="0" max="100"
                   value="${pctActual}" style="flex:1;padding:8px;border:1px solid #d1d5db;border-radius:5px">
                 <span style="align-self:center;font-weight:600">%</span>
               </div>
@@ -1486,7 +1486,7 @@ async function modalEditarTributario(cot) {
                   <option value="0">No retiene</option>
                   <option value="3">3% (agente retenedor)</option>
                 </select>
-                <input name="retencion_porcentaje" type="number" step="0.01" min="0" max="100"
+                <input name="retencion_porcentaje" type="number" step="0.0001" min="0" max="100"
                   value="${pctRetActual}" style="flex:1;padding:8px;border:1px solid #d1d5db;border-radius:5px">
                 <span style="align-self:center;font-weight:600">%</span>
               </div>
@@ -2587,15 +2587,15 @@ async function modalNotasCreditoRecibidas() {
 
         <div>
           <label style="font-size:11px;font-weight:600;color:#374151;display:block;margin-bottom:3px">Subtotal *</label>
-          <input id="nc-subtotal" type="number" step="0.01" min="0" required style="width:100%;padding:7px 10px;border:1px solid #d1d5db;border-radius:4px;font-size:12px;text-align:right">
+          <input id="nc-subtotal" type="number" step="0.0001" min="0" required style="width:100%;padding:7px 10px;border:1px solid #d1d5db;border-radius:4px;font-size:12px;text-align:right">
         </div>
         <div>
           <label style="font-size:11px;font-weight:600;color:#374151;display:block;margin-bottom:3px">IGV</label>
-          <input id="nc-igv" type="number" step="0.01" min="0" value="0" style="width:100%;padding:7px 10px;border:1px solid #d1d5db;border-radius:4px;font-size:12px;text-align:right">
+          <input id="nc-igv" type="number" step="0.0001" min="0" value="0" style="width:100%;padding:7px 10px;border:1px solid #d1d5db;border-radius:4px;font-size:12px;text-align:right">
         </div>
         <div>
           <label style="font-size:11px;font-weight:600;color:#374151;display:block;margin-bottom:3px">Total (calculado)</label>
-          <input id="nc-total" type="number" step="0.01" readonly style="width:100%;padding:7px 10px;border:1px solid #d1d5db;border-radius:4px;font-size:12px;text-align:right;background:#f3f4f6;font-weight:600">
+          <input id="nc-total" type="number" step="0.0001" readonly style="width:100%;padding:7px 10px;border:1px solid #d1d5db;border-radius:4px;font-size:12px;text-align:right;background:#f3f4f6;font-weight:600">
         </div>
 
         <div style="grid-column:1 / -1">
