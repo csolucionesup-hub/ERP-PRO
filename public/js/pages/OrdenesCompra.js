@@ -681,31 +681,52 @@ function accionesSegunEstado(oc) {
   if (oc.estado === 'BORRADOR') {
     btns.push(`<button onclick="OC.aprobar(${oc.id_oc})" title="Aprobar la OC. Pasa de BORRADOR a APROBADA y queda lista para enviar al proveedor." style="padding:10px 18px;background:#16a34a;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">✓ Aprobar</button>`);
   }
-  if (oc.estado === 'APROBADA') {
+  // Etiquetas contextuales: las OCs de honorarios (es_honorario=true)
+  // representan trabajo de persona natural — NO hay envío ni recepción de
+  // mercadería. El comprobante real es Recibo por Honorarios (RxH), no factura.
+  const esHon = !!oc.es_honorario;
+  const txtRecepcion    = esHon ? '✓ Marcar como realizado' : '📦 Registrar recepción';
+  const ttRecepcion     = esHon
+    ? 'Confirmar que la persona ya prestó el servicio acordado. Habilita el registro de pago y RxH.'
+    : 'Marcar la mercadería/servicio como recibido. Si es OC de ALMACEN: ingresa el stock al inventario y registra el kárdex.';
+  const txtFactura      = esHon ? '🧾 Recibí RxH' : '🧾 Recibí factura';
+  const ttFactura       = esHon
+    ? 'Cargar el N° del Recibo por Honorarios que emitió la persona. Genera el Gasto contable y la Tx en caja.'
+    : 'Cargar la factura/boleta del proveedor. Genera la Compra (ALMACEN) o el Gasto (GENERAL/SERVICIO) y la Tx en caja. Después de esto la OC ya no se puede anular.';
+  const txtFacturaTardia = esHon ? '🧾 Recibí RxH' : '🧾 Recibí factura';
+
+  // "Marcar como Enviada" no aplica a honorarios.
+  if (oc.estado === 'APROBADA' && !esHon) {
     btns.push(`<button onclick="OC.enviar(${oc.id_oc})" title="Marcar la OC como enviada al proveedor (no envía mail automático — es un cambio de estado para el seguimiento). Después solo se podrá editar metadata, no items." style="padding:10px 18px;background:#3b82f6;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">📤 Marcar como Enviada</button>`);
   }
   if (['APROBADA', 'ENVIADA', 'RECIBIDA_PARCIAL'].includes(oc.estado)) {
-    btns.push(`<button onclick="OC.recibir(${oc.id_oc})" title="Marcar la mercadería/servicio como recibido. Si es OC de ALMACEN: ingresa el stock al inventario y registra el kárdex." style="padding:10px 18px;background:#059669;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">📦 Registrar recepción</button>`);
+    btns.push(`<button onclick="OC.recibir(${oc.id_oc})" title="${ttRecepcion}" style="padding:10px 18px;background:#059669;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">${txtRecepcion}</button>`);
+  }
+  // En honorarios permitimos pagar directo desde APROBADA (atajo común:
+  // contraté → trabajó → pagué, todo en el mismo día). Para no-honorarios
+  // mantener flujo existente que requiere RECIBIDA primero.
+  if (esHon && oc.estado === 'APROBADA') {
+    btns.push(`<button onclick="OC.registrarPago(${oc.id_oc}, '${nroSafe}')" title="Pagar directamente al colaborador. Saltea los pasos de envío y recepción (no aplican en honorarios). La OC pasa a 'Pagada · pend. RxH' hasta que entregue el Recibo por Honorarios." style="padding:10px 18px;background:#15803d;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">💰 Registrar pago</button>`);
   }
   if (['RECIBIDA', 'RECIBIDA_PARCIAL'].includes(oc.estado)) {
-    btns.push(`<button onclick="OC.facturar(${oc.id_oc})" title="Cargar la factura/boleta del proveedor. Genera la Compra (ALMACEN) o el Gasto (GENERAL/SERVICIO) y la Tx en caja. Después de esto la OC ya no se puede anular." style="padding:10px 18px;background:#7c3aed;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">🧾 Recibí factura</button>`);
-    btns.push(`<button onclick="OC.registrarPago(${oc.id_oc}, '${nroSafe}')" title="Registrar el pago al proveedor sin haber recibido factura todavía (caso típico: pago primero, factura llega después). La OC pasa a 'Pagada · pend. factura' y se genera la Tx + movimiento bancario." style="padding:10px 18px;background:#15803d;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">💰 Registrar pago</button>`);
+    btns.push(`<button onclick="OC.facturar(${oc.id_oc})" title="${ttFactura}" style="padding:10px 18px;background:#7c3aed;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">${txtFactura}</button>`);
+    btns.push(`<button onclick="OC.registrarPago(${oc.id_oc}, '${nroSafe}')" title="Registrar el pago sin haber recibido el comprobante todavía (caso típico: pago primero, comprobante llega después). La OC pasa a 'Pagada · pend. comprobante' y se genera la Tx + movimiento bancario." style="padding:10px 18px;background:#15803d;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">💰 Registrar pago</button>`);
     // "Cerrar sin facturar" solo aplica a GENERAL/SERVICIO (no ALMACEN).
     // ALMACEN siempre requiere comprobante porque genera stock valorizado.
     if (oc.tipo_oc !== 'ALMACEN') {
-      btns.push(`<button onclick="OC.cerrarSinFactura(${oc.id_oc}, '${nroSafe}')" title="Cerrar la OC sin factura formal (compra al contado, caja chica, etc). Genera el Gasto contable pero deja la OC en bandeja 'Sin facturar' por si después llega el comprobante." style="padding:10px 18px;background:#ea580c;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">🗂 Cerrar sin facturar</button>`);
+      btns.push(`<button onclick="OC.cerrarSinFactura(${oc.id_oc}, '${nroSafe}')" title="Cerrar la OC sin comprobante formal (compra al contado, caja chica, etc). Genera el Gasto contable pero deja la OC en bandeja 'Sin facturar' por si después llega el comprobante." style="padding:10px 18px;background:#ea580c;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">🗂 Cerrar sin comprobante</button>`);
     }
   }
   // FACTURADA → falta el pago. Ofrecer Registrar pago para cerrar a PAGADA.
   if (oc.estado === 'FACTURADA') {
-    btns.push(`<button onclick="OC.registrarPago(${oc.id_oc}, '${nroSafe}')" title="Registrar el pago al proveedor de esta factura. Genera el movimiento bancario y cierra la OC en 'Cerrada (pago + factura)'." style="padding:10px 18px;background:#15803d;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">💰 Registrar pago</button>`);
+    btns.push(`<button onclick="OC.registrarPago(${oc.id_oc}, '${nroSafe}')" title="Registrar el pago al proveedor de este comprobante. Genera el movimiento bancario y cierra la OC en 'Cerrada (pago + comprobante)'." style="padding:10px 18px;background:#15803d;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">💰 Registrar pago</button>`);
   }
-  // PAGADA_PEND_FACTURA → falta la factura. Ofrecer Recibí factura para cerrar a PAGADA,
-  // o "Dar por cerrada sin factura" si el proveedor nunca la va a entregar (no aplica a ALMACEN).
+  // PAGADA_PEND_FACTURA → falta el comprobante. Ofrecer Recibí factura/RxH,
+  // o "Dar por cerrada sin comprobante" si el proveedor nunca lo va a entregar (no aplica a ALMACEN).
   if (oc.estado === 'PAGADA_PEND_FACTURA') {
-    btns.push(`<button onclick="OC.facturar(${oc.id_oc})" title="Cargar la factura/boleta del proveedor que llegó después del pago. Enriquece la Compra/Gasto provisorio con el N° de comprobante y cierra la OC en 'Cerrada (pago + factura)'." style="padding:10px 18px;background:#7c3aed;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">🧾 Recibí factura</button>`);
+    btns.push(`<button onclick="OC.facturar(${oc.id_oc})" title="Cargar el comprobante (factura, boleta o RxH) que llegó después del pago. Enriquece la Compra/Gasto provisorio con el N° de comprobante y cierra la OC en 'Cerrada (pago + comprobante)'." style="padding:10px 18px;background:#7c3aed;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">${txtFactura}</button>`);
     if (oc.tipo_oc !== 'ALMACEN') {
-      btns.push(`<button onclick="OC.cerrarPagaSinFactura(${oc.id_oc}, '${nroSafe}')" title="Dar por cerrada esta OC sin esperar factura (el proveedor no la entregará). El Gasto provisorio que se creó al registrar el pago queda en BD sin nro de comprobante. ALMACEN no permite esta acción." style="padding:10px 18px;background:#ea580c;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">🗂 Cerrar sin factura</button>`);
+      btns.push(`<button onclick="OC.cerrarPagaSinFactura(${oc.id_oc}, '${nroSafe}')" title="Dar por cerrada esta OC sin esperar comprobante (el proveedor no lo entregará). El Gasto provisorio que se creó al registrar el pago queda en BD sin nro de comprobante. ALMACEN no permite esta acción." style="padding:10px 18px;background:#ea580c;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">🗂 Cerrar sin comprobante</button>`);
     }
   }
   // OC cerrada sin factura — ofrecer asociar factura tardía
