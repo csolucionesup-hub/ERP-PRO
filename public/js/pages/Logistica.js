@@ -108,7 +108,7 @@ function initTabs() {
     },
   });
 
-  window.Logistica = { descargarPDF, anularOC, reactivarOC, editarCC, toggleCC, eliminarCC, descargarROC };
+  window.Logistica = { descargarPDF, anularOC, reactivarOC, editarCC, toggleCC, eliminarCC, descargarROC, verROC };
 }
 
 // ─── TAB Proveedores (delega a página Proveedores.js) ───────────────────
@@ -169,6 +169,7 @@ async function renderTabCentros(panel) {
         <td style="padding:8px;font-size:11px;color:var(--text-secondary)">${cc.ultima_fecha ? fmtDate(cc.ultima_fecha) : '—'}</td>
         <td style="padding:8px;text-align:center">${cc.activo ? '✅' : '❌'}</td>
         <td style="padding:8px;white-space:nowrap">
+          <button onclick="Logistica.verROC('${cc.nombre.replace(/'/g, "\\'")}')" style="padding:4px 8px;font-size:11px;background:#fff;border:1px solid #065f46;color:#065f46;border-radius:4px;cursor:pointer" title="Vista previa del ROC en pantalla (sin descargar)" aria-label="Ver ROC">👁 Ver</button>
           <button onclick="Logistica.descargarROC('${cc.nombre.replace(/'/g, "\\'")}')" style="padding:4px 8px;font-size:11px;background:#065f46;color:white;border:none;border-radius:4px;cursor:pointer" title="Reporte semanal de OCs (Excel)">📊 ROC</button>
           <button onclick="Logistica.editarCC(${cc.id_centro_costo})" title="Editar nombre y datos del centro de costo" style="padding:4px 8px;font-size:11px;background:var(--info);color:white;border:none;border-radius:4px;cursor:pointer">Editar</button>
           <button onclick="Logistica.toggleCC(${cc.id_centro_costo}, ${cc.activo})" title="${cc.activo ? 'Desactivar (no aparece como opción en formularios pero sigue vinculado a OCs/gastos históricos)' : 'Reactivar para volver a usar en nuevos formularios'}" style="padding:4px 8px;font-size:11px;background:${cc.activo ? '#f59e0b' : '#16a34a'};color:white;border:none;border-radius:4px;cursor:pointer">${cc.activo ? 'Desactivar' : 'Activar'}</button>
@@ -411,6 +412,212 @@ async function descargarROC(centroNombre) {
       btn.textContent = '📥 Descargar Excel';
     }
   };
+}
+
+// ─── ROC: vista previa en pantalla (sin descargar) ──────────────────────
+// Muestra los mismos datos que el Excel, agrupados por SEMANA, con totales.
+// Desde el modal se puede pasar a descargar el Excel sin volver a configurar.
+async function verROC(centroNombre) {
+  const anioActual = new Date().getFullYear();
+  const semanaHoy = semanaISOActual();
+
+  const overlay = document.createElement('div');
+  overlay.id = 'modal-roc-preview';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:1500;display:flex;align-items:center;justify-content:center;padding:20px';
+  overlay.innerHTML = `
+    <div style="background:#fff;border-radius:10px;width:1100px;max-width:98vw;height:90vh;display:flex;flex-direction:column;overflow:hidden">
+      <div style="padding:16px 20px;border-bottom:1px solid #e5e7eb;display:flex;justify-content:space-between;align-items:center;background:#f9fafb">
+        <div>
+          <h3 style="margin:0;font-size:16px">👁 Vista previa ROC — ${centroNombre}</h3>
+          <p style="margin:3px 0 0;font-size:11px;color:#6b7280">Acumulado desde enero hasta la semana indicada · revisá antes de bajar el Excel</p>
+        </div>
+        <button id="rocp-close" title="Cerrar" aria-label="Cerrar" style="background:none;border:none;font-size:22px;cursor:pointer;color:#999">×</button>
+      </div>
+
+      <div style="padding:12px 20px;border-bottom:1px solid #e5e7eb;display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;background:#fff">
+        <div>
+          <label style="font-size:11px;color:#6b7280;display:block;margin-bottom:3px;font-weight:600">Año</label>
+          <select id="rocp-anio" style="padding:7px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:12px">
+            <option value="${anioActual}" selected>${anioActual} (actual)</option>
+            <option value="${anioActual - 1}">${anioActual - 1}</option>
+          </select>
+        </div>
+        <div>
+          <label style="font-size:11px;color:#6b7280;display:block;margin-bottom:3px;font-weight:600">Semana corte</label>
+          <input id="rocp-semana" type="number" min="1" max="53" value="${semanaHoy}"
+            style="padding:7px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:12px;width:90px">
+        </div>
+        <button id="rocp-recargar" title="Recalcular con los nuevos parámetros"
+          style="padding:7px 14px;background:#111827;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600">🔄 Recargar</button>
+        <div style="margin-left:auto">
+          <button id="rocp-descargar" title="Descargar Excel con la configuración actual"
+            style="padding:8px 16px;background:#065f46;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600">📥 Descargar Excel</button>
+        </div>
+      </div>
+
+      <div id="rocp-body" style="flex:1;overflow:auto;padding:14px 20px;background:#fafafa">
+        <div style="padding:60px;text-align:center;color:#6b7280">⏳ Cargando…</div>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+
+  const cerrar = () => overlay.remove();
+  document.getElementById('rocp-close').onclick = cerrar;
+
+  const fmtMon = (n, mon) => (mon === 'USD' ? '$ ' : 'S/ ') + Number(n || 0).toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const fmtFecha = (s) => {
+    if (!s) return '—';
+    const d = new Date(s);
+    if (isNaN(d.getTime())) return String(s).slice(0, 10);
+    return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`;
+  };
+
+  const colorEstado = (e) => ({
+    BORRADOR: '#fff7e6', APROBADA: '#e0f2fe', ENVIADA: '#dbeafe',
+    RECIBIDA: '#dcfce7', RECIBIDA_PARCIAL: '#fef9c3', FACTURADA: '#ede9fe',
+    PAGADA: '#dcfce7', CERRADA_SIN_FACTURA: '#fed7aa', ANULADA: '#fee2e2',
+  }[e] || '#f3f4f6');
+
+  const renderBody = (datos) => {
+    const body = document.getElementById('rocp-body');
+    if (!datos || !datos.semanas) {
+      body.innerHTML = '<div style="padding:60px;text-align:center;color:#dc2626">No se pudieron cargar los datos</div>';
+      return;
+    }
+    const tieneOCs = datos.semanas.some(s => s.ocs && s.ocs.length);
+
+    const kpis = `
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px">
+        <div style="background:#fff;border:1px solid #e5e7eb;border-radius:8px;padding:10px 12px">
+          <div style="font-size:10px;color:#6b7280;font-weight:600">CENTRO</div>
+          <div style="font-size:13px;font-weight:700;margin-top:2px">${datos.params.centro_costo}</div>
+        </div>
+        <div style="background:#fff;border:1px solid #e5e7eb;border-radius:8px;padding:10px 12px">
+          <div style="font-size:10px;color:#6b7280;font-weight:600">CANTIDAD OCs</div>
+          <div style="font-size:18px;font-weight:700;margin-top:2px;font-variant-numeric:tabular-nums">${datos.totales.cantidad}</div>
+        </div>
+        <div style="background:#fff;border:1px solid #e5e7eb;border-radius:8px;padding:10px 12px">
+          <div style="font-size:10px;color:#6b7280;font-weight:600">TOTAL SOLES</div>
+          <div style="font-size:16px;font-weight:700;color:#065f46;margin-top:2px;font-variant-numeric:tabular-nums">${fmtMon(datos.totales.soles, 'PEN')}</div>
+        </div>
+        <div style="background:#fff;border:1px solid #e5e7eb;border-radius:8px;padding:10px 12px">
+          <div style="font-size:10px;color:#6b7280;font-weight:600">TOTAL DÓLARES</div>
+          <div style="font-size:16px;font-weight:700;color:#1e40af;margin-top:2px;font-variant-numeric:tabular-nums">${fmtMon(datos.totales.dolares, 'USD')}</div>
+        </div>
+      </div>
+      <div style="font-size:11px;color:#6b7280;margin-bottom:8px">
+        Año <b>${datos.params.anio}</b> · semana corte <b>${String(datos.params.semana_corte).padStart(2,'0')}</b>
+        ${datos.tipoCambio > 0 ? ` · TC USD <b>${Number(datos.tipoCambio).toFixed(4)}</b>` : ''}
+        · totales <b>excluyen anuladas</b>
+      </div>
+    `;
+
+    if (!tieneOCs) {
+      body.innerHTML = kpis + `<div style="padding:50px;text-align:center;color:#6b7280;background:#fff;border:1px solid #e5e7eb;border-radius:8px">Sin órdenes de compra para este centro hasta la semana ${datos.params.semana_corte}</div>`;
+      return;
+    }
+
+    const semanasHTML = datos.semanas.filter(s => s.ocs && s.ocs.length).map(s => {
+      const filas = s.ocs.map(o => {
+        const esSoles = o.moneda === 'PEN';
+        const tipo = o.tipo_oc === 'SERVICIO' ? 'OS' : 'OC';
+        const desc = (o.descripcion_resumen || '').replace(/</g, '&lt;');
+        const prov = (o.proveedor_nombre || '—').replace(/</g, '&lt;');
+        return `
+          <tr style="background:${colorEstado(o.estado)};border-bottom:1px solid #e5e7eb">
+            <td style="padding:6px 8px;font-size:11px;font-weight:600">${tipo}</td>
+            <td style="padding:6px 8px;font-size:11px;font-weight:600">${o.nro_oc}</td>
+            <td style="padding:6px 8px;font-size:11px">${fmtFecha(o.fecha_emision)}</td>
+            <td style="padding:6px 8px;font-size:11px">${prov}</td>
+            <td style="padding:6px 8px;font-size:11px;max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${desc}">${desc || '—'}</td>
+            <td style="padding:6px 8px;font-size:11px;text-align:center">${esSoles ? 'MN' : 'ME'}</td>
+            <td style="padding:6px 8px;font-size:11px;text-align:right;font-variant-numeric:tabular-nums">${esSoles ? fmtMon(o.subtotal, 'PEN') : ''}</td>
+            <td style="padding:6px 8px;font-size:11px;text-align:right;font-variant-numeric:tabular-nums">${esSoles && o.aplica_igv ? fmtMon(o.igv, 'PEN') : ''}</td>
+            <td style="padding:6px 8px;font-size:11px;text-align:right;font-variant-numeric:tabular-nums;font-weight:600">${esSoles ? fmtMon(o.total, 'PEN') : ''}</td>
+            <td style="padding:6px 8px;font-size:11px;text-align:right;font-variant-numeric:tabular-nums">${!esSoles ? fmtMon(o.subtotal, 'USD') : ''}</td>
+            <td style="padding:6px 8px;font-size:11px;text-align:right;font-variant-numeric:tabular-nums">${!esSoles && o.aplica_igv ? fmtMon(o.igv, 'USD') : ''}</td>
+            <td style="padding:6px 8px;font-size:11px;text-align:right;font-variant-numeric:tabular-nums;font-weight:600">${!esSoles ? fmtMon(o.total, 'USD') : ''}</td>
+            <td style="padding:6px 8px;font-size:10px;text-align:center">${o.aprobada_marca ? '✓' : ''}</td>
+            <td style="padding:6px 8px;font-size:10px;text-align:center">${o.pagada_marca ? '✓' : ''}</td>
+            <td style="padding:6px 8px;font-size:10px;text-align:center">${o.fecha_real_pago || ''}</td>
+            <td style="padding:6px 8px;font-size:10px;text-align:center">${o.estado_rendicion}</td>
+            <td style="padding:6px 8px;font-size:10px">${o.nro_factura || ''}</td>
+          </tr>
+        `;
+      }).join('');
+      return `
+        <div style="margin-bottom:12px">
+          <div style="background:#374151;color:#fff;padding:6px 12px;font-size:11px;font-weight:700;letter-spacing:0.4px;border-radius:5px 5px 0 0">SEMANA ${String(s.semana).padStart(2,'0')} <span style="opacity:0.7;font-weight:500">· ${s.ocs.length} OC(s)</span></div>
+          <div style="overflow:auto;border:1px solid #e5e7eb;border-radius:0 0 5px 5px;background:#fff">
+            <table style="width:100%;border-collapse:collapse;font-size:11px">
+              <thead style="background:#1f4e79;color:#fff">
+                <tr>
+                  <th style="padding:6px 8px;text-align:left">Tipo</th>
+                  <th style="padding:6px 8px;text-align:left">Nº</th>
+                  <th style="padding:6px 8px;text-align:left">Fecha</th>
+                  <th style="padding:6px 8px;text-align:left">Proveedor</th>
+                  <th style="padding:6px 8px;text-align:left">Descripción</th>
+                  <th style="padding:6px 8px;text-align:center">Mon</th>
+                  <th style="padding:6px 8px;text-align:right">SubT S/</th>
+                  <th style="padding:6px 8px;text-align:right">IGV S/</th>
+                  <th style="padding:6px 8px;text-align:right">Total S/</th>
+                  <th style="padding:6px 8px;text-align:right">SubT $</th>
+                  <th style="padding:6px 8px;text-align:right">IGV $</th>
+                  <th style="padding:6px 8px;text-align:right">Total $</th>
+                  <th style="padding:6px 8px;text-align:center">Aprob</th>
+                  <th style="padding:6px 8px;text-align:center">Pag</th>
+                  <th style="padding:6px 8px;text-align:center">F. Pago</th>
+                  <th style="padding:6px 8px;text-align:center">Rend.</th>
+                  <th style="padding:6px 8px;text-align:left">Factura</th>
+                </tr>
+              </thead>
+              <tbody>${filas}</tbody>
+            </table>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    body.innerHTML = kpis + semanasHTML;
+  };
+
+  const cargar = async () => {
+    const body = document.getElementById('rocp-body');
+    body.innerHTML = '<div style="padding:60px;text-align:center;color:#6b7280">⏳ Cargando…</div>';
+    const anio = Number(document.getElementById('rocp-anio').value) || anioActual;
+    const semanaRaw = (document.getElementById('rocp-semana').value || '').trim();
+    const semana = semanaRaw === '' ? undefined : Number(semanaRaw);
+    if (semana !== undefined && (isNaN(semana) || semana < 1 || semana > 53)) {
+      showError('Semana debe ser un número entre 1 y 53');
+      return;
+    }
+    try {
+      const datos = await api.ordenesCompra.previewROC({ centro_costo: centroNombre, anio, semana });
+      renderBody(datos);
+    } catch (err) {
+      body.innerHTML = `<div style="padding:60px;text-align:center;color:#dc2626">Error: ${err?.message || 'no se pudo cargar'}</div>`;
+    }
+  };
+
+  document.getElementById('rocp-recargar').onclick = cargar;
+  document.getElementById('rocp-descargar').onclick = async () => {
+    const anio = Number(document.getElementById('rocp-anio').value) || anioActual;
+    const semanaRaw = (document.getElementById('rocp-semana').value || '').trim();
+    const semana = semanaRaw === '' ? undefined : Number(semanaRaw);
+    const btn = document.getElementById('rocp-descargar');
+    btn.disabled = true; btn.textContent = '⏳ Generando…';
+    try {
+      await api.ordenesCompra.descargarROC({ centro_costo: centroNombre, anio, semana });
+      showSuccess('ROC descargado');
+    } catch (err) {
+      showError(err?.message || 'Error generando ROC');
+    } finally {
+      btn.disabled = false; btn.textContent = '📥 Descargar Excel';
+    }
+  };
+
+  await cargar();
 }
 
 // ─── TAB Gastos Generales / Servicios (ambos comparten layout multi-línea) ──

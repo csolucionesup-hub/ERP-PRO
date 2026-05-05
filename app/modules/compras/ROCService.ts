@@ -167,20 +167,19 @@ class ROCService {
   }
 
   /**
-   * Genera el archivo Excel como Buffer. Listo para enviar como descarga.
+   * Datos estructurados del ROC en JSON (consumido por preview HTML y por generar()).
+   * Devuelve todo lo necesario para pintar el reporte: cfg empresa, parámetros,
+   * OCs agrupadas por semana ISO y totales por moneda.
    */
-  async generar(params: ROCParams): Promise<Buffer> {
-    const { centro_costo, anio, empresa } = params;
+  async getDatos(params: ROCParams) {
     const semanaCorte = params.semana_corte || this.semanaISO(new Date());
     const fechaReporte = params.fecha_reporte ? new Date(params.fecha_reporte) : new Date();
 
-    // Config empresa (para título, RUC, etc.)
     const [cfgRows]: any = await db.query(
       `SELECT razon_social, ruc, direccion_fiscal FROM ConfiguracionEmpresa WHERE id = 1`
     );
     const cfg = cfgRows[0] || { razon_social: 'METAL ENGINEERS SAC', ruc: '20610071962', direccion_fiscal: '' };
 
-    // TC vigente (opcional)
     let tipoCambio = 0;
     try {
       const [tcRows]: any = await db.query(
@@ -190,6 +189,56 @@ class ROCService {
     } catch { /* tabla puede no existir en algunos setups */ }
 
     const ocs = await this.getOCs(params);
+
+    // Agrupar por semana ISO desde 1 hasta semanaCorte
+    const semanas: Array<{ semana: number; ocs: OCRow[] }> = [];
+    const ocPorSemana: Map<number, OCRow[]> = new Map();
+    for (const oc of ocs) {
+      const d = oc.fecha_emision instanceof Date ? oc.fecha_emision : new Date(oc.fecha_emision);
+      const s = this.semanaISO(d);
+      if (!ocPorSemana.has(s)) ocPorSemana.set(s, []);
+      ocPorSemana.get(s)!.push(oc);
+    }
+    for (let sem = 1; sem <= semanaCorte; sem++) {
+      semanas.push({ semana: sem, ocs: ocPorSemana.get(sem) || [] });
+    }
+
+    // Totales: solo OCs no anuladas
+    const vivas = ocs.filter(o => o.estado !== 'ANULADA');
+    const totalSoles   = vivas.filter(o => o.moneda === 'PEN').reduce((s, o) => s + Number(o.total || 0), 0);
+    const totalDolares = vivas.filter(o => o.moneda === 'USD').reduce((s, o) => s + Number(o.total || 0), 0);
+    const cantidadOCs  = vivas.length;
+
+    return {
+      cfg,
+      params: {
+        centro_costo: params.centro_costo,
+        anio: params.anio,
+        semana_corte: semanaCorte,
+        empresa: params.empresa || null,
+        fecha_reporte: fechaReporte.toISOString().slice(0, 10),
+      },
+      tipoCambio,
+      semanas,
+      totales: {
+        soles: Number(totalSoles.toFixed(2)),
+        dolares: Number(totalDolares.toFixed(2)),
+        cantidad: cantidadOCs,
+      },
+    };
+  }
+
+  /**
+   * Genera el archivo Excel como Buffer. Listo para enviar como descarga.
+   */
+  async generar(params: ROCParams): Promise<Buffer> {
+    const { centro_costo, anio, empresa } = params;
+    const datos = await this.getDatos(params);
+    const semanaCorte = datos.params.semana_corte;
+    const fechaReporte = new Date(datos.params.fecha_reporte);
+    const cfg = datos.cfg;
+    const tipoCambio = datos.tipoCambio;
+    const ocs = datos.semanas.flatMap(s => s.ocs);
 
     const wb = new ExcelJS.Workbook();
     wb.creator = 'ERP-PRO';

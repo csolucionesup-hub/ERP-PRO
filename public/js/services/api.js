@@ -411,6 +411,15 @@ export const api = {
       return { nombre };
     },
     /**
+     * Vista previa del ROC en JSON (mismos datos que el Excel).
+     * params: { centro_costo, anio, semana?, empresa? }
+     */
+    previewROC: (params) => {
+      const qs = new URLSearchParams();
+      Object.entries(params).forEach(([k, v]) => { if (v != null && v !== '') qs.append(k, v); });
+      return get(`/ordenes-compra/roc/preview?${qs.toString()}`);
+    },
+    /**
      * Descarga el Reporte Semanal de Órdenes (ROC) en Excel.
      * params: { centro_costo, anio, semana?, empresa? }
      */

@@ -1423,6 +1423,21 @@ ocRouter.get('/', async (req: Request, res: Response) => {
   }));
 });
 
+// ROC preview — JSON con los mismos datos que el Excel, para vista previa
+// en HTML antes de descargar. DEBE ir ANTES de /roc y /:id.
+ocRouter.get('/roc/preview', async (req: Request, res: Response) => {
+  const centro_costo = String(req.query.centro_costo || 'OFICINA CENTRAL');
+  const anio        = Number(req.query.anio) || new Date().getFullYear();
+  const semana      = req.query.semana ? Number(req.query.semana) : undefined;
+  const empresa     = (req.query.empresa as 'ME' | 'PT' | undefined) || undefined;
+  res.json(await ROCService.getDatos({
+    centro_costo,
+    anio,
+    semana_corte: semana,
+    empresa,
+  }));
+});
+
 // ROC — Reporte de Órdenes de Compra semanal (Excel).
 // DEBE ir ANTES de /:id para que no lo capture validateIdParam con "roc" como id.
 ocRouter.get('/roc', async (req: Request, res: Response) => {
