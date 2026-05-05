@@ -1,27 +1,108 @@
 /**
- * RendicionPDFService — genera el PDF de la Hoja de Rendición de Gastos.
+ * RendicionPDFService — genera el expediente PDF de la Rendición de Gastos.
  *
- * Replica el formato físico que Metal Engineers ya usa (ver PDF de referencia
- * en `RENDICION OC N° 013 - 2026...`):
- *   - Cabecera con logo + datos generales (centro de costo, banco, importe).
- *   - Sub-cabecera: proyecto, cuenta a cargo de, cargo, fecha rendición.
- *   - Tabla de items con columnas: ITEM, FECHA, Nº DOCUMENTO, BENEFICIARIOS,
- *     CONCEPTO, SUBTOTAL, IGV, IMPORTE S/, OBSERVACIONES.
- *   - Resumen al pie: Saldo Anterior, Fondo Asignado, Total Gastos, Saldo.
- *   - 3 firmas: PREPARADO POR / REVISADO POR / AUTORIZADO POR (en Fase 2 se
- *     embeberán las firmas escaneadas; por ahora solo el nombre + fecha).
+ * El expediente es un único PDF que concatena:
+ *   1. Hoja de rendición (cabecera + items + resumen + 3 firmas) — pdfkit.
+ *   2. Anexos: cada adjunto cargado en Cloudinary (constancia bancaria,
+ *      facturas, boletas, OC, comprobantes) embebido como páginas. PDFs se
+ *      copian tal cual; imágenes (JPG/PNG/HEIC/WEBP) se renderizan como
+ *      página A4. HEIC/WEBP se piden a Cloudinary con `f_jpg` para que
+ *      pdf-lib los procese sin trasformación local.
  *
- * NO incluye los anexos (constancia bancaria, OC, comprobantes). Eso queda
- * para la Fase 3 cuando se haga el merge de PDFs con pdf-lib.
+ * Si un adjunto falla al descargarse o procesarse, se loguea y se sigue con
+ * el resto — el expediente nunca rompe la respuesta HTTP.
  */
 
 import PDFDocument from 'pdfkit';
+import { PDFDocument as PDFLibDocument } from 'pdf-lib';
 import path from 'path';
 import RendicionService from './RendicionService';
 
 class RendicionPDFService {
 
+  /**
+   * Devuelve el expediente completo: hoja + adjuntos mergeados.
+   */
   async generar(id_rendicion: number): Promise<Buffer> {
+    const hojaBuf = await this.generarHoja(id_rendicion);
+    const r: any = await RendicionService.obtener(id_rendicion);
+    const adjuntos: any[] = r.adjuntos || [];
+    if (adjuntos.length === 0) return hojaBuf;
+
+    const masterDoc = await PDFLibDocument.load(hojaBuf);
+
+    for (const adj of adjuntos) {
+      try {
+        await this.embeberAdjunto(masterDoc, adj);
+      } catch (err: any) {
+        console.error(`[RendicionPDF] Error mergeando adjunto id=${adj.id_adjunto} (${adj.nombre_archivo}):`, err?.message || err);
+        // No propagar — seguir con los demás
+      }
+    }
+
+    const finalBytes = await masterDoc.save();
+    return Buffer.from(finalBytes);
+  }
+
+  /**
+   * Descarga un adjunto desde Cloudinary y lo agrega al PDF maestro.
+   */
+  private async embeberAdjunto(masterDoc: any, adj: any): Promise<void> {
+    const url: string = adj.url;
+    const nombre: string = adj.nombre_archivo || '';
+    const lower = (nombre || url).toLowerCase();
+
+    const isPdf = lower.endsWith('.pdf')
+      || /\.pdf(\?|$)/.test(url)
+      || (adj.mime_type || '').toLowerCase() === 'application/pdf';
+
+    // Cloudinary: forzar JPG cuando el formato no es nativamente soportado por pdf-lib.
+    const necesitaConversion = /\.(heic|heif|webp|tif|tiff|bmp|gif)$/i.test(lower);
+    let downloadUrl = url;
+    if (!isPdf && necesitaConversion && url.includes('/upload/')) {
+      downloadUrl = url.replace('/upload/', '/upload/f_jpg/');
+    }
+
+    const res = await fetch(downloadUrl);
+    if (!res.ok) throw new Error(`HTTP ${res.status} al descargar ${downloadUrl}`);
+    const buf = Buffer.from(await res.arrayBuffer());
+
+    if (isPdf) {
+      const srcDoc = await PDFLibDocument.load(buf, { ignoreEncryption: true });
+      const pages = await masterDoc.copyPages(srcDoc, srcDoc.getPageIndices());
+      pages.forEach((p: any) => masterDoc.addPage(p));
+      return;
+    }
+
+    // Imagen → página A4 portrait con la imagen escalada y centrada.
+    let img: any;
+    if (lower.endsWith('.png')) {
+      img = await masterDoc.embedPng(buf);
+    } else {
+      // jpg, jpeg, heic→jpg, webp→jpg, etc.
+      img = await masterDoc.embedJpg(buf);
+    }
+    const A4_W = 595.28, A4_H = 841.89;
+    const margin = 36;
+    const maxW = A4_W - 2 * margin;
+    const maxH = A4_H - 2 * margin;
+    const scale = Math.min(maxW / img.width, maxH / img.height, 1);
+    const w = img.width * scale;
+    const h = img.height * scale;
+    const page = masterDoc.addPage([A4_W, A4_H]);
+    page.drawImage(img, {
+      x: (A4_W - w) / 2,
+      y: (A4_H - h) / 2,
+      width: w,
+      height: h,
+    });
+  }
+
+  /**
+   * Genera SOLO la hoja de rendición (1 página landscape A4) usando pdfkit.
+   * Replica el formato físico que Metal Engineers ya usa.
+   */
+  private async generarHoja(id_rendicion: number): Promise<Buffer> {
     const r = await RendicionService.obtener(id_rendicion);
 
     return new Promise<Buffer>((resolve, reject) => {
