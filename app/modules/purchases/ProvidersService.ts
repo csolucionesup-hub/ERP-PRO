@@ -1,13 +1,19 @@
 import { db } from '../../../database/connection';
 
 class ProvidersService {
-  async getProveedores() {
+  async getProveedores(filtros: { tipo?: string } = {}) {
+    const where: string[] = [];
+    const vals: any[] = [];
+    if (filtros.tipo) { where.push('tipo = ?'); vals.push(filtros.tipo); }
     const [rows] = await db.query(
       `SELECT id_proveedor, ruc, dni, tipo, razon_social, contacto, telefono, email, direccion,
               banco_1_nombre, banco_1_numero, banco_1_cci, banco_1_moneda,
               banco_2_nombre, banco_2_numero, banco_2_cci, banco_2_moneda,
-              billetera_digital
-       FROM Proveedores ORDER BY razon_social ASC`
+              billetera_digital, tarifa_default, unidad_default
+       FROM Proveedores
+       ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
+       ORDER BY razon_social ASC`,
+      vals
     );
     return rows;
   }
@@ -18,8 +24,8 @@ class ProvidersService {
         (ruc, dni, tipo, razon_social, contacto, telefono, email, direccion,
          banco_1_nombre, banco_1_numero, banco_1_cci, banco_1_moneda,
          banco_2_nombre, banco_2_numero, banco_2_cci, banco_2_moneda,
-         billetera_digital)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         billetera_digital, tarifa_default, unidad_default)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         data.ruc || null, data.dni || null, data.tipo || 'EMPRESA',
         data.razon_social,
@@ -27,6 +33,8 @@ class ProvidersService {
         data.banco_1_nombre || null, data.banco_1_numero || null, data.banco_1_cci || null, data.banco_1_moneda || 'PEN',
         data.banco_2_nombre || null, data.banco_2_numero || null, data.banco_2_cci || null, data.banco_2_moneda || 'USD',
         data.billetera_digital || null,
+        data.tarifa_default != null && data.tarifa_default !== '' ? Number(data.tarifa_default) : null,
+        data.unidad_default || null,
       ]
     );
     return { id_proveedor: (result as any).insertId, ...data };
@@ -38,7 +46,7 @@ class ProvidersService {
         ruc=?, dni=?, tipo=?, razon_social=?, contacto=?, telefono=?, email=?, direccion=?,
         banco_1_nombre=?, banco_1_numero=?, banco_1_cci=?, banco_1_moneda=?,
         banco_2_nombre=?, banco_2_numero=?, banco_2_cci=?, banco_2_moneda=?,
-        billetera_digital=?
+        billetera_digital=?, tarifa_default=?, unidad_default=?
        WHERE id_proveedor=?`,
       [
         data.ruc || null, data.dni || null, data.tipo || 'EMPRESA',
@@ -47,6 +55,8 @@ class ProvidersService {
         data.banco_1_nombre || null, data.banco_1_numero || null, data.banco_1_cci || null, data.banco_1_moneda || 'PEN',
         data.banco_2_nombre || null, data.banco_2_numero || null, data.banco_2_cci || null, data.banco_2_moneda || 'USD',
         data.billetera_digital || null,
+        data.tarifa_default != null && data.tarifa_default !== '' ? Number(data.tarifa_default) : null,
+        data.unidad_default || null,
         id,
       ]
     );

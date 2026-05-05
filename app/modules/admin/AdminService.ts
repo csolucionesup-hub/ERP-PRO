@@ -144,6 +144,120 @@ class AdminService {
     };
   }
 
+  /**
+   * Gasto en personal — filtra OCs cuyo proveedor es PERSONA_NATURAL.
+   * Devuelve dos cortes: OFICINA CENTRAL (tipo_oc=GENERAL + cc=OFICINA CENTRAL)
+   * y SERVICIOS (tipo_oc=SERVICIO, agrupado por centro_costo).
+   *
+   * Mantiene `Gastos` legacy en la unión por compatibilidad (algunos
+   * honorarios viejos podrían estar ahí), pero filtrando por DNI poblado
+   * (los gastos legacy no tienen FK a Proveedores con tipo).
+   */
+  async getPersonal(anio: number, mes?: number) {
+    const mesFiltroOC    = mes ? 'AND EXTRACT(MONTH FROM oc.fecha_emision) = ?' : '';
+    const mesFiltroGasto = mes ? 'AND EXTRACT(MONTH FROM g.fecha) = ?'         : '';
+    const valsOC    = mes ? [anio, mes] : [anio];
+    const valsGasto = mes ? [anio, mes] : [anio];
+
+    // 1. Listado de OCs de personal (PERSONA_NATURAL) en el periodo
+    const [ocs]: any = await db.query(`
+      SELECT oc.id_oc, oc.nro_oc, oc.fecha_emision, oc.tipo_oc, oc.centro_costo,
+             oc.subtotal, oc.total, oc.moneda, oc.tipo_cambio, oc.aplica_igv, oc.estado,
+             oc.id_servicio, oc.id_cotizacion,
+             p.id_proveedor, p.razon_social AS persona, p.dni,
+             p.tarifa_default, p.unidad_default
+        FROM OrdenesCompra oc
+   LEFT JOIN Proveedores p ON p.id_proveedor = oc.id_proveedor
+       WHERE oc.estado != 'ANULADA'
+         AND p.tipo = 'PERSONA_NATURAL'
+         AND oc.tipo_oc IN ('GENERAL','SERVICIO')
+         AND EXTRACT(YEAR FROM oc.fecha_emision) = ?
+         ${mesFiltroOC}
+       ORDER BY oc.fecha_emision DESC, oc.id_oc DESC`,
+      valsOC
+    );
+
+    // 2. Gastos legacy con DNI (ya pre-V2 — quedan pocos pero los respetamos)
+    let gastos: any[] = [];
+    try {
+      const [r]: any = await db.query(`
+        SELECT g.id_gasto, g.fecha, g.proveedor_nombre AS persona, g.proveedor_dni AS dni,
+               g.concepto, g.monto_base, g.total_base, g.aplica_igv,
+               g.centro_costo, g.tipo_gasto_logistica AS tipo_oc, g.estado_pago, g.moneda
+          FROM Gastos g
+         WHERE g.estado != 'ANULADO'
+           AND g.proveedor_dni IS NOT NULL
+           AND g.tipo_gasto_logistica IN ('GENERAL','SERVICIO')
+           AND EXTRACT(YEAR FROM g.fecha) = ?
+           ${mesFiltroGasto}
+         ORDER BY g.fecha DESC`,
+        valsGasto
+      );
+      gastos = r as any[];
+    } catch { /* columna proveedor_dni puede no existir en setups viejos */ }
+
+    // 3. KPIs por sección — convertimos USD→PEN para totalizar uniforme
+    const totalPEN = (row: any) => {
+      const total = Number(row.total ?? row.total_base ?? 0);
+      if (row.moneda === 'USD') return total * Number(row.tipo_cambio || 0);
+      return total;
+    };
+
+    const ocsOficina = (ocs as any[]).filter(o => o.tipo_oc === 'GENERAL' && (o.centro_costo || '').toUpperCase().includes('OFICINA CENTRAL'));
+    const ocsServicio = (ocs as any[]).filter(o => o.tipo_oc === 'SERVICIO');
+    const ocsOtroGeneral = (ocs as any[]).filter(o => o.tipo_oc === 'GENERAL' && !(o.centro_costo || '').toUpperCase().includes('OFICINA CENTRAL'));
+
+    const sumar = (arr: any[]) => arr.reduce((s, r) => s + totalPEN(r), 0);
+
+    // 4. Servicios agrupados por centro de costo
+    const porServicio = new Map<string, { centro_costo: string; cantidad: number; total: number; ocs: any[] }>();
+    for (const o of ocsServicio) {
+      const cc = o.centro_costo || '— sin centro —';
+      if (!porServicio.has(cc)) porServicio.set(cc, { centro_costo: cc, cantidad: 0, total: 0, ocs: [] });
+      const grp = porServicio.get(cc)!;
+      grp.cantidad++;
+      grp.total += totalPEN(o);
+      grp.ocs.push(o);
+    }
+
+    // 5. Top personas por monto
+    const porPersona = new Map<string, { persona: string; dni: string | null; total: number; cantidad: number }>();
+    for (const o of (ocs as any[])) {
+      const key = (o.persona || '').trim() || `(s/n) ${o.dni || ''}`;
+      if (!porPersona.has(key)) porPersona.set(key, { persona: o.persona || '—', dni: o.dni || null, total: 0, cantidad: 0 });
+      const p = porPersona.get(key)!;
+      p.total += totalPEN(o);
+      p.cantidad++;
+    }
+    const topPersonas = Array.from(porPersona.values()).sort((a, b) => b.total - a.total).slice(0, 10);
+
+    return {
+      anio,
+      mes: mes || null,
+      kpis: {
+        oficina_central: {
+          total: Number(sumar(ocsOficina).toFixed(2)),
+          cantidad: ocsOficina.length,
+        },
+        servicios: {
+          total: Number(sumar(ocsServicio).toFixed(2)),
+          cantidad: ocsServicio.length,
+          centros: porServicio.size,
+        },
+        otros_generales: {
+          total: Number(sumar(ocsOtroGeneral).toFixed(2)),
+          cantidad: ocsOtroGeneral.length,
+        },
+        total_general: Number((sumar(ocsOficina) + sumar(ocsServicio) + sumar(ocsOtroGeneral)).toFixed(2)),
+      },
+      oficina_central: ocsOficina,
+      servicios: Array.from(porServicio.values()).sort((a, b) => b.total - a.total),
+      otros_generales: ocsOtroGeneral,
+      gastos_legacy: gastos,
+      top_personas: topPersonas,
+    };
+  }
+
   async setSaldoInicial(data: { saldo_pen: number; saldo_usd: number; tipo_cambio: number }) {
     const conn = await (db as any).getConnection();
     try {

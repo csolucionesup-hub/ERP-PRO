@@ -28,6 +28,7 @@ export const Administracion = async () => {
     </header>
     <div id="adm-tabbar" style="margin-top:20px"></div>
     <div id="adm-tab-detalle"     class="adm-tab-content"></div>
+    <div id="adm-tab-personal"    class="adm-tab-content" style="display:none"></div>
     <div id="adm-tab-rendiciones" class="adm-tab-content" style="display:none"></div>
     <div id="adm-tab-dashboard"   class="adm-tab-content" style="display:none"></div>
   `;
@@ -38,6 +39,7 @@ function initTabs() {
     container: '#adm-tabbar',
     tabs: [
       { id: 'detalle',     label: '📋 Detalle por mes' },
+      { id: 'personal',    label: '👥 Personal' },
       { id: 'rendiciones', label: '🧾 Rendiciones de Gastos' },
       { id: 'dashboard',   label: '📊 Dashboard histórico' },
     ],
@@ -47,6 +49,7 @@ function initTabs() {
       const panel = document.getElementById('adm-tab-' + id);
       if (panel) panel.style.display = 'block';
       if (id === 'detalle'     && !panel.dataset.rendered) await renderDetalle(panel);
+      if (id === 'personal')                               await renderPersonal(panel);
       if (id === 'rendiciones')                            await renderRendiciones(panel);
       if (id === 'dashboard')                              await renderDashboard(panel);
     },
@@ -908,5 +911,598 @@ function abrirModalItem(id_rendicion, onSaved) {
       window.showSuccess?.('Línea agregada');
       onSaved && await onSaved();
     } catch (err) { showError(err?.message || 'Error'); }
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// TAB Personal — gasto en personal (OCs cuyo proveedor es PERSONA_NATURAL)
+// ═══════════════════════════════════════════════════════════════════
+
+async function renderPersonal(panel) {
+  const anioActual = new Date().getFullYear();
+
+  // Estado local del filtro (no rendered flag para que cada tabSwitch refresque)
+  let anioSel = anioActual;
+  let mesSel  = '';
+
+  panel.innerHTML = `
+    <div class="card" style="margin-top:16px;display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+      <div>
+        <h3 style="margin:0;font-size:15px">👥 Gasto en Personal</h3>
+        <div style="font-size:11px;color:#6b7280;margin-top:2px">OCs de honorarios — solo proveedores tipo PERSONA NATURAL.</div>
+      </div>
+      <span style="margin-left:14px;color:#d1d5db">|</span>
+      <label style="display:flex;align-items:center;gap:6px;font-size:13px">Año:
+        <select id="per-anio" style="padding:6px 10px;border-radius:6px;border:1px solid #d1d5db">
+          ${[anioActual, anioActual - 1, anioActual - 2].map(a => `<option value="${a}">${a}</option>`).join('')}
+        </select>
+      </label>
+      <label style="display:flex;align-items:center;gap:6px;font-size:13px">Mes:
+        <select id="per-mes" style="padding:6px 10px;border-radius:6px;border:1px solid #d1d5db">
+          <option value="">Todos</option>
+          ${MESES.slice(1).map((m, i) => `<option value="${i + 1}">${m}</option>`).join('')}
+        </select>
+      </label>
+      <button id="per-aplicar" style="padding:7px 14px;background:#111827;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600">Aplicar</button>
+      <div style="flex:1"></div>
+      <button id="per-nueva" title="Crear OC de honorario (atajo simplificado para personas naturales)"
+        style="padding:9px 16px;background:#111827;color:#fff;border:none;border-radius:5px;cursor:pointer;font-size:12px;font-weight:600">+ Nueva OC de Honorario</button>
+    </div>
+
+    <div id="per-body" style="margin-top:14px">
+      <div style="padding:30px;text-align:center;color:#6b7280">⏳ Cargando…</div>
+    </div>
+  `;
+
+  const cargar = async () => {
+    const body = document.getElementById('per-body');
+    body.innerHTML = '<div style="padding:30px;text-align:center;color:#6b7280">⏳ Cargando…</div>';
+    let data;
+    try { data = await api.administracion.getPersonal(anioSel, mesSel || null); }
+    catch (e) { body.innerHTML = `<div style="padding:30px;color:#dc2626">Error: ${e?.message || 'no se pudo cargar'}</div>`; return; }
+    pintarPersonal(body, data);
+  };
+
+  document.getElementById('per-aplicar').onclick = async () => {
+    anioSel = Number(document.getElementById('per-anio').value) || anioActual;
+    mesSel  = document.getElementById('per-mes').value;
+    await cargar();
+  };
+  document.getElementById('per-nueva').onclick = () => abrirModalOCHonorario(async () => { await cargar(); });
+
+  await cargar();
+}
+
+function pintarPersonal(body, data) {
+  const k = data.kpis || {};
+  const fmt = (n) => fPEN(n);
+
+  const estadoBadge = (e) => {
+    const map = {
+      BORRADOR:           { bg: '#fff7e6', fg: '#92400e' },
+      APROBADA:           { bg: '#e0f2fe', fg: '#075985' },
+      ENVIADA:            { bg: '#dbeafe', fg: '#1e40af' },
+      RECIBIDA:           { bg: '#dcfce7', fg: '#166534' },
+      RECIBIDA_PARCIAL:   { bg: '#fef9c3', fg: '#854d0e' },
+      FACTURADA:          { bg: '#ede9fe', fg: '#5b21b6' },
+      PAGADA:             { bg: '#dcfce7', fg: '#166534' },
+      CERRADA_SIN_FACTURA:{ bg: '#fed7aa', fg: '#9a3412' },
+      ANULADA:            { bg: '#fee2e2', fg: '#991b1b' },
+    };
+    const c = map[e] || { bg: '#f3f4f6', fg: '#374151' };
+    return `<span style="background:${c.bg};color:${c.fg};padding:2px 7px;border-radius:8px;font-size:10px;font-weight:600">${e || '—'}</span>`;
+  };
+
+  const ocFila = (o) => `
+    <tr style="border-bottom:1px solid #f3f4f6">
+      <td style="padding:6px 8px;font-size:11px;font-weight:600">
+        <a href="#" onclick="event.preventDefault();window.OC&&window.OC.verOC(${o.id_oc})" style="color:#1e40af;text-decoration:none">${o.nro_oc}</a>
+      </td>
+      <td style="padding:6px 8px;font-size:11px">${(String(o.fecha_emision || '').slice(0,10)).split('-').reverse().join('/')}</td>
+      <td style="padding:6px 8px;font-size:11px;font-weight:600">${escapeHtml(o.persona || '—')}</td>
+      <td style="padding:6px 8px;font-size:10px;color:#6b7280">${o.dni || ''}</td>
+      <td style="padding:6px 8px;font-size:11px">${escapeHtml(o.centro_costo || '—')}</td>
+      <td style="padding:6px 8px;font-size:11px;text-align:right;font-variant-numeric:tabular-nums;font-weight:600">${fmt(o.moneda === 'USD' ? Number(o.total) * Number(o.tipo_cambio || 0) : o.total)}</td>
+      <td style="padding:6px 8px;text-align:center">${estadoBadge(o.estado)}</td>
+      <td style="padding:6px 8px;text-align:right;white-space:nowrap">
+        <button onclick="window.OC&&window.OC.verOC(${o.id_oc})" title="Ver / gestionar OC"
+          style="padding:3px 9px;background:#111827;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:11px">👁 Ver</button>
+        <button onclick="window.Logistica&&window.Logistica.descargarPDF(${o.id_oc})" title="Descargar PDF"
+          style="padding:3px 9px;background:#fff;border:1px solid #d1d5db;border-radius:4px;cursor:pointer;font-size:11px;margin-left:3px">📄</button>
+      </td>
+    </tr>
+  `;
+
+  const seccionOficina = `
+    <div class="card" style="margin-bottom:14px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        <h4 style="margin:0;font-size:14px;color:#1e40af">🏢 Oficina Central
+          <span style="background:#dbeafe;color:#1e40af;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600;margin-left:8px">${k.oficina_central?.cantidad || 0} OCs</span>
+        </h4>
+        <span style="font-size:18px;font-weight:700;color:#1e40af;font-variant-numeric:tabular-nums">${fmt(k.oficina_central?.total || 0)}</span>
+      </div>
+      ${(data.oficina_central || []).length ? `
+        <div style="overflow:auto;border:1px solid #e5e7eb;border-radius:6px">
+          <table style="width:100%;border-collapse:collapse;font-size:12px">
+            <thead style="background:#f9fafb"><tr>
+              <th style="padding:6px 8px;text-align:left;font-size:10px;color:#6b7280;font-weight:600">N° OC</th>
+              <th style="padding:6px 8px;text-align:left;font-size:10px;color:#6b7280;font-weight:600">Fecha</th>
+              <th style="padding:6px 8px;text-align:left;font-size:10px;color:#6b7280;font-weight:600">Persona</th>
+              <th style="padding:6px 8px;text-align:left;font-size:10px;color:#6b7280;font-weight:600">DNI</th>
+              <th style="padding:6px 8px;text-align:left;font-size:10px;color:#6b7280;font-weight:600">Centro</th>
+              <th style="padding:6px 8px;text-align:right;font-size:10px;color:#6b7280;font-weight:600">Total (S/)</th>
+              <th style="padding:6px 8px;text-align:center;font-size:10px;color:#6b7280;font-weight:600">Estado</th>
+              <th style="padding:6px 8px;text-align:right;font-size:10px;color:#6b7280;font-weight:600">Acciones</th>
+            </tr></thead>
+            <tbody>${data.oficina_central.map(ocFila).join('')}</tbody>
+          </table>
+        </div>
+      ` : `<div style="padding:18px;text-align:center;color:#6b7280;background:#fafafa;border-radius:6px;font-size:12px">Sin honorarios de oficina central en este periodo</div>`}
+    </div>
+  `;
+
+  const seccionServicios = `
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        <h4 style="margin:0;font-size:14px;color:#9a3412">⚙️ Personal por Servicios
+          <span style="background:#fed7aa;color:#9a3412;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600;margin-left:8px">${k.servicios?.cantidad || 0} OCs · ${k.servicios?.centros || 0} centros</span>
+        </h4>
+        <span style="font-size:18px;font-weight:700;color:#9a3412;font-variant-numeric:tabular-nums">${fmt(k.servicios?.total || 0)}</span>
+      </div>
+      ${(data.servicios || []).length ? data.servicios.map(grp => `
+        <details open style="margin-bottom:10px;border:1px solid #fed7aa;border-radius:6px">
+          <summary style="padding:8px 12px;background:#fff7ed;cursor:pointer;display:flex;justify-content:space-between;align-items:center;font-size:12px;font-weight:600">
+            <span>📁 ${escapeHtml(grp.centro_costo)} <span style="color:#6b7280;font-weight:400">· ${grp.cantidad} OC(s)</span></span>
+            <span style="color:#9a3412;font-variant-numeric:tabular-nums">${fmt(grp.total)}</span>
+          </summary>
+          <div style="overflow:auto">
+            <table style="width:100%;border-collapse:collapse;font-size:12px">
+              <thead style="background:#fafafa"><tr>
+                <th style="padding:5px 8px;text-align:left;font-size:10px;color:#6b7280">N° OC</th>
+                <th style="padding:5px 8px;text-align:left;font-size:10px;color:#6b7280">Fecha</th>
+                <th style="padding:5px 8px;text-align:left;font-size:10px;color:#6b7280">Persona</th>
+                <th style="padding:5px 8px;text-align:left;font-size:10px;color:#6b7280">DNI</th>
+                <th style="padding:5px 8px;text-align:left;font-size:10px;color:#6b7280">Centro</th>
+                <th style="padding:5px 8px;text-align:right;font-size:10px;color:#6b7280">Total</th>
+                <th style="padding:5px 8px;text-align:center;font-size:10px;color:#6b7280">Estado</th>
+                <th style="padding:5px 8px;text-align:right;font-size:10px;color:#6b7280">Acciones</th>
+              </tr></thead>
+              <tbody>${grp.ocs.map(ocFila).join('')}</tbody>
+            </table>
+          </div>
+        </details>
+      `).join('') : `<div style="padding:18px;text-align:center;color:#6b7280;background:#fafafa;border-radius:6px;font-size:12px">Sin honorarios por servicios en este periodo</div>`}
+    </div>
+  `;
+
+  const otrosGenerales = (data.otros_generales || []).length ? `
+    <div class="card" style="margin-top:14px;border-color:#fde68a">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <h4 style="margin:0;font-size:13px;color:#92400e">⚠️ Otros generales (no oficina central)</h4>
+        <span style="font-size:14px;font-weight:600;color:#92400e">${fmt(k.otros_generales?.total || 0)}</span>
+      </div>
+      <div style="font-size:11px;color:#6b7280;margin-bottom:8px">OCs tipo GENERAL con persona natural pero centro distinto a OFICINA CENTRAL — revisar si están bien clasificadas.</div>
+      <div style="overflow:auto">
+        <table style="width:100%;border-collapse:collapse;font-size:12px">
+          <thead style="background:#fef3c7"><tr>
+            <th style="padding:5px 8px;text-align:left;font-size:10px;color:#92400e">N° OC</th>
+            <th style="padding:5px 8px;text-align:left;font-size:10px;color:#92400e">Fecha</th>
+            <th style="padding:5px 8px;text-align:left;font-size:10px;color:#92400e">Persona</th>
+            <th style="padding:5px 8px;text-align:left;font-size:10px;color:#92400e">DNI</th>
+            <th style="padding:5px 8px;text-align:left;font-size:10px;color:#92400e">Centro</th>
+            <th style="padding:5px 8px;text-align:right;font-size:10px;color:#92400e">Total</th>
+            <th style="padding:5px 8px;text-align:center;font-size:10px;color:#92400e">Estado</th>
+            <th style="padding:5px 8px;text-align:right;font-size:10px;color:#92400e">Acciones</th>
+          </tr></thead>
+          <tbody>${data.otros_generales.map(ocFila).join('')}</tbody>
+        </table>
+      </div>
+    </div>
+  ` : '';
+
+  const topPersonas = (data.top_personas || []).length ? `
+    <div class="card" style="margin-top:14px">
+      <h4 style="margin:0 0 10px;font-size:13px">🏆 Top personas por monto (${data.anio}${data.mes ? ' · ' + MESES[data.mes] : ''})</h4>
+      <table style="width:100%;border-collapse:collapse;font-size:12px">
+        <thead style="background:#f9fafb"><tr>
+          <th style="padding:5px 8px;text-align:left;font-size:10px;color:#6b7280">Persona</th>
+          <th style="padding:5px 8px;text-align:left;font-size:10px;color:#6b7280">DNI</th>
+          <th style="padding:5px 8px;text-align:right;font-size:10px;color:#6b7280">OCs</th>
+          <th style="padding:5px 8px;text-align:right;font-size:10px;color:#6b7280">Total (S/)</th>
+        </tr></thead>
+        <tbody>
+          ${data.top_personas.map(p => `
+            <tr style="border-bottom:1px solid #f3f4f6">
+              <td style="padding:5px 8px;font-size:11px;font-weight:600">${escapeHtml(p.persona)}</td>
+              <td style="padding:5px 8px;font-size:10px;color:#6b7280">${p.dni || ''}</td>
+              <td style="padding:5px 8px;text-align:right;font-size:11px;font-variant-numeric:tabular-nums">${p.cantidad}</td>
+              <td style="padding:5px 8px;text-align:right;font-size:11px;font-variant-numeric:tabular-nums;font-weight:600">${fmt(p.total)}</td>
+            </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>
+  ` : '';
+
+  body.innerHTML = `
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px">
+      <div class="card" style="padding:12px"><div style="font-size:10px;color:#6b7280;font-weight:600">TOTAL GENERAL</div><div style="font-size:20px;font-weight:700;margin-top:3px;font-variant-numeric:tabular-nums">${fmt(k.total_general || 0)}</div></div>
+      <div class="card" style="padding:12px;border-left:3px solid #1e40af"><div style="font-size:10px;color:#6b7280;font-weight:600">OFICINA CENTRAL</div><div style="font-size:18px;font-weight:700;color:#1e40af;margin-top:3px;font-variant-numeric:tabular-nums">${fmt(k.oficina_central?.total || 0)}</div><div style="font-size:10px;color:#6b7280">${k.oficina_central?.cantidad || 0} OCs</div></div>
+      <div class="card" style="padding:12px;border-left:3px solid #9a3412"><div style="font-size:10px;color:#6b7280;font-weight:600">SERVICIOS</div><div style="font-size:18px;font-weight:700;color:#9a3412;margin-top:3px;font-variant-numeric:tabular-nums">${fmt(k.servicios?.total || 0)}</div><div style="font-size:10px;color:#6b7280">${k.servicios?.cantidad || 0} OCs · ${k.servicios?.centros || 0} centros</div></div>
+      <div class="card" style="padding:12px;border-left:3px solid #92400e"><div style="font-size:10px;color:#6b7280;font-weight:600">OTROS GENERALES</div><div style="font-size:18px;font-weight:700;color:#92400e;margin-top:3px;font-variant-numeric:tabular-nums">${fmt(k.otros_generales?.total || 0)}</div><div style="font-size:10px;color:#6b7280">${k.otros_generales?.cantidad || 0} OCs</div></div>
+    </div>
+    ${seccionOficina}
+    ${seccionServicios}
+    ${otrosGenerales}
+    ${topPersonas}
+  `;
+}
+
+function escapeHtml(s) {
+  return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+// ─── Modal: Nueva OC de Honorario ─────────────────────────────────────
+async function abrirModalOCHonorario(onCreated) {
+  let personas = [];
+  try { personas = await api.administracion.listPersonas(); } catch (e) { return showError('Error cargando personas'); }
+
+  const ov = document.createElement('div');
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
+  const hoy = new Date().toISOString().slice(0, 10);
+
+  ov.innerHTML = `
+    <div style="background:#fff;border-radius:10px;padding:22px;width:680px;max-width:96vw;max-height:92vh;overflow:auto">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+        <div>
+          <h3 style="margin:0;font-size:16px">🧾 Nueva OC de Honorario</h3>
+          <div style="font-size:11px;color:#6b7280;margin-top:2px">Atajo simplificado para honorarios de personas naturales (sin IGV).</div>
+        </div>
+        <button id="oc-cerrar" title="Cerrar" aria-label="Cerrar" style="background:none;border:none;font-size:22px;cursor:pointer;color:#999">×</button>
+      </div>
+
+      <form id="form-oc-h" style="display:flex;flex-direction:column;gap:12px">
+
+        <div>
+          <label style="font-size:11px;font-weight:600;color:#374151">Destino *</label>
+          <div style="display:flex;gap:8px;margin-top:4px">
+            <label style="flex:1;display:flex;align-items:center;gap:6px;padding:10px;border:2px solid #1e40af;border-radius:6px;cursor:pointer;background:#dbeafe;font-size:12px;font-weight:600;color:#1e40af">
+              <input type="radio" name="destino" value="OFICINA" checked> 🏢 Oficina Central
+            </label>
+            <label style="flex:1;display:flex;align-items:center;gap:6px;padding:10px;border:2px solid #d1d5db;border-radius:6px;cursor:pointer;background:#fff;font-size:12px;font-weight:600;color:#374151">
+              <input type="radio" name="destino" value="SERVICIO"> ⚙️ Servicio (proyecto)
+            </label>
+          </div>
+        </div>
+
+        <div id="oc-h-cc-wrap" style="display:none">
+          <label style="font-size:11px;font-weight:600;color:#374151">Centro de costo del servicio *</label>
+          <input id="oc-h-cc" placeholder="Ej: FABRICACION AUGER PSV"
+            style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:4px;font-size:12px;text-transform:uppercase">
+          <div style="font-size:10px;color:#6b7280;margin-top:3px">Escribí el nombre del proyecto. Si no existe, se crea automáticamente al guardar la OC.</div>
+        </div>
+
+        <div>
+          <label style="font-size:11px;font-weight:600;color:#374151">Persona *</label>
+          <div style="display:flex;gap:8px;margin-top:4px">
+            <select id="oc-h-persona" required style="flex:1;padding:8px 10px;border:1px solid #d1d5db;border-radius:4px;font-size:12px">
+              <option value="">— Seleccionar —</option>
+              ${personas.map(p => `<option value="${p.id_proveedor}" data-tarifa="${p.tarifa_default || ''}" data-unidad="${p.unidad_default || ''}" data-dni="${p.dni || ''}">${escapeHtml(p.razon_social)}${p.dni ? ' · ' + p.dni : ''}${p.tarifa_default ? ' · S/' + Number(p.tarifa_default).toFixed(2) + '/' + (p.unidad_default || 'u') : ''}</option>`).join('')}
+            </select>
+            <button type="button" id="oc-h-nueva-persona" title="Crear persona nueva sin salir de este formulario"
+              style="padding:8px 14px;background:#fff;border:1px solid #111827;color:#111827;border-radius:4px;cursor:pointer;font-size:12px;font-weight:600">+ Nueva persona</button>
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:2fr 1fr;gap:10px">
+          <div>
+            <label style="font-size:11px;font-weight:600;color:#374151">Concepto *</label>
+            <input id="oc-h-concepto" required placeholder="Ej: HONORARIOS SEM 03 - 2026 - 12 AL 17 DE ENERO"
+              style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:4px;font-size:12px;text-transform:uppercase">
+          </div>
+          <div>
+            <label style="font-size:11px;font-weight:600;color:#374151">Fecha *</label>
+            <input id="oc-h-fecha" type="date" required value="${hoy}"
+              style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:4px;font-size:12px">
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px">
+          <div>
+            <label style="font-size:11px;font-weight:600;color:#374151">Cantidad *</label>
+            <input id="oc-h-cant" type="number" min="0.01" step="0.01" required value="1"
+              style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:4px;font-size:12px">
+          </div>
+          <div>
+            <label style="font-size:11px;font-weight:600;color:#374151">Unidad *</label>
+            <select id="oc-h-unidad" style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:4px;font-size:12px">
+              <option value="DIAS">DIAS</option>
+              <option value="HRS">HRS</option>
+              <option value="MES">MES</option>
+              <option value="GLB">GLB</option>
+              <option value="UND">UND</option>
+            </select>
+          </div>
+          <div>
+            <label style="font-size:11px;font-weight:600;color:#374151">P/U (S/) *</label>
+            <input id="oc-h-pu" type="number" min="0.01" step="0.0001" required
+              style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:4px;font-size:12px">
+          </div>
+          <div>
+            <label style="font-size:11px;font-weight:600;color:#374151">Total</label>
+            <input id="oc-h-total" type="text" readonly tabindex="-1"
+              style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:4px;font-size:12px;background:#f3f4f6;font-weight:700">
+          </div>
+        </div>
+
+        <div>
+          <label style="font-size:11px;font-weight:600;color:#374151">Forma de pago</label>
+          <select id="oc-h-fpago" style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:4px;font-size:12px">
+            <option value="CONTADO" selected>Contado (depósito en cuenta)</option>
+            <option value="CREDITO">Crédito</option>
+          </select>
+        </div>
+
+        <div style="background:#fef9c3;padding:8px 12px;border-radius:6px;font-size:11px;color:#854d0e">
+          💡 Sin IGV (persona natural). Empresa: <b>METAL ENGINEERS SAC</b>. Moneda: <b>PEN</b>. La OC quedará en BORRADOR/APROBADA según el monto y configuración.
+        </div>
+
+        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:6px">
+          <button type="button" id="oc-h-cancel" style="padding:9px 16px;background:#f3f4f6;border:1px solid #d1d5db;border-radius:4px;cursor:pointer">Cancelar</button>
+          <button type="submit" id="oc-h-submit" style="padding:9px 18px;background:#111827;color:#fff;border:none;border-radius:4px;cursor:pointer;font-weight:600">Crear OC</button>
+        </div>
+      </form>
+    </div>`;
+  document.body.appendChild(ov);
+
+  const cerrar = () => ov.remove();
+  ov.querySelector('#oc-cerrar').onclick = cerrar;
+  ov.querySelector('#oc-h-cancel').onclick = cerrar;
+
+  // Toggle Oficina/Servicio
+  const radios = ov.querySelectorAll('input[name="destino"]');
+  const ccWrap = ov.querySelector('#oc-h-cc-wrap');
+  const updateDestino = () => {
+    const v = ov.querySelector('input[name="destino"]:checked').value;
+    ccWrap.style.display = (v === 'SERVICIO') ? 'block' : 'none';
+    // Actualizar estilos visuales
+    radios.forEach(r => {
+      const lbl = r.closest('label');
+      if (r.checked) {
+        lbl.style.borderColor = '#1e40af';
+        lbl.style.background = '#dbeafe';
+        lbl.style.color = '#1e40af';
+      } else {
+        lbl.style.borderColor = '#d1d5db';
+        lbl.style.background = '#fff';
+        lbl.style.color = '#374151';
+      }
+    });
+  };
+  radios.forEach(r => r.onchange = updateDestino);
+
+  // Persona → autopobla tarifa/unidad
+  const personaSel = ov.querySelector('#oc-h-persona');
+  const cantInput  = ov.querySelector('#oc-h-cant');
+  const unidadInput= ov.querySelector('#oc-h-unidad');
+  const puInput    = ov.querySelector('#oc-h-pu');
+  const totalInput = ov.querySelector('#oc-h-total');
+  const conceptoInp= ov.querySelector('#oc-h-concepto');
+
+  personaSel.onchange = () => {
+    const opt = personaSel.options[personaSel.selectedIndex];
+    if (!opt) return;
+    const tarifa = opt.dataset.tarifa;
+    const unidad = opt.dataset.unidad;
+    if (tarifa) puInput.value = Number(tarifa).toFixed(2);
+    if (unidad) unidadInput.value = unidad;
+    recalcTotal();
+  };
+
+  const recalcTotal = () => {
+    const t = (Number(cantInput.value) || 0) * (Number(puInput.value) || 0);
+    totalInput.value = 'S/ ' + t.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  };
+  [cantInput, puInput].forEach(i => i.oninput = recalcTotal);
+
+  // + Nueva persona inline
+  ov.querySelector('#oc-h-nueva-persona').onclick = () => {
+    abrirModalNuevaPersona(async (nueva) => {
+      personas.push(nueva);
+      const opt = document.createElement('option');
+      opt.value = nueva.id_proveedor;
+      opt.dataset.tarifa = nueva.tarifa_default || '';
+      opt.dataset.unidad = nueva.unidad_default || '';
+      opt.dataset.dni    = nueva.dni || '';
+      opt.textContent = `${nueva.razon_social}${nueva.dni ? ' · ' + nueva.dni : ''}${nueva.tarifa_default ? ' · S/' + Number(nueva.tarifa_default).toFixed(2) + '/' + (nueva.unidad_default || 'u') : ''}`;
+      personaSel.appendChild(opt);
+      personaSel.value = nueva.id_proveedor;
+      personaSel.dispatchEvent(new Event('change'));
+    });
+  };
+
+  // Submit
+  ov.querySelector('#form-oc-h').onsubmit = async (e) => {
+    e.preventDefault();
+    const destino = ov.querySelector('input[name="destino"]:checked').value;
+    const id_proveedor = Number(personaSel.value);
+    if (!id_proveedor) return showError('Seleccioná una persona');
+
+    let centro_costo;
+    let tipo_oc;
+    if (destino === 'OFICINA') {
+      centro_costo = 'OFICINA CENTRAL';
+      tipo_oc = 'GENERAL';
+    } else {
+      centro_costo = (ov.querySelector('#oc-h-cc').value || '').trim().toUpperCase();
+      if (!centro_costo) return showError('Indicá el centro de costo del servicio');
+      tipo_oc = 'SERVICIO';
+    }
+
+    const cantidad = Number(cantInput.value);
+    const pu = Number(puInput.value);
+    const concepto = (conceptoInp.value || '').trim().toUpperCase();
+    if (!concepto) return showError('Falta el concepto');
+    if (cantidad <= 0 || pu <= 0) return showError('Cantidad y P/U deben ser mayores a 0');
+
+    const subtotal = Number((cantidad * pu).toFixed(2));
+
+    const payload = {
+      fecha_emision: ov.querySelector('#oc-h-fecha').value,
+      id_proveedor,
+      centro_costo,
+      tipo_oc,
+      empresa: 'ME',
+      moneda: 'PEN',
+      tipo_cambio: 1,
+      aplica_igv: false,
+      forma_pago: ov.querySelector('#oc-h-fpago').value,
+      dias_credito: 0,
+      observaciones: '',
+      lineas: [{
+        descripcion: concepto,
+        unidad: unidadInput.value,
+        cantidad,
+        precio_unitario: pu,
+        subtotal,
+      }],
+    };
+
+    const btn = ov.querySelector('#oc-h-submit');
+    btn.disabled = true; btn.textContent = '⏳ Creando…';
+    try {
+      const r = await api.administracion.crearOCHonorario(payload);
+      window.showSuccess?.(`OC ${r.nro_oc || ''} creada${r.autoAprobada ? ' · Auto-aprobada' : ''}`);
+      cerrar();
+      onCreated && await onCreated();
+    } catch (err) {
+      showError(err?.error || err?.message || 'Error creando OC');
+      btn.disabled = false; btn.textContent = 'Crear OC';
+    }
+  };
+
+  // Trigger inicial: si hay 1 sola persona, seleccionarla
+  if (personas.length === 1) { personaSel.value = personas[0].id_proveedor; personaSel.dispatchEvent(new Event('change')); }
+}
+
+// ─── Modal: Nueva persona natural (alta inline desde la OC) ────────────
+function abrirModalNuevaPersona(onCreated) {
+  const ov = document.createElement('div');
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:10000;display:flex;align-items:center;justify-content:center;padding:20px';
+  ov.innerHTML = `
+    <div style="background:#fff;border-radius:10px;padding:20px;width:520px;max-width:96vw">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+        <h3 style="margin:0;font-size:15px">+ Nueva persona natural</h3>
+        <button id="np-cerrar" title="Cerrar" aria-label="Cerrar" style="background:none;border:none;font-size:20px;cursor:pointer;color:#999">×</button>
+      </div>
+      <form id="form-np" style="display:flex;flex-direction:column;gap:10px">
+        <div>
+          <label style="font-size:11px;font-weight:600;color:#374151">Nombre completo *</label>
+          <input id="np-nombre" required placeholder="Ej: MANUEL ENRIQUE HUARANGA BUSTAMANTE"
+            style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:4px;font-size:12px;text-transform:uppercase">
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          <div>
+            <label style="font-size:11px;font-weight:600;color:#374151">DNI (8 dígitos)</label>
+            <input id="np-dni" maxlength="8" pattern="[0-9]{8}" placeholder="10201757"
+              style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:4px;font-size:12px">
+          </div>
+          <div>
+            <label style="font-size:11px;font-weight:600;color:#374151">Teléfono</label>
+            <input id="np-tel" placeholder="983 098 528"
+              style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:4px;font-size:12px">
+          </div>
+        </div>
+        <div>
+          <label style="font-size:11px;font-weight:600;color:#374151">Email</label>
+          <input id="np-mail" type="email" placeholder="ej@gmail.com"
+            style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:4px;font-size:12px">
+        </div>
+        <div style="border-top:1px solid #e5e7eb;padding-top:8px">
+          <div style="font-size:11px;font-weight:600;color:#6b7280;margin-bottom:6px">💰 Tarifa default (opcional, autocompleta en futuras OCs)</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+            <div>
+              <label style="font-size:11px;color:#374151">Tarifa por unidad</label>
+              <input id="np-tarifa" type="number" step="0.01" min="0" placeholder="100.00"
+                style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:4px;font-size:12px">
+            </div>
+            <div>
+              <label style="font-size:11px;color:#374151">Unidad</label>
+              <select id="np-unidad" style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:4px;font-size:12px">
+                <option value="">—</option>
+                <option value="DIAS">DIAS</option>
+                <option value="HRS">HRS</option>
+                <option value="MES">MES</option>
+                <option value="GLB">GLB</option>
+              </select>
+            </div>
+          </div>
+        </div>
+        <div style="border-top:1px solid #e5e7eb;padding-top:8px">
+          <div style="font-size:11px;font-weight:600;color:#6b7280;margin-bottom:6px">🏦 Cuenta bancaria (para depósito)</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+            <div>
+              <label style="font-size:11px;color:#374151">Banco</label>
+              <input id="np-banco" placeholder="BBVA / BCP / INTERBANK"
+                style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:4px;font-size:12px;text-transform:uppercase">
+            </div>
+            <div>
+              <label style="font-size:11px;color:#374151">Nº cuenta</label>
+              <input id="np-cta" placeholder="0011-0814-0262301430"
+                style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:4px;font-size:12px">
+            </div>
+          </div>
+          <div style="margin-top:8px">
+            <label style="font-size:11px;color:#374151">CCI (interbancario, opcional)</label>
+            <input id="np-cci" placeholder="01181400026230143011"
+              style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:4px;font-size:12px">
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:6px">
+          <button type="button" id="np-cancel" style="padding:9px 16px;background:#f3f4f6;border:1px solid #d1d5db;border-radius:4px;cursor:pointer">Cancelar</button>
+          <button type="submit" id="np-submit" style="padding:9px 18px;background:#111827;color:#fff;border:none;border-radius:4px;cursor:pointer;font-weight:600">Crear persona</button>
+        </div>
+      </form>
+    </div>`;
+  document.body.appendChild(ov);
+  const cerrar = () => ov.remove();
+  ov.querySelector('#np-cerrar').onclick = cerrar;
+  ov.querySelector('#np-cancel').onclick = cerrar;
+
+  ov.querySelector('#form-np').onsubmit = async (e) => {
+    e.preventDefault();
+    const dni = (ov.querySelector('#np-dni').value || '').trim();
+    if (dni && !/^\d{8}$/.test(dni)) return showError('DNI debe tener 8 dígitos');
+
+    const data = {
+      razon_social: (ov.querySelector('#np-nombre').value || '').trim().toUpperCase(),
+      dni: dni || undefined,
+      telefono: ov.querySelector('#np-tel').value.trim() || undefined,
+      email:    ov.querySelector('#np-mail').value.trim() || undefined,
+      tarifa_default: ov.querySelector('#np-tarifa').value || undefined,
+      unidad_default: ov.querySelector('#np-unidad').value || undefined,
+      banco_1_nombre: (ov.querySelector('#np-banco').value || '').trim().toUpperCase() || undefined,
+      banco_1_numero: ov.querySelector('#np-cta').value.trim() || undefined,
+      banco_1_cci:    ov.querySelector('#np-cci').value.trim() || undefined,
+      banco_1_moneda: 'PEN',
+    };
+    if (!data.razon_social || data.razon_social.length < 3) return showError('Nombre obligatorio (mínimo 3 caracteres)');
+
+    const btn = ov.querySelector('#np-submit');
+    btn.disabled = true; btn.textContent = '⏳…';
+    try {
+      const r = await api.administracion.createPersona(data);
+      window.showSuccess?.('Persona creada');
+      cerrar();
+      onCreated && await onCreated({
+        id_proveedor: r.id_proveedor,
+        razon_social: data.razon_social,
+        dni: data.dni,
+        tarifa_default: data.tarifa_default,
+        unidad_default: data.unidad_default,
+      });
+    } catch (err) {
+      showError(err?.error || err?.message || 'Error creando persona');
+      btn.disabled = false; btn.textContent = 'Crear persona';
+    }
   };
 }

@@ -254,6 +254,14 @@ export const api = {
       const qs = anio ? `?anio=${anio}` : '';
       return get(`/admin/dashboard${qs}`);
     },
+    getPersonal: (anio, mes) => {
+      const params = new URLSearchParams({ anio });
+      if (mes) params.append('mes', mes);
+      return get(`/admin/personal?${params}`);
+    },
+    listPersonas:       ()     => get('/admin/personas'),
+    createPersona:      (data) => post('/admin/personas', data),
+    crearOCHonorario:   (data) => post('/admin/oc-honorario', data),
     resetDb:          ()       => post('/admin/reset-db'),
     getCuentasSaldo:  ()       => get('/admin/cuentas-saldo'),
     setSaldoInicial:  (data)   => post('/admin/saldo-inicial', data),

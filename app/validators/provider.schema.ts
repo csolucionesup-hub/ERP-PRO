@@ -10,6 +10,8 @@ const bancoCampos = {
   banco_2_cci:       z.string().optional(),
   banco_2_moneda:    z.enum(['PEN', 'USD']).optional(),
   billetera_digital: z.string().optional(),
+  tarifa_default:    z.union([z.number(), z.string(), z.null()]).optional(),
+  unidad_default:    z.string().optional(),
 };
 
 export const providerCreateSchema = z.object({

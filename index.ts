@@ -758,6 +758,59 @@ apiRouter.get('/admin/dashboard', async (req: Request, res: Response) => {
   res.json(await AdminService.getDashboardAdmin(anio));
 });
 
+// Gasto en personal — solo OCs cuyo proveedor es PERSONA_NATURAL.
+// Dos cortes: OFICINA CENTRAL (GENERAL) y SERVICIOS (agrupado por CC).
+apiRouter.use('/admin/personal', requireModulo('ADMINISTRACION'));
+apiRouter.get('/admin/personal', async (req: Request, res: Response) => {
+  const anio = parseInt(req.query.anio as string) || new Date().getFullYear();
+  const mes  = req.query.mes ? parseInt(req.query.mes as string) : undefined;
+  res.json(await AdminService.getPersonal(anio, mes));
+});
+
+// Personas naturales — espejo restringido de Proveedores con filtro tipo fijo.
+// Le permite al módulo ADMINISTRACION listar/crear personas naturales sin
+// pedir módulo LOGISTICA (donde vive el CRUD completo de proveedores).
+apiRouter.use('/admin/personas', requireModulo('ADMINISTRACION'));
+apiRouter.get('/admin/personas', async (_req: Request, res: Response) => {
+  res.json(await ProvidersService.getProveedores({ tipo: 'PERSONA_NATURAL' }));
+});
+apiRouter.post('/admin/personas', validateParams(providerCreateSchema), async (req: Request, res: Response) => {
+  // Forzar tipo PERSONA_NATURAL aunque el cliente mande otra cosa.
+  const result = await ProvidersService.createProveedor({ ...req.body, tipo: 'PERSONA_NATURAL' });
+  res.status(201).json(result);
+});
+
+// Crear OC de honorario desde Administración.
+// Wrapper sobre OrdenCompraService.crear() que valida que el proveedor
+// sea PERSONA_NATURAL (la pantalla solo expone esos en el dropdown).
+// Permite al rol con módulo ADMINISTRACION emitir honorarios sin
+// necesitar el módulo LOGISTICA.
+apiRouter.use('/admin/oc-honorario', requireModulo('ADMINISTRACION'));
+apiRouter.post('/admin/oc-honorario', auditLog('OrdenCompra', 'CREATE'), async (req: any, res: Response) => {
+  const { id_proveedor } = req.body || {};
+  if (!id_proveedor) return res.status(400).json({ error: 'id_proveedor requerido' });
+  const proveedores: any[] = await ProvidersService.getProveedores({ tipo: 'PERSONA_NATURAL' }) as any[];
+  if (!proveedores.find(p => Number(p.id_proveedor) === Number(id_proveedor))) {
+    return res.status(400).json({ error: 'El proveedor no es una persona natural — usa el módulo Logística para OCs de empresas.' });
+  }
+  // Forzados: tipo_oc IN (GENERAL/SERVICIO), aplica_igv=false (PN no aplica IGV).
+  if (!['GENERAL', 'SERVICIO'].includes(req.body.tipo_oc)) {
+    return res.status(400).json({ error: "tipo_oc debe ser 'GENERAL' o 'SERVICIO'" });
+  }
+  const params = {
+    ...req.body,
+    aplica_igv: false,
+    empresa: req.body.empresa || 'ME',
+    moneda:  req.body.moneda  || 'PEN',
+    tipo_cambio: Number(req.body.tipo_cambio) || 1,
+    forma_pago:  req.body.forma_pago  || 'CONTADO',
+    dias_credito: Number(req.body.dias_credito) || 0,
+    id_usuario: req.user?.id_usuario,
+  };
+  const result = await OrdenCompraService.crear(params, { rol: req.user?.rol });
+  res.status(201).json(result);
+});
+
 // ===== ALERTAS / NOTIFICACIONES =====
 // El service mismo decide qué mostrar según rol + módulos. GERENTE ve TODO.
 apiRouter.get('/alertas', async (req: any, res: Response) => {
