@@ -2,13 +2,13 @@
 
 > **LEER PRIMERO.** Este documento es la fuente de verdad sobre qué está hecho, qué falta y dónde estamos parados. Se actualiza al cierre de cada sesión de trabajo.
 
-**Última actualización:** 2026-05-04 (sesión maratón 20 commits — préstamos históricos, auto-refresh sesión, 4 decimales OC, kanban CERRADA_SIN_FACTURA, Fase 1 Rendiciones de Gastos, fix + Crear nuevo SyntaxError)
+**Última actualización:** 2026-05-05 (sesión 8 commits — outbox Rendiciones, preview ROC, módulo Personal en Administración, Inventario→cotizaciones, Fase E v0 visor de OTs)
 **Rama activa:** `main`
-**Último commit pusheado:** `f3cbf67 fix(rendiciones): JOIN Proveedores para obtener proveedor_nombre`
+**Último commit pusheado:** `dcbd0d4 fix(produccion): bug al cerrar modal detalle de OT con la X`
 **Servidor dev:** `npx ts-node index.ts` en `D:\proyectos\ERP-PRO` → `http://localhost:3000`
 **Producción:** `erp-pro-production-e4c0.up.railway.app` — Railway (deploy automático desde main)
-**Cache buster JS actual:** `v=20260504r7` (app.js) — **convención**: hardcoded en CADA import dentro de app.js. Ver gotcha #36 en CLAUDE.md.
-**Migraciones BD:** 001 → 037 + 042 → 056 aplicadas (Supabase Postgres project `fhlrxlsscerfiuuyiejw`). Migración 055 (NCs entrantes — extiende NotasCredito) y 056 (Rendiciones de Gastos — Rendiciones + RendicionItems + RendicionAdjuntos) aplicadas en estas sesiones.
+**Cache buster JS actual:** `v=20260504r14` (app.js) — **convención**: hardcoded en CADA import dentro de app.js. Ver gotcha #36 en CLAUDE.md.
+**Migraciones BD:** 001 → 037 + 042 → 060 aplicadas (Supabase Postgres project `fhlrxlsscerfiuuyiejw`). Nuevas en esta sesión: 057 (Proveedores +tarifa_default +unidad_default), 058 (OrdenesCompra +es_honorario), 059 (movinv referencia COTIZACION), 060 (usuariomodulos +PRODUCCION).
 
 ---
 
@@ -818,6 +818,81 @@ Sesión muy larga con Julio probando en producción y reportando issues + featur
 
 ---
 
+## Sesión 04-05/05/2026 — Outbox Rendiciones + Personal + Inventario→Cotizaciones + Fase E v0 (8 commits)
+
+Sesión grande con dos hilos: pulido de UX en módulos existentes + arranque oficial de la **Fase E (Producción Metalmecánica)** en versión MVP visor. **8 commits pusheados a `main`** (`b00020a..dcbd0d4`).
+
+| Commit | Cambio |
+|---|---|
+| `b00020a` | **Outbox auto Rendiciones**: las OCs en estado PAGADA o CERRADA_SIN_FACTURA sin rendición ya creada aparecen automáticamente arriba de la lista en Administración → Rendiciones. Botón "▶ Iniciar rendición" crea la rendición auto-poblada y abre directo el editor. Endpoint `GET /api/rendiciones/oc-pendientes`. |
+| `20262a6` | **ROC vista previa** 👁: paridad con cotizaciones/OC pero adaptado al formato Excel. Backend `ROCService.getDatos()` devuelve los mismos datos del Excel en JSON. Frontend modal grande (1100px) con KPIs + tabla agrupada por SEMANA + selectores año/semana editables in-place + botón "📥 Descargar Excel" para guardar. Endpoint `GET /api/ordenes-compra/roc/preview`. |
+| `941b9ee` | **Módulo Personal** en Administración (Fase 1): tab 👥 Personal con KPIs (Oficina Central / Servicios / Otros generales) + secciones agrupadas + top personas + modal "+ Nueva OC de Honorario" simplificado con alta inline de persona natural (DNI + banco + tarifa default). **Migración 057**: Proveedores +tarifa_default +unidad_default. Endpoints `/admin/personal`, `/admin/personas` (GET+POST), `/admin/oc-honorario`. |
+| `5bb75f1` | **Fix conceptual Personal** (gotcha #16): la OC 001-2026 (S/500 Julio Rojas, OFICINA CENTRAL, CERRADA_SIN_FACTURA) era un **anticipo para gastos varios** que se rinde después, NO un honorario por trabajo. **Migración 058**: OrdenesCompra +es_honorario BOOLEAN. Solo `POST /admin/oc-honorario` setea TRUE. `getPersonal` filtra por TRUE. Modal Servicio ahora dropdown de cotizaciones APROBADA/TRABAJO_EN_RIESGO en vez de campo libre (con vínculo `id_cotizacion`). Endpoint nuevo `/admin/cotizaciones-fondeadas`. |
+| `2ca5850` | **Inventario → Cotizaciones**: el dropdown "Servicio destino" estaba vacío en producción porque leía de la tabla `Servicios` legacy (Camino A vacío). Migrado a cotizaciones APROBADA / TRABAJO_EN_RIESGO con optgroups. **Migración 059**: extender CHECK constraint de `movimientosinventario.referencia_tipo` para aceptar `'COTIZACION'` (antes solo SERVICIO/COMPRA/GASTO/PRESTAMO/ORDEN_COMPRA). `InventoryService.registrarConsumoServicio` acepta `id_cotizacion` (preferido) o `id_servicio` (legacy). Endpoint nuevo `/inventario/cotizaciones-fondeadas`. |
+| `09a63ad` | **Snapshot CostosServicio en honorarios**: cuando se crea una OC con `es_honorario=TRUE` + `id_cotizacion`, INSERT inmediato en `CostosServicio` con `tipo_costo='MANO_OBRA_OC'`. Cubre el caso típico CERRADA_SIN_FACTURA (persona natural no factura). `facturar()` detecta el flag y NO duplica. `anular()` borra el snapshot, `reactivar()` lo recrea, `actualizar()` lo refresca. `eliminar()` ya barre por LIKE `%nro_oc%`. |
+| `c0ccd47` | **Fase E v0 — Visor MVP de Producción** (ver bloque dedicado abajo). |
+| `dcbd0d4` | **Fix UX**: bug al cerrar el modal de detalle de OT con la X (TypeError por handler frágil con `closest('[style*="position:fixed"]')` después de reemplazar innerHTML del header). Refactor: header dividido en `#ot-head-info` (info actualizable) + `#ot-close` (botón intacto con handler `ov.remove()` directo). |
+
+### Fase E v0 — Visor MVP de Producción Metalmecánica (commit `c0ccd47`)
+
+**Decisión estratégica con Julio**: arrancar la Fase E como **visor de sólo lectura** sin construir las 5 semanas completas (BOM, work centers, partes, QC, trazabilidad heat numbers, remanentes, etc.). Aprovechar la data ya enlazada a cotizaciones (materiales + honorarios) para mostrar HOY un panorama útil de rentabilidad por OT.
+
+**Modelo conceptual**:
+- "Orden de Trabajo (OT)" = cotización APROBADA / TRABAJO_EN_RIESGO / TERMINADA. Toda cotización fondeada o a riesgo es una OT implícita.
+- Costos reales = SUM `CostosServicio.monto_base` por `id_cotizacion`, agrupado por `tipo_costo`.
+- Cotizado = `Cotizaciones.total` (convertido a PEN si moneda='USD' usando `tipo_cambio`).
+- Margen = Cotizado − Costo imputado.
+
+**Migración 060**: extender CHECK de `usuariomodulos.modulo` para aceptar `'PRODUCCION'`. GERENTE entra siempre por bypass.
+
+**Backend** (`app/modules/produccion/ProductionService.ts`):
+- `listarOTs(filtros)`: query con LEFT JOIN agregado a CostosServicio + breakdown (material/mano_obra/gasto_oc/otros) + totales + margen calculado. Filtros: estado, cliente (LIKE), rango fechas. Default activas.
+- `obtenerOT(id)`: cotización completa + items cotizados + costos agrupados por categoría + movimientos de inventario detallados (kárdex específico de esa OT con `referencia_tipo='COTIZACION'`) + totales y margen.
+- Endpoints `GET /api/produccion/ots` y `/:id` con `requireModulo('PRODUCCION')`.
+
+**Frontend** (`public/js/pages/Produccion.js`):
+- Item nuevo `🏭 Producción` en sidebar (sección Operaciones, icon `package`).
+- Tabla con KPIs agregados (OTs activas, cotizado total, costo imputado, margen total con %) + filtros (estado, cliente).
+- Fila por OT con margen color-coded: verde ≥30%, amarillo 15-30%, rojo <15% o pérdida.
+- Filas grises = sin costos imputados (con hint).
+- Modal detalle con KPIs específicos + barra horizontal stacked (proporciones visuales) + tablas plegables por categoría (Material azul, MO naranja, GastoOC violeta, Otros gris) + sub-detalle plegable con kárdex completo de los retiros del almacén.
+- Empty state con CTA si la OT está vacía: "→ Inventario / Personal seleccionando esta cotización".
+
+**Lo que NO incluye** (queda para Fase E completa, 5 semanas):
+- Tabla `OrdenesTrabajo` formal
+- BOM (Bill of Materials)
+- Work Centers + cálculo OEE
+- Partes de producción (operarios marcando tiempos)
+- QC checklists con foto-evidencia
+- Trazabilidad heat numbers / certificados de material
+- Remanentes (retazos reutilizables)
+- PDFs con QR / pantalla "Piso de Planta"
+
+### Verificaciones post-deploy (Julio confirmó)
+
+- ✅ Pantalla 🏭 Producción carga, lista 5 OTs activas con sus cotizados.
+- ✅ Modal detalle muestra KPIs y desglose; al cerrar con X funciona OK tras fix `dcbd0d4`.
+- ⏳ Pendiente verificar end-to-end: cargar un retiro de inventario contra una cotización → ver bloque azul "Material" aparecer; crear OC honorario → ver bloque naranja "Mano de obra".
+
+### Pendientes priorizados al cierre 05/05/2026
+
+| Prio | Tarea | Esfuerzo |
+|---|---|---|
+| **TEST** | Probar flujo end-to-end Producción: retirar material + crear OC honorario contra cotización APROBADA, verificar que aparece en bloques de detalle. | (usuario) |
+| **TEST** | Julio probará Rendición OC 013-2026 con sus 3 comprobantes reales (pendiente desde 04/05). | (usuario) |
+| ALTA | Decisión estratégica: ¿extender Fase E (BOM, Work Centers, partes producción) ahora o esperar a la fecha del Plan Maestro (agosto)? | — |
+| ALTA | Snapshot CostosServicio para OCs SERVICIO no-honorario (subcontratos, viáticos) — opción 2 que descartamos por ir con la mínima. | ~1h |
+| MEDIA | Fase 2 Rendiciones: firma escaneada embebida en PDF | ~1.5h |
+| MEDIA | Fase 3 Rendiciones: merge de adjuntos al PDF con `pdf-lib` | ~2-2.5h |
+| GRANDE | Fase D Contabilidad — Plan de Cuentas + asientos automáticos | 2-3 sem |
+
+**Acciones manuales tuyas** (sin tocar):
+- Rotar `CLOUDINARY_API_SECRET` (console.cloudinary.com + Railway env var)
+- Gestionar certificado digital SUNAT + Usuario Secundario SOL (desbloquea Nubefact REAL + envío SIRE + NCs salientes)
+- QA mobile real iPhone Safari + Android Chrome con dispositivo físico
+
+---
+
 ## Para Claude (contexto rápido en cada sesión nueva)
 
 **Al arrancar una sesión, LEER este archivo completo antes de actuar.** Evita re-descubrir estado.
@@ -843,9 +918,9 @@ Sesión muy larga con Julio probando en producción y reportando issues + featur
 
 ---
 
-## Snapshot de `git status` (al 2026-05-04 sesión maratón)
+## Snapshot de `git status` (al 2026-05-05)
 
-**Working tree de este worktree limpio.** Todo pusheado a `origin/main`. Railway desplegado, sirviendo `v=20260504r7`.
+**Working tree de este worktree limpio.** Todo pusheado a `origin/main`. Railway desplegado, sirviendo `v=20260504r14`.
 
 **Acumulado de commits desde 27/04:**
 - 10 commits rediseño Enterprise UI (27/04)
@@ -865,9 +940,11 @@ Sesión muy larga con Julio probando en producción y reportando issues + featur
 - 2 commits sesión 03/05 noche (modal ROC Logística + unificar Caja KPI vs alerta, `35477b2..041569e`)
 - 2 commits sesión 03/05 noche tarde (bug INGRESO→ENTRADA + cleanup Servicios legacy, `4883fa6..ad94323`)
 - 3 commits sesión 03/05 noche larga (UI Facturas Emitidas + UI Gastos del periodo + NCs entrantes con migración 055, `4024eb1..263d9b8`)
-- **10 commits sesión 04/05 maratón (préstamos histórico + auto-refresh sesión + 4 decimales OC + kanban + Fase 1 Rendiciones + fix SyntaxError, `0dc578a..f3cbf67`)**
+- 10 commits sesión 04/05 maratón (préstamos histórico + auto-refresh sesión + 4 decimales OC + kanban + Fase 1 Rendiciones + fix SyntaxError, `0dc578a..f3cbf67`)
+- 1 commit cierre 04/05 (`0033c37` — docs sesión maratón)
+- **8 commits sesión 04-05/05 (outbox Rendiciones + preview ROC + módulo Personal + Inventario→cotizaciones + snapshot CostosServicio + Fase E v0 visor + fix close modal, `b00020a..dcbd0d4`)**
 
-**Total: 88 commits** desde el rediseño Enterprise.
+**Total: 97 commits** desde el rediseño Enterprise.
 
 ## Para Claude (próxima sesión)
 
@@ -891,6 +968,10 @@ Si Julio dice "sigamos con cotizaciones" o reporta un bug del módulo Comercial:
 13. **OrdenesCompra NO guarda `proveedor_nombre`** — solo `id_proveedor`. Para mostrar el nombre, JOIN con `Proveedores prov ON prov.id_proveedor = oc.id_proveedor` y usar `prov.razon_social`. Bug histórico: queries que asumen snapshot del nombre en OC fallan. Fix aplicado en RendicionService (`f3cbf67` 04/05). Si vas a hacer otra query nueva contra OC y necesitás el proveedor, recordá el JOIN.
 14. **Rendiciones de Gastos — Fase 1 MVP en producción** (desde `0933058` 04/05). 1 OC = 1 rendición (id_oc UNIQUE). Tab "🧾 Rendiciones de Gastos" en módulo Administración. PDF horizontal con cabecera + items + 3 firmas (texto). Adjuntos en Cloudinary (carpeta `metalengineers/rendiciones/{id}`). Cualquier usuario firma cualquier casillero (auditado), GERENTE puede quitar firma de cualquiera. Eliminar rendición es solo GERENTE. **Fases siguientes**: Fase 2 = firma escaneada embebida (1.5h), Fase 3 = merge de anexos al PDF (2-2.5h con `pdf-lib`).
 15. **Patrón onclick inline con strings = peligroso**. Si pasás un string al onclick interpolando con `${variable.replace(/'/g, "\\'")}`, vas a romper si la variable tiene comillas dobles, saltos de línea o backslash. Síntoma típico: `Uncaught SyntaxError: Invalid or unexpected token` + pantalla blanca. Patrón seguro: usar `data-attribute="${id}"` y wire-up post-render con `querySelectorAll('button[data-x]')` + `forEach(b => b.onclick = ...)`. Resolver los strings desde la fuente de datos JS, no del HTML. Caso histórico: `df4120a` (modal Resolver ítems del catálogo).
+16. **`es_honorario` flag distingue trabajo vs anticipo**. OCs con `es_honorario=TRUE` representan trabajo realizado de persona natural (oficina, limpieza, almacenero, servicio). OCs con flag FALSE son todo lo demás (compras almacén, anticipos para gastos varios que se rinden después, OCs a empresas). Solo el endpoint `POST /admin/oc-honorario` setea TRUE. La tab 👥 Personal en Administración filtra por TRUE; las OCs anticipo en BORRADOR/APROBADA aprobadas para Julio Rojas (S/500 etc.) NO aparecen ahí, son rendiciones.
+17. **CostosServicio se llena automático desde 3 lugares**. (1) `InventoryService.registrarConsumoServicio()` cuando se retira material → `tipo_costo='MATERIAL_CONSUMO'`. (2) `OrdenCompraService.crear()` cuando es honorario con id_cotizacion → `tipo_costo='MANO_OBRA_OC'` (snapshot inmediato, NO espera a facturar). (3) `OrdenCompraService.facturar()` cuando es SERVICIO no-honorario → `tipo_costo='GASTO_OC'`. Los 3 vinculan por `id_cotizacion`. La tabla 'Servicios' legacy (vacía en producción) ya NO se usa para nada de esto.
+18. **Producción Fase E v0 = visor sólo de lectura**. Cada cotización APROBADA / TRABAJO_EN_RIESGO / TERMINADA es una OT implícita. NO hay tabla `OrdenesTrabajo` formal todavía. Costos vienen de `CostosServicio` filtrado por id_cotizacion. El módulo full (BOM, work centers, partes, QC, trazabilidad heat numbers, remanentes, PDFs con QR) queda para cuando arranquemos las 5 semanas reales (Plan Maestro Fase E).
+19. **Convención: dev server desde D:/proyectos/ERP-PRO, NO desde worktree**. `npx ts-node index.ts` en el directorio principal. Worktrees son solo para edición. Si Claude propone "preview server", recordar que la convención del proyecto es ejecutar el comando en otro shell.
 
 ### Estado del filesystem (worktree principal)
 - Working tree limpio en este worktree (`elegant-herschel-050bb4`).
