@@ -2,7 +2,9 @@ import { db } from '../../../database/connection';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'erp_dev_secret_change_in_prod';
+// En producción este fallback NO se usa: index.ts hace process.exit(1) si
+// JWT_SECRET falta antes de llegar aquí. El fallback solo cubre dev local.
+const JWT_SECRET = process.env.JWT_SECRET || 'erp_dev_only_DO_NOT_USE_IN_PROD';
 const JWT_EXPIRES = '8h';
 
 class AuthService {

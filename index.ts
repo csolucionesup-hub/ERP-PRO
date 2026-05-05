@@ -69,6 +69,15 @@ import { cotizacionCreateSchema, cotizacionUpdateSchema, cotizacionEstadoSchema 
 
 dotenv.config();
 
+// Hard-fail al arrancar si falta JWT_SECRET en producción.
+// En dev se permite ausencia (los archivos que la consumen tienen un fallback de
+// uso exclusivo en desarrollo local).
+if (process.env.NODE_ENV === 'production' && !process.env.JWT_SECRET) {
+  // eslint-disable-next-line no-console
+  console.error('FATAL: JWT_SECRET no está configurado en variables de entorno. Abortando.');
+  process.exit(1);
+}
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 
