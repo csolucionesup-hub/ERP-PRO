@@ -756,7 +756,24 @@ async function abrirModalEditar(id_rendicion) {
     `;
 
     // Wire-up
-    const cerrar = () => ov.remove();
+    const snapshotCabecera = () => ({
+      banco:           box.querySelector('#meta-banco').value,
+      nro_operacion:   box.querySelector('#meta-nro-op').value,
+      fecha_operacion: box.querySelector('#meta-fecha-op').value,
+      cargo:           box.querySelector('#meta-cargo').value,
+    });
+    let cabeceraSnap = snapshotCabecera();
+    const hayCambiosCabecera = () => {
+      const c = snapshotCabecera();
+      return c.banco !== cabeceraSnap.banco
+          || c.nro_operacion !== cabeceraSnap.nro_operacion
+          || c.fecha_operacion !== cabeceraSnap.fecha_operacion
+          || c.cargo !== cabeceraSnap.cargo;
+    };
+    const cerrar = () => {
+      if (hayCambiosCabecera() && !confirm('Tenés cambios sin guardar en la cabecera (banco / Nº operación / fecha / cargo). Si salís ahora, se pierden. ¿Salir igual?')) return;
+      ov.remove();
+    };
     box.querySelector('#btn-cerrar-r').onclick = cerrar;
     box.querySelector('#btn-cerrar-r-2').onclick = cerrar;
     box.querySelector('#btn-pdf-r').onclick = () => abrirPDFRendicion(id_rendicion);
@@ -773,7 +790,12 @@ async function abrirModalEditar(id_rendicion) {
       });
     }
 
-    box.querySelector('#btn-guardar-meta').onclick = async () => {
+    box.querySelector('#btn-guardar-meta').onclick = async (e) => {
+      const btn = e.currentTarget;
+      if (btn.disabled) return;
+      const orig = btn.innerHTML;
+      btn.disabled = true;
+      btn.innerHTML = '⏳ Guardando…';
       try {
         await api.rendiciones.editarMetadata(id_rendicion, {
           banco:           box.querySelector('#meta-banco').value,
@@ -781,9 +803,14 @@ async function abrirModalEditar(id_rendicion) {
           fecha_operacion: box.querySelector('#meta-fecha-op').value || null,
           cargo:           box.querySelector('#meta-cargo').value,
         });
+        cabeceraSnap = snapshotCabecera();
         window.showSuccess?.('Cabecera guardada');
         await reload();
-      } catch (e) { showError(e?.message || 'Error'); }
+      } catch (err) {
+        showError(err?.message || 'Error');
+        btn.disabled = false;
+        btn.innerHTML = orig;
+      }
     };
 
     box.querySelector('#btn-add-item').onclick = () => abrirModalItem(id_rendicion, reload);
@@ -917,6 +944,11 @@ function abrirModalItem(id_rendicion, onSaved) {
 
   ov.querySelector('#form-it').onsubmit = async (e) => {
     e.preventDefault();
+    const submitBtn = e.target.querySelector('button[type="submit"]');
+    if (submitBtn.disabled) return;
+    const orig = submitBtn.textContent;
+    submitBtn.disabled = true;
+    submitBtn.textContent = '⏳ Guardando…';
     try {
       await api.rendiciones.agregarItem(id_rendicion, {
         fecha:         ov.querySelector('#it-fecha').value,
@@ -931,7 +963,11 @@ function abrirModalItem(id_rendicion, onSaved) {
       cerrar();
       window.showSuccess?.('Línea agregada');
       onSaved && await onSaved();
-    } catch (err) { showError(err?.message || 'Error'); }
+    } catch (err) {
+      showError(err?.message || 'Error');
+      submitBtn.disabled = false;
+      submitBtn.textContent = orig;
+    }
   };
 }
 
