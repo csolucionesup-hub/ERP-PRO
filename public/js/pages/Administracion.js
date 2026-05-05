@@ -14,6 +14,27 @@ const fPEN = (v) => new Intl.NumberFormat('es-PE', { style: 'currency', currency
 const fmtPct = (v) => (v >= 0 ? '+' : '') + (Number(v) || 0).toFixed(0) + '%';
 const colorPct = (v) => v > 0 ? '#16a34a' : v < 0 ? '#dc2626' : '#6b7280';
 
+const abrirPDFRendicion = async (id) => {
+  try {
+    const token = localStorage.getItem('erp_token');
+    const r = await fetch(`/api/rendiciones/${id}/pdf`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!r.ok) {
+      let detalle = '';
+      try { const data = await r.json(); detalle = data?.error || JSON.stringify(data); }
+      catch { try { detalle = await r.text(); } catch {} }
+      throw new Error(`HTTP ${r.status}${detalle ? ' — ' + detalle : ''}`);
+    }
+    const blob = await r.blob();
+    const url = URL.createObjectURL(blob);
+    window.open(url, '_blank');
+    setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  } catch (err) {
+    window.showError?.('Error generando PDF: ' + (err.message || err));
+  }
+};
+
 let _chartInstances = {};
 
 export const Administracion = async () => {
@@ -471,7 +492,7 @@ async function renderRendiciones(panel) {
     b.onclick = () => abrirModalEditar(Number(b.dataset.abrirRendicion));
   });
   panel.querySelectorAll('button[data-pdf-rendicion]').forEach(b => {
-    b.onclick = () => window.open(api.rendiciones.pdfUrl(Number(b.dataset.pdfRendicion)), '_blank');
+    b.onclick = () => abrirPDFRendicion(Number(b.dataset.pdfRendicion));
   });
   panel.querySelectorAll('button[data-iniciar-oc]').forEach(b => {
     b.onclick = async () => {
@@ -738,7 +759,7 @@ async function abrirModalEditar(id_rendicion) {
     const cerrar = () => ov.remove();
     box.querySelector('#btn-cerrar-r').onclick = cerrar;
     box.querySelector('#btn-cerrar-r-2').onclick = cerrar;
-    box.querySelector('#btn-pdf-r').onclick = () => window.open(api.rendiciones.pdfUrl(id_rendicion), '_blank');
+    box.querySelector('#btn-pdf-r').onclick = () => abrirPDFRendicion(id_rendicion);
     if (esGerente) {
       box.querySelector('#btn-eliminar-r')?.addEventListener('click', async () => {
         if (!confirm(`¿Eliminar la rendición de la OC ${r.nro_oc_referencia}? Se borrarán items y adjuntos. La OC NO se toca.`)) return;
