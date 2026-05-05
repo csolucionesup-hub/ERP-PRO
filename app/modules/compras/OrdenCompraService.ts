@@ -25,7 +25,7 @@ import ConfiguracionService from '../configuracion/ConfiguracionService';
 export type EstadoOC =
   | 'BORRADOR' | 'APROBADA' | 'ENVIADA'
   | 'RECIBIDA_PARCIAL' | 'RECIBIDA'
-  | 'FACTURADA' | 'PAGADA' | 'ANULADA'
+  | 'FACTURADA' | 'PAGADA_PEND_FACTURA' | 'PAGADA' | 'ANULADA'
   | 'CERRADA_SIN_FACTURA';
 
 export interface LineaOC {
@@ -516,8 +516,40 @@ class OrdenCompraService {
     );
     const oc = rows[0];
     if (!oc) throw new Error('OC no encontrada');
-    if (!['RECIBIDA', 'RECIBIDA_PARCIAL'].includes(oc.estado)) {
-      throw new Error(`OC debe estar RECIBIDA para facturar (actual: ${oc.estado})`);
+    if (!['RECIBIDA', 'RECIBIDA_PARCIAL', 'PAGADA_PEND_FACTURA'].includes(oc.estado)) {
+      throw new Error(`OC debe estar RECIBIDA o PAGADA_PEND_FACTURA para facturar (actual: ${oc.estado})`);
+    }
+
+    // Caso B: OC ya pagada (PAGADA_PEND_FACTURA) — solo enriquecer comprobante
+    // existente con nro_factura + transición a PAGADA. NO se crea Compra/Gasto/Tx
+    // ni MovimientoBancario porque ya se hicieron en registrarPago().
+    if (oc.estado === 'PAGADA_PEND_FACTURA') {
+      const conn = await db.getConnection();
+      await conn.beginTransaction();
+      try {
+        if (oc.tipo_oc === 'ALMACEN' && oc.id_compra_generada) {
+          await conn.query(
+            `UPDATE Compras SET nro_comprobante = ?, fecha = ? WHERE id_compra = ?`,
+            [nro_factura_proveedor, fecha_factura, oc.id_compra_generada]
+          );
+        } else {
+          await conn.query(
+            `UPDATE Gastos SET nro_comprobante = ?, fecha = ? WHERE nro_oc = ? AND estado <> 'ANULADO'`,
+            [nro_factura_proveedor, fecha_factura, oc.nro_oc]
+          );
+        }
+        await conn.query(
+          `UPDATE OrdenesCompra SET estado = 'PAGADA', facturada_at = NOW() WHERE id_oc = ?`,
+          [id_oc]
+        );
+        await conn.commit();
+        return { success: true, estado: 'PAGADA' as const, id_compra: oc.id_compra_generada, id_gasto: null, tipo_oc: oc.tipo_oc };
+      } catch (e) {
+        await conn.rollback();
+        throw e;
+      } finally {
+        conn.release();
+      }
     }
 
     const tcOC = Number(oc.tipo_cambio) || 1;
@@ -647,12 +679,246 @@ class OrdenCompraService {
       }
 
       await conn.query(
-        `UPDATE OrdenesCompra SET estado = 'FACTURADA', id_compra_generada = ? WHERE id_oc = ?`,
+        `UPDATE OrdenesCompra SET estado = 'FACTURADA', facturada_at = NOW(), id_compra_generada = ? WHERE id_oc = ?`,
         [id_compra, id_oc]
       );
 
       await conn.commit();
       return { success: true, estado: 'FACTURADA', id_compra, id_gasto, tipo_oc: oc.tipo_oc };
+    } catch (e) {
+      await conn.rollback();
+      throw e;
+    } finally {
+      conn.release();
+    }
+  }
+
+  /**
+   * Registra el pago al proveedor. Soporta dos casos:
+   *
+   * A) Desde estado FACTURADA: la factura ya fue ingresada. Solo se registra
+   *    el movimiento bancario (CARGO), se actualiza estado_pago de Compra/Gasto
+   *    a PAGADO, se marca la Tx EGRESO como REALIZADO y la OC pasa a PAGADA.
+   *
+   * B) Desde estado RECIBIDA o RECIBIDA_PARCIAL: pago anticipado sin factura
+   *    todavía (caso típico Perú). Se crea Compra/Gasto provisorio con
+   *    nro_comprobante=NULL, DetalleCompra (si ALMACEN), Tx EGRESO REALIZADO,
+   *    MovBancario, CostosServicio si aplica. La OC pasa a PAGADA_PEND_FACTURA.
+   *    Cuando llegue la factura, se llama a facturar() para enriquecer el
+   *    comprobante con nro_comprobante y mover OC a PAGADA.
+   */
+  async registrarPago(id_oc: number, datos: {
+    id_cuenta: number;
+    fecha_pago: string;
+    nro_operacion?: string;
+    observaciones?: string;
+  }) {
+    const [rows]: any = await db.query(
+      `SELECT oc.*, p.razon_social AS proveedor_nombre
+         FROM OrdenesCompra oc
+         LEFT JOIN Proveedores p ON p.id_proveedor = oc.id_proveedor
+        WHERE oc.id_oc = ?`,
+      [id_oc]
+    );
+    const oc = rows[0];
+    if (!oc) throw new Error('OC no encontrada');
+    if (!['RECIBIDA', 'RECIBIDA_PARCIAL', 'FACTURADA'].includes(oc.estado)) {
+      throw new Error(`OC debe estar RECIBIDA o FACTURADA para registrar pago (actual: ${oc.estado})`);
+    }
+
+    const tcOC = Number(oc.tipo_cambio) || 1;
+    const total_base_pen = Number(oc.total) * tcOC;
+
+    const conn = await db.getConnection();
+    await conn.beginTransaction();
+    try {
+      // ── CASO A: ya estaba FACTURADA → cerrar a PAGADA ──────────────────
+      if (oc.estado === 'FACTURADA') {
+        if (oc.tipo_oc === 'ALMACEN' && oc.id_compra_generada) {
+          await conn.query(
+            `UPDATE Compras SET estado_pago = 'PAGADO' WHERE id_compra = ?`,
+            [oc.id_compra_generada]
+          );
+          await conn.query(
+            `UPDATE Transacciones SET estado = 'REALIZADO', id_cuenta = ?
+              WHERE referencia_tipo = 'COMPRA' AND referencia_id = ? AND estado = 'PENDIENTE'`,
+            [datos.id_cuenta, oc.id_compra_generada]
+          );
+        } else {
+          await conn.query(
+            `UPDATE Gastos SET estado_pago = 'PAGADO' WHERE nro_oc = ? AND estado <> 'ANULADO'`,
+            [oc.nro_oc]
+          );
+          await conn.query(
+            `UPDATE Transacciones SET estado = 'REALIZADO', id_cuenta = ?
+              WHERE referencia_tipo = 'GASTO'
+                AND referencia_id IN (SELECT id_gasto FROM Gastos WHERE nro_oc = ? AND estado <> 'ANULADO')
+                AND estado = 'PENDIENTE'`,
+            [datos.id_cuenta, oc.nro_oc]
+          );
+        }
+
+        const refTipo = oc.tipo_oc === 'ALMACEN' ? 'COMPRA' : 'GASTO';
+        const refId = oc.tipo_oc === 'ALMACEN' ? oc.id_compra_generada : null;
+        await conn.query(
+          `INSERT INTO MovimientoBancario
+             (id_cuenta, fecha, fecha_proceso, nro_operacion, descripcion_banco,
+              monto, tipo, fuente, estado_conciliacion, ref_tipo, ref_id, comentario)
+           VALUES (?, ?, ?, ?, ?, ?, 'CARGO', 'MANUAL', 'CONCILIADO', ?, ?, ?)`,
+          [
+            datos.id_cuenta, datos.fecha_pago, datos.fecha_pago,
+            datos.nro_operacion || null,
+            `Pago OC ${oc.nro_oc} · ${oc.proveedor_nombre || ''}`,
+            total_base_pen, refTipo, refId, datos.observaciones || null,
+          ]
+        );
+
+        await conn.query(
+          `UPDATE OrdenesCompra SET estado = 'PAGADA', pagada_at = ? WHERE id_oc = ?`,
+          [datos.fecha_pago, id_oc]
+        );
+
+        await conn.commit();
+        return { success: true, estado: 'PAGADA' as const, id_oc };
+      }
+
+      // ── CASO B: RECIBIDA / RECIBIDA_PARCIAL → pago sin factura aún ─────
+      const monto_base_pen = (Number(oc.subtotal) - Number(oc.descuento || 0)) * tcOC;
+      const igv_base_pen = Number(oc.igv) * tcOC;
+
+      let id_compra: number | null = null;
+      let id_gasto: number | null = null;
+
+      if (oc.tipo_oc === 'ALMACEN') {
+        const [comp]: any = await conn.query(
+          `INSERT INTO Compras
+            (nro_oc, nro_comprobante, id_proveedor, fecha, moneda, tipo_cambio,
+             aplica_igv, monto_base, igv_base, total_base, centro_costo,
+             estado, estado_pago)
+           VALUES (?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'CONFIRMADA', 'PAGADO')`,
+          [
+            oc.nro_oc, oc.id_proveedor, datos.fecha_pago,
+            oc.moneda, tcOC, !!oc.aplica_igv,
+            monto_base_pen, igv_base_pen, total_base_pen,
+            oc.centro_costo,
+          ]
+        );
+        id_compra = comp.insertId;
+
+        const [detalles]: any = await conn.query(
+          `SELECT id_item, cantidad_recibida, precio_unitario
+             FROM DetalleOrdenCompra
+            WHERE id_oc = ? AND id_item IS NOT NULL AND cantidad_recibida > 0`,
+          [id_oc]
+        );
+        for (const d of (detalles as any[])) {
+          const cant = Number(d.cantidad_recibida);
+          const precio = Number(d.precio_unitario);
+          await conn.query(
+            `INSERT INTO DetalleCompra (id_compra, id_item, cantidad, precio_unitario, subtotal)
+             VALUES (?, ?, ?, ?, ?)`,
+            [id_compra, d.id_item, cant, precio, cant * precio]
+          );
+        }
+
+        await conn.query(
+          `INSERT INTO Transacciones
+            (id_cuenta, referencia_tipo, referencia_id, tipo_movimiento,
+             moneda, tipo_cambio, aplica_igv,
+             monto_original, igv_original, total_original,
+             monto_base, igv_base, total_base,
+             fecha, descripcion, estado)
+           VALUES (?, 'COMPRA', ?, 'EGRESO', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'REALIZADO')`,
+          [
+            datos.id_cuenta, id_compra, oc.moneda, tcOC, !!oc.aplica_igv,
+            Number(oc.subtotal) - Number(oc.descuento || 0), Number(oc.igv), Number(oc.total),
+            monto_base_pen, igv_base_pen, total_base_pen,
+            datos.fecha_pago, `Pago anticipado OC ${oc.nro_oc} (sin factura aún)`,
+          ]
+        );
+
+        await conn.query(
+          `UPDATE OrdenesCompra SET id_compra_generada = ? WHERE id_oc = ?`,
+          [id_compra, id_oc]
+        );
+      } else {
+        // SERVICIO / GENERAL → Gasto provisorio
+        const tipo_logi = oc.tipo_oc === 'SERVICIO' ? 'SERVICIO' : 'GENERAL';
+        const concepto = `Pago anticipado OC ${oc.nro_oc} (sin factura aún)`;
+
+        const [gastoRes]: any = await conn.query(
+          `INSERT INTO Gastos
+            (nro_oc, id_servicio, tipo_gasto, centro_costo, tipo_gasto_logistica,
+             fecha, concepto, proveedor_nombre, nro_comprobante,
+             moneda, tipo_cambio, aplica_igv,
+             monto_base, igv_base, total_base, estado, estado_pago)
+           VALUES (?, ?, 'OPERATIVO', ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, 'CONFIRMADO', 'PAGADO')`,
+          [
+            oc.nro_oc, oc.id_servicio || null,
+            oc.centro_costo, tipo_logi,
+            datos.fecha_pago, concepto,
+            oc.proveedor_nombre || null,
+            oc.moneda, tcOC, !!oc.aplica_igv,
+            monto_base_pen, igv_base_pen, total_base_pen,
+          ]
+        );
+        id_gasto = gastoRes.insertId;
+
+        await conn.query(
+          `INSERT INTO Transacciones
+            (id_cuenta, referencia_tipo, referencia_id, tipo_movimiento,
+             moneda, tipo_cambio, aplica_igv,
+             monto_original, igv_original, total_original,
+             monto_base, igv_base, total_base,
+             fecha, descripcion, estado)
+           VALUES (?, 'GASTO', ?, 'EGRESO', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'REALIZADO')`,
+          [
+            datos.id_cuenta, id_gasto, oc.moneda, tcOC, !!oc.aplica_igv,
+            Number(oc.subtotal) - Number(oc.descuento || 0), Number(oc.igv), Number(oc.total),
+            monto_base_pen, igv_base_pen, total_base_pen,
+            datos.fecha_pago, `Pago anticipado OC ${oc.nro_oc} (sin factura aún)`,
+          ]
+        );
+
+        if (oc.tipo_oc === 'SERVICIO' && !oc.es_honorario && (oc.id_cotizacion || oc.id_servicio)) {
+          await conn.query(
+            `INSERT INTO CostosServicio
+              (id_servicio, id_cotizacion, concepto, moneda, monto_original,
+               tipo_cambio, monto_base, tipo_costo, fecha)
+             VALUES (?, ?, ?, ?, ?, ?, ?, 'GASTO_OC', ?)`,
+            [
+              oc.id_servicio || null,
+              oc.id_cotizacion || null,
+              `Pago anticipado OC ${oc.nro_oc}`,
+              oc.moneda, Number(oc.total), tcOC, total_base_pen, datos.fecha_pago,
+            ]
+          );
+        }
+      }
+
+      // MovBancario para ambos casos
+      const refTipo = oc.tipo_oc === 'ALMACEN' ? 'COMPRA' : 'GASTO';
+      const refId = oc.tipo_oc === 'ALMACEN' ? id_compra : id_gasto;
+      await conn.query(
+        `INSERT INTO MovimientoBancario
+           (id_cuenta, fecha, fecha_proceso, nro_operacion, descripcion_banco,
+            monto, tipo, fuente, estado_conciliacion, ref_tipo, ref_id, comentario)
+         VALUES (?, ?, ?, ?, ?, ?, 'CARGO', 'MANUAL', 'CONCILIADO', ?, ?, ?)`,
+        [
+          datos.id_cuenta, datos.fecha_pago, datos.fecha_pago,
+          datos.nro_operacion || null,
+          `Pago anticipado OC ${oc.nro_oc} · ${oc.proveedor_nombre || ''} (sin factura aún)`,
+          total_base_pen, refTipo, refId, datos.observaciones || null,
+        ]
+      );
+
+      await conn.query(
+        `UPDATE OrdenesCompra SET estado = 'PAGADA_PEND_FACTURA', pagada_at = ? WHERE id_oc = ?`,
+        [datos.fecha_pago, id_oc]
+      );
+
+      await conn.commit();
+      return { success: true, estado: 'PAGADA_PEND_FACTURA' as const, id_oc, id_compra, id_gasto };
     } catch (e) {
       await conn.rollback();
       throw e;

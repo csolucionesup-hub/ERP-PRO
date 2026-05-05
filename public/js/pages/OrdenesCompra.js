@@ -15,15 +15,16 @@ import { kpiGrid } from '../components/KpiCard.js';
 import { pill } from '../components/Pill.js';
 
 const ESTADO_COLOR = {
-  BORRADOR:         { bg: '#f3f4f6', fg: '#374151', icon: '📝' },
-  APROBADA:         { bg: '#dbeafe', fg: '#1e40af', icon: '✅' },
-  ENVIADA:          { bg: '#e0e7ff', fg: '#3730a3', icon: '📤' },
-  RECIBIDA_PARCIAL: { bg: '#fef3c7', fg: '#92400e', icon: '📦' },
-  RECIBIDA:         { bg: '#dcfce7', fg: '#166534', icon: '📥' },
-  FACTURADA:        { bg: '#ede9fe', fg: '#5b21b6', icon: '🧾' },
-  PAGADA:           { bg: '#d1fae5', fg: '#065f46', icon: '💰' },
-  ANULADA:          { bg: '#fee2e2', fg: '#991b1b', icon: '❌' },
-  CERRADA_SIN_FACTURA: { bg: '#fff7ed', fg: '#9a3412', icon: '🗂' },
+  BORRADOR:            { bg: '#f3f4f6', fg: '#374151', icon: '📝', label: 'Borrador' },
+  APROBADA:            { bg: '#dbeafe', fg: '#1e40af', icon: '✅', label: 'Aprobada' },
+  ENVIADA:             { bg: '#e0e7ff', fg: '#3730a3', icon: '📤', label: 'Enviada' },
+  RECIBIDA_PARCIAL:    { bg: '#fef3c7', fg: '#92400e', icon: '📦', label: 'Recibida parcial' },
+  RECIBIDA:            { bg: '#dcfce7', fg: '#166534', icon: '📥', label: 'Recibida' },
+  FACTURADA:           { bg: '#ede9fe', fg: '#5b21b6', icon: '🧾', label: 'Factura · pend. pago' },
+  PAGADA_PEND_FACTURA: { bg: '#fef3c7', fg: '#854d0e', icon: '💰', label: 'Pagada · pend. factura' },
+  PAGADA:              { bg: '#d1fae5', fg: '#065f46', icon: '✅', label: 'Cerrada (pago + factura)' },
+  ANULADA:             { bg: '#fee2e2', fg: '#991b1b', icon: '❌', label: 'Anulada' },
+  CERRADA_SIN_FACTURA: { bg: '#fff7ed', fg: '#9a3412', icon: '🗂', label: 'Cerrada sin factura' },
 };
 
 const fPEN = (v) => new Intl.NumberFormat('es-PE', { style: 'currency', currency: 'PEN' }).format(Number(v) || 0);
@@ -271,7 +272,7 @@ window.ensureOCModal = ensureOCModal;
 // a OC.verOC sin haber montado el TabBar de OrdenesCompra). Las function
 // declarations se hoistean, así que las referencias funcionan aunque estén
 // definidas más abajo en el archivo.
-window.OC = { nuevaOC, verOC, aprobar, enviar, recibir, facturar, cerrarSinFactura, asociarFactura, anular, reactivar, eliminarOC, editar, editarFecha, editarMetadata: editarMetadataOC, descargarPDF, reporteROC };
+window.OC = { nuevaOC, verOC, aprobar, enviar, recibir, facturar, registrarPago, cerrarSinFactura, asociarFactura, anular, reactivar, eliminarOC, editar, editarFecha, editarMetadata: editarMetadataOC, descargarPDF, reporteROC };
 
 // Editar SOLO la fecha de emisión (corregir data histórica) — disponible en
 // cualquier estado salvo ANULADA. No toca estado/items/totales/correlativo.
@@ -431,7 +432,7 @@ function renderKanban(panel) {
   const estadosOrden = [
     'BORRADOR', 'APROBADA', 'ENVIADA',
     'RECIBIDA_PARCIAL', 'RECIBIDA',
-    'FACTURADA', 'PAGADA',
+    'FACTURADA', 'PAGADA_PEND_FACTURA', 'PAGADA',
     'CERRADA_SIN_FACTURA',
   ];
   const porEstado = {};
@@ -688,11 +689,20 @@ function accionesSegunEstado(oc) {
   }
   if (['RECIBIDA', 'RECIBIDA_PARCIAL'].includes(oc.estado)) {
     btns.push(`<button onclick="OC.facturar(${oc.id_oc})" title="Cargar la factura/boleta del proveedor. Genera la Compra (ALMACEN) o el Gasto (GENERAL/SERVICIO) y la Tx en caja. Después de esto la OC ya no se puede anular." style="padding:10px 18px;background:#7c3aed;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">🧾 Recibí factura</button>`);
+    btns.push(`<button onclick="OC.registrarPago(${oc.id_oc}, '${nroSafe}')" title="Registrar el pago al proveedor sin haber recibido factura todavía (caso típico: pago primero, factura llega después). La OC pasa a 'Pagada · pend. factura' y se genera la Tx + movimiento bancario." style="padding:10px 18px;background:#15803d;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">💰 Registrar pago</button>`);
     // "Cerrar sin facturar" solo aplica a GENERAL/SERVICIO (no ALMACEN).
     // ALMACEN siempre requiere comprobante porque genera stock valorizado.
     if (oc.tipo_oc !== 'ALMACEN') {
       btns.push(`<button onclick="OC.cerrarSinFactura(${oc.id_oc}, '${nroSafe}')" title="Cerrar la OC sin factura formal (compra al contado, caja chica, etc). Genera el Gasto contable pero deja la OC en bandeja 'Sin facturar' por si después llega el comprobante." style="padding:10px 18px;background:#ea580c;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">🗂 Cerrar sin facturar</button>`);
     }
+  }
+  // FACTURADA → falta el pago. Ofrecer Registrar pago para cerrar a PAGADA.
+  if (oc.estado === 'FACTURADA') {
+    btns.push(`<button onclick="OC.registrarPago(${oc.id_oc}, '${nroSafe}')" title="Registrar el pago al proveedor de esta factura. Genera el movimiento bancario y cierra la OC en 'Cerrada (pago + factura)'." style="padding:10px 18px;background:#15803d;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">💰 Registrar pago</button>`);
+  }
+  // PAGADA_PEND_FACTURA → falta la factura. Ofrecer Recibí factura para cerrar a PAGADA.
+  if (oc.estado === 'PAGADA_PEND_FACTURA') {
+    btns.push(`<button onclick="OC.facturar(${oc.id_oc})" title="Cargar la factura/boleta del proveedor que llegó después del pago. Enriquece la Compra/Gasto provisorio con el N° de comprobante y cierra la OC en 'Cerrada (pago + factura)'." style="padding:10px 18px;background:#7c3aed;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">🧾 Recibí factura</button>`);
   }
   // OC cerrada sin factura — ofrecer asociar factura tardía
   if (oc.estado === 'CERRADA_SIN_FACTURA') {
@@ -712,8 +722,8 @@ function accionesSegunEstado(oc) {
   if (esGerente) {
     btns.push(`<button onclick="OC.eliminarOC(${oc.id_oc}, '${nroSafe}')" title="Eliminar permanente con cascada total (solo GERENTE). Borra OC + Compra/Gasto generado + Tx caja + Movimientos inventario + reverso de stock. Pide tipear el N° de OC para confirmar." style="padding:10px 18px;background:transparent;color:#7f1d1d;border:1px solid #7f1d1d;border-radius:6px;cursor:pointer;font-weight:600">🗑 Eliminar</button>`);
   }
-  if (!['FACTURADA', 'PAGADA', 'ANULADA'].includes(oc.estado)) {
-    btns.push(`<button onclick="OC.anular(${oc.id_oc})" title="Anular la OC (cambia el estado, no borra nada). El correlativo queda quemado y la OC pasa al archivo. Disponible hasta antes de facturar." style="padding:10px 18px;background:transparent;color:#dc2626;border:1px solid #dc2626;border-radius:6px;cursor:pointer;font-weight:600">Anular</button>`);
+  if (!['FACTURADA', 'PAGADA_PEND_FACTURA', 'PAGADA', 'ANULADA'].includes(oc.estado)) {
+    btns.push(`<button onclick="OC.anular(${oc.id_oc})" title="Anular la OC (cambia el estado, no borra nada). El correlativo queda quemado y la OC pasa al archivo. Disponible hasta antes de facturar o pagar." style="padding:10px 18px;background:transparent;color:#dc2626;border:1px solid #dc2626;border-radius:6px;cursor:pointer;font-weight:600">Anular</button>`);
   }
   // Reactivar — solo si está ANULADA y eres GERENTE. Vuelve la OC a BORRADOR.
   if (oc.estado === 'ANULADA' && esGerente) {
@@ -1128,7 +1138,81 @@ async function facturar(id) {
   try {
     await api.ordenesCompra.facturar(id, { nro_factura_proveedor: nro, fecha_factura: fecha });
     showSuccess('OC facturada — se creó registro en Compras');
-    setTimeout(() => refreshOC(), 800);
+    setTimeout(() => (window.refreshModule || refreshOC)(), 800);
+  } catch (e) { showError(e.message); }
+}
+
+// Registra el pago al proveedor. Funciona en 2 contextos:
+//  - Desde RECIBIDA / RECIBIDA_PARCIAL: pago anticipado (sin factura aún) →
+//    OC pasa a PAGADA_PEND_FACTURA. Cuando llegue la factura, se completa con
+//    "Recibí factura".
+//  - Desde FACTURADA: pago final del comprobante ya registrado → OC pasa a
+//    PAGADA (cerrada).
+async function registrarPago(id, nro) {
+  let cuentas = [];
+  try {
+    cuentas = await api.cobranzas.getCuentas();
+  } catch (e) { return showError('No se pudieron cargar las cuentas: ' + e.message); }
+  const cuentasActivas = (cuentas || []).filter(c => c.activo !== false);
+  if (cuentasActivas.length === 0) return showError('No hay cuentas bancarias activas. Configurá una en Finanzas → Cuentas.');
+
+  const data = await new Promise((resolve) => {
+    const ov = document.createElement('div');
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
+    const cuentasOpts = cuentasActivas.map(c =>
+      `<option value="${c.id_cuenta}">${c.nombre} (${c.moneda || 'PEN'})</option>`
+    ).join('');
+    ov.innerHTML = `
+      <div style="background:#fff;border-radius:8px;padding:22px;width:480px;max-width:95vw;box-shadow:0 20px 50px rgba(0,0,0,.3)">
+        <h3 style="margin:0 0 8px;font-size:16px">💰 Registrar pago · OC ${nro}</h3>
+        <div style="background:#f0fdf4;border:1px solid #bbf7d0;color:#166534;padding:10px 12px;border-radius:6px;margin-bottom:14px;font-size:12px">
+          Esto registra el egreso real en tu cuenta bancaria. Se genera la transacción + el movimiento del libro bancos automáticamente.
+        </div>
+        <label style="font-size:11px;color:#374151;font-weight:600;display:block;margin-bottom:4px">Cuenta de la que sale el pago *</label>
+        <select id="rp-cuenta" style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:5px;font-size:13px;margin-bottom:12px">
+          ${cuentasOpts}
+        </select>
+        <label style="font-size:11px;color:#374151;font-weight:600;display:block;margin-bottom:4px">Fecha del pago *</label>
+        <input id="rp-fecha" type="date" value="${new Date().toISOString().slice(0,10)}"
+          style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:5px;font-size:13px;margin-bottom:12px">
+        <label style="font-size:11px;color:#374151;font-weight:600;display:block;margin-bottom:4px">N° operación (opcional)</label>
+        <input id="rp-nro" placeholder="Ej. 12345678" maxlength="50"
+          style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:5px;font-size:13px;margin-bottom:12px;font-family:monospace">
+        <label style="font-size:11px;color:#374151;font-weight:600;display:block;margin-bottom:4px">Observaciones (opcional)</label>
+        <input id="rp-obs" placeholder="Comentario interno"
+          style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:5px;font-size:13px">
+        <div id="rp-error" style="display:none;margin-top:10px;background:#fee2e2;color:#991b1b;padding:7px 10px;border-radius:5px;font-size:12px"></div>
+        <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:18px">
+          <button id="rp-cancel" style="padding:8px 16px;background:#fff;border:1px solid #d1d5db;border-radius:5px;cursor:pointer;font-size:13px">Cancelar</button>
+          <button id="rp-ok" style="padding:8px 22px;background:#15803d;color:#fff;border:none;border-radius:5px;cursor:pointer;font-size:13px;font-weight:600">Confirmar pago</button>
+        </div>
+      </div>`;
+    document.body.appendChild(ov);
+    const close = (val) => { ov.remove(); resolve(val); };
+    ov.querySelector('#rp-cancel').onclick = () => close(null);
+    ov.querySelector('#rp-ok').onclick = () => {
+      const id_cuenta = Number(ov.querySelector('#rp-cuenta').value);
+      const fecha_pago = ov.querySelector('#rp-fecha').value;
+      const nro_operacion = ov.querySelector('#rp-nro').value.trim() || undefined;
+      const observaciones = ov.querySelector('#rp-obs').value.trim() || undefined;
+      if (!id_cuenta || !fecha_pago) {
+        const err = ov.querySelector('#rp-error');
+        err.textContent = 'Cuenta y fecha son obligatorias';
+        err.style.display = 'block';
+        return;
+      }
+      close({ id_cuenta, fecha_pago, nro_operacion, observaciones });
+    };
+  });
+  if (!data) return;
+  try {
+    const r = await api.ordenesCompra.registrarPago(id, data);
+    if (r.estado === 'PAGADA') {
+      showSuccess(`OC ${nro} cerrada — pago + factura registrados`);
+    } else {
+      showSuccess(`OC ${nro} pagada — esperando factura del proveedor`);
+    }
+    setTimeout(() => (window.refreshModule || refreshOC)(), 800);
   } catch (e) { showError(e.message); }
 }
 

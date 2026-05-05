@@ -411,6 +411,7 @@ export const api = {
     editarFecha: (id, fecha) => put(`/ordenes-compra/${id}/fecha`, { fecha }),
     editarMetadata: (id, data) => put(`/ordenes-compra/${id}/metadata`, data),
     facturar:   (id, data)   => post(`/ordenes-compra/${id}/facturar`, data),
+    registrarPago:       (id, data) => post(`/ordenes-compra/${id}/registrar-pago`, data),
     cerrarSinFactura:    (id, data) => post(`/ordenes-compra/${id}/cerrar-sin-factura`, data),
     asociarFacturaTardia:(id, data) => post(`/ordenes-compra/${id}/asociar-factura-tardia`, data),
     anular:     (id, motivo) => post(`/ordenes-compra/${id}/anular`, { motivo }),

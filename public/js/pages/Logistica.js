@@ -476,7 +476,8 @@ async function verROC(centroNombre) {
   const colorEstado = (e) => ({
     BORRADOR: '#fff7e6', APROBADA: '#e0f2fe', ENVIADA: '#dbeafe',
     RECIBIDA: '#dcfce7', RECIBIDA_PARCIAL: '#fef9c3', FACTURADA: '#ede9fe',
-    PAGADA: '#dcfce7', CERRADA_SIN_FACTURA: '#fed7aa', ANULADA: '#fee2e2',
+    PAGADA_PEND_FACTURA: '#fef3c7', PAGADA: '#dcfce7',
+    CERRADA_SIN_FACTURA: '#fed7aa', ANULADA: '#fee2e2',
   }[e] || '#f3f4f6');
 
   const renderBody = (datos) => {
@@ -763,7 +764,7 @@ function renderDashboard(panel) {
   const totalSrv  = _ocsServicio.reduce((s, o) => s + Number(o.total || 0), 0);
   const totalAlm  = _ocsAlmacen.reduce((s, o) => s + Number(o.total || 0), 0);
   const totalAll  = totalGen + totalSrv + totalAlm;
-  const pendientes = [..._ocsGeneral, ..._ocsServicio, ..._ocsAlmacen].filter(o => o.estado !== 'PAGADA' && o.estado !== 'ANULADA').length;
+  const pendientes = [..._ocsGeneral, ..._ocsServicio, ..._ocsAlmacen].filter(o => o.estado !== 'PAGADA' && o.estado !== 'ANULADA' && o.estado !== 'CERRADA_SIN_FACTURA').length;
 
   panel.innerHTML = `
     <div style="margin-top:16px">
@@ -849,8 +850,8 @@ function renderTablaOCs(ocs, opts = {}) {
         <tbody>
           ${ocs.map(o => {
             const nroSafe = String(o.nro_oc).replace(/'/g, "\\'");
-            const btnAnular = (o.estado !== 'ANULADA' && o.estado !== 'PAGADA')
-              ? `<button onclick="Logistica.anularOC(${o.id_oc})" title="Anular esta OC (cambia el estado, no borra). El correlativo queda quemado." aria-label="Anular OC" style="padding:3px 8px;border:1px solid #dc2626;background:transparent;color:#dc2626;border-radius:4px;cursor:pointer;font-size:11px;margin-left:4px">✕</button>`
+            const btnAnular = !['ANULADA', 'PAGADA', 'PAGADA_PEND_FACTURA', 'FACTURADA', 'CERRADA_SIN_FACTURA'].includes(o.estado)
+              ? `<button onclick="Logistica.anularOC(${o.id_oc})" title="Anular esta OC (cambia el estado, no borra). El correlativo queda quemado. Disponible hasta antes de pagar o facturar." aria-label="Anular OC" style="padding:3px 8px;border:1px solid #dc2626;background:transparent;color:#dc2626;border-radius:4px;cursor:pointer;font-size:11px;margin-left:4px">✕</button>`
               : '';
             const btnReactivar = (o.estado === 'ANULADA' && esGerente)
               ? `<button onclick="Logistica.reactivarOC(${o.id_oc}, '${nroSafe}')" title="Devolver la OC anulada a BORRADOR para retomar su flujo (solo GERENTE)" style="padding:3px 8px;border:1px solid #0891b2;background:transparent;color:#0891b2;border-radius:4px;cursor:pointer;font-size:11px;margin-left:4px">♻ Reactivar</button>`
@@ -883,11 +884,13 @@ function estadoBadgeOC(estado) {
     BORRADOR:         { bg: '#fef3c7', fg: '#92400e' },
     APROBADA:         { bg: '#dbeafe', fg: '#1e40af' },
     ENVIADA:          { bg: '#c7d2fe', fg: '#3730a3' },
-    RECIBIDA:         { bg: '#ccfbf1', fg: '#115e59' },
-    RECIBIDA_PARCIAL: { bg: '#fef9c3', fg: '#713f12' },
-    FACTURADA:        { bg: '#bbf7d0', fg: '#166534' },
-    PAGADA:           { bg: '#dcfce7', fg: '#166534' },
-    ANULADA:          { bg: '#e5e7eb', fg: '#374151' },
+    RECIBIDA:            { bg: '#ccfbf1', fg: '#115e59' },
+    RECIBIDA_PARCIAL:    { bg: '#fef9c3', fg: '#713f12' },
+    FACTURADA:           { bg: '#bbf7d0', fg: '#166534' },
+    PAGADA_PEND_FACTURA: { bg: '#fef3c7', fg: '#854d0e' },
+    PAGADA:              { bg: '#dcfce7', fg: '#166534' },
+    CERRADA_SIN_FACTURA: { bg: '#fed7aa', fg: '#9a3412' },
+    ANULADA:             { bg: '#e5e7eb', fg: '#374151' },
   };
   const s = styles[estado] || styles.BORRADOR;
   return `<span style="background:${s.bg};color:${s.fg};padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600">${estado || 'BORRADOR'}</span>`;

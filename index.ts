@@ -1677,6 +1677,19 @@ ocRouter.post('/:id/facturar', validateIdParam, auditLog('OrdenCompra', 'UPDATE'
   res.json(await OrdenCompraService.facturar(Number(req.params.id), nro_factura_proveedor, fecha_factura));
 });
 
+ocRouter.post('/:id/registrar-pago', validateIdParam, auditLog('OrdenCompra', 'UPDATE'), async (req: Request, res: Response) => {
+  const { id_cuenta, fecha_pago, nro_operacion, observaciones } = req.body;
+  if (!id_cuenta || !fecha_pago) {
+    return res.status(400).json({ error: 'id_cuenta y fecha_pago son requeridos' });
+  }
+  res.json(await OrdenCompraService.registrarPago(Number(req.params.id), {
+    id_cuenta: Number(id_cuenta),
+    fecha_pago,
+    nro_operacion: nro_operacion || undefined,
+    observaciones: observaciones || undefined,
+  }));
+});
+
 ocRouter.post('/:id/anular', validateIdParam, auditLog('OrdenCompra', 'ANULAR'), async (req: Request, res: Response) => {
   res.json(await OrdenCompraService.anular(Number(req.params.id), req.body?.motivo || 'Sin motivo'));
 });
