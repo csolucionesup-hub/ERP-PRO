@@ -40,6 +40,7 @@ import PLEExporter from './app/modules/facturacion/PLEExporter';
 import { FacturacionCron } from './app/modules/facturacion/FacturacionCron';
 import ImportadorService, { EntidadImportable } from './app/modules/importador/ImportadorService';
 import OrdenCompraService from './app/modules/compras/OrdenCompraService';
+import ProductionService from './app/modules/produccion/ProductionService';
 import CentrosCostoService from './app/modules/compras/CentrosCostoService';
 import { OrdenCompraPDFService } from './app/modules/compras/OrdenCompraPDFService';
 import ROCService from './app/modules/compras/ROCService';
@@ -761,6 +762,20 @@ apiRouter.get('/admin/gasto-personal', async (req: Request, res: Response) => {
   const anio = parseInt(req.query.anio as string) || new Date().getFullYear();
   const mes = req.query.mes ? parseInt(req.query.mes as string) : undefined;
   res.json(await AdminService.getGastoPersonal(anio, mes));
+});
+
+// ===== PRODUCCIÓN (Fase E v0 — visor de OTs implícitas desde cotizaciones) =====
+apiRouter.use('/produccion', requireModulo('PRODUCCION'));
+apiRouter.get('/produccion/ots', async (req: Request, res: Response) => {
+  res.json(await ProductionService.listarOTs({
+    estado:  req.query.estado  as string | undefined,
+    cliente: req.query.cliente as string | undefined,
+    desde:   req.query.desde   as string | undefined,
+    hasta:   req.query.hasta   as string | undefined,
+  }));
+});
+apiRouter.get('/produccion/ots/:id', validateIdParam, async (req: Request, res: Response) => {
+  res.json(await ProductionService.obtenerOT(parseInt(req.params.id as string)));
 });
 
 apiRouter.use('/admin/dashboard', requireModulo('ADMINISTRACION'));

@@ -1,28 +1,29 @@
 // Cache busting para imports ES module: cada path lleva su ?v=YYYYMMDDr#
 // hardcodeado. Si se cambia CUALQUIER archivo de pages/components/services
 // hay que bumpear el sufijo en TODAS las líneas (Find/Replace de v=2026...).
-import { renderSidebar } from './components/Sidebar.js?v=20260504r12';
-import { Dashboard }   from './pages/Dashboard.js?v=20260504r12';
-import { Finanzas }    from './pages/Finanzas.js?v=20260504r12';
-import { Inventario }  from './pages/Inventario.js?v=20260504r12';
-import { Usuarios }    from './pages/Usuarios.js?v=20260504r12';
-import { Compras }       from './pages/Compras.js?v=20260504r12';
+import { renderSidebar } from './components/Sidebar.js?v=20260504r13';
+import { Dashboard }   from './pages/Dashboard.js?v=20260504r13';
+import { Finanzas }    from './pages/Finanzas.js?v=20260504r13';
+import { Inventario }  from './pages/Inventario.js?v=20260504r13';
+import { Usuarios }    from './pages/Usuarios.js?v=20260504r13';
+import { Compras }       from './pages/Compras.js?v=20260504r13';
 // Servicios — módulo deprecado al cierre 03/05/2026 (Camino A vació la tabla
 // en producción; flujo migrado a Cotizaciones APROBADAS + OCs). El backend
 // sigue vivo porque Logística/OC consumen api.services.getServiciosActivos()
 // para popular dropdowns, pero la página ya no se navega.
-import { Proveedores }   from './pages/Proveedores.js?v=20260504r12';
-import { Prestamos }     from './pages/Prestamos.js?v=20260504r12';
-import { Comercial }     from './pages/Comercial.js?v=20260504r12';
-import { ConfiguracionComercial } from './pages/ConfiguracionComercial.js?v=20260504r12';
-import { Logistica }     from './pages/Logistica.js?v=20260504r12';
-import { Administracion } from './pages/Administracion.js?v=20260504r12';
-import { Configuracion }  from './pages/Configuracion.js?v=20260504r12';
-import { Contabilidad }   from './pages/Contabilidad.js?v=20260504r12';
-import { Importador }     from './pages/Importador.js?v=20260504r12';
-import { OrdenesCompra }  from './pages/OrdenesCompra.js?v=20260504r12';
-import { Alertas }        from './pages/Alertas.js?v=20260504r12';
-import { showSuccess, showError, showToast } from './services/ui.js?v=20260504r12';
+import { Proveedores }   from './pages/Proveedores.js?v=20260504r13';
+import { Prestamos }     from './pages/Prestamos.js?v=20260504r13';
+import { Comercial }     from './pages/Comercial.js?v=20260504r13';
+import { ConfiguracionComercial } from './pages/ConfiguracionComercial.js?v=20260504r13';
+import { Logistica }     from './pages/Logistica.js?v=20260504r13';
+import { Administracion } from './pages/Administracion.js?v=20260504r13';
+import { Configuracion }  from './pages/Configuracion.js?v=20260504r13';
+import { Contabilidad }   from './pages/Contabilidad.js?v=20260504r13';
+import { Importador }     from './pages/Importador.js?v=20260504r13';
+import { OrdenesCompra }  from './pages/OrdenesCompra.js?v=20260504r13';
+import { Produccion }     from './pages/Produccion.js?v=20260504r13';
+import { Alertas }        from './pages/Alertas.js?v=20260504r13';
+import { showSuccess, showError, showToast } from './services/ui.js?v=20260504r13';
 
 // Exponer helpers de toast globalmente (los modules ES no tienen acceso
 // directo desde otros modules sin import; varios usan window.showSuccess?.()
@@ -40,6 +41,7 @@ const MODULE_TO_PAGE = {
   FINANZAS:       'finanzas',
   LOGISTICA:      'logistica',
   ALMACEN:        'inventario',
+  PRODUCCION:     'produccion',
   ADMINISTRACION: 'administracion',
 };
 
@@ -51,6 +53,7 @@ const PAGE_MODULE = {
   finanzas:       'FINANZAS',
   logistica:      'LOGISTICA',
   inventario:     'ALMACEN',
+  produccion:     'PRODUCCION',
   administracion: 'ADMINISTRACION',
   usuarios:       null, // solo GERENTE, controlado aparte
   configuracion:  null, // solo GERENTE
@@ -64,6 +67,7 @@ const PAGES = {
   dashboard:      Dashboard,
   finanzas:       Finanzas,
   inventario:     Inventario,
+  produccion:     Produccion,
   usuarios:       Usuarios,
   compras:        Compras,
   comercial:      Comercial,

@@ -14,6 +14,7 @@ const ICON_MAP = {
   prestamos:      'credit-card',
   logistica:      'truck',
   inventario:     'archive',
+  produccion:     'package',
   administracion: 'users',
   contabilidad:   'book-open',
   importador:     'download',
@@ -30,6 +31,7 @@ const MODULE_NAV = [
   { modulo: 'FINANZAS',       label: 'Préstamos',        page: 'prestamos',     section: 'operaciones' },
   { modulo: 'LOGISTICA',      label: 'Logística',        page: 'logistica',     section: 'operaciones' },
   { modulo: 'ALMACEN',        label: 'Inventario',       page: 'inventario',    section: 'operaciones' },
+  { modulo: 'PRODUCCION',     label: 'Producción',       page: 'produccion',    section: 'operaciones' },
   { modulo: 'ADMINISTRACION', label: 'Administración',   page: 'administracion',section: 'operaciones' },
 ];
 

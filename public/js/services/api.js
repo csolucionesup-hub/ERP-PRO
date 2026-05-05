@@ -264,6 +264,14 @@ export const api = {
     createPersona:      (data) => post('/admin/personas', data),
     crearOCHonorario:   (data) => post('/admin/oc-honorario', data),
     cotizacionesFondeadas: ()  => get('/admin/cotizaciones-fondeadas'),
+  },
+  produccion: {
+    listarOTs: (filtros = {}) => {
+      const p = new URLSearchParams();
+      Object.entries(filtros).forEach(([k, v]) => { if (v != null && v !== '') p.append(k, v); });
+      return get(`/produccion/ots${p.toString() ? '?' + p : ''}`);
+    },
+    obtenerOT: (id) => get(`/produccion/ots/${id}`),
     resetDb:          ()       => post('/admin/reset-db'),
     getCuentasSaldo:  ()       => get('/admin/cuentas-saldo'),
     setSaldoInicial:  (data)   => post('/admin/saldo-inicial', data),
