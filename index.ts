@@ -4,6 +4,8 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import path from 'path';
 import morgan from 'morgan';
+import helmet from 'helmet';
+import rateLimit from 'express-rate-limit';
 
 // Node / TS Lógica de Negocio
 import { db, DEFAULT_ACCOUNT_ID } from './database/connection';
@@ -73,6 +75,16 @@ const PORT = process.env.PORT || 3000;
 // ==========================================
 // CAPAS MIDDLEWARE (Nivel Sistema Global)
 // ==========================================
+
+// Helmet: headers de seguridad estándar (X-Frame-Options, HSTS, X-Content-Type-Options, etc.)
+// CSP queda controlada por el meta tag de index.html (que permite blob: para preview de PDF
+// y res.cloudinary.com para fotos), por lo que la deshabilitamos aquí para no duplicar.
+app.use(helmet({
+  contentSecurityPolicy: false,
+  crossOriginEmbedderPolicy: false,
+  crossOriginResourcePolicy: { policy: 'cross-origin' }, // permite Cloudinary servir imágenes
+}));
+
 app.use(cors({
   origin: process.env.ALLOWED_ORIGINS?.split(',') || ['http://localhost:3000'],
   credentials: true,
@@ -80,8 +92,21 @@ app.use(cors({
 }));
 app.use(express.json());
 
-// Logs HTTP configurados en nivel 'dev' para auditoría gerencial
-app.use(morgan('dev'));
+// Rate-limit en /api/auth/* para mitigar fuerza bruta de login.
+// 10 intentos / 15 min por IP. Apenas un usuario olvidadizo lo nota; un atacante no puede
+// hacer 1000 intentos/min como antes.
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Demasiados intentos. Esperá 15 minutos antes de reintentar.' },
+});
+app.use('/api/auth', authLimiter);
+
+// Logs HTTP en formato 'combined' (estándar Apache) — NO incluye request body, evita
+// que passwords/tokens en payloads queden persistidos en stdout de Railway.
+app.use(morgan('combined'));
 
 // Servicio estático (Frontend JS Vanilla)
 const publicPath = process.env.NODE_ENV === 'production'
