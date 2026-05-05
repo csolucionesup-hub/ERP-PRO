@@ -262,6 +262,7 @@ export const api = {
     listPersonas:       ()     => get('/admin/personas'),
     createPersona:      (data) => post('/admin/personas', data),
     crearOCHonorario:   (data) => post('/admin/oc-honorario', data),
+    cotizacionesFondeadas: ()  => get('/admin/cotizaciones-fondeadas'),
     resetDb:          ()       => post('/admin/reset-db'),
     getCuentasSaldo:  ()       => get('/admin/cuentas-saldo'),
     setSaldoInicial:  (data)   => post('/admin/saldo-inicial', data),

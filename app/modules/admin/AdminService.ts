@@ -159,7 +159,9 @@ class AdminService {
     const valsOC    = mes ? [anio, mes] : [anio];
     const valsGasto = mes ? [anio, mes] : [anio];
 
-    // 1. Listado de OCs de personal (PERSONA_NATURAL) en el periodo
+    // 1. Listado de OCs de personal — solo HONORARIOS POR TRABAJO REALIZADO
+    //    (OC.es_honorario=TRUE). Las OCs que son anticipos para gastos varios
+    //    o reembolsos quedan fuera (esas se reflejan en Rendiciones, no acá).
     const [ocs]: any = await db.query(`
       SELECT oc.id_oc, oc.nro_oc, oc.fecha_emision, oc.tipo_oc, oc.centro_costo,
              oc.subtotal, oc.total, oc.moneda, oc.tipo_cambio, oc.aplica_igv, oc.estado,
@@ -169,6 +171,7 @@ class AdminService {
         FROM OrdenesCompra oc
    LEFT JOIN Proveedores p ON p.id_proveedor = oc.id_proveedor
        WHERE oc.estado != 'ANULADA'
+         AND oc.es_honorario = TRUE
          AND p.tipo = 'PERSONA_NATURAL'
          AND oc.tipo_oc IN ('GENERAL','SERVICIO')
          AND EXTRACT(YEAR FROM oc.fecha_emision) = ?

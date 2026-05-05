@@ -926,10 +926,14 @@ async function renderPersonal(panel) {
   let mesSel  = '';
 
   panel.innerHTML = `
-    <div class="card" style="margin-top:16px;display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+    <div style="margin-top:16px;background:#eff6ff;border-left:3px solid #1e40af;padding:10px 14px;border-radius:6px;font-size:12px;color:#1e3a8a;line-height:1.5">
+      💡 <b>Solo OCs por trabajo realizado</b> de personas naturales (oficina, limpieza, almacenero, o trabajo en un servicio fondeado / a riesgo).
+      <br>Para anticipos / dinero entregado para gastos varios usá el módulo <b>🧾 Rendiciones de Gastos</b>.
+    </div>
+    <div class="card" style="margin-top:12px;display:flex;align-items:center;gap:14px;flex-wrap:wrap">
       <div>
         <h3 style="margin:0;font-size:15px">👥 Gasto en Personal</h3>
-        <div style="font-size:11px;color:#6b7280;margin-top:2px">OCs de honorarios — solo proveedores tipo PERSONA NATURAL.</div>
+        <div style="font-size:11px;color:#6b7280;margin-top:2px">OCs marcadas como honorarios reales (es_honorario=TRUE).</div>
       </div>
       <span style="margin-left:14px;color:#d1d5db">|</span>
       <label style="display:flex;align-items:center;gap:6px;font-size:13px">Año:
@@ -1144,7 +1148,13 @@ function escapeHtml(s) {
 // ─── Modal: Nueva OC de Honorario ─────────────────────────────────────
 async function abrirModalOCHonorario(onCreated) {
   let personas = [];
-  try { personas = await api.administracion.listPersonas(); } catch (e) { return showError('Error cargando personas'); }
+  let cotizaciones = [];
+  try {
+    [personas, cotizaciones] = await Promise.all([
+      api.administracion.listPersonas(),
+      api.administracion.cotizacionesFondeadas(),
+    ]);
+  } catch (e) { return showError('Error cargando datos: ' + (e?.message || '')); }
 
   const ov = document.createElement('div');
   ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
@@ -1175,10 +1185,36 @@ async function abrirModalOCHonorario(onCreated) {
         </div>
 
         <div id="oc-h-cc-wrap" style="display:none">
-          <label style="font-size:11px;font-weight:600;color:#374151">Centro de costo del servicio *</label>
-          <input id="oc-h-cc" placeholder="Ej: FABRICACION AUGER PSV"
-            style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:4px;font-size:12px;text-transform:uppercase">
-          <div style="font-size:10px;color:#6b7280;margin-top:3px">Escribí el nombre del proyecto. Si no existe, se crea automáticamente al guardar la OC.</div>
+          <label style="font-size:11px;font-weight:600;color:#374151">Servicio fondeado / a riesgo *</label>
+          <select id="oc-h-cot" style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:4px;font-size:12px">
+            <option value="">— Seleccionar cotización —</option>
+            ${cotizaciones.length ? `
+              <optgroup label="✅ APROBADAS (cliente pagó / depositará)">
+                ${cotizaciones.filter(c => c.estado === 'APROBADA').map(c => `
+                  <option value="${c.id_cotizacion}"
+                    data-proyecto="${escapeHtml(c.proyecto || c.cliente || '')}"
+                    data-cliente="${escapeHtml(c.cliente || '')}"
+                    data-moneda="${c.moneda || 'PEN'}"
+                    data-total="${c.total || 0}">
+                    ${escapeHtml(c.nro_cotizacion)} · ${escapeHtml(c.cliente || '—')} · ${escapeHtml(c.proyecto || '')} · ${c.moneda} ${Number(c.total || 0).toFixed(2)}
+                  </option>
+                `).join('')}
+              </optgroup>
+              <optgroup label="⚠️ TRABAJO EN RIESGO (estamos pagando con capital propio)">
+                ${cotizaciones.filter(c => c.estado === 'TRABAJO_EN_RIESGO').map(c => `
+                  <option value="${c.id_cotizacion}"
+                    data-proyecto="${escapeHtml(c.proyecto || c.cliente || '')}"
+                    data-cliente="${escapeHtml(c.cliente || '')}"
+                    data-moneda="${c.moneda || 'PEN'}"
+                    data-total="${c.total || 0}">
+                    ${escapeHtml(c.nro_cotizacion)} · ${escapeHtml(c.cliente || '—')} · ${escapeHtml(c.proyecto || '')} · ${c.moneda} ${Number(c.total || 0).toFixed(2)}
+                  </option>
+                `).join('')}
+              </optgroup>
+            ` : ''}
+          </select>
+          ${!cotizaciones.length ? `<div style="font-size:11px;color:#92400e;margin-top:6px;background:#fef3c7;padding:6px 8px;border-radius:4px">Sin cotizaciones APROBADAS o TRABAJO_EN_RIESGO. Pedile a Comercial que apruebe la cotización primero (o pásela a TRABAJO_EN_RIESGO si vas a pagar con capital propio).</div>` : ''}
+          <div id="oc-h-cot-info" style="font-size:11px;color:#6b7280;margin-top:6px;display:none"></div>
         </div>
 
         <div>
@@ -1280,6 +1316,20 @@ async function abrirModalOCHonorario(onCreated) {
   };
   radios.forEach(r => r.onchange = updateDestino);
 
+  // Dropdown cotización → autopobla info
+  const cotSel = ov.querySelector('#oc-h-cot');
+  const cotInfo = ov.querySelector('#oc-h-cot-info');
+  if (cotSel) {
+    cotSel.onchange = () => {
+      const opt = cotSel.options[cotSel.selectedIndex];
+      if (!opt || !opt.value) { cotInfo.style.display = 'none'; return; }
+      const proyecto = opt.dataset.proyecto;
+      const cliente  = opt.dataset.cliente;
+      cotInfo.style.display = 'block';
+      cotInfo.innerHTML = `📌 Centro de costo: <b>${escapeHtml(proyecto || cliente || '—')}</b> · La OC se vinculará a esta cotización para trazabilidad.`;
+    };
+  }
+
   // Persona → autopobla tarifa/unidad
   const personaSel = ov.querySelector('#oc-h-persona');
   const cantInput  = ov.querySelector('#oc-h-cant');
@@ -1329,12 +1379,17 @@ async function abrirModalOCHonorario(onCreated) {
 
     let centro_costo;
     let tipo_oc;
+    let id_cotizacion = null;
     if (destino === 'OFICINA') {
       centro_costo = 'OFICINA CENTRAL';
       tipo_oc = 'GENERAL';
     } else {
-      centro_costo = (ov.querySelector('#oc-h-cc').value || '').trim().toUpperCase();
-      if (!centro_costo) return showError('Indicá el centro de costo del servicio');
+      const cotSelEl = ov.querySelector('#oc-h-cot');
+      if (!cotSelEl || !cotSelEl.value) return showError('Seleccioná la cotización del servicio');
+      id_cotizacion = Number(cotSelEl.value);
+      const opt = cotSelEl.options[cotSelEl.selectedIndex];
+      centro_costo = (opt.dataset.proyecto || opt.dataset.cliente || '').trim().toUpperCase();
+      if (!centro_costo) return showError('La cotización no tiene proyecto/cliente — no se puede derivar el centro de costo');
       tipo_oc = 'SERVICIO';
     }
 
@@ -1349,6 +1404,7 @@ async function abrirModalOCHonorario(onCreated) {
     const payload = {
       fecha_emision: ov.querySelector('#oc-h-fecha').value,
       id_proveedor,
+      id_cotizacion,
       centro_costo,
       tipo_oc,
       empresa: 'ME',

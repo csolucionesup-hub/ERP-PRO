@@ -171,8 +171,11 @@ class OrdenCompraService {
 
   /**
    * Crear OC. Si total ≤ monto_limite_sin_aprobacion, auto-aprueba.
+   * `params.es_honorario` (opcional) marca la OC como honorario por trabajo
+   * realizado de persona natural — solo se setea desde el flujo dedicado en
+   * Administración. Default FALSE para todas las OCs creadas desde Logística.
    */
-  async crear(params: CrearOCParams, opts: { rol?: string } = {}) {
+  async crear(params: CrearOCParams & { es_honorario?: boolean }, opts: { rol?: string } = {}) {
     const cfg = await ConfiguracionService.getActual();
     const anio = new Date(params.fecha_emision).getFullYear();
     const empresa = params.empresa || 'ME';
@@ -224,6 +227,7 @@ class OrdenCompraService {
       const ctactoNombre = params.contacto_interno || null;
       const ctactoTel    = params.contacto_telefono|| null;
 
+      const esHonorario = (params as any).es_honorario === true;
       const [res]: any = await conn.query(
         `INSERT INTO OrdenesCompra
           (nro_oc, fecha_emision, fecha_entrega_esperada, id_proveedor, id_servicio, id_cotizacion,
@@ -233,8 +237,8 @@ class OrdenCompraService {
            estado, id_usuario_crea, id_usuario_aprueba, fecha_aprobacion,
            atencion, contacto_interno, contacto_telefono,
            solicitado_por, revisado_por, autorizado_por,
-           cuenta_bancaria_pago, lugar_entrega)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           cuenta_bancaria_pago, lugar_entrega, es_honorario)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [nro_oc, params.fecha_emision, params.fecha_entrega_esperada || null,
          params.id_proveedor, params.id_servicio || null, params.id_cotizacion || null,
          cc, params.tipo_oc || 'GENERAL',
@@ -247,7 +251,8 @@ class OrdenCompraService {
          autoAprobar ? new Date() : null,
          params.atencion || null, ctactoNombre, ctactoTel,
          solicitado, revisado, autorizado,
-         params.cuenta_bancaria_pago || null, params.lugar_entrega || 'Lima']
+         params.cuenta_bancaria_pago || null, params.lugar_entrega || 'Lima',
+         esHonorario]
       );
       const id_oc = res.insertId;
 

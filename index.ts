@@ -806,9 +806,25 @@ apiRouter.post('/admin/oc-honorario', auditLog('OrdenCompra', 'CREATE'), async (
     forma_pago:  req.body.forma_pago  || 'CONTADO',
     dias_credito: Number(req.body.dias_credito) || 0,
     id_usuario: req.user?.id_usuario,
+    es_honorario: true, // forzado: este endpoint solo emite honorarios reales
   };
   const result = await OrdenCompraService.crear(params, { rol: req.user?.rol });
   res.status(201).json(result);
+});
+
+// Cotizaciones fondeadas (APROBADA / TRABAJO_EN_RIESGO) que el módulo
+// Personal usa para vincular un honorario a un servicio. Wrapper liviano:
+// el admin no tiene módulo COMERCIAL pero necesita esta lista para el modal.
+apiRouter.use('/admin/cotizaciones-fondeadas', requireModulo('ADMINISTRACION'));
+apiRouter.get('/admin/cotizaciones-fondeadas', async (_req: Request, res: Response) => {
+  const [rows] = await db.query(`
+    SELECT id_cotizacion, nro_cotizacion, cliente, proyecto, marca, moneda,
+           total, estado, fecha
+    FROM Cotizaciones
+    WHERE estado IN ('APROBADA', 'TRABAJO_EN_RIESGO')
+    ORDER BY estado, fecha DESC, id_cotizacion DESC
+  `);
+  res.json(rows);
 });
 
 // ===== ALERTAS / NOTIFICACIONES =====
