@@ -1441,11 +1441,22 @@ class OrdenCompraService {
     );
     const oc = rows[0];
     if (!oc) throw new Error('OC no encontrada');
-    if (!['RECIBIDA', 'RECIBIDA_PARCIAL'].includes(oc.estado)) {
-      throw new Error(`OC debe estar RECIBIDA para cerrar sin factura (actual: ${oc.estado})`);
+    if (!['RECIBIDA', 'RECIBIDA_PARCIAL', 'PAGADA_PEND_FACTURA'].includes(oc.estado)) {
+      throw new Error(`OC debe estar RECIBIDA o PAGADA_PEND_FACTURA para cerrar sin factura (actual: ${oc.estado})`);
     }
     if (oc.tipo_oc === 'ALMACEN') {
       throw new Error('OC ALMACEN NO puede cerrarse sin factura — las compras de stock requieren comprobante');
+    }
+
+    // Caso: ya estaba pagada y esperando factura. La Compra/Gasto provisorio
+    // ya existe (creado en registrarPago()) con nro_comprobante=NULL. Solo
+    // cambiamos el estado de la OC — todo lo contable y bancario ya está.
+    if (oc.estado === 'PAGADA_PEND_FACTURA') {
+      await db.query(
+        `UPDATE OrdenesCompra SET estado = 'CERRADA_SIN_FACTURA' WHERE id_oc = ?`,
+        [id_oc]
+      );
+      return { success: true, estado: 'CERRADA_SIN_FACTURA' as const, id_oc, sin_movimientos_nuevos: true };
     }
 
     const tcOC = Number(oc.tipo_cambio) || 1;

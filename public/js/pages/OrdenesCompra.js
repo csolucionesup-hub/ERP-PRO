@@ -272,7 +272,7 @@ window.ensureOCModal = ensureOCModal;
 // a OC.verOC sin haber montado el TabBar de OrdenesCompra). Las function
 // declarations se hoistean, así que las referencias funcionan aunque estén
 // definidas más abajo en el archivo.
-window.OC = { nuevaOC, verOC, aprobar, enviar, recibir, facturar, registrarPago, cerrarSinFactura, asociarFactura, anular, reactivar, eliminarOC, editar, editarFecha, editarMetadata: editarMetadataOC, descargarPDF, reporteROC };
+window.OC = { nuevaOC, verOC, aprobar, enviar, recibir, facturar, registrarPago, cerrarSinFactura, cerrarPagaSinFactura, asociarFactura, anular, reactivar, eliminarOC, editar, editarFecha, editarMetadata: editarMetadataOC, descargarPDF, reporteROC };
 
 // Editar SOLO la fecha de emisión (corregir data histórica) — disponible en
 // cualquier estado salvo ANULADA. No toca estado/items/totales/correlativo.
@@ -700,9 +700,13 @@ function accionesSegunEstado(oc) {
   if (oc.estado === 'FACTURADA') {
     btns.push(`<button onclick="OC.registrarPago(${oc.id_oc}, '${nroSafe}')" title="Registrar el pago al proveedor de esta factura. Genera el movimiento bancario y cierra la OC en 'Cerrada (pago + factura)'." style="padding:10px 18px;background:#15803d;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">💰 Registrar pago</button>`);
   }
-  // PAGADA_PEND_FACTURA → falta la factura. Ofrecer Recibí factura para cerrar a PAGADA.
+  // PAGADA_PEND_FACTURA → falta la factura. Ofrecer Recibí factura para cerrar a PAGADA,
+  // o "Dar por cerrada sin factura" si el proveedor nunca la va a entregar (no aplica a ALMACEN).
   if (oc.estado === 'PAGADA_PEND_FACTURA') {
     btns.push(`<button onclick="OC.facturar(${oc.id_oc})" title="Cargar la factura/boleta del proveedor que llegó después del pago. Enriquece la Compra/Gasto provisorio con el N° de comprobante y cierra la OC en 'Cerrada (pago + factura)'." style="padding:10px 18px;background:#7c3aed;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">🧾 Recibí factura</button>`);
+    if (oc.tipo_oc !== 'ALMACEN') {
+      btns.push(`<button onclick="OC.cerrarPagaSinFactura(${oc.id_oc}, '${nroSafe}')" title="Dar por cerrada esta OC sin esperar factura (el proveedor no la entregará). El Gasto provisorio que se creó al registrar el pago queda en BD sin nro de comprobante. ALMACEN no permite esta acción." style="padding:10px 18px;background:#ea580c;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">🗂 Cerrar sin factura</button>`);
+    }
   }
   // OC cerrada sin factura — ofrecer asociar factura tardía
   if (oc.estado === 'CERRADA_SIN_FACTURA') {
@@ -1268,6 +1272,32 @@ async function cerrarSinFactura(id, nro) {
     // Logística), refreshOC() solo cubre el primero. Esto resuelve el caso
     // de cerrar OC desde el modal abierto dentro del hub de Logística.
     setTimeout(() => (window.refreshModule || refreshOC)(), 600);
+  } catch (e) { showError(e.message); }
+}
+
+// Cierra una OC que está en PAGADA_PEND_FACTURA cuando el proveedor confirma
+// que NO va a entregar factura. La Compra/Gasto provisorio ya existe (creado
+// al registrarPago()) — solo cambia el estado de la OC a CERRADA_SIN_FACTURA.
+// No pide concepto ni forma de pago: ya están grabados desde el momento del pago.
+async function cerrarPagaSinFactura(id, nro) {
+  const ok = await confirmarAccion({
+    titulo: '🗂 Dar por cerrada sin factura',
+    mensaje:
+      `Vas a cerrar la OC <strong>${nro}</strong> sin esperar factura del proveedor.` +
+      `<ul style="margin:8px 0 8px 20px;line-height:1.6;font-size:13px">` +
+      `<li>El Gasto provisorio que se creó al registrar el pago queda como está, <strong>sin N° de comprobante</strong>.</li>` +
+      `<li>NO se descuenta IGV ni va a Libro de Compras (no hay sustento documental).</li>` +
+      `<li>Si después aparece la factura, podés usar "Asociar factura tardía" para enriquecer el Gasto con el comprobante.</li>` +
+      `</ul>` +
+      `Usá esta opción solo cuando el proveedor te confirmó que NO va a entregar factura.`,
+    tipo: 'warning',
+    textoBoton: 'Sí, cerrar sin factura',
+  });
+  if (!ok) return;
+  try {
+    await api.ordenesCompra.cerrarSinFactura(id, {});
+    showSuccess(`OC ${nro} cerrada — gasto registrado sin sustento documental`);
+    setTimeout(() => (window.refreshModule || refreshOC)(), 800);
   } catch (e) { showError(e.message); }
 }
 
