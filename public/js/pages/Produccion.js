@@ -194,10 +194,14 @@ function pintarTabla(body, ots) {
 async function abrirDetalleOT(id_cotizacion) {
   const ov = document.createElement('div');
   ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:1500;display:flex;align-items:center;justify-content:center;padding:20px';
+  // Header con dos divs separados: ot-head-info se actualiza al cargar datos,
+  // el botón close queda intacto con su handler original (gotcha histórico:
+  // cuando el handler se re-asignaba tras un innerHTML, el closest del overlay
+  // fallaba si los estilos venían vía .style.cssText en vez de attr style).
   ov.innerHTML = `
     <div style="background:#fff;border-radius:10px;width:1100px;max-width:98vw;height:90vh;display:flex;flex-direction:column;overflow:hidden">
-      <div id="ot-head" style="padding:16px 20px;border-bottom:1px solid #e5e7eb;background:#f9fafb;display:flex;justify-content:space-between;align-items:center">
-        <div><h3 style="margin:0;font-size:16px">⏳ Cargando OT…</h3></div>
+      <div style="padding:16px 20px;border-bottom:1px solid #e5e7eb;background:#f9fafb;display:flex;justify-content:space-between;align-items:center">
+        <div id="ot-head-info"><h3 style="margin:0;font-size:16px">⏳ Cargando OT…</h3></div>
         <button id="ot-close" title="Cerrar" aria-label="Cerrar" style="background:none;border:none;font-size:22px;cursor:pointer;color:#999">×</button>
       </div>
       <div id="ot-body" style="flex:1;overflow:auto;padding:18px 20px;background:#fafafa">
@@ -205,8 +209,7 @@ async function abrirDetalleOT(id_cotizacion) {
       </div>
     </div>`;
   document.body.appendChild(ov);
-  const cerrar = () => ov.remove();
-  document.getElementById('ot-close').onclick = cerrar;
+  document.getElementById('ot-close').onclick = () => ov.remove();
 
   let data;
   try { data = await api.produccion.obtenerOT(id_cotizacion); }
@@ -225,17 +228,15 @@ function pintarDetalle(data) {
   const margenColor = t.margen_pen >= 0 ? '#16a34a' : '#dc2626';
   const pctColor    = t.margen_pct >= 30 ? '#16a34a' : (t.margen_pct >= 15 ? '#ca8a04' : '#dc2626');
 
-  document.getElementById('ot-head').innerHTML = `
-    <div>
-      <h3 style="margin:0;font-size:16px">🏭 OT ${escapeHtml(c.nro_cotizacion)} — ${escapeHtml(c.cliente || '')}</h3>
-      <div style="font-size:11px;color:#6b7280;margin-top:3px">
-        ${escapeHtml(c.proyecto || '—')} · <span style="background:${e.bg};color:${e.fg};padding:1px 6px;border-radius:6px;font-size:10px;font-weight:600">${e.icon} ${e.label}</span>
-        · Fecha cotización: ${fmtFecha(c.fecha)}
-      </div>
+  // Solo actualizamos la columna izquierda (info) — el botón close queda
+  // intacto con su handler original asignado en abrirDetalleOT.
+  document.getElementById('ot-head-info').innerHTML = `
+    <h3 style="margin:0;font-size:16px">🏭 OT ${escapeHtml(c.nro_cotizacion)} — ${escapeHtml(c.cliente || '')}</h3>
+    <div style="font-size:11px;color:#6b7280;margin-top:3px">
+      ${escapeHtml(c.proyecto || '—')} · <span style="background:${e.bg};color:${e.fg};padding:1px 6px;border-radius:6px;font-size:10px;font-weight:600">${e.icon} ${e.label}</span>
+      · Fecha cotización: ${fmtFecha(c.fecha)}
     </div>
-    <button id="ot-close" title="Cerrar" aria-label="Cerrar" style="background:none;border:none;font-size:22px;cursor:pointer;color:#999">×</button>
   `;
-  document.getElementById('ot-close').onclick = () => document.getElementById('ot-body').closest('[style*="position:fixed"]').remove();
 
   const fechaCorta = (s) => fmtFecha(s);
 
