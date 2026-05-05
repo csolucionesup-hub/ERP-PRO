@@ -136,6 +136,7 @@ export const api = {
     getInventario:        () => get('/inventario'),
     getDashboard:         () => get('/inventario/dashboard'),
     getKardex:       (id)    => get(`/inventario/${id}/kardex`),
+    cotizacionesFondeadas: () => get('/inventario/cotizaciones-fondeadas'),
     createInventarioItem: (data) => post('/inventario', data),
     consumirInventario:   (data) => post('/inventario/consumo', data),
     editarMetadataItem:   (id, d) => put(`/inventario/${id}/metadata`, d),

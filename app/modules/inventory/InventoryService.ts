@@ -194,15 +194,46 @@ class InventoryService {
   /**
    * Transactor Estricto de Merma (Salida Logística hacia Ventas/Servicios)
    */
-  async registrarConsumoServicio(data: { id_servicio: number, detalles: { id_item: number, cantidad: number }[] }) {
+  async registrarConsumoServicio(data: {
+    id_servicio?: number | null;
+    id_cotizacion?: number | null;
+    detalles: { id_item: number, cantidad: number }[];
+  }) {
     const conn = await db.getConnection();
     await conn.beginTransaction();
 
     try {
-      const [srvRows] = await conn.query('SELECT id_servicio, estado FROM Servicios WHERE id_servicio = ?', [data.id_servicio]);
-      const srv = (srvRows as any)[0];
-      if (!srv) throw new Error('Servicio no encontrado');
-      if (['COBRADO', 'ANULADO'].includes(srv.estado)) throw new Error('No se puede registrar consumo en un servicio ' + srv.estado);
+      // Validar destino: aceptar id_cotizacion (preferido, post-Camino A)
+      // o id_servicio (legacy). Al menos uno requerido.
+      const idCotizacion = data.id_cotizacion ? Number(data.id_cotizacion) : null;
+      const idServicio   = data.id_servicio   ? Number(data.id_servicio)   : null;
+      if (!idCotizacion && !idServicio) {
+        throw new Error('Falta destino del consumo: indicá id_cotizacion (cotización fondeada) o id_servicio (legacy).');
+      }
+
+      // Validar destino existe y está en estado válido
+      let referenciaTipo: 'COTIZACION' | 'SERVICIO';
+      let referenciaId: number;
+      if (idCotizacion) {
+        const [cotRows] = await conn.query(
+          'SELECT id_cotizacion, estado, nro_cotizacion FROM Cotizaciones WHERE id_cotizacion = ?',
+          [idCotizacion]
+        );
+        const cot = (cotRows as any)[0];
+        if (!cot) throw new Error('Cotización no encontrada');
+        if (!['APROBADA', 'TRABAJO_EN_RIESGO'].includes(cot.estado)) {
+          throw new Error(`Solo se puede consumir contra cotizaciones APROBADA o TRABAJO_EN_RIESGO. Estado actual: ${cot.estado}`);
+        }
+        referenciaTipo = 'COTIZACION';
+        referenciaId = idCotizacion;
+      } else {
+        const [srvRows] = await conn.query('SELECT id_servicio, estado FROM Servicios WHERE id_servicio = ?', [idServicio]);
+        const srv = (srvRows as any)[0];
+        if (!srv) throw new Error('Servicio no encontrado');
+        if (['COBRADO', 'ANULADO'].includes(srv.estado)) throw new Error('No se puede registrar consumo en un servicio ' + srv.estado);
+        referenciaTipo = 'SERVICIO';
+        referenciaId = idServicio!;
+      }
 
       const fechaConsumo = nowSQL();
 
@@ -224,29 +255,31 @@ class InventoryService {
          const saldoRestante = stock - item.cantidad;
          await conn.query("UPDATE Inventario SET stock_actual = ? WHERE id_item = ?", [saldoRestante, item.id_item]);
 
-         // Ingresamos Trazabilidad Kárdex de Egreso (Salida)
+         // Trazabilidad Kárdex de Egreso (Salida)
          await conn.query(`
             INSERT INTO MovimientosInventario (id_item, referencia_tipo, referencia_id, tipo_movimiento, cantidad, saldo_posterior, fecha_movimiento)
-            VALUES (?, 'SERVICIO', ?, 'SALIDA', ?, ?, ?)
-         `, [item.id_item, data.id_servicio, item.cantidad, saldoRestante, fechaConsumo]);
+            VALUES (?, ?, ?, 'SALIDA', ?, ?, ?)
+         `, [item.id_item, referenciaTipo, referenciaId, item.cantidad, saldoRestante, fechaConsumo]);
 
          // === PUENTE FINANCIERO ===
-         // Inyectamos esto como Costo Directo de Servicio logrando Matemáticamente Utilidades Reales
+         // Inyectamos esto como Costo Directo logrando Utilidades Reales.
+         // CHECK chk_costoservicio_origen exige id_servicio OR id_cotizacion.
          const costoTotalValorizado = parseFloat((item.cantidad * costoUnitario).toFixed(2));
-         
+
          await conn.query(`
-            INSERT INTO CostosServicio (id_servicio, concepto, moneda, monto_original, tipo_cambio, monto_base, tipo_costo, fecha)
-            VALUES (?, ?, 'PEN', ?, 1.0000, ?, 'MATERIAL_CONSUMO', ?)
+            INSERT INTO CostosServicio (id_servicio, id_cotizacion, concepto, moneda, monto_original, tipo_cambio, monto_base, tipo_costo, fecha)
+            VALUES (?, ?, ?, 'PEN', ?, 1.0000, ?, 'MATERIAL_CONSUMO', ?)
          `, [
-            data.id_servicio, 
-            'Consumo Inventario [Ítem ' + insumo.nombre + ']', 
-            costoTotalValorizado, costoTotalValorizado, // Original y Base
-            fechaConsumo.split(' ')[0] // Extrae el DATE
+            idServicio,
+            idCotizacion,
+            'Consumo Inventario [Ítem ' + insumo.nombre + ']',
+            costoTotalValorizado, costoTotalValorizado,
+            fechaConsumo.split(' ')[0]
          ]);
       }
 
       await conn.commit();
-      return { success: true, message: 'Inventario depletado y costos inyectados a servicio con éxito' };
+      return { success: true, message: 'Inventario depletado y costos inyectados con éxito' };
     } catch (error) {
        await conn.rollback();
        throw error;

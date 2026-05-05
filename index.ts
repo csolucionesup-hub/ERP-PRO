@@ -245,6 +245,17 @@ apiRouter.use('/inventario', requireModulo('ALMACEN'));
 apiRouter.get('/inventario/dashboard', async (req: Request, res: Response) => {
   res.json(await InventoryService.getDashboard());
 });
+// Cotizaciones fondeadas / a riesgo — destino válido para consumos de almacén.
+// El módulo ALMACEN no tiene COMERCIAL, por eso espejamos la lista acá.
+apiRouter.get('/inventario/cotizaciones-fondeadas', async (_req: Request, res: Response) => {
+  const [rows] = await db.query(`
+    SELECT id_cotizacion, nro_cotizacion, cliente, proyecto, marca, moneda, total, estado, fecha
+    FROM Cotizaciones
+    WHERE estado IN ('APROBADA', 'TRABAJO_EN_RIESGO')
+    ORDER BY estado, fecha DESC, id_cotizacion DESC
+  `);
+  res.json(rows);
+});
 apiRouter.get('/inventario', async (req: Request, res: Response) => {
   res.json(await InventoryService.getInventario());
 });

@@ -17,18 +17,18 @@ const fNum = (v) => new Intl.NumberFormat('es-PE', { maximumFractionDigits: 2 })
 const fDate = (d) => d ? String(d).split('T')[0] : '—';
 
 let _inventario = [];
-let _servicios = [];
+let _cotizacionesFondeadas = [];
 let _dashData = null;
 let _chartInstances = {};
 
 export const Inventario = async () => {
   try {
-    [_inventario, _servicios] = await Promise.all([
+    [_inventario, _cotizacionesFondeadas] = await Promise.all([
       api.inventory.getInventario(),
-      api.services.getServicios(),
+      api.inventory.cotizacionesFondeadas(),
     ]);
     if (!Array.isArray(_inventario)) _inventario = [];
-    if (!Array.isArray(_servicios)) _servicios = [];
+    if (!Array.isArray(_cotizacionesFondeadas)) _cotizacionesFondeadas = [];
   } catch (err) {
     console.error('[Inventario] error:', err);
   }
@@ -97,7 +97,14 @@ function renderCatalogo(panel) {
     `;
   }).join('');
 
-  const servicesOptions = _servicios.filter(s => s.estado !== 'COBRADO').map(s => `<option value="${s.id_servicio}">${s.codigo} - ${s.nombre}</option>`).join('');
+  const escAttr = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  const cotsAprobadas = _cotizacionesFondeadas.filter(c => c.estado === 'APROBADA');
+  const cotsRiesgo    = _cotizacionesFondeadas.filter(c => c.estado === 'TRABAJO_EN_RIESGO');
+  const cotOpt = (c) => `<option value="${c.id_cotizacion}">${escAttr(c.nro_cotizacion)} · ${escAttr(c.cliente || '—')} · ${escAttr(c.proyecto || '')}</option>`;
+  const cotizacionesOptions = `
+    ${cotsAprobadas.length ? `<optgroup label="✅ APROBADAS (cliente fondeará)">${cotsAprobadas.map(cotOpt).join('')}</optgroup>` : ''}
+    ${cotsRiesgo.length ? `<optgroup label="⚠️ TRABAJO EN RIESGO (capital propio)">${cotsRiesgo.map(cotOpt).join('')}</optgroup>` : ''}
+  `;
   const itemOptions = _inventario.filter(i => i.stock_actual > 0).map(i => `<option value="${i.id_item}">${i.nombre} (${i.stock_actual} disp)</option>`).join('');
 
   const btnStyle = 'padding:6px 12px; border:1px solid var(--border-light); border-radius:4px; cursor:pointer; font-size:12px; background:var(--bg-app)';
@@ -168,12 +175,18 @@ function renderCatalogo(panel) {
         </div>
 
         <div class="card" style="border-left:4px solid var(--danger)">
-          <h3 style="margin-bottom:15px;font-weight:600;font-size:15px">📤 Retirar Insumos hacia Servicio</h3>
-          <p style="font-size:12px;color:var(--text-secondary);margin-bottom:15px">Resta stock e imputa costo al servicio para no inflar utilidades.</p>
+          <h3 style="margin-bottom:6px;font-weight:600;font-size:15px">📤 Retirar Insumos hacia Servicio</h3>
+          <p style="font-size:12px;color:var(--text-secondary);margin-bottom:12px">Resta stock e imputa costo a la cotización fondeada (o trabajo a riesgo) para no inflar utilidades. Es el insumo del futuro módulo Producción.</p>
+          ${(!cotsAprobadas.length && !cotsRiesgo.length) ? `
+            <div style="background:#fef3c7;color:#92400e;padding:10px 12px;border-radius:6px;font-size:11px;line-height:1.5">
+              ⚠️ Sin cotizaciones APROBADAS o TRABAJO_EN_RIESGO.<br>
+              Pedí a Comercial que apruebe la cotización primero (o pasala a TRABAJO_EN_RIESGO si vas a trabajar con capital propio).
+            </div>
+          ` : `
           <form id="form-consumo" style="display:flex;flex-direction:column;gap:10px">
-            <select name="id_servicio" required style="padding:10px;border-radius:6px;border:1px solid #d1d5db">
-              <option value="">— Servicio destino —</option>
-              ${servicesOptions}
+            <select name="id_cotizacion" required style="padding:10px;border-radius:6px;border:1px solid #d1d5db">
+              <option value="">— Cotización destino —</option>
+              ${cotizacionesOptions}
             </select>
             <select name="id_item" required style="padding:10px;border-radius:6px;border:1px solid #d1d5db">
               <option value="">— Material utilizado —</option>
@@ -182,6 +195,7 @@ function renderCatalogo(panel) {
             <input name="cantidad" type="number" step="0.0001" placeholder="Volumen retirado" required style="padding:10px;border-radius:6px;border:1px solid #d1d5db">
             <button type="submit" style="padding:12px;border:none;background:var(--danger);color:white;border-radius:6px;cursor:pointer;font-weight:bold;font-size:14px">Mermar Material</button>
           </form>
+          `}
         </div>
       </div>
     </div>
@@ -218,17 +232,18 @@ function renderCatalogo(panel) {
     }
   };
 
-  // Form Consumo
+  // Form Consumo — imputa contra cotización fondeada (o trabajo a riesgo).
+  // Es el insumo del futuro módulo Producción Metalmecánica.
   const formConsumo = panel.querySelector('#form-consumo');
   if (formConsumo) formConsumo.onsubmit = async (e) => {
     e.preventDefault();
     const data = {
-      id_servicio: Number(e.target.id_servicio.value),
+      id_cotizacion: Number(e.target.id_cotizacion.value),
       detalles: [{ id_item: Number(e.target.id_item.value), cantidad: Number(e.target.cantidad.value) }]
     };
     try {
       await api.inventory.consumirInventario(data);
-      showSuccess('Almacén rebajado y costo transferido al servicio');
+      showSuccess('Almacén rebajado y costo imputado a la cotización');
       window.navigate('inventario');
     } catch (err) {
       showError(err.detalles?.[0] || err.error || 'Error al registrar consumo');
