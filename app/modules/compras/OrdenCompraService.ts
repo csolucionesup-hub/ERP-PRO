@@ -277,6 +277,33 @@ class OrdenCompraService {
         );
       }
 
+      // Snapshot de costo de mano de obra para OCs honorario con cotización.
+      // Permite que el dashboard de rentabilidad de la cotización vea el costo
+      // INMEDIATAMENTE al crear la OC, sin esperar a la facturación. Cubre
+      // también el caso CERRADA_SIN_FACTURA (típico de personas naturales
+      // que no facturan, solo dan recibo por honorarios).
+      // facturar() detecta este snapshot y NO duplica el insert.
+      if (esHonorario && params.id_cotizacion) {
+        const totalPEN = moneda === 'PEN' ? total : Number((total * tc).toFixed(2));
+        // Resolver nombre del proveedor para concepto descriptivo.
+        const [provRows]: any = await conn.query(
+          `SELECT razon_social FROM Proveedores WHERE id_proveedor = ?`,
+          [params.id_proveedor]
+        );
+        const personaNombre = (provRows[0]?.razon_social || 'persona').toUpperCase();
+        await conn.query(
+          `INSERT INTO CostosServicio
+            (id_servicio, id_cotizacion, concepto, moneda,
+             monto_original, tipo_cambio, monto_base, tipo_costo, fecha)
+           VALUES (?, ?, ?, ?, ?, ?, ?, 'MANO_OBRA_OC', ?)`,
+          [
+            null, params.id_cotizacion,
+            `Honorario ${personaNombre} · OC ${nro_oc}`,
+            moneda, total, tc, totalPEN, params.fecha_emision,
+          ]
+        );
+      }
+
       await conn.commit();
       return { success: true, id_oc, nro_oc, estado, total, moneda, autoAprobada: autoAprobar };
     } catch (e) {
@@ -601,7 +628,9 @@ class OrdenCompraService {
         // Si SERVICIO, registrar en CostosServicio para rentabilidad de proyecto.
         // Nuevo flujo: vincula por id_cotizacion (preferido). Legacy: id_servicio.
         // CHECK constraint exige que al menos uno de los dos esté poblado.
-        if (oc.tipo_oc === 'SERVICIO' && (oc.id_cotizacion || oc.id_servicio)) {
+        // Skip si es OC honorario: ya hay snapshot insertado en crear() con
+        // tipo_costo='MANO_OBRA_OC'. Insertar acá duplicaría el costo.
+        if (oc.tipo_oc === 'SERVICIO' && !oc.es_honorario && (oc.id_cotizacion || oc.id_servicio)) {
           await conn.query(
             `INSERT INTO CostosServicio
               (id_servicio, id_cotizacion, concepto, moneda, monto_original,
@@ -907,9 +936,14 @@ class OrdenCompraService {
    * (DELETE + INSERT) — mismo patrón que `updateCotizacion`.
    */
   async actualizar(id_oc: number, params: CrearOCParams) {
-    const [rows]: any = await db.query('SELECT estado FROM OrdenesCompra WHERE id_oc = ?', [id_oc]);
+    const [rows]: any = await db.query(
+      `SELECT estado, nro_oc, es_honorario FROM OrdenesCompra WHERE id_oc = ?`,
+      [id_oc]
+    );
     if (!rows[0]) throw new Error('OC no encontrada');
     const estado: EstadoOC = rows[0].estado;
+    const nroOcAnterior: string = rows[0].nro_oc;
+    const eraHonorario: boolean = !!rows[0].es_honorario;
     if (!['BORRADOR', 'APROBADA', 'ENVIADA'].includes(estado)) {
       throw new Error(
         `Solo se puede editar una OC en BORRADOR, APROBADA o ENVIADA (actual: ${estado}). ` +
@@ -971,6 +1005,36 @@ class OrdenCompraService {
         );
       }
 
+      // Si la OC era honorario, refrescar el snapshot de CostosServicio para
+      // que refleje el nuevo monto. Defensivo: borra cualquier snapshot previo
+      // por id_cotizacion + nro_oc (vivo o anulado) antes de re-insertar.
+      if (eraHonorario && params.id_cotizacion) {
+        await conn.query(
+          `DELETE FROM CostosServicio
+            WHERE id_cotizacion = ?
+              AND tipo_costo = 'MANO_OBRA_OC'
+              AND concepto LIKE ?`,
+          [params.id_cotizacion, `%OC ${nroOcAnterior}%`]
+        );
+        const totalPEN = moneda === 'PEN' ? total : Number((total * tc).toFixed(2));
+        const [provRows]: any = await conn.query(
+          `SELECT razon_social FROM Proveedores WHERE id_proveedor = ?`,
+          [params.id_proveedor]
+        );
+        const personaNombre = (provRows[0]?.razon_social || 'persona').toUpperCase();
+        await conn.query(
+          `INSERT INTO CostosServicio
+            (id_servicio, id_cotizacion, concepto, moneda,
+             monto_original, tipo_cambio, monto_base, tipo_costo, fecha)
+           VALUES (?, ?, ?, ?, ?, ?, ?, 'MANO_OBRA_OC', ?)`,
+          [
+            null, params.id_cotizacion,
+            `Honorario ${personaNombre} · OC ${nroOcAnterior}`,
+            moneda, total, tc, totalPEN, params.fecha_emision,
+          ]
+        );
+      }
+
       await conn.commit();
       return { success: true, id_oc, estado, total, moneda };
     } catch (e) {
@@ -982,7 +1046,10 @@ class OrdenCompraService {
   }
 
   async anular(id_oc: number, motivo: string) {
-    const [rows]: any = await db.query('SELECT estado FROM OrdenesCompra WHERE id_oc = ?', [id_oc]);
+    const [rows]: any = await db.query(
+      `SELECT estado, nro_oc, es_honorario, id_cotizacion FROM OrdenesCompra WHERE id_oc = ?`,
+      [id_oc]
+    );
     if (!rows[0]) throw new Error('OC no encontrada');
     if (['FACTURADA', 'PAGADA'].includes(rows[0].estado)) {
       throw new Error(`No se puede anular una OC ${rows[0].estado}. Usa Nota de Crédito en su lugar.`);
@@ -991,6 +1058,17 @@ class OrdenCompraService {
       `UPDATE OrdenesCompra SET estado='ANULADA', motivo_anulacion=? WHERE id_oc=?`,
       [motivo, id_oc]
     );
+    // Si era honorario, revertir el snapshot de costo en CostosServicio.
+    // Match por concepto que contiene el nro_oc — mismo patrón que eliminar().
+    if (rows[0].es_honorario && rows[0].id_cotizacion) {
+      await db.query(
+        `DELETE FROM CostosServicio
+          WHERE id_cotizacion = ?
+            AND tipo_costo = 'MANO_OBRA_OC'
+            AND concepto LIKE ?`,
+        [rows[0].id_cotizacion, `%OC ${rows[0].nro_oc}%`]
+      );
+    }
     return { success: true, estado: 'ANULADA' };
   }
 
@@ -1000,15 +1078,48 @@ class OrdenCompraService {
    * Limpia motivo_anulacion para no dejar traza fantasma.
    */
   async reactivar(id_oc: number) {
-    const [rows]: any = await db.query('SELECT estado FROM OrdenesCompra WHERE id_oc = ?', [id_oc]);
-    if (!rows[0]) throw new Error('OC no encontrada');
-    if (rows[0].estado !== 'ANULADA') {
-      throw new Error(`Solo se puede reactivar una OC ANULADA (actual: ${rows[0].estado}).`);
+    const [rows]: any = await db.query(
+      `SELECT oc.estado, oc.nro_oc, oc.es_honorario, oc.id_cotizacion,
+              oc.id_proveedor, oc.fecha_emision, oc.moneda, oc.tipo_cambio, oc.total,
+              p.razon_social
+         FROM OrdenesCompra oc
+         LEFT JOIN Proveedores p ON p.id_proveedor = oc.id_proveedor
+        WHERE oc.id_oc = ?`,
+      [id_oc]
+    );
+    const oc = rows[0];
+    if (!oc) throw new Error('OC no encontrada');
+    if (oc.estado !== 'ANULADA') {
+      throw new Error(`Solo se puede reactivar una OC ANULADA (actual: ${oc.estado}).`);
     }
     await db.query(
       `UPDATE OrdenesCompra SET estado='BORRADOR', motivo_anulacion=NULL WHERE id_oc=?`,
       [id_oc]
     );
+    // Si era honorario, recrear el snapshot de costo en CostosServicio (que se
+    // borró al anular). Defensivo contra duplicados con DELETE previo.
+    if (oc.es_honorario && oc.id_cotizacion) {
+      await db.query(
+        `DELETE FROM CostosServicio
+          WHERE id_cotizacion = ? AND tipo_costo = 'MANO_OBRA_OC' AND concepto LIKE ?`,
+        [oc.id_cotizacion, `%OC ${oc.nro_oc}%`]
+      );
+      const tc = Number(oc.tipo_cambio) || 1;
+      const total = Number(oc.total);
+      const totalPEN = oc.moneda === 'PEN' ? total : Number((total * tc).toFixed(2));
+      const persona = (oc.razon_social || 'persona').toUpperCase();
+      await db.query(
+        `INSERT INTO CostosServicio
+          (id_servicio, id_cotizacion, concepto, moneda,
+           monto_original, tipo_cambio, monto_base, tipo_costo, fecha)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 'MANO_OBRA_OC', ?)`,
+        [
+          null, oc.id_cotizacion,
+          `Honorario ${persona} · OC ${oc.nro_oc}`,
+          oc.moneda, total, tc, totalPEN, oc.fecha_emision,
+        ]
+      );
+    }
     return { success: true, estado: 'BORRADOR' };
   }
 
