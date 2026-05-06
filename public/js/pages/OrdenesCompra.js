@@ -277,7 +277,7 @@ window.ensureOCModal = ensureOCModal;
 // a OC.verOC sin haber montado el TabBar de OrdenesCompra). Las function
 // declarations se hoistean, así que las referencias funcionan aunque estén
 // definidas más abajo en el archivo.
-window.OC = { nuevaOC, verOC, aprobar, marcarCredito, subirFactura, agregarNota, recibir, facturar, registrarPago, cerrarSinFactura, cerrarPagaSinFactura, asociarFactura, anular, reactivar, eliminarOC, editar, editarFecha, editarMetadata: editarMetadataOC, descargarPDF, reporteROC };
+window.OC = { nuevaOC, verOC, aprobar, marcarCredito, subirFactura, agregarNota, recibir, facturar, registrarPago, cerrarSinFactura, cerrarPagaSinFactura, asociarFactura, anular, reactivar, eliminarOC, editar, editarFecha, editarMetadata: editarMetadataOC, descargarPDF, reporteROC, descargarExcel: () => api.ordenesCompra.descargarExcel().catch(e => showError(e.message || 'Error descargando Excel')) };
 
 // Editar SOLO la fecha de emisión (corregir data histórica) — disponible en
 // cualquier estado salvo ANULADA. No toca estado/items/totales/correlativo.
@@ -626,7 +626,12 @@ function renderLista(panel) {
   }
 
   panel.innerHTML = `
-    <div class="card" style="margin-top:16px">
+    <div style="margin-top:16px;display:flex;justify-content:flex-end;margin-bottom:8px">
+      <button onclick="OC.descargarExcel()"
+              title="Descargar TODAS las OCs en Excel — incluye estado, pago, factura, fechas, crédito"
+              class="btn-secondary">📊 Exportar Excel</button>
+    </div>
+    <div class="card">
       <div style="overflow-x:auto">
         <table style="width:100%;border-collapse:collapse;font-size:12px">
           <thead>
