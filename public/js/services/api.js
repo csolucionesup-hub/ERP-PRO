@@ -485,6 +485,7 @@ export const api = {
       return r.json();
     },
     getFactura:    (id) => get(`/ordenes-compra/${id}/factura`),
+    eliminarFactura: (id) => del(`/ordenes-compra/${id}/factura`),
     // Export Excel del listado completo
     descargarExcel: async () => {
       const token = localStorage.getItem('erp_token');

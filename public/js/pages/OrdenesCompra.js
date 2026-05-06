@@ -277,7 +277,7 @@ window.ensureOCModal = ensureOCModal;
 // a OC.verOC sin haber montado el TabBar de OrdenesCompra). Las function
 // declarations se hoistean, así que las referencias funcionan aunque estén
 // definidas más abajo en el archivo.
-window.OC = { nuevaOC, verOC, aprobar, marcarCredito, subirFactura, agregarNota, recibir, facturar, registrarPago, cerrarSinFactura, cerrarPagaSinFactura, asociarFactura, anular, reactivar, eliminarOC, editar, editarFecha, editarMetadata: editarMetadataOC, descargarPDF, reporteROC, descargarExcel: () => api.ordenesCompra.descargarExcel().catch(e => showError(e.message || 'Error descargando Excel')) };
+window.OC = { nuevaOC, verOC, aprobar, marcarCredito, subirFactura, eliminarFactura, agregarNota, recibir, facturar, registrarPago, cerrarSinFactura, cerrarPagaSinFactura, asociarFactura, anular, reactivar, eliminarOC, editar, editarFecha, editarMetadata: editarMetadataOC, descargarPDF, reporteROC, descargarExcel: () => api.ordenesCompra.descargarExcel().catch(e => showError(e.message || 'Error descargando Excel')) };
 
 // Editar SOLO la fecha de emisión (corregir data histórica) — disponible en
 // cualquier estado salvo ANULADA. No toca estado/items/totales/correlativo.
@@ -797,9 +797,14 @@ async function verOC(id_oc) {
                 Emitida ${fmtDate(facturaAdjunta.fecha_emision)} ·
                 ${oc.moneda === 'USD' ? '$' : 'S/'} ${Number(facturaAdjunta.monto).toFixed(2)}
               </div>
-              ${facturaAdjunta.url_pdf ? `
-                <a href="${facturaAdjunta.url_pdf}" target="_blank" rel="noopener" title="Abrir el comprobante subido a Cloudinary en una pestaña nueva" style="background:#16a34a;color:white;padding:6px 14px;border-radius:5px;text-decoration:none;font-weight:600;font-size:12px">📂 Ver comprobante</a>
-              ` : '<span style="color:#6b7280;font-size:12px">(sin archivo subido)</span>'}
+              <div style="display:flex;gap:6px;align-items:center">
+                ${facturaAdjunta.url_pdf ? `
+                  <a href="${facturaAdjunta.url_pdf}" target="_blank" rel="noopener" title="Abrir el comprobante subido a Cloudinary en una pestaña nueva" style="background:#16a34a;color:white;padding:6px 14px;border-radius:5px;text-decoration:none;font-weight:600;font-size:12px">📂 Ver comprobante</a>
+                ` : '<span style="color:#6b7280;font-size:12px">(sin archivo subido)</span>'}
+                ${(JSON.parse(localStorage.getItem('erp_user') || '{}').rol === 'GERENTE') ? `
+                  <button onclick="OC.eliminarFactura(${oc.id_oc})" title="Eliminar factura adjunta. Vuelve la OC a estado_factura=PENDIENTE. El archivo en Cloudinary queda huérfano (no se borra). Solo GERENTE." style="background:transparent;color:#dc2626;border:1px solid #fecaca;border-radius:5px;padding:5px 9px;cursor:pointer;font-weight:700;font-size:13px">✕</button>
+                ` : ''}
+              </div>
             </div>
           ` : ''}
 
@@ -1021,6 +1026,23 @@ async function agregarNota(id) {
     showSuccess('Nota guardada');
   } catch (e) {
     showError(e.message || 'Error al guardar nota');
+  }
+}
+
+async function eliminarFactura(id) {
+  const ok = await confirmarAccion({
+    titulo: '🗑️ Eliminar factura adjunta',
+    mensaje: 'Vas a quitar la factura asociada a esta OC. La OC vuelve a estado_factura <strong>PENDIENTE</strong> y, si estaba en TERMINADA, retrocede a FACTURACION.<br><br>El archivo en Cloudinary <strong>NO se borra</strong> (queda huérfano por seguridad/audit). Esta acción es solo para GERENTE. ¿Confirmás?',
+    tipo: 'danger',
+    textoBoton: 'Sí, eliminar factura',
+  });
+  if (!ok) return;
+  try {
+    await api.ordenesCompra.eliminarFactura(id);
+    showSuccess('Factura eliminada');
+    setTimeout(() => refreshOC(), 600);
+  } catch (e) {
+    showError(e.message || 'Error al eliminar factura');
   }
 }
 

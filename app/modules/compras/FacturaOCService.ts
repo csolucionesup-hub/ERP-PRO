@@ -69,6 +69,41 @@ class FacturaOCService {
     );
     return rows[0] || null;
   }
+
+  /**
+   * Elimina la factura adjunta de una OC. Solo GERENTE.
+   * - Borra fila de OrdenCompraFactura
+   * - Setea OC.estado_factura = 'PENDIENTE'
+   * - Si la OC estaba en TERMINADA, retrocede a FACTURACION
+   * - El archivo de Cloudinary NO se borra (queda huérfano, evitable cleanup posterior)
+   */
+  async eliminar(id_oc: number, esGerente: boolean): Promise<{ success: true; estado_oc: string }> {
+    if (!esGerente) throw new Error('Solo GERENTE puede eliminar una factura adjunta');
+
+    await db.query(`DELETE FROM OrdenCompraFactura WHERE id_oc = ?`, [id_oc]);
+
+    // Volver estado_factura a PENDIENTE
+    await db.query(
+      `UPDATE OrdenesCompra SET estado_factura='PENDIENTE', facturada_at=NULL WHERE id_oc=?`,
+      [id_oc]
+    );
+
+    // Si la OC estaba TERMINADA porque tenía todo verde, retroceder a FACTURACION
+    const [rows]: any = await db.query(
+      `SELECT estado FROM OrdenesCompra WHERE id_oc = ?`, [id_oc]
+    );
+    const estadoActual = rows[0]?.estado;
+    let estadoFinal = estadoActual;
+    if (estadoActual === 'TERMINADA') {
+      await db.query(
+        `UPDATE OrdenesCompra SET estado='FACTURACION' WHERE id_oc=?`,
+        [id_oc]
+      );
+      estadoFinal = 'FACTURACION';
+    }
+
+    return { success: true, estado_oc: estadoFinal };
+  }
 }
 
 export default new FacturaOCService();

@@ -1705,6 +1705,11 @@ ocRouter.get('/:id/factura', validateIdParam, async (req: Request, res: Response
   res.json(f);
 });
 
+ocRouter.delete('/:id/factura', validateIdParam, auditLog('OrdenCompra', 'UPDATE'), async (req: any, res: Response) => {
+  const r = await FacturaOCService.eliminar(Number(req.params.id), req.user?.rol === 'GERENTE');
+  res.json(r);
+});
+
 ocRouter.post('/:id/recibir', validateIdParam, auditLog('OrdenCompra', 'UPDATE'), async (req: Request, res: Response) => {
   try {
     res.json(await OrdenCompraService.recibir(Number(req.params.id), req.body?.lineas || []));
