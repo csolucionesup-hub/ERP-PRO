@@ -2,7 +2,8 @@ import { db } from '../../../database/connection';
 
 export type AuditAccion =
   | 'CREATE' | 'UPDATE' | 'DELETE' | 'ANULAR' | 'REACTIVAR'
-  | 'LOGIN' | 'LOGOUT' | 'CONFIG' | 'EXPORT' | 'EMIT';
+  | 'LOGIN' | 'LOGOUT' | 'CONFIG' | 'EXPORT' | 'EMIT'
+  | 'MARCAR_CREDITO' | 'AGREGAR_NOTA' | 'SUBIR_FACTURA' | 'CERRAR_SIN_FACTURA';
 
 export interface LogEntry {
   id_usuario?: number;

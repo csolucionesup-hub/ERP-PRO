@@ -3,19 +3,19 @@
  *
  * Flujo (estándar mundial, inspirado en SAP B1 / Odoo / Epicor):
  *
- *   BORRADOR   → creada pero no enviada
- *   APROBADA   → aprobada por GERENTE (auto si monto ≤ umbral configurable)
- *   ENVIADA    → enviada al proveedor (estado operativo)
- *   RECIBIDA_PARCIAL → recibió algunas líneas, faltan otras
- *   RECIBIDA   → todas las líneas recibidas, falta factura
- *   FACTURADA  → llegó factura del proveedor, se generó registro en Compras
- *   PAGADA     → pago registrado (estado final)
- *   ANULADA    → descartada antes de facturar
+ *   BORRADOR    → creada pero no aprobada
+ *   APROBADA    → aprobada por GERENTE (auto si monto ≤ umbral configurable)
+ *   PAGO        → bandeja de Finanzas, esperando primer pago/crédito
+ *   RECEPCION   → ya hay pago/parcial/crédito; se está recibiendo mercadería
+ *   FACTURACION → recepción y/o pago listos; falta factura del proveedor
+ *   TERMINADA   → todo cerrado (pagado + recibido + facturado)
+ *   CERRADA_SIN_FACTURA → cerrada sin comprobante formal
+ *   ANULADA     → descartada antes de facturar
  *
  * Reglas:
  *   - Si total > monto_limite_sin_aprobacion (config) → requiere APROBAR explícito
  *   - Solo quien tiene rol GERENTE o APROBADOR puede aprobar
- *   - No se puede facturar si estado != RECIBIDA o RECIBIDA_PARCIAL
+ *   - No se puede facturar si estado != RECEPCION o FACTURACION
  *   - Al facturar, se crea un registro en Compras con id_oc_origen
  */
 
@@ -23,10 +23,14 @@ import { db, DEFAULT_ACCOUNT_ID } from '../../../database/connection';
 import ConfiguracionService from '../configuracion/ConfiguracionService';
 
 export type EstadoOC =
-  | 'BORRADOR' | 'APROBADA' | 'ENVIADA'
-  | 'RECIBIDA_PARCIAL' | 'RECIBIDA'
-  | 'FACTURADA' | 'PAGADA_PEND_FACTURA' | 'PAGADA' | 'ANULADA'
-  | 'CERRADA_SIN_FACTURA';
+  | 'BORRADOR' | 'APROBADA' | 'PAGO' | 'RECEPCION' | 'FACTURACION'
+  | 'TERMINADA' | 'CERRADA_SIN_FACTURA' | 'ANULADA';
+
+export type EstadoFactura = 'PENDIENTE' | 'FACTURADA' | 'SIN_FACTURA';
+export type EstadoRecepcion = 'NO_RECIBIDO' | 'PARCIAL' | 'RECIBIDO';
+
+/** Constante única — todos los umbrales de alertas de OC en días. */
+export const UMBRAL_ALERTA_DIAS = 15;
 
 export interface LineaOC {
   orden?: number;
