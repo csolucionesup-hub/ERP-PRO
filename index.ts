@@ -1607,10 +1607,6 @@ ocRouter.post('/:id/aprobar', validateIdParam, auditLog('OrdenCompra', 'UPDATE')
   ));
 });
 
-ocRouter.post('/:id/enviar', validateIdParam, auditLog('OrdenCompra', 'UPDATE'), async (req: Request, res: Response) => {
-  res.json(await OrdenCompraService.marcarEnviada(Number(req.params.id)));
-});
-
 ocRouter.post('/:id/recibir', validateIdParam, auditLog('OrdenCompra', 'UPDATE'), async (req: Request, res: Response) => {
   try {
     res.json(await OrdenCompraService.recibir(Number(req.params.id), req.body?.lineas || []));

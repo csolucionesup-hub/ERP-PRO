@@ -366,11 +366,11 @@ class AlertasService {
     // ═══════════════════════════════════════════════════════════
 
     if (tieneLogistica) {
-      // 12. OCs sin facturar (ENVIADA/RECIBIDA hace >15 días)
+      // 12. OCs sin facturar (PAGO/RECEPCION hace >15 días)
       const [ocPend]: any = await db.query(`
         SELECT id_oc, nro_oc, fecha_emision, estado, total
         FROM OrdenesCompra
-        WHERE estado IN ('ENVIADA','RECIBIDA','RECIBIDA_PARCIAL')
+        WHERE estado IN ('PAGO','RECEPCION')
           AND fecha_emision < (CURRENT_DATE - INTERVAL '15 days')
         ORDER BY fecha_emision ASC
         LIMIT 5

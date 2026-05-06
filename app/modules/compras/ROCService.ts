@@ -100,7 +100,7 @@ class ROCService {
       `SELECT
          oc.id_oc, oc.nro_oc, oc.fecha_emision, oc.tipo_oc,
          oc.moneda, oc.subtotal, oc.igv, oc.total, oc.aplica_igv,
-         oc.estado, oc.centro_costo, oc.empresa,
+         oc.estado, oc.estado_pago, oc.centro_costo, oc.empresa,
          COALESCE(p.razon_social, '') AS proveedor_nombre,
          COALESCE(oc.observaciones, '') AS observaciones,
          COALESCE(c.nro_comprobante, '') AS nro_factura,
@@ -120,8 +120,8 @@ class ROCService {
     for (const r of rows) {
       const resumen = (await this.resumenDescripcion(r.id_oc)) || r.observaciones || '';
       const estado = String(r.estado);
-      const aprobada = ['APROBADA','ENVIADA','RECIBIDA','RECIBIDA_PARCIAL','FACTURADA','PAGADA'].includes(estado) ? 'X' : '';
-      const pagada   = estado === 'PAGADA' ? 'X' : '';
+      const aprobada = ['APROBADA','PAGO','RECEPCION','FACTURACION','TERMINADA'].includes(estado) ? 'X' : '';
+      const pagada   = ['TERMINADA','CERRADA_SIN_FACTURA'].includes(estado) || (estado === 'FACTURACION' && r.estado_pago === 'PAGADO') ? 'X' : '';
 
       out.push({
         id_oc: r.id_oc,
@@ -142,7 +142,7 @@ class ROCService {
         pagada_marca: pagada,
         fecha_estimada_pago: '',                   // usaremos fecha_factura si existe
         fecha_real_pago: r.fecha_factura ? this.fmtFechaCorta(r.fecha_factura) : '',
-        estado_rendicion: estado === 'PAGADA' ? 'RENDIDO' : (estado === 'ANULADA' ? 'ANULADA' : 'PENDIENTE'),
+        estado_rendicion: estado === 'TERMINADA' ? 'RENDIDO' : (estado === 'ANULADA' ? 'ANULADA' : 'PENDIENTE'),
         nro_factura: r.nro_factura || '',
         banco: 'INTERBANK',
       });
@@ -428,7 +428,7 @@ class ROCService {
             r.getCell(c).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF2DCDB' } };
             r.getCell(c).font = { color: { argb: 'FF9C0006' }, italic: true };
           }
-        } else if (oc.estado === 'PAGADA') {
+        } else if (oc.estado === 'TERMINADA') {
           for (let c = 1; c <= 19; c++) {
             r.getCell(c).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2EFDA' } };
           }
