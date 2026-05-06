@@ -714,10 +714,15 @@ function renderDashboard(panel) {
 // ──────── Modal: Ver detalle de OC ────────
 async function verOC(id_oc) {
   try {
-    const oc = await api.ordenesCompra.get(id_oc);
+    const [oc, facturaAdjunta] = await Promise.all([
+      api.ordenesCompra.get(id_oc),
+      api.ordenesCompra.getFactura(id_oc).catch(() => null),
+    ]);
     const color = ESTADO_COLOR[oc.estado];
     const monto = oc.moneda === 'USD' ? fUSD(oc.total) : fPEN(oc.total);
 
+    // Inyectar la factura al objeto oc para que accionesSegunEstado la considere
+    oc.factura_adjunta = facturaAdjunta;
     const botonesAccion = accionesSegunEstado(oc);
 
     ensureOCModal().innerHTML = `
@@ -783,6 +788,20 @@ async function verOC(id_oc) {
           </table>
 
           ${oc.observaciones ? `<div style="padding:10px;background:#fffbeb;border-radius:6px;margin-bottom:16px;font-size:12px"><strong>Observaciones:</strong> ${oc.observaciones}</div>` : ''}
+
+          ${facturaAdjunta ? `
+            <div style="padding:12px 14px;background:#ecfdf5;border:1px solid #a7f3d0;border-radius:6px;margin-bottom:16px;font-size:13px;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+              <div>
+                📄 <strong>Factura adjunta:</strong>
+                ${facturaAdjunta.nro_comprobante} ·
+                Emitida ${fmtDate(facturaAdjunta.fecha_emision)} ·
+                ${oc.moneda === 'USD' ? '$' : 'S/'} ${Number(facturaAdjunta.monto).toFixed(2)}
+              </div>
+              ${facturaAdjunta.url_pdf ? `
+                <a href="${facturaAdjunta.url_pdf}" target="_blank" rel="noopener" title="Abrir el comprobante subido a Cloudinary en una pestaña nueva" style="background:#16a34a;color:white;padding:6px 14px;border-radius:5px;text-decoration:none;font-weight:600;font-size:12px">📂 Ver comprobante</a>
+              ` : '<span style="color:#6b7280;font-size:12px">(sin archivo subido)</span>'}
+            </div>
+          ` : ''}
 
           ${oc.aprobaciones?.length ? `
             <details>
@@ -869,8 +888,14 @@ function accionesSegunEstado(oc) {
     btns.push(`<button onclick="OC.marcarCredito(${oc.id_oc})" title="Registrar días de crédito y fecha de vencimiento para esta OC. Útil cuando el proveedor da plazo de pago." style="padding:10px 18px;background:#0891b2;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">💳 Marcar crédito</button>`);
   }
   // Subir factura del proveedor manualmente — en RECEPCION o FACTURACION.
+  // Si ya hay una factura adjunta, el botón cambia de etiqueta a "Reemplazar".
   if (['RECEPCION', 'FACTURACION'].includes(oc.estado)) {
-    btns.push(`<button onclick="OC.subirFactura(${oc.id_oc})" title="Adjuntar la factura o comprobante del proveedor (PDF o imagen) con su N° y monto." style="padding:10px 18px;background:#7c3aed;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">📄 Subir factura</button>`);
+    const yaTiene = !!oc.factura_adjunta;
+    const etiqueta = yaTiene ? '🔁 Reemplazar factura' : '📄 Subir factura';
+    const tip = yaTiene
+      ? 'Reemplazar el comprobante actual del proveedor (PDF o imagen) con uno nuevo.'
+      : 'Adjuntar la factura o comprobante del proveedor (PDF o imagen) con su N° y monto.';
+    btns.push(`<button onclick="OC.subirFactura(${oc.id_oc})" title="${tip}" style="padding:10px 18px;background:#7c3aed;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">${etiqueta}</button>`);
   }
   // Agregar nota libre — disponible en cualquier estado activo (no ANULADA ni TERMINADA ni CERRADA_SIN_FACTURA).
   if (!['ANULADA', 'TERMINADA', 'CERRADA_SIN_FACTURA'].includes(oc.estado)) {

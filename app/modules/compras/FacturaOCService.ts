@@ -32,11 +32,25 @@ class FacturaOCService {
       cloudId = r.public_id;
     }
 
-    const [r]: any = await db.query(`
+    // Upsert por id_oc (UNIQUE constraint). Si ya existe, reemplaza datos.
+    // Si no había archivo nuevo, conservar el url_pdf y cloudinary_id existentes.
+    const sql = `
       INSERT INTO OrdenCompraFactura
         (id_oc, nro_comprobante, fecha_emision, monto, url_pdf, cloudinary_id, id_usuario_sube)
       VALUES (?, ?, ?, ?, ?, ?, ?)
-    `, [params.id_oc, params.nro_comprobante.trim(), params.fecha_emision, params.monto, url, cloudId, params.id_usuario]);
+      ON CONFLICT (id_oc) DO UPDATE SET
+        nro_comprobante = EXCLUDED.nro_comprobante,
+        fecha_emision   = EXCLUDED.fecha_emision,
+        monto           = EXCLUDED.monto,
+        url_pdf         = COALESCE(EXCLUDED.url_pdf, OrdenCompraFactura.url_pdf),
+        cloudinary_id   = COALESCE(EXCLUDED.cloudinary_id, OrdenCompraFactura.cloudinary_id),
+        id_usuario_sube = EXCLUDED.id_usuario_sube
+      RETURNING id_factura_oc
+    `;
+    const [r]: any = await db.query(sql, [
+      params.id_oc, params.nro_comprobante.trim(), params.fecha_emision,
+      params.monto, url, cloudId, params.id_usuario,
+    ]);
 
     // Marcar OC como facturada
     await db.query(
@@ -44,7 +58,8 @@ class FacturaOCService {
       [params.id_oc]
     );
 
-    return { id_factura_oc: r.insertId || r.lastID || 0, url_pdf: url };
+    const idFactura = r[0]?.id_factura_oc || r.insertId || 0;
+    return { id_factura_oc: idFactura, url_pdf: url };
   }
 
   async getDeOC(id_oc: number): Promise<FacturaOC | null> {
