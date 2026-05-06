@@ -84,13 +84,18 @@ async function init() {
     }
   };
 
-  document.getElementById('prod-aplicar').onclick = () => {
+  const aplicarFiltros = () => {
     estado  = document.getElementById('prod-estado').value;
     cliente = document.getElementById('prod-cliente').value.trim();
     cargar();
   };
+  document.getElementById('prod-aplicar').onclick = aplicarFiltros;
+  // Auto-aplicar al cambiar el dropdown de estado (UX común — no requiere
+  // click adicional en "Aplicar"). El boton sigue util para confirmar el
+  // filtro de cliente (input texto).
+  document.getElementById('prod-estado').addEventListener('change', aplicarFiltros);
   document.getElementById('prod-cliente').addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') document.getElementById('prod-aplicar').click();
+    if (e.key === 'Enter') aplicarFiltros();
   });
 
   await cargar();
