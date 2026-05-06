@@ -405,6 +405,7 @@ export const api = {
     actualizar: (id, data)   => put(`/ordenes-compra/${id}`, data),
     eliminar:   (id)         => del(`/ordenes-compra/${id}`),
     aprobar:    (id, data)   => post(`/ordenes-compra/${id}/aprobar`, data || {}),
+    aprobarParaPago: (id)    => post(`/ordenes-compra/${id}/aprobar-para-pago`, {}),
     recibir:    (id, lineas) => post(`/ordenes-compra/${id}/recibir`, { lineas }),
     asignarItems: (id, asignaciones) => post(`/ordenes-compra/${id}/asignar-items`, { asignaciones }),
     editarFecha: (id, fecha) => put(`/ordenes-compra/${id}/fecha`, { fecha }),

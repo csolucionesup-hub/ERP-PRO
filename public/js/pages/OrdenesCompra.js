@@ -277,7 +277,7 @@ window.ensureOCModal = ensureOCModal;
 // a OC.verOC sin haber montado el TabBar de OrdenesCompra). Las function
 // declarations se hoistean, así que las referencias funcionan aunque estén
 // definidas más abajo en el archivo.
-window.OC = { nuevaOC, verOC, aprobar, marcarCredito, subirFactura, eliminarFactura, agregarNota, recibir, facturar, registrarPago, cerrarSinFactura, cerrarPagaSinFactura, asociarFactura, anular, reactivar, eliminarOC, editar, editarFecha, editarMetadata: editarMetadataOC, descargarPDF, reporteROC, descargarExcel: () => api.ordenesCompra.descargarExcel().catch(e => showError(e.message || 'Error descargando Excel')) };
+window.OC = { nuevaOC, verOC, aprobar, aprobarParaPago, marcarCredito, subirFactura, eliminarFactura, agregarNota, recibir, facturar, registrarPago, cerrarSinFactura, cerrarPagaSinFactura, asociarFactura, anular, reactivar, eliminarOC, editar, editarFecha, editarMetadata: editarMetadataOC, descargarPDF, reporteROC, descargarExcel: () => api.ordenesCompra.descargarExcel().catch(e => showError(e.message || 'Error descargando Excel')) };
 
 // Editar SOLO la fecha de emisión (corregir data histórica) — disponible en
 // cualquier estado salvo ANULADA. No toca estado/items/totales/correlativo.
@@ -837,7 +837,12 @@ function accionesSegunEstado(oc) {
   btns.push(`<button onclick="window.previewPDFOC(${oc.id_oc}, '${nroSafe}')" title="Previsualizar el PDF de la OC en una ventana modal sin descargarlo." style="padding:10px 18px;background:#fff;color:#374151;border:1px solid #d1d5db;border-radius:6px;cursor:pointer;font-weight:600">👁️ Ver</button>`);
   btns.push(`<button onclick="OC.descargarPDF(${oc.id_oc})" title="Descargar el PDF de la OC con el formato oficial Metal Engineers / Perfotools." style="padding:10px 18px;background:#dc2626;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">📄 Descargar PDF</button>`);
   if (oc.estado === 'BORRADOR') {
-    btns.push(`<button onclick="OC.aprobar(${oc.id_oc})" title="Aprobar la OC. Pasa de BORRADOR a APROBADA y queda lista para enviar al proveedor." style="padding:10px 18px;background:#16a34a;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">✓ Aprobar</button>`);
+    btns.push(`<button onclick="OC.aprobar(${oc.id_oc})" title="Aprobar la OC. Pasa de BORRADOR a APROBADA y queda en revisión hasta que se le dé 'Aprobado para pago'." style="padding:10px 18px;background:#16a34a;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">✓ Aprobar</button>`);
+  }
+  // APROBADA = puesto de control de revisión. Único avance hacia adelante: "Aprobado para pago" → PAGO.
+  // No mostramos Registrar pago / Marcar crédito acá: esas acciones viven en PAGO.
+  if (oc.estado === 'APROBADA' && !oc.es_honorario) {
+    btns.push(`<button onclick="OC.aprobarParaPago(${oc.id_oc})" title="Marcar la OC como revisada y aprobada para pago. La envía a la bandeja de Finanzas (columna PAGO) para que registren el pago o crédito." style="padding:10px 18px;background:#16a34a;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">✅ Aprobado para pago</button>`);
   }
   // Etiquetas contextuales: las OCs de honorarios (es_honorario=true)
   // representan trabajo de persona natural — NO hay envío ni recepción de
@@ -888,8 +893,8 @@ function accionesSegunEstado(oc) {
   if (oc.estado === 'CERRADA_SIN_FACTURA') {
     btns.push(`<button onclick="OC.asociarFactura(${oc.id_oc}, '${nroSafe}')" title="El proveedor mandó la factura después de cerrar. Vinculala a esta OC y pasa al estado FACTURADA." style="padding:10px 18px;background:#7c3aed;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">🧾 Asociar factura tardía</button>`);
   }
-  // Marcar crédito — disponible en APROBADA o PAGO (cuando ya se negoció el plazo).
-  if (['APROBADA', 'PAGO'].includes(oc.estado)) {
+  // Marcar crédito — solo en PAGO (Finanzas decide si pagar o postergar). En APROBADA no aplica.
+  if (oc.estado === 'PAGO') {
     btns.push(`<button onclick="OC.marcarCredito(${oc.id_oc})" title="Registrar días de crédito y fecha de vencimiento para esta OC. Útil cuando el proveedor da plazo de pago." style="padding:10px 18px;background:#0891b2;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">💳 Marcar crédito</button>`);
   }
   // Subir factura del proveedor manualmente — en RECEPCION o FACTURACION.
@@ -936,7 +941,22 @@ async function aprobar(id) {
   if (c === null) return;
   try {
     await api.ordenesCompra.aprobar(id, { comentario: c });
-    showSuccess('OC aprobada');
+    showSuccess('OC aprobada — queda en revisión');
+    setTimeout(() => refreshOC(), 600);
+  } catch (e) { showError(e.message); }
+}
+
+async function aprobarParaPago(id) {
+  const ok = await confirmarAccion({
+    titulo: '✅ Aprobado para pago',
+    mensaje: 'La OC pasará de <strong>APROBADA</strong> a <strong>PAGO</strong>, quedando en la bandeja de Finanzas para que registren el pago o crédito. ¿Confirmás?',
+    tipo: 'info',
+    textoBoton: 'Sí, aprobar para pago',
+  });
+  if (!ok) return;
+  try {
+    await api.ordenesCompra.aprobarParaPago(id);
+    showSuccess('OC aprobada para pago');
     setTimeout(() => refreshOC(), 600);
   } catch (e) { showError(e.message); }
 }

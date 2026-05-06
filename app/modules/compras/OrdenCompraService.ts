@@ -320,7 +320,8 @@ class OrdenCompraService {
 
   /**
    * Aprobar OC (solo GERENTE o APROBADOR).
-   * BORRADOR → APROBADA → (transient) → PAGO en una sola operación.
+   * BORRADOR → APROBADA. La card se queda en APROBADA esperando que alguien
+   * dé el "Aprobado para pago" (puesto de control de revisión humana).
    */
   async aprobar(id_oc: number, id_usuario_aprueba: number, rol: string, comentario?: string) {
     if (!['GERENTE', 'APROBADOR'].includes(rol)) {
@@ -331,10 +332,9 @@ class OrdenCompraService {
     const oc = rows[0];
     if (oc.estado !== 'BORRADOR') throw new Error(`OC no está en BORRADOR (estado actual: ${oc.estado})`);
 
-    // BORRADOR → APROBADA → (transient) → PAGO en una sola operación.
     await db.query(
       `UPDATE OrdenesCompra
-          SET estado='PAGO', id_usuario_aprueba=?, fecha_aprobacion=NOW()
+          SET estado='APROBADA', id_usuario_aprueba=?, fecha_aprobacion=NOW()
         WHERE id_oc=?`,
       [id_usuario_aprueba, id_oc]
     );
@@ -343,7 +343,27 @@ class OrdenCompraService {
        VALUES (?, ?, 'APROBAR', ?, ?, ?)`,
       [id_oc, id_usuario_aprueba, comentario || null, oc.total, oc.moneda]
     );
-    await this._registrarTransicion(id_oc, 'BORRADOR', 'PAGO', id_usuario_aprueba, 'Aprobada y enviada a fase de pago');
+    await this._registrarTransicion(id_oc, 'BORRADOR', 'APROBADA', id_usuario_aprueba, 'Aprobada — en revisión');
+
+    return { success: true, estado: 'APROBADA' as const };
+  }
+
+  /**
+   * Pasar de APROBADA a PAGO ("Aprobado para pago").
+   * Es el segundo gate de control: alguien revisó la OC ya aprobada y la
+   * despacha a la bandeja de Finanzas para que registre el pago o crédito.
+   */
+  async aprobarParaPago(id_oc: number, id_usuario: number) {
+    const [rows]: any = await db.query(
+      'SELECT estado FROM OrdenesCompra WHERE id_oc = ?', [id_oc]
+    );
+    if (!rows[0]) throw new Error('OC no encontrada');
+    if (rows[0].estado !== 'APROBADA') {
+      throw new Error(`OC no está en APROBADA (estado actual: ${rows[0].estado})`);
+    }
+
+    await db.query(`UPDATE OrdenesCompra SET estado='PAGO' WHERE id_oc=?`, [id_oc]);
+    await this._registrarTransicion(id_oc, 'APROBADA', 'PAGO', id_usuario, 'Aprobado para pago — bandeja Finanzas');
 
     return { success: true, estado: 'PAGO' as const };
   }

@@ -1650,6 +1650,10 @@ ocRouter.post('/:id/aprobar', validateIdParam, auditLog('OrdenCompra', 'UPDATE')
   ));
 });
 
+ocRouter.post('/:id/aprobar-para-pago', validateIdParam, auditLog('OrdenCompra', 'UPDATE'), async (req: any, res: Response) => {
+  res.json(await OrdenCompraService.aprobarParaPago(Number(req.params.id), req.user!.id_usuario));
+});
+
 ocRouter.post('/:id/marcar-credito', validateIdParam, auditLog('OrdenCompra', 'MARCAR_CREDITO'), async (req: any, res: Response) => {
   const id_oc = Number(req.params.id);
   const { dias_credito, fecha_vence } = req.body || {};
