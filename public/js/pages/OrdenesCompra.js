@@ -277,7 +277,7 @@ window.ensureOCModal = ensureOCModal;
 // a OC.verOC sin haber montado el TabBar de OrdenesCompra). Las function
 // declarations se hoistean, así que las referencias funcionan aunque estén
 // definidas más abajo en el archivo.
-window.OC = { nuevaOC, verOC, aprobar, enviar, recibir, facturar, registrarPago, cerrarSinFactura, cerrarPagaSinFactura, asociarFactura, anular, reactivar, eliminarOC, editar, editarFecha, editarMetadata: editarMetadataOC, descargarPDF, reporteROC };
+window.OC = { nuevaOC, verOC, aprobar, marcarCredito, subirFactura, agregarNota, recibir, facturar, registrarPago, cerrarSinFactura, cerrarPagaSinFactura, asociarFactura, anular, reactivar, eliminarOC, editar, editarFecha, editarMetadata: editarMetadataOC, descargarPDF, reporteROC };
 
 // Editar SOLO la fecha de emisión (corregir data histórica) — disponible en
 // cualquier estado salvo ANULADA. No toca estado/items/totales/correlativo.
@@ -824,10 +824,7 @@ function accionesSegunEstado(oc) {
     : 'Cargar la factura/boleta del proveedor. Genera la Compra (ALMACEN) o el Gasto (GENERAL/SERVICIO) y la Tx en caja. Después de esto la OC ya no se puede anular.';
   const txtFacturaTardia = esHon ? '🧾 Recibí RxH' : '🧾 Recibí factura';
 
-  // "Marcar como Enviada" no aplica a honorarios.
-  if (oc.estado === 'APROBADA' && !esHon) {
-    btns.push(`<button onclick="OC.enviar(${oc.id_oc})" title="Marcar la OC como enviada al proveedor (no envía mail automático — es un cambio de estado para el seguimiento). Después solo se podrá editar metadata, no items." style="padding:10px 18px;background:#3b82f6;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">📤 Marcar como Enviada</button>`);
-  }
+  // "Marcar como Enviada" eliminado — ENVIADA ya no es un estado del flujo.
   if (['PAGO', 'RECEPCION'].includes(oc.estado)) {
     btns.push(`<button onclick="OC.recibir(${oc.id_oc})" title="${ttRecepcion}" style="padding:10px 18px;background:#059669;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">${txtRecepcion}</button>`);
   }
@@ -861,6 +858,18 @@ function accionesSegunEstado(oc) {
   // OC cerrada sin factura — ofrecer asociar factura tardía
   if (oc.estado === 'CERRADA_SIN_FACTURA') {
     btns.push(`<button onclick="OC.asociarFactura(${oc.id_oc}, '${nroSafe}')" title="El proveedor mandó la factura después de cerrar. Vinculala a esta OC y pasa al estado FACTURADA." style="padding:10px 18px;background:#7c3aed;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">🧾 Asociar factura tardía</button>`);
+  }
+  // Marcar crédito — disponible en APROBADA o PAGO (cuando ya se negoció el plazo).
+  if (['APROBADA', 'PAGO'].includes(oc.estado)) {
+    btns.push(`<button onclick="OC.marcarCredito(${oc.id_oc})" title="Registrar días de crédito y fecha de vencimiento para esta OC. Útil cuando el proveedor da plazo de pago." style="padding:10px 18px;background:#0891b2;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">💳 Marcar crédito</button>`);
+  }
+  // Subir factura del proveedor manualmente — en RECEPCION o FACTURACION.
+  if (['RECEPCION', 'FACTURACION'].includes(oc.estado)) {
+    btns.push(`<button onclick="OC.subirFactura(${oc.id_oc})" title="Adjuntar la factura o comprobante del proveedor (PDF o imagen) con su N° y monto." style="padding:10px 18px;background:#7c3aed;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">📄 Subir factura</button>`);
+  }
+  // Agregar nota libre — disponible en cualquier estado activo (no ANULADA ni TERMINADA ni CERRADA_SIN_FACTURA).
+  if (!['ANULADA', 'TERMINADA', 'CERRADA_SIN_FACTURA'].includes(oc.estado)) {
+    btns.push(`<button onclick="OC.agregarNota(${oc.id_oc})" title="Añadir una nota interna a esta OC (seguimiento, acuerdos, observaciones)." style="padding:10px 18px;background:#fff;color:#374151;border:1px solid #d1d5db;border-radius:6px;cursor:pointer;font-weight:600">📝 Nota</button>`);
   }
   // Editar líneas/montos — hasta PAGO inclusive (después la mercadería ya fue recibida).
   if (['BORRADOR', 'APROBADA', 'PAGO'].includes(oc.estado)) {
@@ -897,20 +906,151 @@ async function aprobar(id) {
   } catch (e) { showError(e.message); }
 }
 
-async function enviar(id) {
-  // Una vez ENVIADA la OC ya no se puede eliminar: el PDF ya salió al proveedor.
-  const ok = await confirmarAccion({
-    titulo: '📤 Marcar como Enviada',
-    mensaje: 'Una vez marcada como <strong>ENVIADA</strong>, esta OC <strong style="color:#dc2626">ya no podrá eliminarse</strong>. Solo podrás editarla o anularla. ¿Estás seguro?',
-    tipo: 'warning',
-    textoBoton: 'Sí, marcar como Enviada',
+// ──────── promptModal: input/textarea genérico en overlay ────────
+function promptModal({ titulo, label, defecto = '', textarea = false, requerido = false }) {
+  return new Promise((resolve) => {
+    const ov = document.createElement('div');
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
+    ov.innerHTML = `
+      <div style="background:white;border-radius:12px;width:460px;max-width:95vw;padding:24px">
+        <h3 style="margin:0 0 12px;font-size:17px">${titulo}</h3>
+        <label style="display:block;margin-bottom:8px;font-size:13px;color:#374151">${label}</label>
+        ${textarea
+          ? `<textarea id="prompt-input" rows="4" style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;font-family:inherit;resize:vertical;box-sizing:border-box">${defecto}</textarea>`
+          : `<input id="prompt-input" value="${String(defecto).replace(/"/g, '&quot;')}" style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;box-sizing:border-box">`}
+        <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:16px">
+          <button id="prompt-cancel" style="padding:9px 18px;background:#f3f4f6;border:none;border-radius:6px;cursor:pointer;font-weight:600">Cancelar</button>
+          <button id="prompt-ok" style="padding:9px 18px;background:#2563eb;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">Aceptar</button>
+        </div>
+      </div>`;
+    document.body.appendChild(ov);
+    const input = ov.querySelector('#prompt-input');
+    ov.querySelector('#prompt-cancel').onclick = () => { ov.remove(); resolve(null); };
+    ov.querySelector('#prompt-ok').onclick = () => {
+      const v = input.value.trim();
+      if (requerido && !v) { input.focus(); return; }
+      ov.remove();
+      resolve(v);
+    };
+    input.focus();
   });
-  if (!ok) return;
+}
+
+// ──────── Acciones rápidas nuevas ────────
+
+async function marcarCredito(id) {
+  const dias = await promptModal({
+    titulo: '💳 Marcar crédito',
+    label: 'Días de crédito',
+    defecto: '30',
+    requerido: true,
+  });
+  if (dias == null) return;
+  const numDias = Number(dias);
+  if (!numDias || numDias <= 0) { showError('Días debe ser un número positivo'); return; }
+  const fecha = new Date(Date.now() + numDias * 86400000).toISOString().slice(0, 10);
+
   try {
-    await api.ordenesCompra.enviar(id);
-    showSuccess('OC marcada como enviada');
+    const token = localStorage.getItem('erp_token');
+    const r = await fetch(`/api/ordenes-compra/${id}/marcar-credito`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+      body: JSON.stringify({ dias_credito: numDias, fecha_vence: fecha }),
+    });
+    if (!r.ok) {
+      const err = await r.json().catch(() => ({}));
+      throw new Error(err.error || `HTTP ${r.status}`);
+    }
+    showSuccess(`Marcada como crédito · vence ${fecha}`);
     setTimeout(() => refreshOC(), 600);
-  } catch (e) { showError(e.message); }
+  } catch (e) {
+    showError(e.message || 'Error al marcar crédito');
+  }
+}
+
+async function agregarNota(id) {
+  const texto = await promptModal({
+    titulo: '📝 Agregar nota',
+    label: 'Texto de la nota',
+    textarea: true,
+    requerido: true,
+  });
+  if (!texto) return;
+
+  try {
+    const token = localStorage.getItem('erp_token');
+    const r = await fetch(`/api/ordenes-compra/${id}/notas`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+      body: JSON.stringify({ texto }),
+    });
+    if (!r.ok) {
+      const err = await r.json().catch(() => ({}));
+      throw new Error(err.error || `HTTP ${r.status}`);
+    }
+    showSuccess('Nota guardada');
+  } catch (e) {
+    showError(e.message || 'Error al guardar nota');
+  }
+}
+
+async function subirFactura(id) {
+  // Modal con form para nro_comprobante, fecha_emision, monto, archivo (PDF/imagen)
+  return new Promise((resolve) => {
+    const ov = document.createElement('div');
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
+    ov.innerHTML = `
+      <div style="background:white;border-radius:12px;width:480px;max-width:95vw;padding:24px">
+        <h3 style="margin:0 0 16px;font-size:17px">📄 Subir factura del proveedor</h3>
+        <form id="oc-form-subir-factura" enctype="multipart/form-data" style="display:flex;flex-direction:column;gap:10px">
+          <label style="display:flex;flex-direction:column;gap:4px;font-size:13px">
+            Nº Comprobante
+            <input name="nro_comprobante" required style="padding:7px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
+          </label>
+          <label style="display:flex;flex-direction:column;gap:4px;font-size:13px">
+            Fecha de emisión
+            <input name="fecha_emision" type="date" required style="padding:7px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
+          </label>
+          <label style="display:flex;flex-direction:column;gap:4px;font-size:13px">
+            Monto
+            <input name="monto" type="number" step="0.01" min="0.01" required style="padding:7px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
+          </label>
+          <label style="display:flex;flex-direction:column;gap:4px;font-size:13px">
+            Archivo PDF/imagen <span style="color:#6b7280;font-size:11px">(opcional)</span>
+            <input name="archivo" type="file" accept=".pdf,image/*" style="padding:7px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
+          </label>
+          <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:14px">
+            <button type="button" data-cancel style="padding:9px 18px;background:#f3f4f6;border:none;border-radius:6px;cursor:pointer;font-weight:600">Cancelar</button>
+            <button type="submit" style="padding:9px 18px;background:#2563eb;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">Subir</button>
+          </div>
+        </form>
+      </div>`;
+    document.body.appendChild(ov);
+
+    ov.querySelector('[data-cancel]').onclick = () => { ov.remove(); resolve(false); };
+    ov.querySelector('#oc-form-subir-factura').onsubmit = async (e) => {
+      e.preventDefault();
+      const fd = new FormData(e.target);
+      try {
+        const token = localStorage.getItem('erp_token');
+        const r = await fetch(`/api/ordenes-compra/${id}/factura`, {
+          method: 'POST',
+          headers: { 'Authorization': 'Bearer ' + token },
+          body: fd,
+        });
+        if (!r.ok) {
+          const err = await r.json().catch(() => ({}));
+          throw new Error(err.error || `HTTP ${r.status}`);
+        }
+        showSuccess('Factura subida y registrada');
+        ov.remove();
+        resolve(true);
+        setTimeout(() => refreshOC(), 600);
+      } catch (err) {
+        showError(err.message || 'Error al subir factura');
+      }
+    };
+  });
 }
 
 async function recibir(id) {
