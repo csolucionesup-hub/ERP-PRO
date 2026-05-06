@@ -429,43 +429,122 @@ function semanaISOHoy() {
 }
 
 // ──────── Tab Kanban ────────
+let _kanbanFiltros = { cc: '', mes: '', soloProblemas: false };
+
 function renderKanban(panel) {
   panel.dataset.rendered = '1';
-  // Columnas principales del kanban. Terminales (CERRADA_SIN_FACTURA, ANULADA)
-  // se manejan por separado en filtros/archivos (F2). Ver COLUMNAS_KANBAN_TERMINALES.
-  const estadosOrden = [
-    'BORRADOR', 'APROBADA', 'PAGO', 'RECEPCION', 'FACTURACION', 'TERMINADA',
-  ];
-  const porEstado = {};
-  estadosOrden.forEach(e => porEstado[e] = []);
-  _ocs.forEach(oc => {
-    if (oc.estado !== 'ANULADA' && porEstado[oc.estado]) porEstado[oc.estado].push(oc);
-  });
+  // Calcular opciones para los filtros
+  const centrosCosto = [...new Set(_ocs.map(o => o.centro_costo).filter(Boolean))].sort();
+  const meses = [...new Set(_ocs.map(o => (o.fecha_emision || '').slice(0,7)).filter(Boolean))].sort().reverse();
+  const mesActual = new Date().toISOString().slice(0,7);
+  // Default: mes actual si tiene OCs, sino el primero disponible
+  if (!_kanbanFiltros.mes) {
+    _kanbanFiltros.mes = meses.includes(mesActual) ? mesActual : (meses[0] || '');
+  }
 
   panel.innerHTML = `
-    <div style="display:grid;grid-template-columns:repeat(${estadosOrden.length},1fr);gap:10px;margin-top:16px;overflow-x:auto">
-      ${estadosOrden.map(estado => {
-        const color = ESTADO_COLOR[estado];
-        const ocs = porEstado[estado];
-        return `
-          <div style="min-width:180px;background:${color.bg};border-radius:10px;padding:10px">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;padding-bottom:8px;border-bottom:2px solid ${color.fg}22">
-              <strong style="font-size:11px;color:${color.fg};text-transform:uppercase;letter-spacing:0.5px">${color.icon} ${estado.replace('_', ' ')}</strong>
-              <span style="background:${color.fg};color:white;padding:1px 8px;border-radius:10px;font-size:10px;font-weight:700">${ocs.length}</span>
-            </div>
-            <div style="display:flex;flex-direction:column;gap:6px;min-height:100px">
-              ${ocs.length ? ocs.map(oc => kanbanCard(oc, color)).join('') :
-                `<div style="padding:30px 10px;text-align:center;color:${color.fg}77;font-size:11px">—</div>`}
-            </div>
-          </div>
-        `;
-      }).join('')}
+    <div class="oc-kanban-filtros">
+      <label>Centro de costo:
+        <select id="oc-filtro-cc">
+          <option value="">Todos</option>
+          ${centrosCosto.map(c => `<option value="${escapeHtml(c)}" ${_kanbanFiltros.cc === c ? 'selected' : ''}>${escapeHtml(c)}</option>`).join('')}
+        </select>
+      </label>
+      <label>Mes/Año:
+        <select id="oc-filtro-mes">
+          <option value="">Todos</option>
+          ${meses.map(m => `<option value="${m}" ${_kanbanFiltros.mes === m ? 'selected' : ''}>${m}</option>`).join('')}
+        </select>
+      </label>
+      <label class="check">
+        <input type="checkbox" id="oc-filtro-problemas" ${_kanbanFiltros.soloProblemas ? 'checked' : ''}>
+        Solo problemas
+      </label>
+      <button id="oc-btn-export" class="btn-secondary" type="button" title="Descargar TODAS las OCs en Excel">📊 Exportar Excel</button>
     </div>
+    <div id="oc-kanban-board" class="oc-kanban-board"></div>
     <div style="margin-top:12px;padding:10px;background:#f9fafb;border-radius:6px;font-size:11px;color:var(--text-secondary)">
       💡 <strong>Auto-aprobación:</strong> OCs ≤ ${fPEN(_cfg.monto_limite_sin_aprobacion)} pasan directo a APROBADA.
       Para cambiarlo ve a ⚙️ Configuración → Preferencias → Monto límite sin aprobación.
     </div>
   `;
+
+  // Bind filter handlers
+  document.getElementById('oc-filtro-cc').addEventListener('change', e => {
+    _kanbanFiltros.cc = e.target.value;
+    pintarColumnasKanban();
+  });
+  document.getElementById('oc-filtro-mes').addEventListener('change', e => {
+    _kanbanFiltros.mes = e.target.value;
+    pintarColumnasKanban();
+  });
+  document.getElementById('oc-filtro-problemas').addEventListener('change', e => {
+    _kanbanFiltros.soloProblemas = e.target.checked;
+    pintarColumnasKanban();
+  });
+  document.getElementById('oc-btn-export').addEventListener('click', () => {
+    const token = localStorage.getItem('erp_token');
+    fetch('/api/ordenes-compra/listado/excel', {
+      headers: { 'Authorization': 'Bearer ' + token }
+    }).then(r => r.blob()).then(b => {
+      const url = URL.createObjectURL(b);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `OCs_${new Date().toISOString().slice(0,10)}.xlsx`;
+      a.click();
+      URL.revokeObjectURL(url);
+    });
+  });
+
+  pintarColumnasKanban();
+}
+
+function pintarColumnasKanban() {
+  const board = document.getElementById('oc-kanban-board');
+  if (!board) return;
+
+  const filtradas = _ocs.filter(oc => {
+    if (oc.estado === 'ANULADA') return false;
+    if (_kanbanFiltros.cc && oc.centro_costo !== _kanbanFiltros.cc) return false;
+    if (_kanbanFiltros.mes && !(oc.fecha_emision || '').startsWith(_kanbanFiltros.mes)) return false;
+    if (_kanbanFiltros.soloProblemas && !ocTieneProblema(oc)) return false;
+    return true;
+  });
+
+  const estadosOrden = ['BORRADOR', 'APROBADA', 'PAGO', 'RECEPCION', 'FACTURACION', 'TERMINADA'];
+  const porEstado = {};
+  estadosOrden.forEach(e => porEstado[e] = []);
+  filtradas.forEach(oc => {
+    if (porEstado[oc.estado]) porEstado[oc.estado].push(oc);
+  });
+
+  board.innerHTML = estadosOrden.map(estado => {
+    const color = ESTADO_COLOR[estado];
+    const ocs = porEstado[estado];
+    return `
+      <div class="oc-kanban-column" data-estado="${estado}" style="background:${color.bg}">
+        <div class="oc-kanban-header" style="border-bottom:2px solid ${color.fg}22">
+          <strong style="color:${color.fg}">${color.icon} ${estado.replace('_', ' ')}</strong>
+          <span class="count" style="background:${color.fg}">${ocs.length}</span>
+        </div>
+        <div class="oc-kanban-cards">
+          ${ocs.length ? ocs.map(oc => kanbanCard(oc, color)).join('') :
+            `<div class="oc-kanban-empty" style="color:${color.fg}77">—</div>`}
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function ocTieneProblema(oc) {
+  if (oc.estado_pago === 'PARCIAL' || oc.estado_pago === 'PENDIENTE') return true;
+  if (oc.forma_pago === 'CREDITO' && oc.estado_pago !== 'PAGADO') return true;
+  if (oc.estado === 'FACTURACION' && oc.estado_factura === 'PENDIENTE') return true;
+  return false;
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]);
 }
 
 function kanbanCard(oc, color) {
