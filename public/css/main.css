@@ -1138,3 +1138,67 @@ tr:last-child td {
   .oc-kanban-filtros { flex-direction: column; align-items: stretch; }
   .oc-kanban-filtros label { justify-content: space-between; }
 }
+
+/* ─── Card OC con dot semáforo y badges ─── */
+.oc-card {
+  background: white;
+  padding: 9px 11px;
+  border-radius: 8px;
+  cursor: pointer;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+  transition: box-shadow .15s, transform .05s;
+}
+.oc-card:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.10); transform: translateY(-1px); }
+.oc-card-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+.oc-card-head .oc-nro { font-size: 12px; font-weight: 600; }
+.oc-card-head .oc-marca {
+  margin-left: auto;
+  color: white;
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-weight: 600;
+}
+.oc-prov {
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-bottom: 4px;
+  word-break: break-word;
+}
+.oc-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11px;
+}
+.oc-row .oc-fecha { color: var(--text-secondary); }
+.oc-row .oc-monto { font-size: 12px; }
+
+.oc-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: inline-block;
+  flex-shrink: 0;
+}
+.oc-dot.dot-rojo    { background: #ef4444; }
+.oc-dot.dot-naranja { background: #f59e0b; }
+.oc-dot.dot-verde   { background: #10b981; }
+.oc-dot.dot-gris    { background: #9ca3af; }
+.oc-dot.dot-neutro  { background: #ffffff; border: 1px solid #d1d5db; }
+
+.oc-badge {
+  display: block;
+  margin-top: 4px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 500;
+}
+.oc-badge.warn   { background: #fef3c7; color: #92400e; }
+.oc-badge.danger { background: #fee2e2; color: #991b1b; }

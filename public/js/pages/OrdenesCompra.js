@@ -549,19 +549,68 @@ function escapeHtml(s) {
 
 function kanbanCard(oc, color) {
   const monto = oc.moneda === 'USD' ? fUSD(oc.total) : fPEN(oc.total);
+  const dotClass = calcularDotClass(oc);
+  const badges = calcularBadges(oc);
+  const dotTitle = `Estado: ${oc.estado} · Pago: ${oc.estado_pago || '-'} · Factura: ${oc.estado_factura || '-'}${oc.estado_recepcion ? ' · Recepción: ' + oc.estado_recepcion : ''}`;
+
   return `
-    <div onclick="OC.verOC(${oc.id_oc})" style="background:white;padding:10px;border-radius:8px;cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,0.06);border-left:3px solid ${color.fg}">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
-        <strong style="font-size:12px">${oc.nro_oc}</strong>
-        <span style="font-size:10px;padding:1px 6px;border-radius:4px;background:${oc.empresa === 'PT' ? '#16a34a' : '#676767'};color:white">${oc.empresa}</span>
+    <div class="oc-card" onclick="OC.verOC(${oc.id_oc})" style="border-left:3px solid ${color.fg}">
+      <div class="oc-card-head">
+        <span class="oc-dot ${dotClass}" title="${dotTitle}"></span>
+        <strong class="oc-nro">${oc.nro_oc}</strong>
+        <span class="oc-marca" style="background:${oc.empresa === 'PT' ? '#16a34a' : '#676767'}">${oc.empresa}</span>
       </div>
-      <div style="font-size:11px;color:var(--text-secondary);margin-bottom:4px">${(oc.proveedor_nombre || '—').slice(0, 24)}</div>
-      <div style="display:flex;justify-content:space-between;align-items:center">
-        <span style="font-size:10px;color:var(--text-secondary)">${fmtDate(oc.fecha_emision)}</span>
-        <strong style="font-size:12px">${monto}</strong>
+      <div class="oc-prov">${escapeHtml((oc.proveedor_nombre || '—').slice(0, 32))}</div>
+      <div class="oc-row">
+        <span class="oc-fecha">${fmtDate(oc.fecha_emision)}</span>
+        <strong class="oc-monto">${monto}</strong>
       </div>
+      ${badges.map(b => `<div class="oc-badge ${b.tipo}">${b.texto}</div>`).join('')}
     </div>
   `;
+}
+
+function calcularDotClass(oc) {
+  switch (oc.estado) {
+    case 'APROBADA':           return 'dot-neutro';
+    case 'PAGO':               return 'dot-rojo';
+    case 'RECEPCION': {
+      const r = oc.estado_recepcion || 'NO_RECIBIDO';
+      if (r === 'RECIBIDO') return 'dot-verde';
+      if (r === 'PARCIAL')  return 'dot-naranja';
+      return 'dot-rojo';
+    }
+    case 'FACTURACION':        return oc.estado_factura === 'FACTURADA' ? 'dot-verde' : 'dot-rojo';
+    case 'TERMINADA':          return 'dot-verde';
+    case 'CERRADA_SIN_FACTURA':return 'dot-gris';
+    case 'ANULADA':            return 'dot-gris';
+    default:                   return 'dot-neutro';
+  }
+}
+
+function calcularBadges(oc) {
+  const bs = [];
+  // Saldo pendiente
+  if (oc.estado_pago === 'PARCIAL') {
+    const saldo = Number(oc.total) - Number(oc.monto_pagado || 0);
+    bs.push({ tipo: 'warn', texto: `⚠ Saldo S/ ${saldo.toFixed(2)} pdte` });
+  }
+  // Crédito vence
+  if (oc.forma_pago === 'CREDITO' && oc.estado_pago !== 'PAGADO' && oc.fecha_credito_vence) {
+    const fechaCorta = String(oc.fecha_credito_vence).slice(0, 10);
+    bs.push({ tipo: 'warn', texto: `⚠ Crédito vence ${fechaCorta}` });
+  }
+  // Demora en recepción
+  if (oc.estado === 'RECEPCION' && oc.estado_pago === 'PAGADO' && oc.pagada_at) {
+    const dias = Math.floor((Date.now() - new Date(oc.pagada_at).getTime()) / 86400000);
+    if (dias > 15) bs.push({ tipo: 'danger', texto: `⚠ Sin recibir hace ${dias}d` });
+  }
+  // Demora en factura
+  if (oc.estado === 'FACTURACION' && oc.estado_factura === 'PENDIENTE' && oc.updated_at) {
+    const dias = Math.floor((Date.now() - new Date(oc.updated_at).getTime()) / 86400000);
+    if (dias > 15) bs.push({ tipo: 'warn', texto: `⚠ Sin factura hace ${dias}d` });
+  }
+  return bs;
 }
 
 // ──────── Tab Lista ────────

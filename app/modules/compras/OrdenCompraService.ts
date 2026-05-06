@@ -1444,10 +1444,22 @@ class OrdenCompraService {
     if (filtros.centro_costo) { where.push('oc.centro_costo = ?'); vals.push(filtros.centro_costo); }
     if (filtros.id_servicio)  { where.push('oc.id_servicio = ?'); vals.push(filtros.id_servicio); }
     const sql = `
-      SELECT oc.*, p.razon_social AS proveedor_nombre, s.codigo AS servicio_codigo
+      SELECT oc.*, p.razon_social AS proveedor_nombre, s.codigo AS servicio_codigo,
+             CASE
+               WHEN COALESCE(d.recibido, 0) <= 0.0001 THEN 'NO_RECIBIDO'
+               WHEN COALESCE(d.recibido, 0) >= COALESCE(d.pedido, 0) - 0.0001 THEN 'RECIBIDO'
+               ELSE 'PARCIAL'
+             END AS estado_recepcion
       FROM OrdenesCompra oc
       LEFT JOIN Proveedores p ON p.id_proveedor = oc.id_proveedor
       LEFT JOIN Servicios s ON s.id_servicio = oc.id_servicio
+      LEFT JOIN (
+        SELECT id_oc,
+               SUM(cantidad) AS pedido,
+               SUM(cantidad_recibida) AS recibido
+          FROM DetalleOrdenCompra
+         GROUP BY id_oc
+      ) d ON d.id_oc = oc.id_oc
       ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
       ORDER BY oc.fecha_emision DESC, oc.id_oc DESC
       LIMIT ?`;
