@@ -18,6 +18,16 @@ import path from 'path';
 
 dotenv.config({ path: path.join(__dirname, '..', '.env.railway') });
 
+// ── Guard de seguridad ─────────────────────────────────────────────
+// Este script hace DROP TABLE de TODAS las tablas — solo se ejecuta a mano
+// desde la máquina de un dev. NUNCA debe disparar Railway en deploy.
+if (process.env.NODE_ENV === 'production' && !process.env.BOOTSTRAP_RAILWAY_ALLOW) {
+  console.error('\x1b[31m%s\x1b[0m', '[bootstrap_railway] BLOQUEADO: este script borra TODAS las tablas.');
+  console.error('\x1b[31m%s\x1b[0m', '[bootstrap_railway] No debe correr en producción. Si Railway lo dispara,');
+  console.error('\x1b[31m%s\x1b[0m', '[bootstrap_railway] revisar Custom Start Command / nixpacks.toml / railway.toml.');
+  process.exit(1);
+}
+
 const MIGRATIONS_DIR = path.join(__dirname, 'migrations');
 // Migraciones cuyo contenido ya está cubierto por schema.sql
 const SKIP_AS_NOOP = new Set(['001_multimoneda.sql', '006_indices_optimizacion.sql']);

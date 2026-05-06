@@ -5,6 +5,16 @@ import path from 'path';
 
 dotenv.config();
 
+// ── Guard de seguridad ─────────────────────────────────────────────
+// Este script hace DROP DATABASE — solo debe correr en dev local explícito.
+// Si por error queda en el entrypoint de un deploy productivo, rechaza ejecutar.
+if (process.env.NODE_ENV === 'production') {
+  console.error('\x1b[31m%s\x1b[0m', '[setup_db] BLOQUEADO: este script borra la BD entera (DROP DATABASE).');
+  console.error('\x1b[31m%s\x1b[0m', '[setup_db] No debe correr en producción. Si Railway lo está disparando,');
+  console.error('\x1b[31m%s\x1b[0m', '[setup_db] revisar Custom Start Command / nixpacks.toml / railway.toml.');
+  process.exit(1);
+}
+
 /**
  * Script de inicialización de Base de Datos para el ERP Pro System.
  */
