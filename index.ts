@@ -42,6 +42,10 @@ import PLEExporter from './app/modules/facturacion/PLEExporter';
 import { FacturacionCron } from './app/modules/facturacion/FacturacionCron';
 import ImportadorService, { EntidadImportable } from './app/modules/importador/ImportadorService';
 import OrdenCompraService from './app/modules/compras/OrdenCompraService';
+import HistorialOCService from './app/modules/compras/HistorialOCService';
+import NotaOCService from './app/modules/compras/NotaOCService';
+import FacturaOCService from './app/modules/compras/FacturaOCService';
+import ExcelJS from 'exceljs';
 import ProductionService from './app/modules/produccion/ProductionService';
 import CentrosCostoService from './app/modules/compras/CentrosCostoService';
 import { OrdenCompraPDFService } from './app/modules/compras/OrdenCompraPDFService';
@@ -1534,6 +1538,17 @@ importadorRouter.post('/commit', auditLog('Importador', 'CREATE'), async (req: a
 
 app.use('/api/importador', importadorRouter);
 
+// Upload handler para facturas de proveedor (PDF/imagen). 10 MB max.
+const ocFacturaUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    const ok = ['application/pdf','image/jpeg','image/png','image/webp'].includes(file.mimetype);
+    if (!ok) return cb(new Error('Solo PDF/JPG/PNG/WebP'));
+    cb(null, true);
+  }
+});
+
 // ===== ÓRDENES DE COMPRA — flujo formal proveedor =====
 const ocRouter = express.Router();
 ocRouter.use(requireAuth);
@@ -1592,6 +1607,34 @@ ocRouter.get('/roc', async (req: Request, res: Response) => {
   res.send(buffer);
 });
 
+// Export Excel del listado completo — DEBE ir ANTES de /:id
+ocRouter.get('/listado/excel', async (_req: Request, res: Response) => {
+  const ocs = await OrdenCompraService.listar({});
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet('OCs');
+  ws.columns = [
+    { header: 'Nro OC',         key: 'nro_oc',              width: 16 },
+    { header: 'Fecha',          key: 'fecha_emision',       width: 12 },
+    { header: 'Proveedor',      key: 'razon_social',        width: 36 },
+    { header: 'Centro Costo',   key: 'centro_costo',        width: 18 },
+    { header: 'Marca',          key: 'empresa',             width: 8 },
+    { header: 'Moneda',         key: 'moneda',              width: 8 },
+    { header: 'Total',          key: 'total',               width: 14 },
+    { header: 'Estado',         key: 'estado',              width: 22 },
+    { header: 'Estado Pago',    key: 'estado_pago',         width: 14 },
+    { header: 'Estado Fact.',   key: 'estado_factura',      width: 14 },
+    { header: 'Forma Pago',     key: 'forma_pago',          width: 12 },
+    { header: 'Crédito Vence',  key: 'fecha_credito_vence', width: 14 },
+    { header: 'Pagada At',      key: 'pagada_at',           width: 18 },
+    { header: 'Facturada At',   key: 'facturada_at',        width: 18 },
+  ];
+  ws.addRows(ocs as any[]);
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.setHeader('Content-Disposition', `attachment; filename="OCs_${new Date().toISOString().slice(0,10)}.xlsx"`);
+  await wb.xlsx.write(res);
+  res.end();
+});
+
 ocRouter.get('/:id', validateIdParam, async (req: Request, res: Response) => {
   res.json(await OrdenCompraService.obtener(Number(req.params.id)));
 });
@@ -1605,6 +1648,61 @@ ocRouter.post('/:id/aprobar', validateIdParam, auditLog('OrdenCompra', 'UPDATE')
   res.json(await OrdenCompraService.aprobar(
     Number(req.params.id), req.user!.id_usuario, req.user!.rol, req.body?.comentario
   ));
+});
+
+ocRouter.post('/:id/marcar-credito', validateIdParam, auditLog('OrdenCompra', 'MARCAR_CREDITO'), async (req: any, res: Response) => {
+  const id_oc = Number(req.params.id);
+  const { dias_credito, fecha_vence } = req.body || {};
+  const r = await OrdenCompraService.marcarCredito(id_oc, {
+    dias_credito,
+    fecha_vence,
+    id_usuario: req.user?.id_usuario
+  });
+  res.json(r);
+});
+
+ocRouter.get('/:id/notas', validateIdParam, async (req: Request, res: Response) => {
+  const notas = await NotaOCService.listar(Number(req.params.id));
+  res.json(notas);
+});
+
+ocRouter.post('/:id/notas', validateIdParam, auditLog('OrdenCompra', 'AGREGAR_NOTA'), async (req: any, res: Response) => {
+  const r = await NotaOCService.crear(Number(req.params.id), req.user.id_usuario, req.body?.texto);
+  res.json(r);
+});
+
+ocRouter.delete('/:id/notas/:id_nota', validateIdParam, async (req: any, res: Response) => {
+  await NotaOCService.eliminar(
+    Number(req.params.id_nota),
+    req.user.id_usuario,
+    req.user.rol === 'GERENTE'
+  );
+  res.json({ success: true });
+});
+
+ocRouter.get('/:id/historial', validateIdParam, async (req: Request, res: Response) => {
+  const h = await HistorialOCService.listar(Number(req.params.id));
+  res.json(h);
+});
+
+ocRouter.post('/:id/factura', validateIdParam, ocFacturaUpload.single('archivo'),
+  auditLog('OrdenCompra', 'SUBIR_FACTURA'), async (req: any, res: Response) => {
+  const id_oc = Number(req.params.id);
+  const { nro_comprobante, fecha_emision, monto } = req.body;
+  const r = await FacturaOCService.subir({
+    id_oc,
+    nro_comprobante,
+    fecha_emision,
+    monto: Number(monto),
+    archivo: req.file ? { buffer: req.file.buffer, originalname: req.file.originalname } : undefined,
+    id_usuario: req.user.id_usuario
+  });
+  res.json(r);
+});
+
+ocRouter.get('/:id/factura', validateIdParam, async (req: Request, res: Response) => {
+  const f = await FacturaOCService.getDeOC(Number(req.params.id));
+  res.json(f);
 });
 
 ocRouter.post('/:id/recibir', validateIdParam, auditLog('OrdenCompra', 'UPDATE'), async (req: Request, res: Response) => {
