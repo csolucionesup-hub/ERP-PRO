@@ -54,3 +54,6 @@ auditoria_erp_pro.pdf
 
 # Golden files SUNAT (datos comerciales — NO commitear)
 sunat-golden-files/
+
+# Backups locales de BD (datos productivos — NO commitear)
+backups/
