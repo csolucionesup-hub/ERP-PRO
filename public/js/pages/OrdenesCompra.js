@@ -1,11 +1,13 @@
 /**
- * OrdenesCompra.js — Módulo 📋 Órdenes de Compra
+ * OrdenesCompra.js — Módulo 📋 Órdenes de Compra (rediseño 2026-05-06)
  *
- * Workflow estándar ERP mundial (SAP B1 / Odoo / Epicor):
- *   BORRADOR → APROBADA → ENVIADA → RECIBIDA_PARCIAL → RECIBIDA → FACTURADA → PAGADA
- *              (o ANULADA si no llegó a FACTURADA)
+ * State machine simplificado:
+ *   BORRADOR → APROBADA → PAGO → RECEPCION → FACTURACION → TERMINADA
+ *                                                       ↘ CERRADA_SIN_FACTURA
+ *                                       (o ANULADA en pasos previos a FACTURACION)
  *
- * Vista kanban con columnas por estado para flujo visual.
+ * Card lleva dot semáforo (🔴/🟠/🟢) según fase + badges para problemas heredados.
+ * Spec: docs/superpowers/specs/2026-05-06-logistica-kanban-rediseno-design.md
  */
 
 import { api } from '../services/api.js';
@@ -15,17 +17,20 @@ import { kpiGrid } from '../components/KpiCard.js';
 import { pill } from '../components/Pill.js';
 
 const ESTADO_COLOR = {
-  BORRADOR:            { bg: '#f3f4f6', fg: '#374151', icon: '📝', label: 'Borrador' },
-  APROBADA:            { bg: '#dbeafe', fg: '#1e40af', icon: '✅', label: 'Aprobada' },
-  ENVIADA:             { bg: '#e0e7ff', fg: '#3730a3', icon: '📤', label: 'Enviada' },
-  RECIBIDA_PARCIAL:    { bg: '#fef3c7', fg: '#92400e', icon: '📦', label: 'Recibida parcial' },
-  RECIBIDA:            { bg: '#dcfce7', fg: '#166534', icon: '📥', label: 'Recibida' },
-  FACTURADA:           { bg: '#ede9fe', fg: '#5b21b6', icon: '🧾', label: 'Factura · pend. pago' },
-  PAGADA_PEND_FACTURA: { bg: '#fef3c7', fg: '#854d0e', icon: '💰', label: 'Pagada · pend. factura' },
-  PAGADA:              { bg: '#d1fae5', fg: '#065f46', icon: '✅', label: 'Cerrada (pago + factura)' },
-  ANULADA:             { bg: '#fee2e2', fg: '#991b1b', icon: '❌', label: 'Anulada' },
-  CERRADA_SIN_FACTURA: { bg: '#fff7ed', fg: '#9a3412', icon: '🗂', label: 'Cerrada sin factura' },
+  BORRADOR:           { bg: '#f3f4f6', fg: '#374151', icon: '📝', label: 'Borrador' },
+  APROBADA:           { bg: '#dbeafe', fg: '#1e3a8a', icon: '✅', label: 'Aprobada' },
+  PAGO:               { bg: '#fee2e2', fg: '#991b1b', icon: '💰', label: 'Pago' },
+  RECEPCION:          { bg: '#fef9c3', fg: '#713f12', icon: '📦', label: 'Recepción' },
+  FACTURACION:        { bg: '#fef3c7', fg: '#854d0e', icon: '🧾', label: 'Facturación' },
+  TERMINADA:          { bg: '#dcfce7', fg: '#166534', icon: '✓', label: 'Terminada' },
+  CERRADA_SIN_FACTURA:{ bg: '#fce7f3', fg: '#9d174d', icon: '🗂', label: 'Cerrada sin factura' },
+  ANULADA:            { bg: '#e5e7eb', fg: '#6b7280', icon: '❌', label: 'Anulada' },
 };
+
+const COLUMNAS_KANBAN_PRINCIPALES = [
+  'BORRADOR','APROBADA','PAGO','RECEPCION','FACTURACION','TERMINADA'
+];
+const COLUMNAS_KANBAN_TERMINALES = ['CERRADA_SIN_FACTURA','ANULADA'];
 
 const fPEN = (v) => new Intl.NumberFormat('es-PE', { style: 'currency', currency: 'PEN' }).format(Number(v) || 0);
 const fUSD = (v) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(Number(v) || 0);
@@ -426,14 +431,10 @@ function semanaISOHoy() {
 // ──────── Tab Kanban ────────
 function renderKanban(panel) {
   panel.dataset.rendered = '1';
-  // CERRADA_SIN_FACTURA va al final, después de PAGADA: representa OCs ya
-  // pagadas pero sin sustento documental (caja chica, marketing, etc).
-  // Ver migración 054 + OrdenCompraService.cerrarSinFactura().
+  // Columnas principales del kanban. Terminales (CERRADA_SIN_FACTURA, ANULADA)
+  // se manejan por separado en filtros/archivos (F2). Ver COLUMNAS_KANBAN_TERMINALES.
   const estadosOrden = [
-    'BORRADOR', 'APROBADA', 'ENVIADA',
-    'RECIBIDA_PARCIAL', 'RECIBIDA',
-    'FACTURADA', 'PAGADA_PEND_FACTURA', 'PAGADA',
-    'CERRADA_SIN_FACTURA',
+    'BORRADOR', 'APROBADA', 'PAGO', 'RECEPCION', 'FACTURACION', 'TERMINADA',
   ];
   const porEstado = {};
   estadosOrden.forEach(e => porEstado[e] = []);
@@ -549,8 +550,8 @@ function renderDashboard(panel) {
   const ocsActivas = _ocs.filter(o => o.estado !== 'ANULADA');
   const totalPEN = ocsActivas.reduce((s, o) => s + (o.moneda === 'USD' ? Number(o.total) * Number(o.tipo_cambio) : Number(o.total)), 0);
   const pendientesAprobar = _ocs.filter(o => o.estado === 'BORRADOR').length;
-  const porRecibir = _ocs.filter(o => ['APROBADA', 'ENVIADA', 'RECIBIDA_PARCIAL'].includes(o.estado)).length;
-  const porFacturar = _ocs.filter(o => ['RECIBIDA', 'RECIBIDA_PARCIAL'].includes(o.estado)).length;
+  const porRecibir = _ocs.filter(o => ['PAGO', 'RECEPCION'].includes(o.estado)).length;
+  const porFacturar = _ocs.filter(o => o.estado === 'FACTURACION' && o.estado_factura === 'PENDIENTE').length;
 
   panel.innerHTML = `
     <div style="margin-top:16px">
@@ -699,7 +700,7 @@ function accionesSegunEstado(oc) {
   if (oc.estado === 'APROBADA' && !esHon) {
     btns.push(`<button onclick="OC.enviar(${oc.id_oc})" title="Marcar la OC como enviada al proveedor (no envía mail automático — es un cambio de estado para el seguimiento). Después solo se podrá editar metadata, no items." style="padding:10px 18px;background:#3b82f6;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">📤 Marcar como Enviada</button>`);
   }
-  if (['APROBADA', 'ENVIADA', 'RECIBIDA_PARCIAL'].includes(oc.estado)) {
+  if (['PAGO', 'RECEPCION'].includes(oc.estado)) {
     btns.push(`<button onclick="OC.recibir(${oc.id_oc})" title="${ttRecepcion}" style="padding:10px 18px;background:#059669;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">${txtRecepcion}</button>`);
   }
   // En honorarios permitimos pagar directo desde APROBADA (atajo común:
@@ -708,7 +709,7 @@ function accionesSegunEstado(oc) {
   if (esHon && oc.estado === 'APROBADA') {
     btns.push(`<button onclick="OC.registrarPago(${oc.id_oc}, '${nroSafe}')" title="Pagar directamente al colaborador. Saltea los pasos de envío y recepción (no aplican en honorarios). La OC pasa a 'Pagada · pend. RxH' hasta que entregue el Recibo por Honorarios." style="padding:10px 18px;background:#15803d;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">💰 Registrar pago</button>`);
   }
-  if (['RECIBIDA', 'RECIBIDA_PARCIAL'].includes(oc.estado)) {
+  if (oc.estado === 'RECEPCION' && oc.estado_recepcion === 'RECIBIDO') {
     btns.push(`<button onclick="OC.facturar(${oc.id_oc})" title="${ttFactura}" style="padding:10px 18px;background:#7c3aed;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">${txtFactura}</button>`);
     btns.push(`<button onclick="OC.registrarPago(${oc.id_oc}, '${nroSafe}')" title="Registrar el pago sin haber recibido el comprobante todavía (caso típico: pago primero, comprobante llega después). La OC pasa a 'Pagada · pend. comprobante' y se genera la Tx + movimiento bancario." style="padding:10px 18px;background:#15803d;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">💰 Registrar pago</button>`);
     // "Cerrar sin facturar" solo aplica a GENERAL/SERVICIO (no ALMACEN).
@@ -717,14 +718,14 @@ function accionesSegunEstado(oc) {
       btns.push(`<button onclick="OC.cerrarSinFactura(${oc.id_oc}, '${nroSafe}')" title="Cerrar la OC sin comprobante formal (compra al contado, caja chica, etc). Genera el Gasto contable pero deja la OC en bandeja 'Sin facturar' por si después llega el comprobante." style="padding:10px 18px;background:#ea580c;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">🗂 Cerrar sin comprobante</button>`);
     }
   }
-  // FACTURADA → falta el pago. Ofrecer Registrar pago para cerrar a PAGADA.
-  if (oc.estado === 'FACTURADA') {
-    btns.push(`<button onclick="OC.registrarPago(${oc.id_oc}, '${nroSafe}')" title="Registrar el pago al proveedor de este comprobante. Genera el movimiento bancario y cierra la OC en 'Cerrada (pago + comprobante)'." style="padding:10px 18px;background:#15803d;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">💰 Registrar pago</button>`);
+  // FACTURACION con factura recibida pero sin pago → ofrecer Registrar pago para cerrar a TERMINADA.
+  if (oc.estado === 'FACTURACION' && oc.estado_factura === 'FACTURADA') {
+    btns.push(`<button onclick="OC.registrarPago(${oc.id_oc}, '${nroSafe}')" title="Registrar el pago al proveedor de este comprobante. Genera el movimiento bancario y cierra la OC en 'Terminada (pago + comprobante)'." style="padding:10px 18px;background:#15803d;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">💰 Registrar pago</button>`);
   }
-  // PAGADA_PEND_FACTURA → falta el comprobante. Ofrecer Recibí factura/RxH,
+  // FACTURACION con pago registrado pero sin comprobante → ofrecer Recibí factura/RxH,
   // o "Dar por cerrada sin comprobante" si el proveedor nunca lo va a entregar (no aplica a ALMACEN).
-  if (oc.estado === 'PAGADA_PEND_FACTURA') {
-    btns.push(`<button onclick="OC.facturar(${oc.id_oc})" title="Cargar el comprobante (factura, boleta o RxH) que llegó después del pago. Enriquece la Compra/Gasto provisorio con el N° de comprobante y cierra la OC en 'Cerrada (pago + comprobante)'." style="padding:10px 18px;background:#7c3aed;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">${txtFactura}</button>`);
+  if (oc.estado === 'FACTURACION' && oc.estado_factura === 'PENDIENTE' && oc.estado_pago === 'PAGADO') {
+    btns.push(`<button onclick="OC.facturar(${oc.id_oc})" title="Cargar el comprobante (factura, boleta o RxH) que llegó después del pago. Enriquece la Compra/Gasto provisorio con el N° de comprobante y cierra la OC en 'Terminada (pago + comprobante)'." style="padding:10px 18px;background:#7c3aed;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">${txtFactura}</button>`);
     if (oc.tipo_oc !== 'ALMACEN') {
       btns.push(`<button onclick="OC.cerrarPagaSinFactura(${oc.id_oc}, '${nroSafe}')" title="Dar por cerrada esta OC sin esperar comprobante (el proveedor no lo entregará). El Gasto provisorio que se creó al registrar el pago queda en BD sin nro de comprobante. ALMACEN no permite esta acción." style="padding:10px 18px;background:#ea580c;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">🗂 Cerrar sin comprobante</button>`);
     }
@@ -733,8 +734,8 @@ function accionesSegunEstado(oc) {
   if (oc.estado === 'CERRADA_SIN_FACTURA') {
     btns.push(`<button onclick="OC.asociarFactura(${oc.id_oc}, '${nroSafe}')" title="El proveedor mandó la factura después de cerrar. Vinculala a esta OC y pasa al estado FACTURADA." style="padding:10px 18px;background:#7c3aed;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">🧾 Asociar factura tardía</button>`);
   }
-  // Editar líneas/montos — hasta ENVIADA inclusive (después la mercadería ya fue recibida).
-  if (['BORRADOR', 'APROBADA', 'ENVIADA'].includes(oc.estado)) {
+  // Editar líneas/montos — hasta PAGO inclusive (después la mercadería ya fue recibida).
+  if (['BORRADOR', 'APROBADA', 'PAGO'].includes(oc.estado)) {
     btns.push(`<button onclick="OC.editar(${oc.id_oc})" title="Edición completa: cambiar items, cantidades, precios, totales, proveedor. Solo disponible antes de recibir mercadería." style="padding:10px 18px;background:#f59e0b;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">✎ Editar líneas</button>`);
   }
   // Editar metadata segura (centro_costo, concepto, observaciones, contactos) —
@@ -747,7 +748,7 @@ function accionesSegunEstado(oc) {
   if (esGerente) {
     btns.push(`<button onclick="OC.eliminarOC(${oc.id_oc}, '${nroSafe}')" title="Eliminar permanente con cascada total (solo GERENTE). Borra OC + Compra/Gasto generado + Tx caja + Movimientos inventario + reverso de stock. Pide tipear el N° de OC para confirmar." style="padding:10px 18px;background:transparent;color:#7f1d1d;border:1px solid #7f1d1d;border-radius:6px;cursor:pointer;font-weight:600">🗑 Eliminar</button>`);
   }
-  if (!['FACTURADA', 'PAGADA_PEND_FACTURA', 'PAGADA', 'ANULADA'].includes(oc.estado)) {
+  if (!['TERMINADA', 'ANULADA', 'CERRADA_SIN_FACTURA'].includes(oc.estado)) {
     btns.push(`<button onclick="OC.anular(${oc.id_oc})" title="Anular la OC (cambia el estado, no borra nada). El correlativo queda quemado y la OC pasa al archivo. Disponible hasta antes de facturar o pagar." style="padding:10px 18px;background:transparent;color:#dc2626;border:1px solid #dc2626;border-radius:6px;cursor:pointer;font-weight:600">Anular</button>`);
   }
   // Reactivar — solo si está ANULADA y eres GERENTE. Vuelve la OC a BORRADOR.
@@ -800,7 +801,7 @@ async function abrirModalRecepcion(oc) {
   const f = (n) => Number(n).toLocaleString('es-PE', { minimumFractionDigits: 0, maximumFractionDigits: 4 });
 
   // Banner solo en la primera recepción (estados APROBADA/ENVIADA)
-  const esPrimera = ['APROBADA', 'ENVIADA'].includes(oc.estado);
+  const esPrimera = ['APROBADA', 'PAGO'].includes(oc.estado);
   const banner = esPrimera ? `
     <div style="background:#fef3c7;border:1px solid #fbbf24;color:#92400e;padding:10px 14px;border-radius:6px;margin-bottom:14px;font-size:13px">
       ⚠️ Primera recepción: una vez confirmada, esta OC <strong style="color:#dc2626">ya no podrá editarse</strong>.
@@ -1232,7 +1233,7 @@ async function registrarPago(id, nro) {
   if (!data) return;
   try {
     const r = await api.ordenesCompra.registrarPago(id, data);
-    if (r.estado === 'PAGADA') {
+    if (r.estado === 'TERMINADA') {
       showSuccess(`OC ${nro} cerrada — pago + factura registrados`);
     } else {
       showSuccess(`OC ${nro} pagada — esperando factura del proveedor`);
@@ -1400,7 +1401,7 @@ async function reactivar(id, nro) {
 async function editar(id) {
   try {
     const oc = await api.ordenesCompra.get(id);
-    if (!['BORRADOR', 'APROBADA', 'ENVIADA'].includes(oc.estado)) {
+    if (!['BORRADOR', 'APROBADA', 'PAGO'].includes(oc.estado)) {
       return showError(`No se puede editar una OC en estado ${oc.estado}`);
     }
     nuevaOC(oc);
