@@ -1,0 +1,13 @@
+-- MIGRACIÓN: Permitir nro_comprobante NULL en tabla Compras
+-- Fecha: 2026-05-06
+-- Motivo: El rediseño del kanban OC permite registrar pago antes de tener
+--         factura. En ese caso se crea una Compra provisoria con
+--         nro_comprobante=NULL hasta que llegue el comprobante real.
+--
+-- Antes: nro_comprobante NOT NULL → todas las Compras tenían factura.
+-- Ahora: nullable → soportamos Compra "esperando comprobante".
+--
+-- Tabla Gastos ya permitía NULL desde antes; solo Compras necesita el cambio.
+--
+-- Postgres (Supabase). Aplicada vía MCP el 2026-05-06.
+ALTER TABLE Compras ALTER COLUMN nro_comprobante DROP NOT NULL;
