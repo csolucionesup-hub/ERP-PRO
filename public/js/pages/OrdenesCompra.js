@@ -21,7 +21,7 @@ const ESTADO_COLOR = {
   APROBADA:           { bg: '#dbeafe', fg: '#1e3a8a', icon: '✅', label: 'Aprobada' },
   PAGO:               { bg: '#fee2e2', fg: '#991b1b', icon: '💰', label: 'Pago' },
   RECEPCION:          { bg: '#fef9c3', fg: '#713f12', icon: '📦', label: 'Recepción' },
-  FACTURACION:        { bg: '#fef3c7', fg: '#854d0e', icon: '🧾', label: 'Facturación' },
+  FACTURACION:        { bg: '#fef3c7', fg: '#854d0e', icon: '🧾', label: 'Facturación / RH' },
   TERMINADA:          { bg: '#dcfce7', fg: '#166534', icon: '✓', label: 'Terminada' },
   CERRADA_SIN_FACTURA:{ bg: '#fce7f3', fg: '#9d174d', icon: '🗂', label: 'Cerrada sin factura' },
   ANULADA:            { bg: '#e5e7eb', fg: '#6b7280', icon: '❌', label: 'Anulada' },
@@ -788,6 +788,34 @@ async function verOC(id_oc) {
           </table>
 
           ${oc.observaciones ? `<div style="padding:10px;background:#fffbeb;border-radius:6px;margin-bottom:16px;font-size:12px"><strong>Observaciones:</strong> ${oc.observaciones}</div>` : ''}
+
+          ${(() => {
+            // Bloque "Pago" — solo se muestra si la OC ya pasó por aprobación
+            // (BORRADOR/APROBADA todavía no aplica). Muestra Total / Ya pagado /
+            // Saldo pendiente para que el usuario sepa cuánto debe.
+            if (['BORRADOR', 'APROBADA', 'ANULADA'].includes(oc.estado)) return '';
+            const _sym = oc.moneda === 'USD' ? '$' : 'S/';
+            const _total = Number(oc.total) || 0;
+            const _pagado = Number(oc.monto_pagado || 0);
+            const _saldo = Math.max(0, _total - _pagado);
+            const _pagOk = oc.estado_pago === 'PAGADO';
+            const _esCredito = oc.forma_pago === 'CREDITO';
+            const _bg = _pagOk ? '#ecfdf5' : '#fef3c7';
+            const _border = _pagOk ? '#a7f3d0' : '#fde68a';
+            const _txt = _pagOk ? '#065f46' : '#92400e';
+            const _label = _pagOk ? '✅ Pago completo' : (_esCredito && _pagado <= 0.01 ? '💳 A crédito (sin pago aún)' : '💰 Pago en curso');
+            return `
+              <div style="padding:12px 14px;background:${_bg};border:1px solid ${_border};border-radius:6px;margin-bottom:16px;font-size:13px;color:${_txt}">
+                <div style="font-weight:700;margin-bottom:6px">${_label}</div>
+                <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;font-size:12px">
+                  <div>Total OC: <strong>${_sym} ${_total.toFixed(2)}</strong></div>
+                  <div>Ya pagado: <strong>${_sym} ${_pagado.toFixed(2)}</strong></div>
+                  <div>Saldo pdte: <strong style="${_saldo > 0.01 ? 'color:#b91c1c' : ''}">${_sym} ${_saldo.toFixed(2)}</strong></div>
+                </div>
+                ${_esCredito && oc.fecha_credito_vence ? `<div style="margin-top:6px;font-size:11px">📅 Vence: ${fmtDate(oc.fecha_credito_vence)}</div>` : ''}
+              </div>
+            `;
+          })()}
 
           ${facturaAdjunta ? `
             <div style="padding:12px 14px;background:#ecfdf5;border:1px solid #a7f3d0;border-radius:6px;margin-bottom:16px;font-size:13px;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
