@@ -369,6 +369,48 @@ class OrdenCompraService {
   }
 
   /**
+   * Pasar de RECEPCION a FACTURACION ("Listo para subir facturas/RH").
+   * Tercer gate: en RECEPCION se cierran pago y recepción. Una vez ambas
+   * al 100%, este método mueve la card a FACTURACION donde recién se sube
+   * el comprobante.
+   *
+   * Reglas duras:
+   *   - estado === 'RECEPCION'
+   *   - estado_pago === 'PAGADO' (saldo cerrado)
+   *   - todas las líneas con cantidad_recibida = cantidad
+   */
+  async marcarListoParaFacturar(id_oc: number, id_usuario: number) {
+    const [rows]: any = await db.query(
+      `SELECT estado, estado_pago FROM OrdenesCompra WHERE id_oc = ?`, [id_oc]
+    );
+    if (!rows[0]) throw new Error('OC no encontrada');
+    const oc = rows[0];
+    if (oc.estado !== 'RECEPCION') {
+      throw new Error(`OC no está en RECEPCION (actual: ${oc.estado})`);
+    }
+    if (oc.estado_pago !== 'PAGADO') {
+      throw new Error('El pago no está cerrado al 100%. Termine de pagar antes de avanzar a facturación.');
+    }
+
+    // Verificar que la recepción está completa
+    const [det]: any = await db.query(`
+      SELECT SUM(cantidad) AS pedido, SUM(cantidad_recibida) AS recibido
+        FROM DetalleOrdenCompra
+       WHERE id_oc = ?
+    `, [id_oc]);
+    const pedido = Number(det[0]?.pedido || 0);
+    const recibido = Number(det[0]?.recibido || 0);
+    if (recibido < pedido - 0.0001) {
+      throw new Error(`Recepción incompleta (${recibido}/${pedido}). Termine de recibir antes de avanzar a facturación.`);
+    }
+
+    await db.query(`UPDATE OrdenesCompra SET estado='FACTURACION' WHERE id_oc=?`, [id_oc]);
+    await this._registrarTransicion(id_oc, 'RECEPCION', 'FACTURACION', id_usuario, 'Listo para subir facturas/RH');
+
+    return { success: true, estado: 'FACTURACION' as const };
+  }
+
+  /**
    * Marca la OC como crédito al proveedor. Setea forma_pago=CREDITO y calcula
    * fecha_credito_vence desde dias_credito (o desde el body). Mueve la card de
    * PAGO a RECEPCION inmediatamente.

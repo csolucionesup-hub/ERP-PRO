@@ -277,7 +277,7 @@ window.ensureOCModal = ensureOCModal;
 // a OC.verOC sin haber montado el TabBar de OrdenesCompra). Las function
 // declarations se hoistean, así que las referencias funcionan aunque estén
 // definidas más abajo en el archivo.
-window.OC = { nuevaOC, verOC, aprobar, aprobarParaPago, marcarCredito, subirFactura, eliminarFactura, agregarNota, recibir, facturar, registrarPago, cerrarSinFactura, cerrarPagaSinFactura, asociarFactura, anular, reactivar, eliminarOC, editar, editarFecha, editarMetadata: editarMetadataOC, descargarPDF, reporteROC, descargarExcel: () => api.ordenesCompra.descargarExcel().catch(e => showError(e.message || 'Error descargando Excel')) };
+window.OC = { nuevaOC, verOC, aprobar, aprobarParaPago, listoParaFacturar, marcarCredito, subirFactura, eliminarFactura, agregarNota, recibir, facturar, registrarPago, cerrarSinFactura, cerrarPagaSinFactura, asociarFactura, anular, reactivar, eliminarOC, editar, editarFecha, editarMetadata: editarMetadataOC, descargarPDF, reporteROC, descargarExcel: () => api.ordenesCompra.descargarExcel().catch(e => showError(e.message || 'Error descargando Excel')) };
 
 // Editar SOLO la fecha de emisión (corregir data histórica) — disponible en
 // cualquier estado salvo ANULADA. No toca estado/items/totales/correlativo.
@@ -941,15 +941,16 @@ function accionesSegunEstado(oc) {
   if (esHon && oc.estado === 'APROBADA') {
     btns.push(`<button onclick="OC.registrarPago(${oc.id_oc}, '${nroSafe}')" title="Pagar directamente al colaborador. Saltea PAGO/RECEPCIÓN (no aplican en honorarios). La OC pasa a 'Pagada · pend. RxH' hasta que entregue el Recibo por Honorarios." style="padding:10px 18px;background:#15803d;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">💰 Registrar pago</button>`);
   }
-  // RECEPCION + recepción completa → ofrecer "Recibí factura" para avanzar a FACTURACION/TERMINADA.
-  // (El botón "Registrar pago" / "Pagar saldo" ya se agregó arriba en la sección RECEPCION.)
-  if (oc.estado === 'RECEPCION' && oc.estado_recepcion === 'RECIBIDO') {
-    btns.push(`<button onclick="OC.facturar(${oc.id_oc})" title="${ttFactura}" style="padding:10px 18px;background:#7c3aed;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">${txtFactura}</button>`);
-    // "Cerrar sin facturar" solo aplica a GENERAL/SERVICIO (no ALMACEN).
-    // ALMACEN siempre requiere comprobante porque genera stock valorizado.
-    if (oc.tipo_oc !== 'ALMACEN') {
-      btns.push(`<button onclick="OC.cerrarSinFactura(${oc.id_oc}, '${nroSafe}')" title="Cerrar la OC sin comprobante formal (compra al contado, caja chica, etc). Genera el Gasto contable pero deja la OC en bandeja 'Sin facturar' por si después llega el comprobante." style="padding:10px 18px;background:#ea580c;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">🗂 Cerrar sin comprobante</button>`);
-    }
+  // RECEPCION + recepción completa + pago completo → habilitar "Listo para facturas/RH"
+  // (avanza a FACTURACIÓN sin generar comprobante; recién en esa columna se sube el documento).
+  // En RECEPCIÓN ya NO mostramos "Recibí factura" ni "Subir factura": esas acciones viven en FACTURACIÓN.
+  if (oc.estado === 'RECEPCION' && oc.estado_recepcion === 'RECIBIDO' && oc.estado_pago === 'PAGADO') {
+    btns.push(`<button onclick="OC.listoParaFacturar(${oc.id_oc})" title="Pago y recepción cerrados. Avanzá a FACTURACIÓN/RH para subir el comprobante del proveedor (factura o Recibo por Honorarios)." style="padding:10px 18px;background:#7c3aed;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">📤 Listo para subir facturas/RH</button>`);
+  }
+  // Cerrar sin comprobante: aplica a GENERAL/SERVICIO en RECEPCIÓN (caja chica, sin factura).
+  // ALMACEN siempre requiere comprobante porque genera stock valorizado.
+  if (oc.estado === 'RECEPCION' && oc.estado_recepcion === 'RECIBIDO' && oc.tipo_oc !== 'ALMACEN') {
+    btns.push(`<button onclick="OC.cerrarSinFactura(${oc.id_oc}, '${nroSafe}')" title="Cerrar la OC sin comprobante formal (compra al contado, caja chica, etc). Genera el Gasto contable pero deja la OC en bandeja 'Sin facturar' por si después llega el comprobante." style="padding:10px 18px;background:#ea580c;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">🗂 Cerrar sin comprobante</button>`);
   }
   // FACTURACION con factura recibida pero sin pago → ofrecer Registrar pago para cerrar a TERMINADA.
   if (oc.estado === 'FACTURACION' && oc.estado_factura === 'FACTURADA') {
@@ -971,9 +972,10 @@ function accionesSegunEstado(oc) {
   if (oc.estado === 'PAGO') {
     btns.push(`<button onclick="OC.marcarCredito(${oc.id_oc})" title="Registrar días de crédito y fecha de vencimiento para esta OC. Útil cuando el proveedor da plazo de pago." style="padding:10px 18px;background:#0891b2;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">💳 Marcar crédito</button>`);
   }
-  // Subir factura del proveedor manualmente — en RECEPCION o FACTURACION.
+  // Subir factura del proveedor manualmente — SOLO en FACTURACION (no en RECEPCION).
+  // En RECEPCION recién se gestiona pago y recepción; los comprobantes viven aquí.
   // Si ya hay una factura adjunta, el botón cambia de etiqueta a "Reemplazar".
-  if (['RECEPCION', 'FACTURACION'].includes(oc.estado)) {
+  if (oc.estado === 'FACTURACION') {
     const yaTiene = !!oc.factura_adjunta;
     const etiqueta = yaTiene ? '🔁 Reemplazar factura' : '📄 Subir factura';
     const tip = yaTiene
@@ -1031,6 +1033,21 @@ async function aprobarParaPago(id) {
   try {
     await api.ordenesCompra.aprobarParaPago(id);
     showSuccess('OC aprobada para pago');
+    setTimeout(() => refreshOC(), 600);
+  } catch (e) { showError(e.message); }
+}
+
+async function listoParaFacturar(id) {
+  const ok = await confirmarAccion({
+    titulo: '📤 Listo para subir facturas/RH',
+    mensaje: 'Pago y recepción están al 100%. La OC pasará de <strong>RECEPCIÓN</strong> a <strong>FACTURACIÓN/RH</strong>, donde recién se sube el comprobante (factura o Recibo por Honorarios). ¿Confirmás?',
+    tipo: 'info',
+    textoBoton: 'Sí, avanzar a Facturación/RH',
+  });
+  if (!ok) return;
+  try {
+    await api.ordenesCompra.listoParaFacturar(id);
+    showSuccess('OC avanzada a FACTURACIÓN/RH');
     setTimeout(() => refreshOC(), 600);
   } catch (e) { showError(e.message); }
 }

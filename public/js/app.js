@@ -1,29 +1,29 @@
 // Cache busting para imports ES module: cada path lleva su ?v=YYYYMMDDr#
 // hardcodeado. Si se cambia CUALQUIER archivo de pages/components/services
 // hay que bumpear el sufijo en TODAS las líneas (Find/Replace de v=2026...).
-import { renderSidebar } from './components/Sidebar.js?v=20260506r8';
-import { Dashboard }   from './pages/Dashboard.js?v=20260506r8';
-import { Finanzas }    from './pages/Finanzas.js?v=20260506r8';
-import { Inventario }  from './pages/Inventario.js?v=20260506r8';
-import { Usuarios }    from './pages/Usuarios.js?v=20260506r8';
-import { Compras }       from './pages/Compras.js?v=20260506r8';
+import { renderSidebar } from './components/Sidebar.js?v=20260506r9';
+import { Dashboard }   from './pages/Dashboard.js?v=20260506r9';
+import { Finanzas }    from './pages/Finanzas.js?v=20260506r9';
+import { Inventario }  from './pages/Inventario.js?v=20260506r9';
+import { Usuarios }    from './pages/Usuarios.js?v=20260506r9';
+import { Compras }       from './pages/Compras.js?v=20260506r9';
 // Servicios — módulo deprecado al cierre 03/05/2026 (Camino A vació la tabla
 // en producción; flujo migrado a Cotizaciones APROBADAS + OCs). El backend
 // sigue vivo porque Logística/OC consumen api.services.getServiciosActivos()
 // para popular dropdowns, pero la página ya no se navega.
-import { Proveedores }   from './pages/Proveedores.js?v=20260506r8';
-import { Prestamos }     from './pages/Prestamos.js?v=20260506r8';
-import { Comercial }     from './pages/Comercial.js?v=20260506r8';
-import { ConfiguracionComercial } from './pages/ConfiguracionComercial.js?v=20260506r8';
-import { Logistica }     from './pages/Logistica.js?v=20260506r8';
-import { Administracion } from './pages/Administracion.js?v=20260506r8';
-import { Configuracion }  from './pages/Configuracion.js?v=20260506r8';
-import { Contabilidad }   from './pages/Contabilidad.js?v=20260506r8';
-import { Importador }     from './pages/Importador.js?v=20260506r8';
-import { OrdenesCompra }  from './pages/OrdenesCompra.js?v=20260506r8';
-import { Produccion }     from './pages/Produccion.js?v=20260506r8';
-import { Alertas }        from './pages/Alertas.js?v=20260506r8';
-import { showSuccess, showError, showToast } from './services/ui.js?v=20260506r8';
+import { Proveedores }   from './pages/Proveedores.js?v=20260506r9';
+import { Prestamos }     from './pages/Prestamos.js?v=20260506r9';
+import { Comercial }     from './pages/Comercial.js?v=20260506r9';
+import { ConfiguracionComercial } from './pages/ConfiguracionComercial.js?v=20260506r9';
+import { Logistica }     from './pages/Logistica.js?v=20260506r9';
+import { Administracion } from './pages/Administracion.js?v=20260506r9';
+import { Configuracion }  from './pages/Configuracion.js?v=20260506r9';
+import { Contabilidad }   from './pages/Contabilidad.js?v=20260506r9';
+import { Importador }     from './pages/Importador.js?v=20260506r9';
+import { OrdenesCompra }  from './pages/OrdenesCompra.js?v=20260506r9';
+import { Produccion }     from './pages/Produccion.js?v=20260506r9';
+import { Alertas }        from './pages/Alertas.js?v=20260506r9';
+import { showSuccess, showError, showToast } from './services/ui.js?v=20260506r9';
 
 // Exponer helpers de toast globalmente (los modules ES no tienen acceso
 // directo desde otros modules sin import; varios usan window.showSuccess?.()
