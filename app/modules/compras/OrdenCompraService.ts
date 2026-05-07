@@ -765,6 +765,7 @@ class OrdenCompraService {
     fecha_pago: string;
     nro_operacion?: string;
     observaciones?: string;
+    monto?: number;  // monto a pagar en moneda original (si se omite = saldo pendiente)
   }) {
     const [rows]: any = await db.query(
       `SELECT oc.*, p.razon_social AS proveedor_nombre
@@ -780,39 +781,80 @@ class OrdenCompraService {
     }
 
     const tcOC = Number(oc.tipo_cambio) || 1;
-    const total_base_pen = Number(oc.total) * tcOC;
+    const totalOC = Number(oc.total);
+    const yaPagado = Number(oc.monto_pagado || 0);
+    const saldoPendiente = Math.max(0, totalOC - yaPagado);
+    if (saldoPendiente <= 0.01) {
+      throw new Error('La OC ya está pagada al 100% — no hay saldo pendiente');
+    }
+
+    // Monto de este pago: lo que mande el body, sino saldo pendiente. Validar rangos.
+    const montoEstePago = datos.monto != null ? Number(datos.monto) : saldoPendiente;
+    if (!Number.isFinite(montoEstePago) || montoEstePago <= 0) {
+      throw new Error('El monto debe ser mayor a 0');
+    }
+    if (montoEstePago > saldoPendiente + 0.01) {
+      throw new Error(`El monto (${montoEstePago.toFixed(2)}) excede el saldo pendiente (${saldoPendiente.toFixed(2)})`);
+    }
+
+    const nuevoMontoPagado = yaPagado + montoEstePago;
+    const cierraTotal = nuevoMontoPagado >= totalOC - 0.01;
+    const nuevoEstadoPago = cierraTotal ? 'PAGADO' : 'PARCIAL';
+
+    // Conversiones a base PEN
+    const montoEstePagoPEN = montoEstePago * tcOC;
+    const total_base_pen = totalOC * tcOC;
 
     const conn = await db.getConnection();
     await conn.beginTransaction();
     try {
-      // ── CASO A: ya estaba FACTURACION → cerrar a TERMINADA (si factura OK) ──
+      // ── CASO A: ya estaba FACTURACION → registrar pago contra factura recibida.
+      //    Si cierra el saldo total, marca PAGADO y avanza a TERMINADA. Si es
+      //    parcial, queda en FACTURACION con estado_pago=PARCIAL.
       if (oc.estado === 'FACTURACION') {
-        if (oc.tipo_oc === 'ALMACEN' && oc.id_compra_generada) {
-          await conn.query(
-            `UPDATE Compras SET estado_pago = 'PAGADO' WHERE id_compra = ?`,
-            [oc.id_compra_generada]
-          );
-          await conn.query(
-            `UPDATE Transacciones SET estado = 'REALIZADO', id_cuenta = ?
-              WHERE referencia_tipo = 'COMPRA' AND referencia_id = ? AND estado = 'PENDIENTE'`,
-            [datos.id_cuenta, oc.id_compra_generada]
-          );
+        // Solo marcar Compras/Gastos como PAGADO si este pago cierra el saldo total
+        if (cierraTotal) {
+          if (oc.tipo_oc === 'ALMACEN' && oc.id_compra_generada) {
+            await conn.query(
+              `UPDATE Compras SET estado_pago = 'PAGADO' WHERE id_compra = ?`,
+              [oc.id_compra_generada]
+            );
+            await conn.query(
+              `UPDATE Transacciones SET estado = 'REALIZADO', id_cuenta = ?
+                WHERE referencia_tipo = 'COMPRA' AND referencia_id = ? AND estado = 'PENDIENTE'`,
+              [datos.id_cuenta, oc.id_compra_generada]
+            );
+          } else {
+            await conn.query(
+              `UPDATE Gastos SET estado_pago = 'PAGADO' WHERE nro_oc = ? AND estado <> 'ANULADO'`,
+              [oc.nro_oc]
+            );
+            await conn.query(
+              `UPDATE Transacciones SET estado = 'REALIZADO', id_cuenta = ?
+                WHERE referencia_tipo = 'GASTO'
+                  AND referencia_id IN (SELECT id_gasto FROM Gastos WHERE nro_oc = ? AND estado <> 'ANULADO')
+                  AND estado = 'PENDIENTE'`,
+              [datos.id_cuenta, oc.nro_oc]
+            );
+          }
         } else {
-          await conn.query(
-            `UPDATE Gastos SET estado_pago = 'PAGADO' WHERE nro_oc = ? AND estado <> 'ANULADO'`,
-            [oc.nro_oc]
-          );
-          await conn.query(
-            `UPDATE Transacciones SET estado = 'REALIZADO', id_cuenta = ?
-              WHERE referencia_tipo = 'GASTO'
-                AND referencia_id IN (SELECT id_gasto FROM Gastos WHERE nro_oc = ? AND estado <> 'ANULADO')
-                AND estado = 'PENDIENTE'`,
-            [datos.id_cuenta, oc.nro_oc]
-          );
+          // Pago parcial sobre factura recibida: marcar Compra/Gasto como PARCIAL
+          if (oc.tipo_oc === 'ALMACEN' && oc.id_compra_generada) {
+            await conn.query(
+              `UPDATE Compras SET estado_pago = 'PARCIAL' WHERE id_compra = ?`,
+              [oc.id_compra_generada]
+            );
+          } else {
+            await conn.query(
+              `UPDATE Gastos SET estado_pago = 'PARCIAL' WHERE nro_oc = ? AND estado <> 'ANULADO'`,
+              [oc.nro_oc]
+            );
+          }
         }
 
         const refTipo = oc.tipo_oc === 'ALMACEN' ? 'COMPRA' : 'GASTO';
         const refId = oc.tipo_oc === 'ALMACEN' ? oc.id_compra_generada : null;
+        const descPago = cierraTotal ? `Pago OC ${oc.nro_oc}` : `Pago parcial OC ${oc.nro_oc} (${montoEstePago.toFixed(2)} de ${totalOC.toFixed(2)})`;
         await conn.query(
           `INSERT INTO MovimientoBancario
              (id_cuenta, fecha, fecha_proceso, nro_operacion, descripcion_banco,
@@ -821,43 +863,63 @@ class OrdenCompraService {
           [
             datos.id_cuenta, datos.fecha_pago, datos.fecha_pago,
             datos.nro_operacion || null,
-            `Pago OC ${oc.nro_oc} · ${oc.proveedor_nombre || ''}`,
-            total_base_pen, refTipo, refId, datos.observaciones || null,
+            `${descPago} · ${oc.proveedor_nombre || ''}`,
+            montoEstePagoPEN, refTipo, refId, datos.observaciones || null,
           ]
         );
 
         const [factRows]: any = await conn.query(
           `SELECT estado_factura FROM OrdenesCompra WHERE id_oc = ?`, [id_oc]
         );
-        const proximoEstado = factRows[0]?.estado_factura === 'FACTURADA' ? 'TERMINADA' : 'FACTURACION';
+        const proximoEstado = (cierraTotal && factRows[0]?.estado_factura === 'FACTURADA') ? 'TERMINADA' : 'FACTURACION';
         await conn.query(
-          `UPDATE OrdenesCompra SET estado = ?, pagada_at = ? WHERE id_oc = ?`,
-          [proximoEstado, datos.fecha_pago, id_oc]
+          `UPDATE OrdenesCompra
+              SET estado = ?, monto_pagado = ?, estado_pago = ?,
+                  pagada_at = COALESCE(pagada_at, ?)
+            WHERE id_oc = ?`,
+          [proximoEstado, nuevoMontoPagado, nuevoEstadoPago, datos.fecha_pago, id_oc]
         );
 
         await conn.commit();
-        return { success: true, estado: proximoEstado as 'TERMINADA' | 'FACTURACION', id_oc };
+        return { success: true, estado: proximoEstado as 'TERMINADA' | 'FACTURACION', id_oc, monto_pagado: nuevoMontoPagado, estado_pago: nuevoEstadoPago };
       }
 
       // ── CASO B: PAGO / RECEPCION → pago sin factura aún ────────────────
+      // La Compra/Gasto provisorio se crea SOLO la primera vez (con monto TOTAL,
+      // estado_pago=PARCIAL si el primer pago no cubre todo). En pagos
+      // siguientes solo agregamos Tx + MovBancario complementarios.
       const monto_base_pen = (Number(oc.subtotal) - Number(oc.descuento || 0)) * tcOC;
       const igv_base_pen = Number(oc.igv) * tcOC;
 
-      let id_compra: number | null = null;
+      let id_compra: number | null = oc.id_compra_generada || null;
       let id_gasto: number | null = null;
+      const esPrimerPago = !id_compra && yaPagado <= 0.01;
 
-      if (oc.tipo_oc === 'ALMACEN') {
+      // Localizar gasto previo si existe (caso GENERAL/SERVICIO con pago previo)
+      if (!esPrimerPago && oc.tipo_oc !== 'ALMACEN') {
+        const [gastoExistente]: any = await conn.query(
+          `SELECT id_gasto FROM Gastos WHERE nro_oc = ? AND estado <> 'ANULADO' LIMIT 1`,
+          [oc.nro_oc]
+        );
+        if (gastoExistente[0]) id_gasto = gastoExistente[0].id_gasto;
+      }
+
+      // Crear Compra/Gasto provisorio SOLO si es el primer pago (no había nada).
+      // El estado_pago de la Compra/Gasto refleja si este pago cierra el saldo.
+      const estadoPagoCompraGasto = cierraTotal ? 'PAGADO' : 'PARCIAL';
+
+      if (esPrimerPago && oc.tipo_oc === 'ALMACEN') {
         const [comp]: any = await conn.query(
           `INSERT INTO Compras
             (nro_oc, nro_comprobante, id_proveedor, fecha, moneda, tipo_cambio,
              aplica_igv, monto_base, igv_base, total_base, centro_costo,
              estado, estado_pago)
-           VALUES (?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'CONFIRMADA', 'PAGADO')`,
+           VALUES (?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'CONFIRMADA', ?)`,
           [
             oc.nro_oc, oc.id_proveedor, datos.fecha_pago,
             oc.moneda, tcOC, !!oc.aplica_igv,
             monto_base_pen, igv_base_pen, total_base_pen,
-            oc.centro_costo,
+            oc.centro_costo, estadoPagoCompraGasto,
           ]
         );
         id_compra = comp.insertId;
@@ -879,29 +941,13 @@ class OrdenCompraService {
         }
 
         await conn.query(
-          `INSERT INTO Transacciones
-            (id_cuenta, referencia_tipo, referencia_id, tipo_movimiento,
-             moneda, tipo_cambio, aplica_igv,
-             monto_original, igv_original, total_original,
-             monto_base, igv_base, total_base,
-             fecha, descripcion, estado)
-           VALUES (?, 'COMPRA', ?, 'EGRESO', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'REALIZADO')`,
-          [
-            datos.id_cuenta, id_compra, oc.moneda, tcOC, !!oc.aplica_igv,
-            Number(oc.subtotal) - Number(oc.descuento || 0), Number(oc.igv), Number(oc.total),
-            monto_base_pen, igv_base_pen, total_base_pen,
-            datos.fecha_pago, `Pago anticipado OC ${oc.nro_oc} (sin factura aún)`,
-          ]
-        );
-
-        await conn.query(
           `UPDATE OrdenesCompra SET id_compra_generada = ? WHERE id_oc = ?`,
           [id_compra, id_oc]
         );
-      } else {
-        // SERVICIO / GENERAL → Gasto provisorio
+      } else if (esPrimerPago) {
+        // SERVICIO / GENERAL → Gasto provisorio (primer pago)
         const tipo_logi = oc.tipo_oc === 'SERVICIO' ? 'SERVICIO' : 'GENERAL';
-        const concepto = `Pago anticipado OC ${oc.nro_oc} (sin factura aún)`;
+        const concepto = `Pago OC ${oc.nro_oc} (sin factura aún)`;
 
         const [gastoRes]: any = await conn.query(
           `INSERT INTO Gastos
@@ -909,7 +955,7 @@ class OrdenCompraService {
              fecha, concepto, proveedor_nombre, nro_comprobante,
              moneda, tipo_cambio, aplica_igv,
              monto_base, igv_base, total_base, estado, estado_pago)
-           VALUES (?, ?, 'OPERATIVO', ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, 'CONFIRMADO', 'PAGADO')`,
+           VALUES (?, ?, 'OPERATIVO', ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, 'CONFIRMADO', ?)`,
           [
             oc.nro_oc, oc.id_servicio || null,
             oc.centro_costo, tipo_logi,
@@ -917,25 +963,10 @@ class OrdenCompraService {
             oc.proveedor_nombre || null,
             oc.moneda, tcOC, !!oc.aplica_igv,
             monto_base_pen, igv_base_pen, total_base_pen,
+            estadoPagoCompraGasto,
           ]
         );
         id_gasto = gastoRes.insertId;
-
-        await conn.query(
-          `INSERT INTO Transacciones
-            (id_cuenta, referencia_tipo, referencia_id, tipo_movimiento,
-             moneda, tipo_cambio, aplica_igv,
-             monto_original, igv_original, total_original,
-             monto_base, igv_base, total_base,
-             fecha, descripcion, estado)
-           VALUES (?, 'GASTO', ?, 'EGRESO', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'REALIZADO')`,
-          [
-            datos.id_cuenta, id_gasto, oc.moneda, tcOC, !!oc.aplica_igv,
-            Number(oc.subtotal) - Number(oc.descuento || 0), Number(oc.igv), Number(oc.total),
-            monto_base_pen, igv_base_pen, total_base_pen,
-            datos.fecha_pago, `Pago anticipado OC ${oc.nro_oc} (sin factura aún)`,
-          ]
-        );
 
         if (oc.tipo_oc === 'SERVICIO' && !oc.es_honorario && (oc.id_cotizacion || oc.id_servicio)) {
           await conn.query(
@@ -946,16 +977,50 @@ class OrdenCompraService {
             [
               oc.id_servicio || null,
               oc.id_cotizacion || null,
-              `Pago anticipado OC ${oc.nro_oc}`,
+              `Pago OC ${oc.nro_oc}`,
               oc.moneda, Number(oc.total), tcOC, total_base_pen, datos.fecha_pago,
             ]
           );
         }
+      } else {
+        // No es primer pago: actualizar estado_pago de Compra/Gasto preexistente
+        if (oc.tipo_oc === 'ALMACEN' && id_compra) {
+          await conn.query(
+            `UPDATE Compras SET estado_pago = ? WHERE id_compra = ?`,
+            [estadoPagoCompraGasto, id_compra]
+          );
+        } else if (id_gasto) {
+          await conn.query(
+            `UPDATE Gastos SET estado_pago = ? WHERE id_gasto = ?`,
+            [estadoPagoCompraGasto, id_gasto]
+          );
+        }
       }
 
-      // MovBancario para ambos casos
+      // Tx EGRESO + MovBancario por el monto del pago (no por el total)
       const refTipo = oc.tipo_oc === 'ALMACEN' ? 'COMPRA' : 'GASTO';
       const refId = oc.tipo_oc === 'ALMACEN' ? id_compra : id_gasto;
+      const descTx = cierraTotal
+        ? `Pago OC ${oc.nro_oc} (sin factura aún)`
+        : `Pago parcial OC ${oc.nro_oc} (${montoEstePago.toFixed(2)} de ${totalOC.toFixed(2)})`;
+
+      await conn.query(
+        `INSERT INTO Transacciones
+          (id_cuenta, referencia_tipo, referencia_id, tipo_movimiento,
+           moneda, tipo_cambio, aplica_igv,
+           monto_original, igv_original, total_original,
+           monto_base, igv_base, total_base,
+           fecha, descripcion, estado)
+         VALUES (?, ?, ?, 'EGRESO', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'REALIZADO')`,
+        [
+          datos.id_cuenta, refTipo, refId,
+          oc.moneda, tcOC, !!oc.aplica_igv,
+          montoEstePago, 0, montoEstePago,
+          montoEstePagoPEN, 0, montoEstePagoPEN,
+          datos.fecha_pago, descTx,
+        ]
+      );
+
       await conn.query(
         `INSERT INTO MovimientoBancario
            (id_cuenta, fecha, fecha_proceso, nro_operacion, descripcion_banco,
@@ -964,18 +1029,43 @@ class OrdenCompraService {
         [
           datos.id_cuenta, datos.fecha_pago, datos.fecha_pago,
           datos.nro_operacion || null,
-          `Pago anticipado OC ${oc.nro_oc} · ${oc.proveedor_nombre || ''} (sin factura aún)`,
-          total_base_pen, refTipo, refId, datos.observaciones || null,
+          `${descTx} · ${oc.proveedor_nombre || ''}`,
+          montoEstePagoPEN, refTipo, refId, datos.observaciones || null,
         ]
       );
 
+      // Cualquier pago (total o parcial) saca la card de PAGO. La card va
+      // a RECEPCION si venía de PAGO. Si venía de RECEPCION se queda ahí
+      // (el avance lo decide el auto-advance helper si recepción está completa).
+      const proximoEstadoOC = oc.estado === 'PAGO' ? 'RECEPCION' : oc.estado;
       await conn.query(
-        `UPDATE OrdenesCompra SET estado = 'FACTURACION', pagada_at = ? WHERE id_oc = ?`,
-        [datos.fecha_pago, id_oc]
+        `UPDATE OrdenesCompra
+            SET estado = ?, monto_pagado = ?, estado_pago = ?,
+                pagada_at = COALESCE(pagada_at, ?)
+          WHERE id_oc = ?`,
+        [proximoEstadoOC, nuevoMontoPagado, nuevoEstadoPago, datos.fecha_pago, id_oc]
+      );
+
+      // Si la recepción ya estaba completa antes de pagar, intentar auto-avance
+      if (oc.estado === 'RECEPCION' && cierraTotal) {
+        await this._checkAutoAvance(conn, id_oc);
+      }
+
+      await this._registrarTransicion(
+        id_oc, oc.estado, proximoEstadoOC, null,
+        cierraTotal ? `Pago total registrado (${montoEstePago.toFixed(2)})`
+                    : `Pago parcial registrado (${montoEstePago.toFixed(2)} de ${totalOC.toFixed(2)} — saldo pdte ${(totalOC - nuevoMontoPagado).toFixed(2)})`
       );
 
       await conn.commit();
-      return { success: true, estado: 'FACTURACION' as const, id_oc, id_compra, id_gasto };
+      return {
+        success: true,
+        estado: proximoEstadoOC,
+        estado_pago: nuevoEstadoPago,
+        monto_pagado: nuevoMontoPagado,
+        saldo_pendiente: Math.max(0, totalOC - nuevoMontoPagado),
+        id_oc, id_compra, id_gasto,
+      };
     } catch (e) {
       await conn.rollback();
       throw e;

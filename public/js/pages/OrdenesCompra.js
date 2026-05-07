@@ -859,18 +859,29 @@ function accionesSegunEstado(oc) {
   const txtFacturaTardia = esHon ? '🧾 Recibí RxH' : '🧾 Recibí factura';
 
   // "Marcar como Enviada" eliminado — ENVIADA ya no es un estado del flujo.
-  if (['PAGO', 'RECEPCION'].includes(oc.estado)) {
+  // PAGO = bandeja de Finanzas. Botón principal verde: Registrar pago (total o parcial).
+  // Recepción NO va acá: vive en RECEPCION.
+  if (oc.estado === 'PAGO') {
+    btns.push(`<button onclick="OC.registrarPago(${oc.id_oc}, '${nroSafe}')" title="Registrar el pago al proveedor. Soporta pago total o parcial. Genera Tx EGRESO + movimiento bancario por el monto pagado. La OC pasa a RECEPCIÓN (con badge de saldo pendiente si fue parcial)." style="padding:10px 18px;background:#15803d;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">💰 Registrar pago</button>`);
+  }
+  // RECEPCION → permite registrar recepción de mercadería/servicio
+  if (oc.estado === 'RECEPCION') {
     btns.push(`<button onclick="OC.recibir(${oc.id_oc})" title="${ttRecepcion}" style="padding:10px 18px;background:#059669;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">${txtRecepcion}</button>`);
+    // Si todavía hay saldo pendiente de pago, ofrecer Registrar pago para saldar
+    if (oc.estado_pago !== 'PAGADO') {
+      btns.push(`<button onclick="OC.registrarPago(${oc.id_oc}, '${nroSafe}')" title="Pagar el saldo pendiente del proveedor." style="padding:10px 18px;background:#15803d;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">💰 Pagar saldo</button>`);
+    }
   }
   // En honorarios permitimos pagar directo desde APROBADA (atajo común:
   // contraté → trabajó → pagué, todo en el mismo día). Para no-honorarios
-  // mantener flujo existente que requiere RECIBIDA primero.
+  // hay que pasar por PAGO formalmente.
   if (esHon && oc.estado === 'APROBADA') {
-    btns.push(`<button onclick="OC.registrarPago(${oc.id_oc}, '${nroSafe}')" title="Pagar directamente al colaborador. Saltea los pasos de envío y recepción (no aplican en honorarios). La OC pasa a 'Pagada · pend. RxH' hasta que entregue el Recibo por Honorarios." style="padding:10px 18px;background:#15803d;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">💰 Registrar pago</button>`);
+    btns.push(`<button onclick="OC.registrarPago(${oc.id_oc}, '${nroSafe}')" title="Pagar directamente al colaborador. Saltea PAGO/RECEPCIÓN (no aplican en honorarios). La OC pasa a 'Pagada · pend. RxH' hasta que entregue el Recibo por Honorarios." style="padding:10px 18px;background:#15803d;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">💰 Registrar pago</button>`);
   }
+  // RECEPCION + recepción completa → ofrecer "Recibí factura" para avanzar a FACTURACION/TERMINADA.
+  // (El botón "Registrar pago" / "Pagar saldo" ya se agregó arriba en la sección RECEPCION.)
   if (oc.estado === 'RECEPCION' && oc.estado_recepcion === 'RECIBIDO') {
     btns.push(`<button onclick="OC.facturar(${oc.id_oc})" title="${ttFactura}" style="padding:10px 18px;background:#7c3aed;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">${txtFactura}</button>`);
-    btns.push(`<button onclick="OC.registrarPago(${oc.id_oc}, '${nroSafe}')" title="Registrar el pago sin haber recibido el comprobante todavía (caso típico: pago primero, comprobante llega después). La OC pasa a 'Pagada · pend. comprobante' y se genera la Tx + movimiento bancario." style="padding:10px 18px;background:#15803d;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">💰 Registrar pago</button>`);
     // "Cerrar sin facturar" solo aplica a GENERAL/SERVICIO (no ALMACEN).
     // ALMACEN siempre requiere comprobante porque genera stock valorizado.
     if (oc.tipo_oc !== 'ALMACEN') {
@@ -1516,11 +1527,25 @@ async function facturar(id) {
 //    PAGADA (cerrada).
 async function registrarPago(id, nro) {
   let cuentas = [];
+  let oc = null;
   try {
-    cuentas = await api.cobranzas.getCuentas();
-  } catch (e) { return showError('No se pudieron cargar las cuentas: ' + e.message); }
+    [cuentas, oc] = await Promise.all([
+      api.cobranzas.getCuentas(),
+      api.ordenesCompra.get(id),
+    ]);
+  } catch (e) { return showError('No se pudieron cargar datos: ' + e.message); }
   const cuentasActivas = (cuentas || []).filter(c => c.activo !== false);
   if (cuentasActivas.length === 0) return showError('No hay cuentas bancarias activas. Configurá una en Finanzas → Cuentas.');
+  if (!oc) return showError('OC no encontrada');
+
+  const totalOC  = Number(oc.total) || 0;
+  const yaPagado = Number(oc.monto_pagado || 0);
+  const saldoPdte = Math.max(0, totalOC - yaPagado);
+  const sym = oc.moneda === 'USD' ? '$' : 'S/';
+
+  if (saldoPdte <= 0.01) {
+    return showError('La OC ya está pagada al 100% — no hay saldo pendiente');
+  }
 
   const data = await new Promise((resolve) => {
     const ov = document.createElement('div');
@@ -1534,6 +1559,13 @@ async function registrarPago(id, nro) {
         <div style="background:#f0fdf4;border:1px solid #bbf7d0;color:#166534;padding:10px 12px;border-radius:6px;margin-bottom:14px;font-size:12px">
           Esto registra el egreso real en tu cuenta bancaria. Se genera la transacción + el movimiento del libro bancos automáticamente.
         </div>
+
+        <div style="background:#f9fafb;border:1px solid #e5e7eb;padding:8px 12px;border-radius:6px;margin-bottom:14px;font-size:12px;display:grid;grid-template-columns:1fr 1fr;gap:6px;color:#374151">
+          <div>Total OC: <strong>${sym} ${totalOC.toFixed(2)}</strong></div>
+          <div>Ya pagado: <strong>${sym} ${yaPagado.toFixed(2)}</strong></div>
+          <div style="grid-column:1/-1;color:#92400e">Saldo pendiente: <strong>${sym} ${saldoPdte.toFixed(2)}</strong></div>
+        </div>
+
         <label style="font-size:11px;color:#374151;font-weight:600;display:block;margin-bottom:4px">Cuenta de la que sale el pago *</label>
         <select id="rp-cuenta" style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:5px;font-size:13px;margin-bottom:12px">
           ${cuentasOpts}
@@ -1541,6 +1573,13 @@ async function registrarPago(id, nro) {
         <label style="font-size:11px;color:#374151;font-weight:600;display:block;margin-bottom:4px">Fecha del pago *</label>
         <input id="rp-fecha" type="date" value="${new Date().toISOString().slice(0,10)}"
           style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:5px;font-size:13px;margin-bottom:12px">
+
+        <label style="font-size:11px;color:#374151;font-weight:600;display:block;margin-bottom:4px">Monto a pagar (${oc.moneda}) *</label>
+        <input id="rp-monto" type="number" step="0.01" min="0.01" max="${saldoPdte.toFixed(2)}"
+          value="${saldoPdte.toFixed(2)}"
+          style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:5px;font-size:13px;margin-bottom:4px;font-family:monospace">
+        <div style="font-size:10px;color:#6b7280;margin-bottom:12px">Default: saldo pendiente. Bajá el monto si solo pagás parcial.</div>
+
         <label style="font-size:11px;color:#374151;font-weight:600;display:block;margin-bottom:4px">N° operación (opcional)</label>
         <input id="rp-nro" placeholder="Ej. 12345678" maxlength="50"
           style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:5px;font-size:13px;margin-bottom:12px;font-family:monospace">
@@ -1557,27 +1596,43 @@ async function registrarPago(id, nro) {
     const close = (val) => { ov.remove(); resolve(val); };
     ov.querySelector('#rp-cancel').onclick = () => close(null);
     ov.querySelector('#rp-ok').onclick = () => {
+      const err = ov.querySelector('#rp-error');
       const id_cuenta = Number(ov.querySelector('#rp-cuenta').value);
       const fecha_pago = ov.querySelector('#rp-fecha').value;
+      const monto = Number(ov.querySelector('#rp-monto').value);
       const nro_operacion = ov.querySelector('#rp-nro').value.trim() || undefined;
       const observaciones = ov.querySelector('#rp-obs').value.trim() || undefined;
       if (!id_cuenta || !fecha_pago) {
-        const err = ov.querySelector('#rp-error');
         err.textContent = 'Cuenta y fecha son obligatorias';
         err.style.display = 'block';
         return;
       }
-      close({ id_cuenta, fecha_pago, nro_operacion, observaciones });
+      if (!Number.isFinite(monto) || monto <= 0) {
+        err.textContent = 'El monto debe ser mayor a 0';
+        err.style.display = 'block';
+        return;
+      }
+      if (monto > saldoPdte + 0.01) {
+        err.textContent = `El monto no puede exceder el saldo pendiente (${sym} ${saldoPdte.toFixed(2)})`;
+        err.style.display = 'block';
+        return;
+      }
+      close({ id_cuenta, fecha_pago, monto, nro_operacion, observaciones });
     };
   });
   if (!data) return;
   try {
     const r = await api.ordenesCompra.registrarPago(id, data);
+    const cierraTotal = r.estado_pago === 'PAGADO';
+    let msg;
     if (r.estado === 'TERMINADA') {
-      showSuccess(`OC ${nro} cerrada — pago + factura registrados`);
+      msg = `OC ${nro} cerrada — pago total + factura registrados`;
+    } else if (cierraTotal) {
+      msg = `OC ${nro} pagada al 100% — esperando recepción/factura`;
     } else {
-      showSuccess(`OC ${nro} pagada — esperando factura del proveedor`);
+      msg = `OC ${nro}: pago parcial registrado · saldo pdte ${sym} ${Number(r.saldo_pendiente).toFixed(2)}`;
     }
+    showSuccess(msg);
     setTimeout(() => (window.refreshModule || refreshOC)(), 800);
   } catch (e) { showError(e.message); }
 }
