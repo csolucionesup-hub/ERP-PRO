@@ -776,7 +776,12 @@ class OrdenCompraService {
     );
     const oc = rows[0];
     if (!oc) throw new Error('OC no encontrada');
-    if (!['PAGO', 'RECEPCION', 'FACTURACION'].includes(oc.estado)) {
+    // Estados válidos para registrar pago: PAGO/RECEPCION/FACTURACION.
+    // Excepción: OCs de honorarios (es_honorario=TRUE) pueden pagarse desde
+    // APROBADA directamente (atajo: contraté → trabajó → pagué mismo día).
+    const estadosValidosPago = ['PAGO', 'RECEPCION', 'FACTURACION'];
+    if (oc.es_honorario) estadosValidosPago.push('APROBADA');
+    if (!estadosValidosPago.includes(oc.estado)) {
       throw new Error(`OC debe estar PAGO, RECEPCION o FACTURACION para registrar pago (actual: ${oc.estado})`);
     }
 
@@ -1034,10 +1039,10 @@ class OrdenCompraService {
         ]
       );
 
-      // Cualquier pago (total o parcial) saca la card de PAGO. La card va
-      // a RECEPCION si venía de PAGO. Si venía de RECEPCION se queda ahí
-      // (el avance lo decide el auto-advance helper si recepción está completa).
-      const proximoEstadoOC = oc.estado === 'PAGO' ? 'RECEPCION' : oc.estado;
+      // Cualquier pago (total o parcial) saca la card de PAGO o de APROBADA
+      // (caso honorarios). La card va a RECEPCION. Si venía de RECEPCION se
+      // queda ahí (el avance lo decide _checkAutoAvance si recepción está completa).
+      const proximoEstadoOC = ['PAGO', 'APROBADA'].includes(oc.estado) ? 'RECEPCION' : oc.estado;
       await conn.query(
         `UPDATE OrdenesCompra
             SET estado = ?, monto_pagado = ?, estado_pago = ?,
