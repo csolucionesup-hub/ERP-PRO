@@ -817,6 +817,39 @@ async function verOC(id_oc) {
             `;
           })()}
 
+          ${(() => {
+            // Bloque "Recepción" — solo si la OC ya está en RECEPCION, FACTURACION o TERMINADA.
+            // Para honorarios la palabra es "Trabajo realizado" en vez de "Recepción".
+            if (!['RECEPCION', 'FACTURACION', 'TERMINADA'].includes(oc.estado)) return '';
+            const _esHon = !!oc.es_honorario;
+            const _label_estado = oc.estado_recepcion || 'NO_RECIBIDO';
+            let _totalPedido = 0, _totalRecibido = 0;
+            for (const l of (oc.detalle || [])) {
+              _totalPedido   += Number(l.cantidad) || 0;
+              _totalRecibido += Number(l.cantidad_recibida) || 0;
+            }
+            const _falta = Math.max(0, _totalPedido - _totalRecibido);
+            const _bg     = _label_estado === 'RECIBIDO' ? '#ecfdf5' : (_label_estado === 'PARCIAL' ? '#fef3c7' : '#fee2e2');
+            const _border = _label_estado === 'RECIBIDO' ? '#a7f3d0' : (_label_estado === 'PARCIAL' ? '#fde68a' : '#fecaca');
+            const _txt    = _label_estado === 'RECIBIDO' ? '#065f46' : (_label_estado === 'PARCIAL' ? '#92400e' : '#991b1b');
+            const _icono  = _label_estado === 'RECIBIDO' ? '✅' : (_label_estado === 'PARCIAL' ? '📦' : '⚠️');
+            const _verbo = _esHon ? 'Trabajo realizado' : 'Recepción';
+            const _verboFalta = _esHon ? 'falta confirmar' : 'faltan recibir';
+            const _msg = _label_estado === 'RECIBIDO'
+              ? `${_verbo} completa`
+              : (_label_estado === 'PARCIAL' ? `${_verbo} parcial` : `Sin ${_verbo.toLowerCase()} aún`);
+            return `
+              <div style="padding:12px 14px;background:${_bg};border:1px solid ${_border};border-radius:6px;margin-bottom:16px;font-size:13px;color:${_txt}">
+                <div style="font-weight:700;margin-bottom:6px">${_icono} ${_msg}</div>
+                <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;font-size:12px">
+                  <div>Total pedido: <strong>${_totalPedido}</strong></div>
+                  <div>Ya recibido: <strong>${_totalRecibido}</strong></div>
+                  <div>${_verboFalta.charAt(0).toUpperCase() + _verboFalta.slice(1)}: <strong style="${_falta > 0.01 ? 'color:#b91c1c' : ''}">${_falta}</strong></div>
+                </div>
+              </div>
+            `;
+          })()}
+
           ${facturaAdjunta ? `
             <div style="padding:12px 14px;background:#ecfdf5;border:1px solid #a7f3d0;border-radius:6px;margin-bottom:16px;font-size:13px;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
               <div>
@@ -892,13 +925,15 @@ function accionesSegunEstado(oc) {
   if (oc.estado === 'PAGO') {
     btns.push(`<button onclick="OC.registrarPago(${oc.id_oc}, '${nroSafe}')" title="Registrar el pago al proveedor. Soporta pago total o parcial. Genera Tx EGRESO + movimiento bancario por el monto pagado. La OC pasa a RECEPCIÓN (con badge de saldo pendiente si fue parcial)." style="padding:10px 18px;background:#15803d;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">💰 Registrar pago</button>`);
   }
-  // RECEPCION → permite registrar recepción de mercadería/servicio
-  if (oc.estado === 'RECEPCION') {
+  // RECEPCION → permite registrar recepción de mercadería/servicio.
+  // Solo si todavía hay algo pendiente de recibir (estado_recepcion !== RECIBIDO).
+  if (oc.estado === 'RECEPCION' && oc.estado_recepcion !== 'RECIBIDO') {
     btns.push(`<button onclick="OC.recibir(${oc.id_oc})" title="${ttRecepcion}" style="padding:10px 18px;background:#059669;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">${txtRecepcion}</button>`);
-    // Si todavía hay saldo pendiente de pago, ofrecer Registrar pago para saldar
-    if (oc.estado_pago !== 'PAGADO') {
-      btns.push(`<button onclick="OC.registrarPago(${oc.id_oc}, '${nroSafe}')" title="Pagar el saldo pendiente del proveedor." style="padding:10px 18px;background:#15803d;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">💰 Pagar saldo</button>`);
-    }
+  }
+  // En RECEPCION (sea recibido completo o no), si todavía hay saldo pendiente
+  // de pago, ofrecer "Pagar saldo" para terminar de cerrar la fase.
+  if (oc.estado === 'RECEPCION' && oc.estado_pago !== 'PAGADO') {
+    btns.push(`<button onclick="OC.registrarPago(${oc.id_oc}, '${nroSafe}')" title="Pagar el saldo pendiente del proveedor." style="padding:10px 18px;background:#15803d;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">💰 Pagar saldo</button>`);
   }
   // En honorarios permitimos pagar directo desde APROBADA (atajo común:
   // contraté → trabajó → pagué, todo en el mismo día). Para no-honorarios
@@ -1168,6 +1203,12 @@ async function recibir(id) {
   const oc = await api.ordenesCompra.get(id);
   if (!oc.detalle || oc.detalle.length === 0) {
     showError('La OC no tiene líneas para recibir');
+    return;
+  }
+  // Guard: si la recepción ya está al 100%, no abrir el modal — no hay nada que registrar.
+  // Esto evita duplicar registros cuando ya está todo recibido.
+  if (oc.estado_recepcion === 'RECIBIDO') {
+    showError('Esta OC ya tiene la recepción al 100%. No hay líneas pendientes.');
     return;
   }
   await abrirModalRecepcion(oc);

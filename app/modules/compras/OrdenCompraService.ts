@@ -1822,7 +1822,20 @@ class OrdenCompraService {
       'SELECT * FROM AprobacionesOC WHERE id_oc = ? ORDER BY fecha DESC',
       [id_oc]
     );
-    return { ...oc, detalle: det, aprobaciones: apro };
+
+    // Calcular estado_recepcion en runtime desde el detalle.
+    // (listar() ya lo devuelve via SELECT, pero obtener() no lo hacía.)
+    const detalle = det as any[];
+    let pedido = 0, recibido = 0;
+    for (const d of detalle) {
+      pedido   += Number(d.cantidad)            || 0;
+      recibido += Number(d.cantidad_recibida)   || 0;
+    }
+    let estado_recepcion: 'NO_RECIBIDO' | 'PARCIAL' | 'RECIBIDO' = 'NO_RECIBIDO';
+    if (recibido >= pedido - 0.0001 && pedido > 0) estado_recepcion = 'RECIBIDO';
+    else if (recibido > 0.0001) estado_recepcion = 'PARCIAL';
+
+    return { ...oc, detalle, aprobaciones: apro, estado_recepcion };
   }
 
   /**
