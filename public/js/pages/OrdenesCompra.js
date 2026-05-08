@@ -1265,47 +1265,6 @@ async function verOC(id_oc) {
           })()}
 
           ${(() => {
-            // Lista detallada de pagos individuales (cada uno con N° operación y cuenta).
-            // Viene de MovimientoBancario filtrando por descripción que contiene el nro_oc.
-            const pagos = oc.pagos || [];
-            if (!pagos.length) return '';
-            return `
-              <details open style="margin-bottom:16px;padding:12px 14px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px">
-                <summary style="cursor:pointer;font-size:13px;color:#14532d;font-weight:700">💰 Pagos registrados (${pagos.length})</summary>
-                <table style="width:100%;border-collapse:collapse;font-size:12px;margin-top:10px;background:white;border-radius:4px;overflow:hidden">
-                  <thead>
-                    <tr style="background:#dcfce7;color:#14532d">
-                      <th style="padding:6px 8px;text-align:left">Fecha</th>
-                      <th style="padding:6px 8px;text-align:left">Cuenta</th>
-                      <th style="padding:6px 8px;text-align:left">N° operación</th>
-                      <th style="padding:6px 8px;text-align:right">Monto</th>
-                      <th style="padding:6px 8px;text-align:left">Observaciones</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    ${pagos.map(p => {
-                      const fecha = fmtDate(p.fecha);
-                      const cuenta = p.cuenta_nombre ? `${escapeHtml(p.cuenta_nombre)}${p.cuenta_moneda ? ' (' + p.cuenta_moneda + ')' : ''}` : '—';
-                      const nroOp = p.nro_operacion ? escapeHtml(p.nro_operacion) : '<span style="color:#9ca3af">—</span>';
-                      const monto = `S/ ${Number(p.monto || 0).toFixed(2)}`;
-                      const obs = p.comentario ? escapeHtml(p.comentario) : '<span style="color:#9ca3af">—</span>';
-                      return `
-                        <tr style="border-top:1px solid #e5e7eb">
-                          <td style="padding:6px 8px">${fecha}</td>
-                          <td style="padding:6px 8px">${cuenta}</td>
-                          <td style="padding:6px 8px;font-family:ui-monospace,monospace">${nroOp}</td>
-                          <td style="padding:6px 8px;text-align:right;font-weight:700">${monto}</td>
-                          <td style="padding:6px 8px;color:#6b7280">${obs}</td>
-                        </tr>
-                      `;
-                    }).join('')}
-                  </tbody>
-                </table>
-              </details>
-            `;
-          })()}
-
-          ${(() => {
             // Bloque "Recepción" — solo si la OC ya está en RECEPCION, FACTURACION o TERMINADA.
             // Para honorarios la palabra es "Trabajo realizado" en vez de "Recepción".
             // Las OCs GENERAL no-honorario no tienen recepción — se omite el bloque.
