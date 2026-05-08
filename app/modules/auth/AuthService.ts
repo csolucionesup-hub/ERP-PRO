@@ -1,6 +1,7 @@
 import { db } from '../../../database/connection';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import { CloudinaryService } from '../comercial/CloudinaryService';
 
 // En producción este fallback NO se usa: index.ts hace process.exit(1) si
 // JWT_SECRET falta antes de llegar aquí. El fallback solo cubre dev local.
@@ -52,7 +53,7 @@ class AuthService {
    */
   async getProfileFromDB(id_usuario: number, jwtPayload: any) {
     const [rows]: any = await db.query(
-      'SELECT id_usuario, nombre, email, rol, activo, puede_contabilidad, puede_importar FROM Usuarios WHERE id_usuario = ?',
+      'SELECT id_usuario, nombre, email, rol, activo, puede_contabilidad, puede_importar, firma_url FROM Usuarios WHERE id_usuario = ?',
       [id_usuario]
     );
     const user = (rows as any[])[0];
@@ -73,6 +74,7 @@ class AuthService {
       modulos,
       puede_contabilidad: user.rol === 'GERENTE' || !!user.puede_contabilidad,
       puede_importar:     user.rol === 'GERENTE' || !!user.puede_importar,
+      firma_url:          user.firma_url || null,
     };
 
     // Detectar cambios contra el payload del JWT
@@ -319,6 +321,41 @@ class AuthService {
     const nuevoEstado = !user.activo;
     await db.query('UPDATE Usuarios SET activo = ? WHERE id_usuario = ?', [nuevoEstado, id_usuario]);
     return { success: true, activo: nuevoEstado };
+  }
+
+  // ── Firma escaneada (mig 067) ─────────────────────────────────
+  /**
+   * Sube la firma manuscrita del usuario (PNG/JPG) a Cloudinary y guarda
+   * la URL en Usuarios.firma_url. Reemplaza la firma anterior si existía
+   * (el archivo viejo queda huérfano en Cloudinary, mismo criterio que
+   * facturas).
+   */
+  async subirFirma(id_usuario: number, archivo: { buffer: Buffer; originalname: string }) {
+    const upload = await CloudinaryService.subirArchivoGenerico(
+      archivo.buffer, archivo.originalname,
+      `metalengineers/firmas/${id_usuario}`
+    );
+    await db.query(
+      'UPDATE Usuarios SET firma_url = ?, firma_cloudinary_id = ? WHERE id_usuario = ?',
+      [upload.url, upload.public_id, id_usuario]
+    );
+    return { success: true, firma_url: upload.url };
+  }
+
+  async eliminarFirma(id_usuario: number) {
+    await db.query(
+      'UPDATE Usuarios SET firma_url = NULL, firma_cloudinary_id = NULL WHERE id_usuario = ?',
+      [id_usuario]
+    );
+    return { success: true };
+  }
+
+  async getFirma(id_usuario: number): Promise<{ firma_url: string | null }> {
+    const [rows]: any = await db.query(
+      'SELECT firma_url FROM Usuarios WHERE id_usuario = ?',
+      [id_usuario]
+    );
+    return { firma_url: (rows as any[])[0]?.firma_url || null };
   }
 }
 

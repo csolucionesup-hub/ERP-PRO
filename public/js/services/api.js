@@ -285,6 +285,27 @@ export const api = {
     updateUsuario:  (id, data) => fetchAPI(`/api/usuarios/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
     resetPassword:  (id, password) => fetchAPI(`/api/usuarios/${id}/password`, { method: 'PUT', body: JSON.stringify({ password }) }),
   },
+  // Perfil del usuario actual (firma escaneada — mig 067)
+  auth: {
+    me:                   () => fetchAPI('/api/auth/me'),
+    getMiFirma:           () => fetchAPI('/api/auth/me/firma'),
+    eliminarMiFirma:      () => fetchAPI('/api/auth/me/firma', { method: 'DELETE' }),
+    subirMiFirma: async (file) => {
+      const token = localStorage.getItem('erp_token');
+      const fd = new FormData();
+      fd.append('archivo', file);
+      const r = await fetch(`${API_BASE_URL}/auth/me/firma`, {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: fd,
+      });
+      if (!r.ok) {
+        const err = await r.json().catch(() => ({}));
+        throw new Error(err.error || `Error subiendo firma: HTTP ${r.status}`);
+      }
+      return r.json();
+    },
+  },
 
   // Fase A — Capas transversales
   config: {
