@@ -1434,19 +1434,23 @@ async function verOC(id_oc) {
 
           ${(() => {
             // Multifirma (mig 065): cards de PREPARADO / REVISADO / AUTORIZADO.
-            // Se muestran SIEMPRE — en BORRADOR son interactivas (firmar/desfirmar);
-            // en estados posteriores muestran solo lectura como audit trail.
+            // BORRADOR es solo armado — sin firmas. Las firmas se hacen en
+            // APROBADA, y al cumplir umbral la OC pasa automáticamente a PAGO.
+            // En estados posteriores (PAGO/RECEPCION/FACTURACION/TERMINADA)
+            // se muestran solo lectura como audit trail.
+            if (oc.estado === 'BORRADOR' || oc.estado === 'ANULADA') return '';
+
             const userActual = JSON.parse(localStorage.getItem('erp_user') || '{}');
             const idUserActual = userActual.id_usuario;
             const rolActual = userActual.rol;
             const esGer = rolActual === 'GERENTE';
-            const editable = oc.estado === 'BORRADOR';
+            const firmableAhora = oc.estado === 'APROBADA';
             const reqFirmas = Number(oc.firmas_requeridas) || 1;
             const actuales = Number(oc.firmas_actuales) || 0;
 
             const card = (etiqueta, casillero, idFirmante, nombreFirmante, fechaFirma) => {
               const firmada = !!idFirmante;
-              const puedeQuitar = firmada && (idFirmante === idUserActual || esGer) && (oc.estado === 'BORRADOR' || oc.estado === 'APROBADA');
+              const puedeQuitar = firmada && (idFirmante === idUserActual || esGer) && (oc.estado === 'APROBADA' || oc.estado === 'PAGO');
               const fecha = fechaFirma ? new Date(fechaFirma).toLocaleString('es-PE', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' }) : '';
               return `
                 <div style="flex:1;min-width:200px;padding:12px;border:1px solid ${firmada?'#86efac':'#d1d5db'};border-radius:6px;background:${firmada?'#ecfdf5':'#f9fafb'}">
@@ -1454,18 +1458,18 @@ async function verOC(id_oc) {
                   ${firmada ? `
                     <div style="font-size:13px;font-weight:600;color:#065f46">${escapeHtml(nombreFirmante || '—')}</div>
                     <div style="font-size:10px;color:#6b7280;margin-top:2px">firmado: ${fecha}</div>
-                    ${puedeQuitar ? `<button onclick="OC.desfirmar(${oc.id_oc}, '${casillero}')" title="Quitar tu firma. Si la OC ya estaba APROBADA y al quitar caen las firmas debajo del umbral, vuelve a BORRADOR." style="margin-top:8px;background:transparent;color:#dc2626;border:1px solid #fecaca;border-radius:4px;padding:3px 8px;cursor:pointer;font-size:11px">Quitar firma</button>` : ''}
+                    ${puedeQuitar ? `<button onclick="OC.desfirmar(${oc.id_oc}, '${casillero}')" title="Quitar tu firma. Si la OC ya estaba en PAGO y al quitar caen las firmas debajo del umbral, vuelve a APROBADA." style="margin-top:8px;background:transparent;color:#dc2626;border:1px solid #fecaca;border-radius:4px;padding:3px 8px;cursor:pointer;font-size:11px">Quitar firma</button>` : ''}
                   ` : `
                     <div style="font-size:12px;color:#9ca3af;margin-bottom:8px">Pendiente</div>
-                    ${editable ? `<button onclick="OC.firmar(${oc.id_oc}, '${casillero}')" title="Firmar como ${etiqueta.toLowerCase()}. Si con esta firma se alcanza el umbral configurado, la OC pasa automáticamente a APROBADA." style="background:#2563eb;color:white;border:none;border-radius:4px;padding:5px 10px;cursor:pointer;font-size:11px;font-weight:600">✍️ Firmar</button>` : `<span style="color:#9ca3af;font-size:11px">—</span>`}
+                    ${firmableAhora ? `<button onclick="OC.firmar(${oc.id_oc}, '${casillero}')" title="Firmar como ${etiqueta.toLowerCase()}. Si con esta firma se alcanza el umbral configurado, la OC pasa automáticamente a PAGO." style="background:#2563eb;color:white;border:none;border-radius:4px;padding:5px 10px;cursor:pointer;font-size:11px;font-weight:600">✍️ Firmar</button>` : `<span style="color:#9ca3af;font-size:11px">—</span>`}
                   `}
                 </div>
               `;
             };
 
             const colorBarra = actuales >= reqFirmas ? '#16a34a' : '#f59e0b';
-            const headerTxt = oc.estado === 'BORRADOR'
-              ? `${actuales} / ${reqFirmas} firma${reqFirmas>1?'s':''} requerida${reqFirmas>1?'s':''}`
+            const headerTxt = firmableAhora
+              ? `${actuales} / ${reqFirmas} firma${reqFirmas>1?'s':''} requerida${reqFirmas>1?'s':''} para pasar a PAGO`
               : `${actuales} firma${actuales>1?'s':''} registrada${actuales>1?'s':''}`;
 
             return `
@@ -1842,8 +1846,8 @@ async function eliminarFactura(id_factura_oc, id_oc) {
 async function firmar(id_oc, casillero) {
   try {
     const r = await api.ordenesCompra.firmar(id_oc, casillero);
-    const msg = r.estado === 'APROBADA'
-      ? `✓ ${casillero.toUpperCase()} firmada — OC alcanzó ${r.firmas_actuales}/${r.firmas_requeridas} firmas y pasó a APROBADA`
+    const msg = r.estado === 'PAGO'
+      ? `✓ ${casillero.toUpperCase()} firmada — OC alcanzó ${r.firmas_actuales}/${r.firmas_requeridas} firmas y pasó a PAGO`
       : `✓ ${casillero.toUpperCase()} firmada (${r.firmas_actuales}/${r.firmas_requeridas} firmas)`;
     showSuccess(msg);
     if (document.getElementById('oc-modal')?.innerHTML) verOC(id_oc);
@@ -1856,15 +1860,15 @@ async function firmar(id_oc, casillero) {
 async function desfirmar(id_oc, casillero) {
   const ok = await confirmarAccion({
     titulo: '🗑️ Quitar firma',
-    mensaje: `Vas a quitar la firma del casillero <strong>${casillero.toUpperCase()}</strong>. Si la OC ya estaba APROBADA y al quitar caen las firmas debajo del umbral configurado, vuelve a BORRADOR. Solo el firmante o un GERENTE pueden hacerlo.`,
+    mensaje: `Vas a quitar la firma del casillero <strong>${casillero.toUpperCase()}</strong>. Si la OC ya estaba en PAGO y al quitar caen las firmas debajo del umbral configurado, vuelve a APROBADA. Solo el firmante o un GERENTE pueden hacerlo.`,
     tipo: 'danger',
     textoBoton: 'Sí, quitar firma',
   });
   if (!ok) return;
   try {
     const r = await api.ordenesCompra.desfirmar(id_oc, casillero);
-    const msg = r.estado === 'BORRADOR' && r.casillero
-      ? `Firma quitada — OC volvió a BORRADOR (firmas insuficientes)`
+    const msg = r.estado === 'APROBADA' && r.casillero
+      ? `Firma quitada — OC volvió a APROBADA (firmas insuficientes)`
       : `Firma quitada`;
     showSuccess(msg);
     if (document.getElementById('oc-modal')?.innerHTML) verOC(id_oc);

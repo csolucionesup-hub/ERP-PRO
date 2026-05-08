@@ -316,31 +316,42 @@ class OrdenCompraService {
    * dé el "Aprobado para pago" (puesto de control de revisión humana).
    */
   /**
-   * Aprobar OC — atajo "todo en uno" para GERENTE/APROBADOR.
+   * Marca la OC como "Lista para aprobación": BORRADOR → APROBADA.
    *
-   * Mig 065 introdujo multifirma (3 casilleros: PREPARADO/REVISADO/AUTORIZADO).
-   * Este método queda como wrapper de compat: firma los 3 casilleros con el
-   * mismo usuario en cascada, lo que garantiza que se alcance cualquier umbral
-   * configurado en OCFirmasReglas (1, 2 o 3 firmas) y la OC pase a APROBADA.
+   * BORRADOR es el sandbox de armado (líneas, montos, proveedor); ahí no
+   * hay firmas. Cualquier usuario con permiso al módulo puede mandarla a
+   * APROBADA — es solo decir "ya está lista para que la revisen y firmen".
    *
-   * Si Julio quiere aprobación más estricta, usa el modal de firmas individual
-   * (firmar/desfirmar) en lugar de este atajo.
+   * Las firmas reales (PREPARADO/REVISADO/AUTORIZADO POR) se hacen DESPUÉS,
+   * con la OC ya en APROBADA — ese es el flujo de OCFirmasService.firmar().
+   * Cuando se alcanza el umbral configurado, la OC pasa automáticamente a PAGO.
+   *
+   * El parámetro `rol` y `comentario` se conservan por compat con consumidores
+   * existentes; el rol ya no se valida acá (cualquier rol con acceso al
+   * módulo puede ejecutar este paso).
    */
-  async aprobar(id_oc: number, id_usuario_aprueba: number, rol: string, comentario?: string) {
-    if (!['GERENTE', 'APROBADOR'].includes(rol)) {
-      throw new Error('Solo GERENTE o APROBADOR pueden aprobar OC');
+  async aprobar(id_oc: number, id_usuario_aprueba: number, _rol: string, comentario?: string) {
+    const [rows]: any = await db.query(
+      'SELECT estado, total, moneda FROM OrdenesCompra WHERE id_oc = ?', [id_oc]
+    );
+    if (!rows[0]) throw new Error('OC no encontrada');
+    const oc = rows[0];
+    if (oc.estado !== 'BORRADOR') {
+      throw new Error(`OC no está en BORRADOR (estado actual: ${oc.estado})`);
     }
-    // Import lazy para evitar ciclo de imports entre los dos services.
-    const OCFirmasService = (await import('./OCFirmasService')).default;
-    let resultado: any = null;
-    for (const cas of ['preparado', 'revisado', 'autorizado'] as const) {
-      resultado = await OCFirmasService.firmar(id_oc, cas, id_usuario_aprueba, rol, comentario);
-      // Si tras firmar uno la OC ya pasó a APROBADA (umbral=1 o 2), cortamos
-      // el bucle — los siguientes firmar() rechazarían porque la OC ya no
-      // está en BORRADOR.
-      if (resultado.estado === 'APROBADA') break;
-    }
-    return { success: true, estado: resultado?.estado || 'BORRADOR' };
+
+    await db.query(
+      `UPDATE OrdenesCompra SET estado='APROBADA' WHERE id_oc=?`,
+      [id_oc]
+    );
+    await db.query(
+      `INSERT INTO AprobacionesOC (id_oc, id_usuario, accion, comentario, monto_total_aprobado, moneda)
+       VALUES (?, ?, 'LISTA_PARA_APROBACION', ?, ?, ?)`,
+      [id_oc, id_usuario_aprueba, comentario || null, oc.total, oc.moneda]
+    );
+    await this._registrarTransicion(id_oc, 'BORRADOR', 'APROBADA', id_usuario_aprueba, 'Lista para aprobación — esperando firmas');
+
+    return { success: true, estado: 'APROBADA' as const };
   }
 
   /**
