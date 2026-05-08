@@ -268,13 +268,14 @@ class RendicionPDFService {
         x: number, label: string, nombre: string | null,
         fecha: string | null, imgBuf: Buffer | null
       ) => {
-        // Si hay firma escaneada, embeber la imagen ARRIBA de la línea
-        // (zona de 25px de alto, centrada horizontalmente). Si no, queda
-        // espacio en blanco como antes — la línea + nombre+fecha o "Sin firmar".
+        // Si hay firma escaneada, embeber la imagen ARRIBA de la línea, en
+        // una zona generosa (~60px alto, casi todo el ancho de la celda).
+        // valign:'bottom' hace que apoye sobre la línea sin importar la
+        // proporción real de la imagen. align:'center' la centra horizontal.
         if (imgBuf) {
           try {
-            doc.image(imgBuf, x + 30, yFirmas, {
-              fit: [firmaW - 60, 28],
+            doc.image(imgBuf, x + 10, yFirmas - 32, {
+              fit: [firmaW - 20, 60],
               align: 'center',
               valign: 'bottom',
             });
