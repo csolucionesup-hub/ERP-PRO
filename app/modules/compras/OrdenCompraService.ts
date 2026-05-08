@@ -841,12 +841,15 @@ class OrdenCompraService {
     const oc = rows[0];
     if (!oc) throw new Error('OC no encontrada');
     // Estados válidos para registrar pago: PAGO/RECEPCION/FACTURACION.
-    // Excepción: OCs de honorarios (es_honorario=TRUE) pueden pagarse desde
-    // APROBADA directamente (atajo: contraté → trabajó → pagué mismo día).
+    // El atajo viejo "honorarios pagan desde APROBADA" se removió tras
+    // introducir multifirma (mig 065). Ahora el gate de aprobación lo decide
+    // OCFirmasService.firmar(): cuando se cumple el umbral, la OC pasa
+    // automáticamente a PAGO. Si querés pagar una OC honoraria que está en
+    // APROBADA, primero firmás (con regla default 1 firma alcanza con 1 click)
+    // → pasa a PAGO → recién ahí podés registrar el pago.
     const estadosValidosPago = ['PAGO', 'RECEPCION', 'FACTURACION'];
-    if (oc.es_honorario) estadosValidosPago.push('APROBADA');
     if (!estadosValidosPago.includes(oc.estado)) {
-      throw new Error(`OC debe estar PAGO, RECEPCION o FACTURACION para registrar pago (actual: ${oc.estado})`);
+      throw new Error(`OC debe estar PAGO, RECEPCION o FACTURACION para registrar pago (actual: ${oc.estado}). Si está en APROBADA, primero firmá los casilleros requeridos.`);
     }
 
     const tcOC = Number(oc.tipo_cambio) || 1;
