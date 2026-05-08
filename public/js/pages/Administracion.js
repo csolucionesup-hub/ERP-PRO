@@ -578,7 +578,14 @@ async function renderRendiciones(panel) {
       b.textContent = '⏳ Creando…';
       try {
         const r = await api.rendiciones.crearDesdeOC({ id_oc });
-        window.showSuccess?.('Rendición iniciada — completá los datos y firmas');
+        const partes = [];
+        if (r.items_creados)        partes.push(`${r.items_creados} ítem${r.items_creados>1?'s':''}`);
+        if (r.adjuntos_facturas)    partes.push(`${r.adjuntos_facturas} factura${r.adjuntos_facturas>1?'s':''}`);
+        if (r.adjuntos_constancias) partes.push(`${r.adjuntos_constancias} constancia${r.adjuntos_constancias>1?'s':''}`);
+        const msg = partes.length
+          ? `Rendición iniciada — pre-poblados: ${partes.join(' + ')}`
+          : 'Rendición iniciada — completá los datos y firmas';
+        window.showSuccess?.(msg);
         await renderRendiciones(panel);
         abrirModalEditar(r.id_rendicion);
       } catch (err) {
@@ -660,7 +667,14 @@ async function abrirModalNueva() {
         cargo:           ov.querySelector('#nr-cargo').value.trim() || undefined,
       });
       cerrar();
-      window.showSuccess?.('Rendición creada');
+      const partes = [];
+      if (r.items_creados)        partes.push(`${r.items_creados} ítem${r.items_creados>1?'s':''}`);
+      if (r.adjuntos_facturas)    partes.push(`${r.adjuntos_facturas} factura${r.adjuntos_facturas>1?'s':''}`);
+      if (r.adjuntos_constancias) partes.push(`${r.adjuntos_constancias} constancia${r.adjuntos_constancias>1?'s':''}`);
+      const msg = partes.length
+        ? `Rendición creada — pre-poblados: ${partes.join(' + ')}`
+        : 'Rendición creada';
+      window.showSuccess?.(msg);
       // Re-render del tab + abrir el modal de edición de la nueva
       const panel = document.getElementById('adm-tab-rendiciones');
       if (panel) await renderRendiciones(panel);
