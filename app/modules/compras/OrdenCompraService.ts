@@ -2109,12 +2109,28 @@ class OrdenCompraService {
   }
 
   /**
-   * Las OCs GENERAL (gastos administrativos, alquileres, servicios) y no-honorario
-   * NO tienen mercadería ni trabajo a "recibir". El paso RECEPCION no aplica para
-   * ellas — saltean a FACTURACION directo desde PAGO.
+   * ¿La OC requiere paso explícito de RECEPCION antes de pasar a FACTURACION?
+   *
+   * SÍ:
+   *  - ALMACEN: siempre. Mercadería física que hay que chequear contra remito.
+   *  - SERVICIO no-honorario: trabajo externo (ej. técnico tercerizado). Hay
+   *    que confirmar que vino y dejó listo lo que se contrató antes de pagar
+   *    la factura formal.
+   *
+   * NO (saltan PAGO -> FACTURACION directo):
+   *  - GENERAL: gastos administrativos, alquileres, servicios públicos. No hay
+   *    paquete ni trabajo discreto que "recibir" — el pago mismo cierra.
+   *  - HONORARIO (cualquier tipo_oc con es_honorario=TRUE): persona natural
+   *    cobrando por horas/trabajo. El pago YA es el reconocimiento del trabajo
+   *    y el RH se sube en FACTURACION. Recepción no agrega nada.
+   *
+   * Antes del fix (08/05/2026 noche): se requería recepción para SERVICIO y
+   * cualquier honorario, lo cual atascaba el flujo en RECEPCION sin nada que
+   * recibir realmente.
    */
   private _requiereRecepcion(tipo_oc?: string | null, es_honorario?: boolean | number): boolean {
-    return tipo_oc === 'ALMACEN' || !!es_honorario || tipo_oc === 'SERVICIO';
+    if (es_honorario) return false;
+    return tipo_oc === 'ALMACEN' || tipo_oc === 'SERVICIO';
   }
 
   /**
