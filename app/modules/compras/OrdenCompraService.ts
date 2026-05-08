@@ -813,6 +813,9 @@ class OrdenCompraService {
     nro_operacion?: string;
     observaciones?: string;
     monto?: number;  // monto a pagar en moneda original (si se omite = saldo pendiente)
+    voucher_url?: string | null;
+    voucher_cloudinary_id?: string | null;
+    id_usuario?: number;
   }) {
     const [rows]: any = await db.query(
       `SELECT oc.*, p.razon_social AS proveedor_nombre
@@ -907,7 +910,7 @@ class OrdenCompraService {
         const refTipo = oc.tipo_oc === 'ALMACEN' ? 'COMPRA' : 'GASTO';
         const refId = oc.tipo_oc === 'ALMACEN' ? oc.id_compra_generada : null;
         const descPago = cierraTotal ? `Pago OC ${oc.nro_oc}` : `Pago parcial OC ${oc.nro_oc} (${montoEstePago.toFixed(2)} de ${totalOC.toFixed(2)})`;
-        await conn.query(
+        const [movRes]: any = await conn.query(
           `INSERT INTO MovimientoBancario
              (id_cuenta, fecha, fecha_proceso, nro_operacion, descripcion_banco,
               monto, tipo, fuente, estado_conciliacion, ref_tipo, ref_id, comentario)
@@ -917,6 +920,26 @@ class OrdenCompraService {
             datos.nro_operacion || null,
             `${descPago} · ${oc.proveedor_nombre || ''}`,
             montoEstePagoPEN, refTipo, refId, datos.observaciones || null,
+          ]
+        );
+
+        // Trackear este pago individualmente en OrdenCompraPago (mig 064).
+        // Permite multi-pago + voucher (PDF de constancia bancaria) por cada uno.
+        await conn.query(
+          `INSERT INTO OrdenCompraPago
+             (id_oc, id_cuenta, fecha_pago, nro_operacion, monto, monto_pen,
+              observaciones, voucher_url, voucher_cloudinary_id,
+              id_movimiento_bancario, id_usuario_registra)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            id_oc, datos.id_cuenta, datos.fecha_pago,
+            datos.nro_operacion || null,
+            montoEstePago, montoEstePagoPEN,
+            datos.observaciones || null,
+            datos.voucher_url || null,
+            datos.voucher_cloudinary_id || null,
+            movRes?.insertId || null,
+            datos.id_usuario || null,
           ]
         );
 
@@ -1073,7 +1096,7 @@ class OrdenCompraService {
         ]
       );
 
-      await conn.query(
+      const [movResB]: any = await conn.query(
         `INSERT INTO MovimientoBancario
            (id_cuenta, fecha, fecha_proceso, nro_operacion, descripcion_banco,
             monto, tipo, fuente, estado_conciliacion, ref_tipo, ref_id, comentario)
@@ -1083,6 +1106,25 @@ class OrdenCompraService {
           datos.nro_operacion || null,
           `${descTx} · ${oc.proveedor_nombre || ''}`,
           montoEstePagoPEN, refTipo, refId, datos.observaciones || null,
+        ]
+      );
+
+      // Trackear este pago individualmente en OrdenCompraPago (mig 064).
+      await conn.query(
+        `INSERT INTO OrdenCompraPago
+           (id_oc, id_cuenta, fecha_pago, nro_operacion, monto, monto_pen,
+            observaciones, voucher_url, voucher_cloudinary_id,
+            id_movimiento_bancario, id_usuario_registra)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          id_oc, datos.id_cuenta, datos.fecha_pago,
+          datos.nro_operacion || null,
+          montoEstePago, montoEstePagoPEN,
+          datos.observaciones || null,
+          datos.voucher_url || null,
+          datos.voucher_cloudinary_id || null,
+          movResB?.insertId || null,
+          datos.id_usuario || null,
         ]
       );
 
@@ -1679,6 +1721,10 @@ class OrdenCompraService {
     if (filtros.tipo_oc)      { where.push('oc.tipo_oc = ?'); vals.push(filtros.tipo_oc); }
     if (filtros.centro_costo) { where.push('oc.centro_costo = ?'); vals.push(filtros.centro_costo); }
     if (filtros.id_servicio)  { where.push('oc.id_servicio = ?'); vals.push(filtros.id_servicio); }
+    // Mig 064 → multi-factura: ya no hay 1:1 con OrdenCompraFactura. El JOIN
+    // anterior duplicaba filas cuando una OC tenía varias facturas; ahora
+    // exponemos solo conteos (count) más datos de la PRIMERA factura como
+    // muestra para el badge del kanban. El detalle completo viene en /facturas.
     const sql = `
       SELECT oc.*, p.razon_social AS proveedor_nombre, s.codigo AS servicio_codigo,
              CASE
@@ -1686,9 +1732,11 @@ class OrdenCompraService {
                WHEN COALESCE(d.recibido, 0) >= COALESCE(d.pedido, 0) - 0.0001 THEN 'RECIBIDO'
                ELSE 'PARCIAL'
              END AS estado_recepcion,
-             f.id_factura_oc AS factura_adjunta_id,
-             f.nro_comprobante AS factura_adjunta_nro,
-             f.fecha_emision AS factura_adjunta_fecha
+             COALESCE(fcnt.c, 0)            AS factura_adjunta_count,
+             ffirst.id_factura_oc           AS factura_adjunta_id,
+             ffirst.nro_comprobante         AS factura_adjunta_nro,
+             ffirst.fecha_emision           AS factura_adjunta_fecha,
+             COALESCE(pcnt.c, 0)            AS pago_count
       FROM OrdenesCompra oc
       LEFT JOIN Proveedores p ON p.id_proveedor = oc.id_proveedor
       LEFT JOIN Servicios s ON s.id_servicio = oc.id_servicio
@@ -1699,7 +1747,19 @@ class OrdenCompraService {
           FROM DetalleOrdenCompra
          GROUP BY id_oc
       ) d ON d.id_oc = oc.id_oc
-      LEFT JOIN OrdenCompraFactura f ON f.id_oc = oc.id_oc
+      LEFT JOIN (
+        SELECT id_oc, COUNT(*) AS c FROM OrdenCompraFactura GROUP BY id_oc
+      ) fcnt ON fcnt.id_oc = oc.id_oc
+      LEFT JOIN LATERAL (
+        SELECT id_factura_oc, nro_comprobante, fecha_emision
+          FROM OrdenCompraFactura
+         WHERE id_oc = oc.id_oc
+         ORDER BY fecha_emision ASC, id_factura_oc ASC
+         LIMIT 1
+      ) ffirst ON true
+      LEFT JOIN (
+        SELECT id_oc, COUNT(*) AS c FROM OrdenCompraPago GROUP BY id_oc
+      ) pcnt ON pcnt.id_oc = oc.id_oc
       ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
       ORDER BY oc.fecha_emision DESC, oc.id_oc DESC
       LIMIT ?`;

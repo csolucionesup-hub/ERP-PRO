@@ -45,6 +45,7 @@ import OrdenCompraService from './app/modules/compras/OrdenCompraService';
 import HistorialOCService from './app/modules/compras/HistorialOCService';
 import NotaOCService from './app/modules/compras/NotaOCService';
 import FacturaOCService from './app/modules/compras/FacturaOCService';
+import PagoOCService from './app/modules/compras/PagoOCService';
 import ExcelJS from 'exceljs';
 import ProductionService from './app/modules/produccion/ProductionService';
 import CentrosCostoService from './app/modules/compras/CentrosCostoService';
@@ -1891,22 +1892,31 @@ ocRouter.post('/:id/factura', validateIdParam, ocFacturaUpload.single('archivo')
   res.json(r);
 });
 
+// Plural: lista todas las facturas adjuntas a una OC (multi-factura, mig 064).
+ocRouter.get('/:id/facturas', validateIdParam, async (req: Request, res: Response) => {
+  const list = await FacturaOCService.listarDeOC(Number(req.params.id));
+  res.json(list);
+});
+
+// Compat: devuelve la primera factura. Mantengo para no romper consumidores
+// transitorios — los nuevos deben usar /facturas (plural).
 ocRouter.get('/:id/factura', validateIdParam, async (req: Request, res: Response) => {
   const f = await FacturaOCService.getDeOC(Number(req.params.id));
   res.json(f);
 });
 
-// Proxy del PDF/imagen de la factura adjunta. Cloudinary no permite CORS para
-// fetch desde el browser, así que descargamos en el servidor y reenviamos al
-// cliente. Esto deja preview inline funcionando en el helper window.previewArchivo.
-ocRouter.get('/:id/factura/preview', validateIdParam, async (req: Request, res: Response) => {
-  const f = await FacturaOCService.getDeOC(Number(req.params.id));
-  if (!f || !f.url_pdf) {
-    res.status(404).json({ error: 'No hay archivo adjunto para esta OC' });
+/**
+ * Helper: stream un recurso de Cloudinary al cliente. Cloudinary no permite
+ * CORS para fetch desde el browser, así que descargamos en el servidor y
+ * reenviamos. Compartido por preview de factura y de voucher de pago.
+ */
+async function proxyCloudinary(res: Response, url: string | null) {
+  if (!url) {
+    res.status(404).json({ error: 'No hay archivo adjunto' });
     return;
   }
   try {
-    const upstream = await fetch(f.url_pdf);
+    const upstream = await fetch(url);
     if (!upstream.ok) {
       res.status(upstream.status).json({ error: `Cloudinary respondió ${upstream.status}` });
       return;
@@ -1919,10 +1929,84 @@ ocRouter.get('/:id/factura/preview', validateIdParam, async (req: Request, res: 
   } catch (e: any) {
     res.status(502).json({ error: 'Error proxeando archivo: ' + (e.message || e) });
   }
+}
+
+// Preview de UNA factura individual por su id (multi-factura). Se prefiere
+// sobre `/:id/factura/preview` cuando hay varias facturas en la misma OC.
+ocRouter.get('/factura/:id_factura/preview', async (req: Request, res: Response) => {
+  const id = Number(req.params.id_factura);
+  if (!Number.isFinite(id) || id <= 0) {
+    return res.status(400).json({ error: 'id_factura inválido' });
+  }
+  const f = await FacturaOCService.getPorId(id);
+  await proxyCloudinary(res, f?.url_pdf || null);
 });
 
+// Compat: preview de la primera factura de una OC.
+ocRouter.get('/:id/factura/preview', validateIdParam, async (req: Request, res: Response) => {
+  const f = await FacturaOCService.getDeOC(Number(req.params.id));
+  await proxyCloudinary(res, f?.url_pdf || null);
+});
+
+// Eliminar UNA factura por id_factura_oc (multi-factura).
+ocRouter.delete('/factura/:id_factura', auditLog('OrdenCompra', 'UPDATE'), async (req: any, res: Response) => {
+  const id = Number(req.params.id_factura);
+  if (!Number.isFinite(id) || id <= 0) {
+    return res.status(400).json({ error: 'id_factura inválido' });
+  }
+  const r = await FacturaOCService.eliminar(id, req.user?.rol === 'GERENTE');
+  res.json(r);
+});
+
+// Compat: borra la primera factura de una OC. Usar el endpoint individual.
 ocRouter.delete('/:id/factura', validateIdParam, auditLog('OrdenCompra', 'UPDATE'), async (req: any, res: Response) => {
-  const r = await FacturaOCService.eliminar(Number(req.params.id), req.user?.rol === 'GERENTE');
+  const first = await FacturaOCService.getDeOC(Number(req.params.id));
+  if (!first) {
+    return res.status(404).json({ error: 'No hay factura adjunta para esta OC' });
+  }
+  const r = await FacturaOCService.eliminar(first.id_factura_oc, req.user?.rol === 'GERENTE');
+  res.json(r);
+});
+
+// ── Pagos individuales (multi-pago, mig 064) ────────────────────
+ocRouter.get('/:id/pagos', validateIdParam, async (req: Request, res: Response) => {
+  const list = await PagoOCService.listarDeOC(Number(req.params.id));
+  res.json(list);
+});
+
+ocRouter.get('/pago/:id_pago/voucher', async (req: Request, res: Response) => {
+  const id = Number(req.params.id_pago);
+  if (!Number.isFinite(id) || id <= 0) {
+    return res.status(400).json({ error: 'id_pago inválido' });
+  }
+  const p = await PagoOCService.getPorId(id);
+  await proxyCloudinary(res, p?.voucher_url || null);
+});
+
+// Adjuntar voucher (PDF/imagen de constancia) a un pago ya registrado.
+// Útil cuando la constancia llega después del registro inicial del pago.
+ocRouter.post('/pago/:id_pago/voucher', ocFacturaUpload.single('archivo'),
+  auditLog('OrdenCompra', 'UPDATE'), async (req: any, res: Response) => {
+  const id = Number(req.params.id_pago);
+  if (!Number.isFinite(id) || id <= 0) {
+    return res.status(400).json({ error: 'id_pago inválido' });
+  }
+  if (!req.file?.buffer) {
+    return res.status(400).json({ error: 'Archivo requerido' });
+  }
+  const r = await PagoOCService.adjuntarVoucher(id, {
+    buffer: req.file.buffer,
+    originalname: req.file.originalname,
+  });
+  res.json(r);
+});
+
+ocRouter.delete('/pago/:id_pago/voucher', auditLog('OrdenCompra', 'UPDATE'), async (req: any, res: Response) => {
+  const id = Number(req.params.id_pago);
+  if (!Number.isFinite(id) || id <= 0) {
+    return res.status(400).json({ error: 'id_pago inválido' });
+  }
+  const r = await PagoOCService.eliminarVoucher(id, req.user?.rol === 'GERENTE');
   res.json(r);
 });
 
@@ -1992,17 +2076,39 @@ ocRouter.post('/:id/facturar', validateIdParam, auditLog('OrdenCompra', 'UPDATE'
   res.json(await OrdenCompraService.facturar(Number(req.params.id), nro_factura_proveedor, fecha_factura));
 });
 
-ocRouter.post('/:id/registrar-pago', validateIdParam, auditLog('OrdenCompra', 'UPDATE'), async (req: Request, res: Response) => {
+// Multipart: acepta `voucher` (PDF/imagen de constancia bancaria) opcional
+// como `multipart/form-data`. Si no se manda archivo, funciona igual que antes
+// con JSON. Mig 064 → cada pago se trackea individualmente en OrdenCompraPago
+// con su voucher en Cloudinary.
+ocRouter.post('/:id/registrar-pago', validateIdParam, ocFacturaUpload.single('voucher'),
+  auditLog('OrdenCompra', 'UPDATE'), async (req: any, res: Response) => {
   const { id_cuenta, fecha_pago, nro_operacion, observaciones, monto } = req.body;
   if (!id_cuenta || !fecha_pago) {
     return res.status(400).json({ error: 'id_cuenta y fecha_pago son requeridos' });
   }
+
+  // Si vino archivo, subirlo a Cloudinary primero — la URL/public_id se
+  // guardan en la fila OrdenCompraPago (transaccional con el resto del pago).
+  let voucher_url: string | null = null;
+  let voucher_cloudinary_id: string | null = null;
+  if (req.file?.buffer) {
+    const upload = await CloudinaryService.subirArchivoGenerico(
+      req.file.buffer, req.file.originalname,
+      `metalengineers/oc-vouchers/${req.params.id}`
+    );
+    voucher_url = upload.url;
+    voucher_cloudinary_id = upload.public_id;
+  }
+
   res.json(await OrdenCompraService.registrarPago(Number(req.params.id), {
     id_cuenta: Number(id_cuenta),
     fecha_pago,
     nro_operacion: nro_operacion || undefined,
     observaciones: observaciones || undefined,
     monto: monto != null ? Number(monto) : undefined,
+    voucher_url,
+    voucher_cloudinary_id,
+    id_usuario: req.user?.id_usuario,
   }));
 });
 
