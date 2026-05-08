@@ -21,10 +21,17 @@ const COLUMNAS_FIRMA: Record<Casillero, [string, string]> = {
 /**
  * OCFirmasService — multifirma para Órdenes de Compra (mig 065).
  *
+ * Flujo:
+ *   BORRADOR  → (botón "Lista para aprobación") → APROBADA
+ *   APROBADA  → (3 casilleros se firman) → al cumplir umbral → PAGO
+ *
  * Tres casilleros: PREPARADO POR / REVISADO POR / AUTORIZADO POR. La OC
- * vive en BORRADOR mientras se reúnen firmas; cuando se alcanza el umbral
+ * vive en APROBADA mientras se reúnen firmas; cuando se alcanza el umbral
  * (resuelto contra OCFirmasReglas según monto + centro de costo), se
- * mueve automáticamente a APROBADA.
+ * mueve automáticamente a PAGO.
+ *
+ * BORRADOR es el sandbox de armado (líneas, totales, proveedor) — sin
+ * firmas. Recién al pasar a APROBADA aparecen las cards de firma.
  *
  * Por defecto la regla #1 dice "1 firma para todo" (preserva el
  * comportamiento previo). Julio puede agregar reglas más específicas
@@ -74,12 +81,15 @@ class OCFirmasService {
   }
 
   /**
-   * Firma un casillero. Si tras firmar se alcanza el umbral, mueve la OC a
-   * APROBADA automáticamente. Solo válido en BORRADOR.
+   * Firma un casillero. Si tras firmar se alcanza el umbral, mueve la OC
+   * automáticamente a PAGO (siguiente estado del kanban).
    *
-   * Reglas:
-   *   - GERENTE puede firmar cualquier casillero, incluso auto-aprobándose.
-   *   - APROBADOR también puede firmar (todos los casilleros).
+   * Solo válido en APROBADA — en BORRADOR la OC todavía se está armando y
+   * en PAGO ya se aprobó (refirmar después no tiene sentido; si se quiere
+   * cambiar firmas hay que mandar a borrador primero).
+   *
+   * Reglas de rol por casillero:
+   *   - GERENTE / APROBADOR: pueden firmar cualquier casillero (auto-aprobación válida).
    *   - USUARIO regular: solo PREPARADO POR (típico autor de la OC).
    *   - Refirmar el mismo casillero (con nuevo usuario) sobreescribe el anterior.
    */
@@ -107,8 +117,8 @@ class OCFirmasService {
       );
       const oc = rows[0];
       if (!oc) throw new Error('OC no encontrada');
-      if (oc.estado !== 'BORRADOR') {
-        throw new Error(`No se puede firmar — OC está en ${oc.estado}, no en BORRADOR`);
+      if (oc.estado !== 'APROBADA') {
+        throw new Error(`No se puede firmar — OC está en ${oc.estado}. Las firmas se hacen solo en APROBADA. Si está en BORRADOR, primero "Lista para aprobación".`);
       }
 
       // Setear el casillero
@@ -125,7 +135,7 @@ class OCFirmasService {
         [id_oc, id_usuario, accion, comentario || null, oc.total, oc.moneda]
       );
 
-      // Refrescar OC para contar firmas actualizadas + ver si pasamos a APROBADA
+      // Refrescar OC para contar firmas actualizadas + ver si pasamos a PAGO
       const [fresh]: any = await conn.query(
         `SELECT preparado_por_id, revisado_por_id, autorizado_por_id, total, centro_costo
            FROM OrdenesCompra WHERE id_oc = ?`,
@@ -135,25 +145,25 @@ class OCFirmasService {
       const firmasActuales = this._contarFirmas(fresca);
       const firmasReq = await this._resolverFirmasRequeridas(Number(fresca.total), fresca.centro_costo);
 
-      let estadoNuevo = 'BORRADOR';
+      let estadoNuevo = 'APROBADA';
       if (firmasActuales >= firmasReq) {
-        // Alcanzó umbral → APROBADA. id_usuario_aprueba = último firmante.
+        // Alcanzó umbral → PAGO. id_usuario_aprueba = último firmante.
         await conn.query(
           `UPDATE OrdenesCompra
-              SET estado = 'APROBADA',
+              SET estado = 'PAGO',
                   id_usuario_aprueba = ?,
                   fecha_aprobacion = COALESCE(fecha_aprobacion, NOW())
             WHERE id_oc = ?`,
           [id_usuario, id_oc]
         );
-        estadoNuevo = 'APROBADA';
+        estadoNuevo = 'PAGO';
 
         // Registrar transición en historial. Best-effort (no bloquea si la
         // tabla no existe).
         try {
           await conn.query(
             `INSERT INTO OrdenCompraHistorial (id_oc, estado_anterior, estado_nuevo, id_usuario, comentario)
-             VALUES (?, 'BORRADOR', 'APROBADA', ?, ?)`,
+             VALUES (?, 'APROBADA', 'PAGO', ?, ?)`,
             [id_oc, id_usuario, `Auto: ${firmasActuales}/${firmasReq} firmas alcanzadas`]
           );
         } catch (_e) { /* tabla quizá no existe en algunos entornos */ }
@@ -177,12 +187,16 @@ class OCFirmasService {
 
   /**
    * Quita una firma. Solo el firmante mismo o un GERENTE pueden hacerlo.
-   * Si la OC ya estaba en APROBADA y la firma quitada hace caer las firmas
-   * por debajo del umbral, vuelve a BORRADOR (consistente con la regla
-   * "BORRADOR es el sandbox de armado").
    *
-   * No permitido en estados posteriores a APROBADA — para esos casos
-   * primero hay que `mandarABorrador` (que ya existe).
+   * Permitido en APROBADA y PAGO (estados donde las firmas tienen efecto).
+   * Si en PAGO y al quitar caen las firmas debajo del umbral, la OC
+   * retrocede a APROBADA (no a BORRADOR — el armado ya estaba completo,
+   * solo falta firma faltante). En APROBADA simplemente se borra el
+   * casillero sin cambiar de estado (la OC está esperando todavía firmas).
+   *
+   * Para estados posteriores a PAGO (RECEPCION/FACTURACION/TERMINADA): no
+   * permitido — primero hay que `mandarABorrador` (que limpia firmas) o
+   * volver al estado anterior con otro mecanismo.
    */
   async desfirmar(id_oc: number, casillero: Casillero, id_usuario_actor: number, rolActor: string) {
     const [colId, colAt] = COLUMNAS_FIRMA[casillero] || [];
@@ -199,7 +213,7 @@ class OCFirmasService {
       );
       const oc = rows[0];
       if (!oc) throw new Error('OC no encontrada');
-      if (!['BORRADOR', 'APROBADA'].includes(oc.estado)) {
+      if (!['APROBADA', 'PAGO'].includes(oc.estado)) {
         throw new Error(`No se puede quitar firma — OC en ${oc.estado}. Primero mandar a borrador.`);
       }
       if (oc.firma_id == null) {
@@ -221,9 +235,11 @@ class OCFirmasService {
         [id_oc, id_usuario_actor, `DESFIRMAR_${casillero.toUpperCase()}`, oc.total, oc.moneda]
       );
 
-      // Si la OC estaba APROBADA, recalcular si sigue cumpliendo umbral.
+      // Si la OC estaba en PAGO, recalcular si sigue cumpliendo umbral.
+      // Si caen las firmas, retrocede a APROBADA (no a BORRADOR — el armado
+      // ya estaba completo, solo falta firma).
       let estadoNuevo = oc.estado;
-      if (oc.estado === 'APROBADA') {
+      if (oc.estado === 'PAGO') {
         const [fresh]: any = await conn.query(
           `SELECT preparado_por_id, revisado_por_id, autorizado_por_id, total, centro_costo
              FROM OrdenesCompra WHERE id_oc = ?`, [id_oc]
@@ -234,17 +250,17 @@ class OCFirmasService {
         if (firmasActuales < firmasReq) {
           await conn.query(
             `UPDATE OrdenesCompra
-                SET estado = 'BORRADOR',
+                SET estado = 'APROBADA',
                     id_usuario_aprueba = NULL,
                     fecha_aprobacion = NULL
               WHERE id_oc = ?`,
             [id_oc]
           );
-          estadoNuevo = 'BORRADOR';
+          estadoNuevo = 'APROBADA';
           try {
             await conn.query(
               `INSERT INTO OrdenCompraHistorial (id_oc, estado_anterior, estado_nuevo, id_usuario, comentario)
-               VALUES (?, 'APROBADA', 'BORRADOR', ?, ?)`,
+               VALUES (?, 'PAGO', 'APROBADA', ?, ?)`,
               [id_oc, id_usuario_actor, `Auto: firmas cayeron a ${firmasActuales}/${firmasReq}`]
             );
           } catch (_e) {}
