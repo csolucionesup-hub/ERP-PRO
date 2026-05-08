@@ -474,6 +474,17 @@ export const api = {
     borrarNota:    (id, idNota) => del(`/ordenes-compra/${id}/notas/${idNota}`),
     // Historial de transiciones
     historial:     (id)        => get(`/ordenes-compra/${id}/historial`),
+
+    // Multifirma (mig 065)
+    firmar:        (id, casillero, comentario) =>
+      post(`/ordenes-compra/${id}/firmar`, { casillero, comentario }),
+    desfirmar:     (id, casillero) =>
+      post(`/ordenes-compra/${id}/desfirmar`, { casillero }),
+    // Reglas de firmas (CRUD — listar libre, crear/editar/eliminar solo GERENTE)
+    listarFirmasReglas: ()      => get(`/ordenes-compra/firmas-reglas`),
+    crearFirmaRegla:    (body)  => post(`/ordenes-compra/firmas-reglas`, body),
+    editarFirmaRegla:   (id_regla, body) => put(`/ordenes-compra/firmas-reglas/${id_regla}`, body),
+    eliminarFirmaRegla: (id_regla) => del(`/ordenes-compra/firmas-reglas/${id_regla}`),
     // Factura del proveedor (multi-factura, mig 064)
     subirFactura:  async (id, formData) => {
       const token = localStorage.getItem('erp_token');

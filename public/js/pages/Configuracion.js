@@ -79,6 +79,7 @@ function shellHtml() {
     <div id="tab-facturacion" class="tab-content" style="display:none"></div>
     <div id="tab-modulos" class="tab-content" style="display:none"></div>
     <div id="tab-periodos" class="tab-content" style="display:none"></div>
+    <div id="tab-firmas-oc" class="tab-content" style="display:none"></div>
     <div id="tab-auditoria" class="tab-content" style="display:none"></div>
   `;
 }
@@ -92,6 +93,7 @@ function initTabs(cfg, diag) {
       { id: 'facturacion', label: '🧾 Facturación' },
       { id: 'modulos',     label: '💼 Módulos' },
       { id: 'periodos',    label: '📅 Periodos' },
+      { id: 'firmas-oc',   label: '🖊️ Firmas OC' },
       { id: 'auditoria',   label: '🔍 Auditoría' },
     ],
     defaultTab: 'empresa',
@@ -105,6 +107,7 @@ function initTabs(cfg, diag) {
       if (id === 'facturacion' && !panel.dataset.rendered) renderTabFacturacion(panel, cfg, diag);
       if (id === 'modulos'     && !panel.dataset.rendered) renderTabModulos(panel, cfg);
       if (id === 'periodos')   renderTabPeriodos(panel);
+      if (id === 'firmas-oc')  renderTabFirmasOC(panel);
       if (id === 'auditoria')  renderTabAuditoria(panel);
     },
   });
@@ -118,6 +121,10 @@ function initTabs(cfg, diag) {
     cerrarPeriodo,
     reabrirPeriodo,
     recargarAuditoria,
+    crearFirmaRegla,
+    editarFirmaRegla,
+    eliminarFirmaRegla,
+    refrescarFirmasReglas,
   };
 }
 
@@ -760,4 +767,211 @@ async function finalizarWizard() {
   } catch (e) {
     showError(e.message || 'Error al crear configuración');
   }
+}
+
+// ─── TAB: Firmas OC (mig 065) ─────────────────────────────────
+// Reglas configurables que deciden cuántas firmas necesita una OC para
+// pasar de BORRADOR a APROBADA. La regla con mayor `prioridad` que matchee
+// (centro_costo + monto) gana. Default = 1 firma para todo.
+async function renderTabFirmasOC(panel) {
+  panel.dataset.rendered = '1';
+  panel.innerHTML = `<div style="padding:24px;color:var(--text-secondary)">⏳ Cargando reglas…</div>`;
+  try {
+    const reglas = await api.ordenesCompra.listarFirmasReglas();
+    panel.innerHTML = renderFirmasOCHtml(reglas);
+  } catch (e) {
+    panel.innerHTML = `<div class="card" style="color:var(--danger)"><h3>Error</h3><p>${e.message}</p></div>`;
+  }
+}
+
+function renderFirmasOCHtml(reglas) {
+  const filas = (reglas || []).map(r => {
+    const centro = r.centro_costo || '<em style="color:#9ca3af">(todos)</em>';
+    const min = Number(r.monto_min || 0).toFixed(2);
+    const max = r.monto_max != null ? Number(r.monto_max).toFixed(2) : '<em style="color:#9ca3af">∞</em>';
+    const activoBadge = r.activo
+      ? `<span style="font-size:10px;background:#dcfce7;color:#166534;padding:2px 8px;border-radius:10px;font-weight:600">✓ activo</span>`
+      : `<span style="font-size:10px;background:#f3f4f6;color:#6b7280;padding:2px 8px;border-radius:10px;font-weight:600">inactivo</span>`;
+    return `
+      <tr style="border-bottom:1px solid #e5e7eb">
+        <td style="padding:8px 10px">${centro}</td>
+        <td style="padding:8px 10px;text-align:right;font-family:monospace">S/ ${min}</td>
+        <td style="padding:8px 10px;text-align:right;font-family:monospace">${typeof max === 'string' && max.includes('em') ? max : 'S/ ' + max}</td>
+        <td style="padding:8px 10px;text-align:center;font-weight:700">${r.firmas_requeridas}</td>
+        <td style="padding:8px 10px;text-align:center">${r.prioridad}</td>
+        <td style="padding:8px 10px;text-align:center">${activoBadge}</td>
+        <td style="padding:8px 10px;color:#6b7280;font-size:11px">${escapeHtmlConfig(r.observaciones || '—')}</td>
+        <td style="padding:8px 10px;text-align:right;white-space:nowrap">
+          <button onclick="Configuracion.editarFirmaRegla(${r.id_regla})" title="Editar esta regla" style="padding:4px 9px;background:#fff;border:1px solid #d1d5db;border-radius:4px;cursor:pointer;font-size:11px;margin-right:4px">✎</button>
+          <button onclick="Configuracion.eliminarFirmaRegla(${r.id_regla})" title="Eliminar esta regla" style="padding:4px 9px;background:transparent;color:#dc2626;border:1px solid #fecaca;border-radius:4px;cursor:pointer;font-size:11px">✕</button>
+        </td>
+      </tr>
+    `;
+  }).join('');
+
+  return `
+    <div class="card" style="margin-top:12px">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:14px;flex-wrap:wrap">
+        <div>
+          <h3 style="margin:0 0 4px;font-size:15px">🖊️ Reglas de firmas de Órdenes de Compra</h3>
+          <p style="margin:0;font-size:12px;color:var(--text-secondary);max-width:640px">
+            Cada OC requiere N firmas (1, 2 o 3) antes de pasar de <strong>BORRADOR</strong> a <strong>APROBADA</strong>. La regla con mayor <em>prioridad</em> que matchee (centro de costo + rango de monto) determina cuántas firmas se necesitan. Mientras se firma, la OC sigue editable; al alcanzar el umbral, pasa automáticamente a APROBADA.
+          </p>
+        </div>
+        <button onclick="Configuracion.crearFirmaRegla()" style="padding:9px 16px;background:#2563eb;color:#fff;border:none;border-radius:5px;cursor:pointer;font-weight:600;font-size:13px;white-space:nowrap">➕ Nueva regla</button>
+      </div>
+
+      <table style="width:100%;border-collapse:collapse;font-size:12px">
+        <thead>
+          <tr style="background:#f9fafb;border-bottom:2px solid #e5e7eb">
+            <th style="padding:8px 10px;text-align:left;font-size:11px;color:var(--text-secondary);font-weight:700;letter-spacing:.3px">CENTRO COSTO</th>
+            <th style="padding:8px 10px;text-align:right;font-size:11px;color:var(--text-secondary);font-weight:700;letter-spacing:.3px">DESDE</th>
+            <th style="padding:8px 10px;text-align:right;font-size:11px;color:var(--text-secondary);font-weight:700;letter-spacing:.3px">HASTA</th>
+            <th style="padding:8px 10px;text-align:center;font-size:11px;color:var(--text-secondary);font-weight:700;letter-spacing:.3px">FIRMAS</th>
+            <th style="padding:8px 10px;text-align:center;font-size:11px;color:var(--text-secondary);font-weight:700;letter-spacing:.3px">PRIO</th>
+            <th style="padding:8px 10px;text-align:center;font-size:11px;color:var(--text-secondary);font-weight:700;letter-spacing:.3px">ESTADO</th>
+            <th style="padding:8px 10px;text-align:left;font-size:11px;color:var(--text-secondary);font-weight:700;letter-spacing:.3px">OBSERVACIONES</th>
+            <th style="padding:8px 10px;text-align:right;font-size:11px;color:var(--text-secondary);font-weight:700;letter-spacing:.3px">ACCIONES</th>
+          </tr>
+        </thead>
+        <tbody>${filas || `<tr><td colspan="8" style="padding:24px;text-align:center;color:#9ca3af">No hay reglas configuradas. Las OCs caerán al default (1 firma).</td></tr>`}</tbody>
+      </table>
+    </div>
+  `;
+}
+
+function escapeHtmlConfig(s) {
+  return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+async function refrescarFirmasReglas() {
+  const panel = document.getElementById('tab-firmas-oc');
+  if (panel) {
+    delete panel.dataset.rendered;
+    await renderTabFirmasOC(panel);
+  }
+}
+
+async function crearFirmaRegla() {
+  const data = await modalFirmaRegla(null);
+  if (!data) return;
+  try {
+    await api.ordenesCompra.crearFirmaRegla(data);
+    showSuccess('Regla creada');
+    await refrescarFirmasReglas();
+  } catch (e) { showError(e.message || 'Error al crear regla'); }
+}
+
+async function editarFirmaRegla(id_regla) {
+  let reglas = [];
+  try { reglas = await api.ordenesCompra.listarFirmasReglas(); }
+  catch (e) { return showError('No se pudo cargar la regla: ' + e.message); }
+  const regla = reglas.find(r => Number(r.id_regla) === Number(id_regla));
+  if (!regla) return showError('Regla no encontrada');
+  const data = await modalFirmaRegla(regla);
+  if (!data) return;
+  try {
+    await api.ordenesCompra.editarFirmaRegla(id_regla, data);
+    showSuccess('Regla actualizada');
+    await refrescarFirmasReglas();
+  } catch (e) { showError(e.message || 'Error al actualizar regla'); }
+}
+
+async function eliminarFirmaRegla(id_regla) {
+  if (!confirm('¿Eliminar esta regla? Las OCs futuras dejarán de matchearla y caerán a otra regla / al default.')) return;
+  try {
+    await api.ordenesCompra.eliminarFirmaRegla(id_regla);
+    showSuccess('Regla eliminada');
+    await refrescarFirmasReglas();
+  } catch (e) { showError(e.message || 'Error al eliminar regla'); }
+}
+
+function modalFirmaRegla(regla) {
+  return new Promise((resolve) => {
+    const isEdit = !!regla;
+    const ov = document.createElement('div');
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
+    const v = (x) => x == null ? '' : String(x).replace(/"/g, '&quot;');
+    ov.innerHTML = `
+      <div style="background:#fff;border-radius:10px;padding:24px;width:520px;max-width:95vw;box-shadow:0 20px 50px rgba(0,0,0,.3)">
+        <h3 style="margin:0 0 14px;font-size:16px">${isEdit ? '✎ Editar regla de firmas' : '➕ Nueva regla de firmas'}</h3>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+          <div>
+            <label style="font-size:11px;color:#374151;font-weight:600">Centro de costo</label>
+            <input id="fr-cc" placeholder="vacío = todos" value="${v(regla?.centro_costo)}" style="width:100%;padding:8px;border:1px solid #d1d5db;border-radius:5px;font-size:13px">
+            <div style="font-size:10px;color:#6b7280;margin-top:2px">Dejar vacío para que aplique a todos los centros</div>
+          </div>
+          <div>
+            <label style="font-size:11px;color:#374151;font-weight:600">Firmas requeridas *</label>
+            <select id="fr-firmas" style="width:100%;padding:8px;border:1px solid #d1d5db;border-radius:5px;font-size:13px">
+              <option value="1" ${regla?.firmas_requeridas==1?'selected':''}>1 firma</option>
+              <option value="2" ${regla?.firmas_requeridas==2?'selected':''}>2 firmas</option>
+              <option value="3" ${regla?.firmas_requeridas==3?'selected':''}>3 firmas</option>
+            </select>
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+          <div>
+            <label style="font-size:11px;color:#374151;font-weight:600">Monto mínimo (S/)</label>
+            <input id="fr-min" type="number" step="0.01" min="0" value="${regla?.monto_min ?? 0}" style="width:100%;padding:8px;border:1px solid #d1d5db;border-radius:5px;font-size:13px;font-family:monospace">
+          </div>
+          <div>
+            <label style="font-size:11px;color:#374151;font-weight:600">Monto máximo (S/)</label>
+            <input id="fr-max" type="number" step="0.01" min="0" placeholder="vacío = sin tope" value="${regla?.monto_max ?? ''}" style="width:100%;padding:8px;border:1px solid #d1d5db;border-radius:5px;font-size:13px;font-family:monospace">
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+          <div>
+            <label style="font-size:11px;color:#374151;font-weight:600">Prioridad</label>
+            <input id="fr-prio" type="number" step="1" value="${regla?.prioridad ?? 0}" style="width:100%;padding:8px;border:1px solid #d1d5db;border-radius:5px;font-size:13px;font-family:monospace">
+            <div style="font-size:10px;color:#6b7280;margin-top:2px">Mayor número = mayor prioridad cuando dos reglas matchean.</div>
+          </div>
+          <div>
+            <label style="font-size:11px;color:#374151;font-weight:600">Activo</label>
+            <select id="fr-activo" style="width:100%;padding:8px;border:1px solid #d1d5db;border-radius:5px;font-size:13px">
+              <option value="true" ${regla==null||regla?.activo?'selected':''}>Sí</option>
+              <option value="false" ${regla&&!regla?.activo?'selected':''}>No (deshabilitada)</option>
+            </select>
+          </div>
+        </div>
+
+        <label style="font-size:11px;color:#374151;font-weight:600">Observaciones</label>
+        <textarea id="fr-obs" rows="2" style="width:100%;padding:8px;border:1px solid #d1d5db;border-radius:5px;font-size:13px;resize:vertical">${v(regla?.observaciones)}</textarea>
+
+        <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:18px">
+          <button id="fr-cancel" style="padding:8px 16px;background:#fff;border:1px solid #d1d5db;border-radius:5px;cursor:pointer;font-size:13px">Cancelar</button>
+          <button id="fr-ok" style="padding:8px 22px;background:#2563eb;color:#fff;border:none;border-radius:5px;cursor:pointer;font-size:13px;font-weight:600">${isEdit ? 'Guardar cambios' : 'Crear regla'}</button>
+        </div>
+      </div>`;
+    document.body.appendChild(ov);
+    const close = (val) => { ov.remove(); resolve(val); };
+    ov.querySelector('#fr-cancel').onclick = () => close(null);
+    ov.querySelector('#fr-ok').onclick = () => {
+      const cc = ov.querySelector('#fr-cc').value.trim();
+      const min = Number(ov.querySelector('#fr-min').value);
+      const maxRaw = ov.querySelector('#fr-max').value.trim();
+      const max = maxRaw === '' ? null : Number(maxRaw);
+      const firmas = Number(ov.querySelector('#fr-firmas').value);
+      const prio = Number(ov.querySelector('#fr-prio').value || 0);
+      const activo = ov.querySelector('#fr-activo').value === 'true';
+      const obs = ov.querySelector('#fr-obs').value.trim() || null;
+
+      if (max != null && max < min) {
+        showError('El monto máximo no puede ser menor al mínimo');
+        return;
+      }
+      close({
+        centro_costo: cc || null,
+        monto_min: min,
+        monto_max: max,
+        firmas_requeridas: firmas,
+        prioridad: prio,
+        activo,
+        observaciones: obs,
+      });
+    };
+  });
 }

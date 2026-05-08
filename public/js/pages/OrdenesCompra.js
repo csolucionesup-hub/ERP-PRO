@@ -416,7 +416,7 @@ window.ensureOCModal = ensureOCModal;
 // a OC.verOC sin haber montado el TabBar de OrdenesCompra). Las function
 // declarations se hoistean, así que las referencias funcionan aunque estén
 // definidas más abajo en el archivo.
-window.OC = { nuevaOC, verOC, aprobar, aprobarParaPago, listoParaFacturar, marcarCredito, subirFactura, eliminarFactura, subirVoucherPago, eliminarVoucherPago, agregarNota, borrarNota, recibir, facturar, registrarPago, cerrarSinFactura, cerrarPagaSinFactura, asociarFactura, anular, reactivar, eliminarOC, mandarABorrador, editar, editarFecha, editarMetadata: editarMetadataOC, descargarPDF, reporteROC, descargarExcel: () => api.ordenesCompra.descargarExcel().catch(e => showError(e.message || 'Error descargando Excel')) };
+window.OC = { nuevaOC, verOC, aprobar, aprobarParaPago, listoParaFacturar, marcarCredito, subirFactura, eliminarFactura, subirVoucherPago, eliminarVoucherPago, firmar, desfirmar, agregarNota, borrarNota, recibir, facturar, registrarPago, cerrarSinFactura, cerrarPagaSinFactura, asociarFactura, anular, reactivar, eliminarOC, mandarABorrador, editar, editarFecha, editarMetadata: editarMetadataOC, descargarPDF, reporteROC, descargarExcel: () => api.ordenesCompra.descargarExcel().catch(e => showError(e.message || 'Error descargando Excel')) };
 
 // Editar SOLO la fecha de emisión (corregir data histórica) — disponible en
 // cualquier estado salvo ANULADA. No toca estado/items/totales/correlativo.
@@ -1432,6 +1432,57 @@ async function verOC(id_oc) {
             `;
           })()}
 
+          ${(() => {
+            // Multifirma (mig 065): cards de PREPARADO / REVISADO / AUTORIZADO.
+            // Se muestran SIEMPRE — en BORRADOR son interactivas (firmar/desfirmar);
+            // en estados posteriores muestran solo lectura como audit trail.
+            const userActual = JSON.parse(localStorage.getItem('erp_user') || '{}');
+            const idUserActual = userActual.id_usuario;
+            const rolActual = userActual.rol;
+            const esGer = rolActual === 'GERENTE';
+            const editable = oc.estado === 'BORRADOR';
+            const reqFirmas = Number(oc.firmas_requeridas) || 1;
+            const actuales = Number(oc.firmas_actuales) || 0;
+
+            const card = (etiqueta, casillero, idFirmante, nombreFirmante, fechaFirma) => {
+              const firmada = !!idFirmante;
+              const puedeQuitar = firmada && (idFirmante === idUserActual || esGer) && (oc.estado === 'BORRADOR' || oc.estado === 'APROBADA');
+              const fecha = fechaFirma ? new Date(fechaFirma).toLocaleString('es-PE', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' }) : '';
+              return `
+                <div style="flex:1;min-width:200px;padding:12px;border:1px solid ${firmada?'#86efac':'#d1d5db'};border-radius:6px;background:${firmada?'#ecfdf5':'#f9fafb'}">
+                  <div style="font-size:10px;font-weight:700;color:var(--text-secondary);letter-spacing:.3px;margin-bottom:6px">${etiqueta}</div>
+                  ${firmada ? `
+                    <div style="font-size:13px;font-weight:600;color:#065f46">${escapeHtml(nombreFirmante || '—')}</div>
+                    <div style="font-size:10px;color:#6b7280;margin-top:2px">firmado: ${fecha}</div>
+                    ${puedeQuitar ? `<button onclick="OC.desfirmar(${oc.id_oc}, '${casillero}')" title="Quitar tu firma. Si la OC ya estaba APROBADA y al quitar caen las firmas debajo del umbral, vuelve a BORRADOR." style="margin-top:8px;background:transparent;color:#dc2626;border:1px solid #fecaca;border-radius:4px;padding:3px 8px;cursor:pointer;font-size:11px">Quitar firma</button>` : ''}
+                  ` : `
+                    <div style="font-size:12px;color:#9ca3af;margin-bottom:8px">Pendiente</div>
+                    ${editable ? `<button onclick="OC.firmar(${oc.id_oc}, '${casillero}')" title="Firmar como ${etiqueta.toLowerCase()}. Si con esta firma se alcanza el umbral configurado, la OC pasa automáticamente a APROBADA." style="background:#2563eb;color:white;border:none;border-radius:4px;padding:5px 10px;cursor:pointer;font-size:11px;font-weight:600">✍️ Firmar</button>` : `<span style="color:#9ca3af;font-size:11px">—</span>`}
+                  `}
+                </div>
+              `;
+            };
+
+            const colorBarra = actuales >= reqFirmas ? '#16a34a' : '#f59e0b';
+            const headerTxt = oc.estado === 'BORRADOR'
+              ? `${actuales} / ${reqFirmas} firma${reqFirmas>1?'s':''} requerida${reqFirmas>1?'s':''}`
+              : `${actuales} firma${actuales>1?'s':''} registrada${actuales>1?'s':''}`;
+
+            return `
+              <div style="margin-bottom:16px">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+                  <h4 style="margin:0;font-size:12px;color:var(--text-secondary);font-weight:700;letter-spacing:.3px">🖊️ FIRMAS DE APROBACIÓN</h4>
+                  <span style="font-size:11px;color:${colorBarra};font-weight:600">${headerTxt}</span>
+                </div>
+                <div style="display:flex;gap:8px;flex-wrap:wrap">
+                  ${card('PREPARADO POR',  'preparado',  oc.preparado_por_id,  oc.preparado_por_nombre,  oc.preparado_at)}
+                  ${card('REVISADO POR',   'revisado',   oc.revisado_por_id,   oc.revisado_por_nombre,   oc.revisado_at)}
+                  ${card('AUTORIZADO POR', 'autorizado', oc.autorizado_por_id, oc.autorizado_por_nombre, oc.autorizado_at)}
+                </div>
+              </div>
+            `;
+          })()}
+
           ${oc.aprobaciones?.length ? `
             <details>
               <summary style="cursor:pointer;font-size:12px;color:var(--primary-color);font-weight:600;margin-bottom:10px">Historial de aprobaciones (${oc.aprobaciones.length})</summary>
@@ -1780,6 +1831,46 @@ async function eliminarFactura(id_factura_oc, id_oc) {
     }
   } catch (e) {
     showError(e.message || 'Error al eliminar factura');
+  }
+}
+
+/**
+ * Firma un casillero (preparado / revisado / autorizado) en una OC en BORRADOR.
+ * Si tras firmar se alcanza el umbral configurado en OCFirmasReglas, la OC
+ * pasa automáticamente a APROBADA. Mig 065.
+ */
+async function firmar(id_oc, casillero) {
+  try {
+    const r = await api.ordenesCompra.firmar(id_oc, casillero);
+    const msg = r.estado === 'APROBADA'
+      ? `✓ ${casillero.toUpperCase()} firmada — OC alcanzó ${r.firmas_actuales}/${r.firmas_requeridas} firmas y pasó a APROBADA`
+      : `✓ ${casillero.toUpperCase()} firmada (${r.firmas_actuales}/${r.firmas_requeridas} firmas)`;
+    showSuccess(msg);
+    if (document.getElementById('oc-modal')?.innerHTML) verOC(id_oc);
+    else setTimeout(() => refreshOC(), 600);
+  } catch (e) {
+    showError(e.message || 'Error al firmar');
+  }
+}
+
+async function desfirmar(id_oc, casillero) {
+  const ok = await confirmarAccion({
+    titulo: '🗑️ Quitar firma',
+    mensaje: `Vas a quitar la firma del casillero <strong>${casillero.toUpperCase()}</strong>. Si la OC ya estaba APROBADA y al quitar caen las firmas debajo del umbral configurado, vuelve a BORRADOR. Solo el firmante o un GERENTE pueden hacerlo.`,
+    tipo: 'danger',
+    textoBoton: 'Sí, quitar firma',
+  });
+  if (!ok) return;
+  try {
+    const r = await api.ordenesCompra.desfirmar(id_oc, casillero);
+    const msg = r.estado === 'BORRADOR' && r.casillero
+      ? `Firma quitada — OC volvió a BORRADOR (firmas insuficientes)`
+      : `Firma quitada`;
+    showSuccess(msg);
+    if (document.getElementById('oc-modal')?.innerHTML) verOC(id_oc);
+    else setTimeout(() => refreshOC(), 600);
+  } catch (e) {
+    showError(e.message || 'Error al quitar firma');
   }
 }
 
