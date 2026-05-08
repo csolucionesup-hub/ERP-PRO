@@ -318,8 +318,9 @@ async function modalRegistrarCobranza(cot, cuentas, existing = null) {
               </div>
               <div>
                 <label style="font-size:11px;color:var(--text-secondary)">Monto (${cot.moneda}) *</label>
-                <input name="monto" type="number" step="0.0001" required min="0.01" value="${isEdit ? Number(existing.monto).toFixed(2) : faltaBanco.toFixed(2)}"
+                <input name="monto" type="number" step="0.0001" required min="0.01" value="${isEdit ? Number(existing.monto).toFixed(2) : (cot.moneda === 'USD' ? (faltaBanco / (Number(cot.tipo_cambio)||1)).toFixed(2) : faltaBanco.toFixed(2))}"
                   style="width:100%;padding:8px;border:1px solid #d1d5db;border-radius:5px">
+                <div id="cob-monto-hint" style="font-size:10px;color:var(--text-secondary);margin-top:3px"></div>
               </div>
             </div>
 
@@ -359,14 +360,34 @@ async function modalRegistrarCobranza(cot, cuentas, existing = null) {
     const close = (val) => { ov.remove(); resolve(val); };
     const form = ov.querySelector('#form-cob');
 
+    // Hint vivo "≈ S/ X al TC Y" sólo para cobranzas en USD del tipo regular
+    // (DETRACCION_BN y RETENCION son siempre en PEN — la cuenta destino es BN PEN).
+    const tcCot = Number(cot.tipo_cambio) || 1;
+    const hintEl = ov.querySelector('#cob-monto-hint');
+    const refreshHint = () => {
+      const tipo = form.tipo.value;
+      const monto = Number(form.monto.value) || 0;
+      if (cot.moneda === 'USD' && tipo === 'DEPOSITO_BANCO' && monto > 0) {
+        hintEl.textContent = `≈ ${fMoney(monto * tcCot, 'PEN')} al TC ${tcCot.toFixed(4)}`;
+        hintEl.style.color = '#16a34a';
+      } else {
+        hintEl.textContent = '';
+      }
+    };
+    refreshHint();
+    form.monto.addEventListener('input', refreshHint);
+
     // Auto-ajuste del monto y del dropdown de cuentas al cambiar el tipo
     form.tipo.addEventListener('change', (e) => {
       const tipo = e.target.value;
-      // Monto sugerido
+      // Monto sugerido. Para DEPOSITO_BANCO en cotización USD, faltaBanco viene
+      // en PEN (calculado contra `cot.total` que está en PEN), así que lo
+      // dividimos por el TC para mostrar el equivalente en USD original.
       const sugerido = tipo === 'DETRACCION_BN' ? faltaDet
                       : tipo === 'RETENCION'    ? Number(cot.monto_retencion || 0)
-                      : faltaBanco;
+                      : (cot.moneda === 'USD' ? faltaBanco / tcCot : faltaBanco);
       form.monto.value = sugerido.toFixed(2);
+      refreshHint();
 
       // Cuentas disponibles
       const opts = cuentasPorTipo(tipo);

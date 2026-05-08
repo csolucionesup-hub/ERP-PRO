@@ -423,10 +423,13 @@ class CobranzasService {
     const retencion   = Number(cot.monto_retencion)  || 0;
     const aplicaDetra = detraccion > 0;
 
+    // monto se guarda en moneda original de la cobranza (USD o PEN); los acumulados
+    // viven en PEN como `total/monto_detraccion/monto_retencion`. Normalizamos a PEN
+    // multiplicando por tipo_cambio (que es 1 para PEN, ≠1 para USD) antes de sumar.
     const [agg] = await conn.query(`
       SELECT
-        COALESCE(SUM(CASE WHEN tipo='DEPOSITO_BANCO'  THEN monto END),0) AS banco,
-        COALESCE(SUM(CASE WHEN tipo='DETRACCION_BN'   THEN monto END),0) AS det,
+        COALESCE(SUM(CASE WHEN tipo='DEPOSITO_BANCO' THEN monto * COALESCE(tipo_cambio,1) END),0) AS banco,
+        COALESCE(SUM(CASE WHEN tipo='DETRACCION_BN'  THEN monto * COALESCE(tipo_cambio,1) END),0) AS det,
         MIN(fecha_movimiento) AS primera_fecha
       FROM CobranzasCotizacion
       WHERE id_cotizacion = ?
