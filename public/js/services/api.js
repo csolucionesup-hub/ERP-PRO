@@ -151,6 +151,7 @@ export const api = {
     updateCotizacion: (id, d)  => put(`/cotizaciones/${id}`, d),
     updateEstado:     (id, e)  => put(`/cotizaciones/${id}/estado`, { estado: e }),
     editarFecha:      (id, f)  => put(`/cotizaciones/${id}/fecha`, { fecha: f }),
+    editarFechaAprobacion: (id, f) => put(`/cotizaciones/${id}/fecha-aprobacion`, { fecha: f }),
     editarMetadata:   (id, d)  => put(`/cotizaciones/${id}/metadata`, d),
     proyectosActivos: (filtros = {}) => {
       const p = new URLSearchParams();
@@ -404,6 +405,7 @@ export const api = {
     create:     (data)       => post('/ordenes-compra', data),
     actualizar: (id, data)   => put(`/ordenes-compra/${id}`, data),
     eliminar:   (id)         => del(`/ordenes-compra/${id}`),
+    mandarABorrador: (id)    => post(`/ordenes-compra/${id}/mandar-a-borrador`, {}),
     aprobar:    (id, data)   => post(`/ordenes-compra/${id}/aprobar`, data || {}),
     aprobarParaPago: (id)    => post(`/ordenes-compra/${id}/aprobar-para-pago`, {}),
     listoParaFacturar: (id)  => post(`/ordenes-compra/${id}/listo-para-facturar`, {}),

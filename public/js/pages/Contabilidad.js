@@ -1,8 +1,10 @@
 /**
  * Contabilidad.js — Módulo 📘 Contabilidad
  *
- * 3 tabs:
+ * 4 tabs:
  *   - Libros PLE: descarga TXT formato SUNAT para Ventas 14.1 y Compras 8.1
+ *   - Facturación pendiente: lista de cotizaciones APROBADAS sin factura emitida +
+ *     botón Emitir Factura. Acá vive la responsabilidad de emisión (no Comercial).
  *   - Facturas Emitidas: listado con estado SUNAT y link al PDF
  *   - Pack Contable (placeholder Fase D): ZIP con todo el mes
  */
@@ -36,6 +38,7 @@ export const Contabilidad = async () => {
     <div id="cont-tabbar" style="margin-top:20px"></div>
 
     <div id="tab-libros" class="tab-content"></div>
+    <div id="tab-pendientes" class="tab-content" style="display:none"></div>
     <div id="tab-facturas" class="tab-content" style="display:none"></div>
     <div id="tab-pack" class="tab-content" style="display:none"></div>
   `;
@@ -45,18 +48,20 @@ function initTabs(anioDefault, mesDefault) {
   TabBar({
     container: '#cont-tabbar',
     tabs: [
-      { id: 'libros',   label: '📚 Libros PLE' },
-      { id: 'facturas', label: '🧾 Facturas Emitidas' },
-      { id: 'pack',     label: '📦 Pack Contable Mensual' },
+      { id: 'libros',     label: '📚 Libros PLE' },
+      { id: 'pendientes', label: '📤 Facturación pendiente' },
+      { id: 'facturas',   label: '🧾 Facturas Emitidas' },
+      { id: 'pack',       label: '📦 Pack Contable Mensual' },
     ],
     defaultTab: 'libros',
     onChange: (id) => {
       document.querySelectorAll('.tab-content').forEach(t => t.style.display = 'none');
       const panel = document.getElementById('tab-' + id);
       if (panel) panel.style.display = 'block';
-      if (id === 'libros' && !panel.dataset.rendered)   renderLibros(panel, anioDefault, mesDefault);
-      if (id === 'facturas')                            renderFacturas(panel);
-      if (id === 'pack'   && !panel.dataset.rendered)   renderPack(panel);
+      if (id === 'libros'     && !panel.dataset.rendered)   renderLibros(panel, anioDefault, mesDefault);
+      if (id === 'pendientes')                              renderPendientesFacturar(panel);
+      if (id === 'facturas')                                renderFacturas(panel);
+      if (id === 'pack'       && !panel.dataset.rendered)   renderPack(panel);
     },
   });
 
@@ -200,6 +205,119 @@ async function descargarCompras() {
   } catch (e) { showError('Error: ' + e.message); }
 }
 
+// ─── TAB Facturación pendiente — emite facturas desde acá ─────
+// Esta es la responsabilidad CONTABLE. Comercial cierra el deal,
+// pero la emisión del comprobante electrónico (con efectos en SUNAT,
+// IGV, retenciones, detracciones) la dispara Contabilidad.
+async function renderPendientesFacturar(panel) {
+  panel.innerHTML = `<div class="card" style="margin-top:12px;padding:30px;text-align:center;color:var(--text-secondary)">⏳ Cargando cotizaciones pendientes…</div>`;
+
+  let cotizaciones = [];
+  try {
+    cotizaciones = await api.cotizaciones.getCotizaciones();
+  } catch (e) {
+    panel.innerHTML = `<div class="card" style="margin-top:12px;padding:30px;color:var(--danger)">Error: ${e.message || e}</div>`;
+    return;
+  }
+
+  // Filtro: APROBADA o TERMINADA, sin nro_factura, no anuladas
+  const pendientes = (cotizaciones || []).filter(c =>
+    ['APROBADA', 'TERMINADA'].includes(c.estado) && !c.nro_factura
+  ).sort((a, b) => {
+    const fa = a.fecha_aprobacion_comercial || a.fecha || '';
+    const fb = b.fecha_aprobacion_comercial || b.fecha || '';
+    return String(fb).localeCompare(String(fa));
+  });
+
+  if (pendientes.length === 0) {
+    panel.innerHTML = `
+      <div class="card" style="margin-top:12px;padding:40px;text-align:center;color:var(--text-secondary)">
+        <div style="font-size:40px;margin-bottom:10px">✅</div>
+        <div style="font-size:14px;font-weight:600">No hay cotizaciones pendientes de facturar</div>
+        <div style="font-size:12px;margin-top:6px;max-width:520px;margin-left:auto;margin-right:auto;line-height:1.5">
+          Acá aparecen las cotizaciones <strong>APROBADAS</strong> (o TERMINADAS) que todavía no tienen factura electrónica emitida en SUNAT.
+          Cuando Comercial apruebe una nueva cotización, va a aparecer en esta lista lista para emitir.
+        </div>
+      </div>`;
+    return;
+  }
+
+  // Totales en PEN equivalente
+  const totalPEN = pendientes.reduce((s, c) => s + Number(c.total || 0), 0);
+
+  const fmtMoneda = (n, m = 'PEN') => (m === 'USD' ? '$' : 'S/') + ' ' + Number(n || 0).toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const fmtFecha = (s) => s ? String(s).slice(0, 10).split('-').reverse().join('/') : '—';
+
+  const rows = pendientes.map(c => {
+    const fechaRef = c.fecha_aprobacion_comercial || c.fecha;
+    const marcaBadge = c.marca === 'PERFOTOOLS'
+      ? '<span style="background:#16a34a;color:white;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:700">PERFOTOOLS</span>'
+      : '<span style="background:#1e293b;color:white;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:700">METAL</span>';
+    const estadoBadge = c.estado === 'TERMINADA'
+      ? '<span style="background:#dcfce7;color:#166534;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600">✓ TERMINADA</span>'
+      : '<span style="background:#dbeafe;color:#1e40af;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600">● APROBADA</span>';
+    const nroSafe = String(c.nro_cotizacion || '').replace(/'/g, "\\'");
+
+    return `
+      <tr style="border-bottom:1px solid #e5e7eb">
+        <td style="padding:10px;font-weight:700">
+          ${marcaBadge}
+          <div style="margin-top:3px">${c.nro_cotizacion}</div>
+        </td>
+        <td style="padding:10px;font-size:12px;color:#6b7280">
+          ${fmtFecha(fechaRef)}
+          ${c.fecha_aprobacion_comercial ? '<div style="font-size:10px;color:#16a34a">✓ Aprobada</div>' : '<div style="font-size:10px;color:#9ca3af">emisión</div>'}
+        </td>
+        <td style="padding:10px">
+          <strong>${c.cliente || '—'}</strong>
+          ${c.proyecto ? `<div style="font-size:11px;color:#6b7280">${c.proyecto}</div>` : ''}
+        </td>
+        <td style="padding:10px;text-align:right;font-weight:700;font-variant-numeric:tabular-nums">${fmtMoneda(c.total, c.moneda)}</td>
+        <td style="padding:10px;text-align:center">${estadoBadge}</td>
+        <td style="padding:10px;text-align:center;white-space:nowrap">
+          <button onclick="window.previewPDFCotizacion(${c.id_cotizacion},'${nroSafe}')" title="Previsualizar el PDF de la cotización."
+            style="padding:5px 10px;background:#fff;color:#374151;border:1px solid #d1d5db;border-radius:4px;cursor:pointer;font-size:11px;margin-right:4px">👁 Ver</button>
+          <button onclick="window.emitirFacturaDesdeCot(${c.id_cotizacion},'${nroSafe}')" title="Emitir factura electrónica al cliente. Genera el comprobante en SUNAT (vía Nubefact si está configurado, o STUB si está en modo de prueba)."
+            style="padding:5px 12px;background:#16a34a;color:white;border:none;border-radius:4px;cursor:pointer;font-size:11px;font-weight:700">🧾 Emitir Factura</button>
+        </td>
+      </tr>
+    `;
+  }).join('');
+
+  panel.innerHTML = `
+    <div class="card" style="margin-top:12px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:8px">
+        <div>
+          <h3 style="margin:0;font-size:15px">📤 Cotizaciones pendientes de facturar</h3>
+          <div style="font-size:12px;color:var(--text-secondary);margin-top:2px">
+            Total acumulado equivalente: <strong>${fmtMoneda(totalPEN)}</strong>
+          </div>
+        </div>
+        <span style="background:#fef3c7;color:#92400e;padding:5px 12px;border-radius:14px;font-size:12px;font-weight:600">
+          ${pendientes.length} pendiente(s)
+        </span>
+      </div>
+      <div style="background:#f0f9ff;border-left:3px solid #0284c7;padding:10px 14px;margin-bottom:14px;border-radius:4px;font-size:11px;color:#075985">
+        💡 La emisión de factura es responsabilidad <strong>contable</strong> (efectos en SUNAT, IGV, detracciones). Comercial cierra el deal — desde acá lo declarás formalmente.
+      </div>
+      <div style="overflow-x:auto">
+        <table style="width:100%;border-collapse:collapse;font-size:13px">
+          <thead style="background:#f9fafb;border-bottom:2px solid #d9dad9">
+            <tr>
+              <th style="padding:10px;text-align:left">Cotización</th>
+              <th style="padding:10px;text-align:left">Fecha</th>
+              <th style="padding:10px;text-align:left">Cliente / Proyecto</th>
+              <th style="padding:10px;text-align:right">Total</th>
+              <th style="padding:10px;text-align:center">Estado</th>
+              <th style="padding:10px;text-align:center">Acciones</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    </div>`;
+}
+
 // ─── TAB 2: Facturas Emitidas ─────────────────────────────────
 async function renderFacturas(panel) {
   panel.innerHTML = `<div class="card" style="margin-top:12px"><h3>Cargando facturas…</h3></div>`;
@@ -211,7 +329,7 @@ async function renderFacturas(panel) {
         <div class="card" style="margin-top:12px;padding:40px;text-align:center;color:var(--text-secondary)">
           <div style="font-size:40px;margin-bottom:10px">🧾</div>
           <div style="font-size:14px;font-weight:600">Sin facturas emitidas todavía</div>
-          <div style="font-size:12px;margin-top:4px">Emite tu primera factura desde Comercial → cotización aprobada → 🧾 Emitir Factura</div>
+          <div style="font-size:12px;margin-top:4px">Emite tu primera factura desde el tab <strong>📤 Facturación pendiente</strong> (acá al lado).</div>
         </div>`;
       return;
     }

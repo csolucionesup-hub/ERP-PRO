@@ -13,7 +13,7 @@
  *   ANULADA     → descartada antes de facturar
  *
  * Reglas:
- *   - Si total > monto_limite_sin_aprobacion (config) → requiere APROBAR explícito
+ *   - Toda OC nueva arranca en BORRADOR; pasa a APROBADA al darle "Lista para aprobación"
  *   - Solo quien tiene rol GERENTE o APROBADOR puede aprobar
  *   - No se puede facturar si estado != RECEPCION o FACTURACION
  *   - Al facturar, se crea un registro en Compras con id_oc_origen
@@ -174,7 +174,8 @@ class OrdenCompraService {
   }
 
   /**
-   * Crear OC. Si total ≤ monto_limite_sin_aprobacion, auto-aprueba.
+   * Crear OC. Toda OC nueva arranca en BORRADOR — el revisor decide cuándo
+   * marcarla "lista para aprobación" desde el kanban.
    * `params.es_honorario` (opcional) marca la OC como honorario por trabajo
    * realizado de persona natural — solo se setea desde el flujo dedicado en
    * Administración. Default FALSE para todas las OCs creadas desde Logística.
@@ -199,11 +200,9 @@ class OrdenCompraService {
     const igv = aplicaIgv ? Number((baseImponible * (Number(cfg.tasa_igv) / 100)).toFixed(2)) : 0;
     const total = Number((baseImponible + igv).toFixed(2));
 
-    // Conversión a PEN para validación contra el umbral
-    const totalPEN = moneda === 'PEN' ? total : total * tc;
-    const umbral = Number(cfg.monto_limite_sin_aprobacion) || 5000;
-    const autoAprobar = totalPEN <= umbral;
-
+    // Toda OC nueva arranca en BORRADOR — el revisor decide cuándo dejarla
+    // "lista para aprobación". La auto-aprobación por monto se removió 07/05/2026
+    // a pedido de Julio (vaciaba la columna BORRADOR del kanban).
     const conn = await db.getConnection();
     await conn.beginTransaction();
     try {
@@ -220,7 +219,7 @@ class OrdenCompraService {
       } else {
         nro_oc = await this.proximoNumero(empresa, cc, anio);
       }
-      const estado: EstadoOC = autoAprobar ? 'APROBADA' : 'BORRADOR';
+      const estado: EstadoOC = 'BORRADOR';
 
       // Las firmas y contacto se leen dinámicamente desde Configuración
       // al renderizar el PDF (con fallback al snapshot per-OC si existe).
@@ -251,8 +250,8 @@ class OrdenCompraService {
          params.forma_pago || 'CONTADO', params.dias_credito || 0,
          params.condiciones_entrega || null, params.observaciones || null,
          estado, params.id_usuario || null,
-         autoAprobar ? (params.id_usuario || null) : null,
-         autoAprobar ? new Date() : null,
+         null,
+         null,
          params.atencion || null, ctactoNombre, ctactoTel,
          solicitado, revisado, autorizado,
          params.cuenta_bancaria_pago || null, params.lugar_entrega || 'Lima',
@@ -273,13 +272,6 @@ class OrdenCompraService {
         );
       }
 
-      if (autoAprobar) {
-        await conn.query(
-          `INSERT INTO AprobacionesOC (id_oc, id_usuario, accion, comentario, monto_total_aprobado, moneda)
-           VALUES (?, ?, 'APROBAR', 'Auto-aprobada (monto bajo umbral)', ?, ?)`,
-          [id_oc, params.id_usuario || 0, total, moneda]
-        );
-      }
 
       // Snapshot de costo de mano de obra para OCs honorario con cotización.
       // Permite que el dashboard de rentabilidad de la cotización vea el costo
@@ -309,7 +301,7 @@ class OrdenCompraService {
       }
 
       await conn.commit();
-      return { success: true, id_oc, nro_oc, estado, total, moneda, autoAprobada: autoAprobar };
+      return { success: true, id_oc, nro_oc, estado, total, moneda, autoAprobada: false };
     } catch (e) {
       await conn.rollback();
       throw e;
@@ -381,7 +373,7 @@ class OrdenCompraService {
    */
   async marcarListoParaFacturar(id_oc: number, id_usuario: number) {
     const [rows]: any = await db.query(
-      `SELECT estado, estado_pago FROM OrdenesCompra WHERE id_oc = ?`, [id_oc]
+      `SELECT estado, estado_pago, tipo_oc, es_honorario FROM OrdenesCompra WHERE id_oc = ?`, [id_oc]
     );
     if (!rows[0]) throw new Error('OC no encontrada');
     const oc = rows[0];
@@ -392,16 +384,19 @@ class OrdenCompraService {
       throw new Error('El pago no está cerrado al 100%. Termine de pagar antes de avanzar a facturación.');
     }
 
-    // Verificar que la recepción está completa
-    const [det]: any = await db.query(`
-      SELECT SUM(cantidad) AS pedido, SUM(cantidad_recibida) AS recibido
-        FROM DetalleOrdenCompra
-       WHERE id_oc = ?
-    `, [id_oc]);
-    const pedido = Number(det[0]?.pedido || 0);
-    const recibido = Number(det[0]?.recibido || 0);
-    if (recibido < pedido - 0.0001) {
-      throw new Error(`Recepción incompleta (${recibido}/${pedido}). Termine de recibir antes de avanzar a facturación.`);
+    // Solo se valida recepción si el tipo de OC la requiere (ALMACEN o servicios/honorarios).
+    // Las OCs GENERAL no-honorario no tienen mercadería ni trabajo a recibir.
+    if (this._requiereRecepcion(oc.tipo_oc, oc.es_honorario)) {
+      const [det]: any = await db.query(`
+        SELECT SUM(cantidad) AS pedido, SUM(cantidad_recibida) AS recibido
+          FROM DetalleOrdenCompra
+         WHERE id_oc = ?
+      `, [id_oc]);
+      const pedido = Number(det[0]?.pedido || 0);
+      const recibido = Number(det[0]?.recibido || 0);
+      if (recibido < pedido - 0.0001) {
+        throw new Error(`Recepción incompleta (${recibido}/${pedido}). Termine de recibir antes de avanzar a facturación.`);
+      }
     }
 
     await db.query(`UPDATE OrdenesCompra SET estado='FACTURACION' WHERE id_oc=?`, [id_oc]);
@@ -605,14 +600,15 @@ class OrdenCompraService {
     );
     const oc = rows[0];
     if (!oc) throw new Error('OC no encontrada');
-    if (!['RECEPCION', 'FACTURACION'].includes(oc.estado)) {
-      throw new Error(`OC debe estar RECEPCION o FACTURACION para facturar (actual: ${oc.estado})`);
+    if (!['RECEPCION', 'FACTURACION', 'CERRADA_SIN_FACTURA'].includes(oc.estado)) {
+      throw new Error(`OC debe estar RECEPCION, FACTURACION o CERRADA_SIN_FACTURA para facturar (actual: ${oc.estado})`);
     }
 
-    // Caso B: OC ya pagada (FACTURACION) — solo enriquecer comprobante
-    // existente con nro_factura + transición a TERMINADA. NO se crea Compra/Gasto/Tx
-    // ni MovimientoBancario porque ya se hicieron en registrarPago().
-    if (oc.estado === 'FACTURACION') {
+    // Caso B: OC ya pagada (FACTURACION) o ya cerrada sin comprobante
+    // (CERRADA_SIN_FACTURA) — solo enriquecer comprobante existente con
+    // nro_factura + transición a TERMINADA. NO se crea Compra/Gasto/Tx ni
+    // MovimientoBancario porque ya se hicieron en registrarPago() o cerrarSinFactura().
+    if (oc.estado === 'FACTURACION' || oc.estado === 'CERRADA_SIN_FACTURA') {
       const conn = await db.getConnection();
       await conn.beginTransaction();
       try {
@@ -789,18 +785,27 @@ class OrdenCompraService {
   }
 
   /**
-   * Registra el pago al proveedor. Soporta dos casos:
+   * Registra el pago al proveedor. State machine nuevo (mig 062):
    *
-   * A) Desde estado FACTURADA: la factura ya fue ingresada. Solo se registra
-   *    el movimiento bancario (CARGO), se actualiza estado_pago de Compra/Gasto
-   *    a PAGADO, se marca la Tx EGRESO como REALIZADO y la OC pasa a PAGADA.
+   * Estados de origen válidos: PAGO, RECEPCION, FACTURACION (+ APROBADA si es
+   * OC de honorarios — atajo "contraté → trabajó → pagué mismo día").
    *
-   * B) Desde estado RECIBIDA o RECIBIDA_PARCIAL: pago anticipado sin factura
-   *    todavía (caso típico Perú). Se crea Compra/Gasto provisorio con
-   *    nro_comprobante=NULL, DetalleCompra (si ALMACEN), Tx EGRESO REALIZADO,
-   *    MovBancario, CostosServicio si aplica. La OC pasa a PAGADA_PEND_FACTURA.
-   *    Cuando llegue la factura, se llama a facturar() para enriquecer el
-   *    comprobante con nro_comprobante y mover OC a PAGADA.
+   * A) Si es PRIMER pago (yaPagado=0): se crea Compra (ALMACEN) o Gasto
+   *    (GENERAL/SERVICIO) provisorio con nro_comprobante=NULL, Tx EGRESO,
+   *    MovBancario, CostosServicio si aplica.
+   *
+   * B) Si NO es primer pago: solo se actualiza estado_pago en la Compra/Gasto
+   *    existente y se agrega Tx + MovBancario por el monto del pago.
+   *
+   * Avance de estado:
+   *   - Desde PAGO/APROBADA → la OC pasa a RECEPCION (o FACTURACION directo
+   *     si tipo_oc='GENERAL' no-honorario que saltean recepción).
+   *   - Si cierra el saldo Y es OC GENERAL no-honorario, va directo a FACTURACION.
+   *   - Si la OC ya estaba en RECEPCION o FACTURACION, queda donde está
+   *     (el avance lo decide _checkAutoAvance si recepción + pago + factura).
+   *
+   * Cuando llegue la factura, se llama a facturar() (botón "Recibí factura")
+   * para enriquecer el comprobante con nro_comprobante y mover OC a TERMINADA.
    */
   async registrarPago(id_oc: number, datos: {
     id_cuenta: number;
@@ -1084,7 +1089,12 @@ class OrdenCompraService {
       // Cualquier pago (total o parcial) saca la card de PAGO o de APROBADA
       // (caso honorarios). La card va a RECEPCION. Si venía de RECEPCION se
       // queda ahí (el avance lo decide _checkAutoAvance si recepción está completa).
-      const proximoEstadoOC = ['PAGO', 'APROBADA'].includes(oc.estado) ? 'RECEPCION' : oc.estado;
+      // Excepción: OCs GENERAL no-honorario saltan recepción y van directo a
+      // FACTURACION cuando el pago cierra al 100%.
+      const saltaRecepcion = !this._requiereRecepcion(oc.tipo_oc, oc.es_honorario) && cierraTotal;
+      const proximoEstadoOC = ['PAGO', 'APROBADA'].includes(oc.estado)
+        ? (saltaRecepcion ? 'FACTURACION' : 'RECEPCION')
+        : oc.estado;
       await conn.query(
         `UPDATE OrdenesCompra
             SET estado = ?, monto_pagado = ?, estado_pago = ?,
@@ -1292,90 +1302,12 @@ class OrdenCompraService {
       const oc = rows[0];
       if (!oc) throw new Error('OC no encontrada');
 
-      // 1. Revertir Inventario si la OC ALMACEN registró stock
-      if (oc.tipo_oc === 'ALMACEN') {
-        const [movs]: any = await conn.query(
-          `SELECT id_movimiento, id_item, cantidad
-             FROM MovimientosInventario
-            WHERE referencia_tipo = 'ORDEN_COMPRA' AND referencia_id = ?`,
-          [id_oc]
-        );
-        for (const m of (movs as any[])) {
-          // Lock pesimista del ítem
-          const [invRows]: any = await conn.query(
-            `SELECT stock_actual, costo_promedio_unitario
-               FROM Inventario WHERE id_item = ? FOR UPDATE`,
-            [m.id_item]
-          );
-          const inv = invRows[0];
-          if (!inv) continue;
-          const stockActual = Number(inv.stock_actual);
-          const cppActual = Number(inv.costo_promedio_unitario);
-          const cantRev = Number(m.cantidad);
-          // Restamos lo que la entrada agregó
-          const stockNuevo = Math.max(0, stockActual - cantRev);
-          // Para el costo promedio: revertir aproximadamente — fórmula inversa.
-          // No es perfecto porque depende del orden histórico, pero mantiene
-          // consistencia razonable. Si el stock queda en 0, dejamos cpp tal cual.
-          await conn.query(
-            `UPDATE Inventario SET stock_actual = ?, updated_at = NOW() WHERE id_item = ?`,
-            [stockNuevo, m.id_item]
-          );
-        }
-        // DELETE de los movimientos de kárdex
-        await conn.query(
-          `DELETE FROM MovimientosInventario
-            WHERE referencia_tipo = 'ORDEN_COMPRA' AND referencia_id = ?`,
-          [id_oc]
-        );
-      }
+      // Cascada reversiva (Inventario, Compras, Gastos, Tx, MovBancario,
+      // CostosServicio, factura adjunta) — compartida con mandarABorrador().
+      await this._revertirCascada(conn, oc, id_oc);
 
-      // 2. Si la OC generó Compra (ALMACEN facturada), borrar Compra +
-      //    DetalleCompra + Transacciones COMPRA asociadas
-      if (oc.id_compra_generada) {
-        await conn.query(
-          `DELETE FROM Transacciones
-            WHERE referencia_tipo = 'COMPRA' AND referencia_id = ?`,
-          [oc.id_compra_generada]
-        );
-        await conn.query(
-          `DELETE FROM DetalleCompra WHERE id_compra = ?`,
-          [oc.id_compra_generada]
-        );
-        await conn.query(
-          `DELETE FROM Compras WHERE id_compra = ?`,
-          [oc.id_compra_generada]
-        );
-      }
-
-      // 3. Si hay Gastos asociados (CERRADA_SIN_FACTURA o FACTURADA tipo
-      //    GENERAL/SERVICIO), borrarlos + sus Transacciones GASTO.
-      const [gastos]: any = await conn.query(
-        `SELECT id_gasto FROM Gastos WHERE nro_oc = ?`,
-        [oc.nro_oc]
-      );
-      for (const g of (gastos as any[])) {
-        await conn.query(
-          `DELETE FROM Transacciones
-            WHERE referencia_tipo = 'GASTO' AND referencia_id = ?`,
-          [g.id_gasto]
-        );
-        await conn.query(
-          `DELETE FROM Gastos WHERE id_gasto = ?`,
-          [g.id_gasto]
-        );
-      }
-
-      // 4. CostosServicio asociados (caso SERVICIO con cotización vinculada).
-      //    Match por concepto que contiene el nro_oc — heurística conservadora.
-      await conn.query(
-        `DELETE FROM CostosServicio
-          WHERE concepto LIKE ?`,
-        [`%${oc.nro_oc}%`]
-      );
-
-      // 5. Finalmente DELETE de la OC. DetalleOrdenCompra y AprobacionesOC
-      //    tienen FK ON DELETE CASCADE — se limpian solos.
+      // Finalmente DELETE de la OC. DetalleOrdenCompra y AprobacionesOC
+      // tienen FK ON DELETE CASCADE — se limpian solos.
       await conn.query(`DELETE FROM OrdenesCompra WHERE id_oc = ?`, [id_oc]);
 
       await conn.commit();
@@ -1389,8 +1321,155 @@ class OrdenCompraService {
   }
 
   /**
-   * Actualiza una OC existente. Permitido en BORRADOR / APROBADA / ENVIADA —
-   * después la mercadería ya fue recibida y editar cambiaría datos contables.
+   * Cascada reversiva compartida — revierte Inventario, Compras, Gastos,
+   * Transacciones, MovimientoBancario, CostosServicio y factura adjunta.
+   * NO toca OrdenesCompra ni DetalleOrdenCompra — el caller decide si borra
+   * la OC (eliminar) o resetea sus campos (mandarABorrador).
+   */
+  private async _revertirCascada(conn: any, oc: any, id_oc: number) {
+    // 1. Revertir Inventario si la OC ALMACEN registró stock
+    if (oc.tipo_oc === 'ALMACEN') {
+      const [movs]: any = await conn.query(
+        `SELECT id_movimiento, id_item, cantidad
+           FROM MovimientosInventario
+          WHERE referencia_tipo = 'ORDEN_COMPRA' AND referencia_id = ?`,
+        [id_oc]
+      );
+      for (const m of (movs as any[])) {
+        const [invRows]: any = await conn.query(
+          `SELECT stock_actual FROM Inventario WHERE id_item = ? FOR UPDATE`,
+          [m.id_item]
+        );
+        const inv = invRows[0];
+        if (!inv) continue;
+        const stockNuevo = Math.max(0, Number(inv.stock_actual) - Number(m.cantidad));
+        await conn.query(
+          `UPDATE Inventario SET stock_actual = ?, updated_at = NOW() WHERE id_item = ?`,
+          [stockNuevo, m.id_item]
+        );
+      }
+      await conn.query(
+        `DELETE FROM MovimientosInventario
+          WHERE referencia_tipo = 'ORDEN_COMPRA' AND referencia_id = ?`,
+        [id_oc]
+      );
+    }
+
+    // 2. Si generó Compra, borrar Compra + DetalleCompra + Tx + MovBancario.
+    if (oc.id_compra_generada) {
+      await conn.query(`DELETE FROM MovimientoBancario WHERE ref_tipo = 'COMPRA' AND ref_id = ?`, [oc.id_compra_generada]);
+      await conn.query(`DELETE FROM Transacciones WHERE referencia_tipo = 'COMPRA' AND referencia_id = ?`, [oc.id_compra_generada]);
+      await conn.query(`DELETE FROM DetalleCompra WHERE id_compra = ?`, [oc.id_compra_generada]);
+      await conn.query(`DELETE FROM Compras WHERE id_compra = ?`, [oc.id_compra_generada]);
+    }
+
+    // 3. Gastos asociados al nro_oc + sus Tx y MovBancario.
+    const [gastos]: any = await conn.query(
+      `SELECT id_gasto FROM Gastos WHERE nro_oc = ?`,
+      [oc.nro_oc]
+    );
+    for (const g of (gastos as any[])) {
+      await conn.query(`DELETE FROM MovimientoBancario WHERE ref_tipo = 'GASTO' AND ref_id = ?`, [g.id_gasto]);
+      await conn.query(`DELETE FROM Transacciones WHERE referencia_tipo = 'GASTO' AND referencia_id = ?`, [g.id_gasto]);
+      await conn.query(`DELETE FROM Gastos WHERE id_gasto = ?`, [g.id_gasto]);
+    }
+
+    // 4. CostosServicio (caso SERVICIO/honorario con cotización vinculada).
+    await conn.query(`DELETE FROM CostosServicio WHERE concepto LIKE ?`, [`%${oc.nro_oc}%`]);
+
+    // 5. Factura adjunta — el archivo en Cloudinary queda huérfano (mismo
+    //    criterio que eliminarFactura individual).
+    await conn.query(`DELETE FROM OrdenCompraFactura WHERE id_oc = ?`, [id_oc]);
+
+    // 6. Defensa: limpiar MovimientoBancario huérfanos cuyo ref_id apunta a
+    //    una Compra/Gasto ya borrada. Filtro por descripción que contenga el
+    //    nro_oc — la descripción siempre incluye "OC <nro>" según el formato
+    //    de registrarPago(). Esto cubre datos sucios de ciclos previos.
+    await conn.query(
+      `DELETE FROM MovimientoBancario WHERE descripcion_banco LIKE ?`,
+      [`%OC ${oc.nro_oc}%`]
+    );
+    // 7. Defensa: limpiar Transacciones huérfanas con descripción del nro_oc.
+    await conn.query(
+      `DELETE FROM Transacciones WHERE descripcion LIKE ?`,
+      [`%OC ${oc.nro_oc}%`]
+    );
+  }
+
+  /**
+   * Vuelve la OC a BORRADOR conservando el correlativo. Hace la misma cascada
+   * reversiva que eliminar() pero NO borra la OC: resetea estado, monto_pagado,
+   * estado_factura, etc. Útil para "deshacer" en el kanban sin perder el N°.
+   *
+   * No aplica si la OC ya está en BORRADOR (no hay nada que revertir) o ANULADA
+   * (para esa hay un botón "♻ Reactivar" dedicado que es más simple).
+   */
+  async mandarABorrador(id_oc: number, id_usuario: number | null = null) {
+    const conn = await db.getConnection();
+    await conn.beginTransaction();
+    try {
+      const [rows]: any = await conn.query(
+        `SELECT id_oc, nro_oc, estado, tipo_oc, id_compra_generada
+           FROM OrdenesCompra WHERE id_oc = ? FOR UPDATE`,
+        [id_oc]
+      );
+      const oc = rows[0];
+      if (!oc) throw new Error('OC no encontrada');
+      if (oc.estado === 'BORRADOR') {
+        throw new Error('La OC ya está en BORRADOR');
+      }
+      if (oc.estado === 'ANULADA') {
+        throw new Error('Para retomar una OC anulada, usá el botón "♻ Reactivar"');
+      }
+
+      const estadoPrevio = oc.estado;
+
+      await this._revertirCascada(conn, oc, id_oc);
+
+      // Reset campos en OrdenesCompra. Conserva: nro_oc, fecha_emision,
+      // proveedor, líneas, totales, centro_costo, observaciones, etc.
+      await conn.query(
+        `UPDATE OrdenesCompra
+            SET estado = 'BORRADOR',
+                estado_pago = 'PENDIENTE',
+                estado_factura = 'PENDIENTE',
+                monto_pagado = 0,
+                pagada_at = NULL,
+                facturada_at = NULL,
+                id_compra_generada = NULL,
+                fecha_credito_vence = NULL
+          WHERE id_oc = ?`,
+        [id_oc]
+      );
+
+      // Reset cantidad_recibida en líneas — sino el estado_recepcion calculado
+      // sigue mostrando cantidades viejas.
+      await conn.query(
+        `UPDATE DetalleOrdenCompra SET cantidad_recibida = 0 WHERE id_oc = ?`,
+        [id_oc]
+      );
+
+      await conn.commit();
+
+      // Best-effort: registrar la transición en historial. Si la tabla no
+      // existe (mig no aplicada) no rompe.
+      try {
+        await this._registrarTransicion(id_oc, estadoPrevio, 'BORRADOR', id_usuario, 'Mandada a borrador (cascada reversiva)');
+      } catch (_) { /* no romper si falla */ }
+
+      return { success: true, estado_previo: estadoPrevio, nro_oc: oc.nro_oc };
+    } catch (e) {
+      await conn.rollback();
+      throw e;
+    } finally {
+      conn.release();
+    }
+  }
+
+  /**
+   * Actualiza una OC existente. Permitido en BORRADOR / APROBADA / PAGO —
+   * después la mercadería ya fue recibida o se facturó y editar cambiaría
+   * datos contables.
    *
    * Recalcula totales desde las líneas, usa transacción y reemplaza el detalle
    * (DELETE + INSERT) — mismo patrón que `updateCotizacion`.
@@ -1606,7 +1685,10 @@ class OrdenCompraService {
                WHEN COALESCE(d.recibido, 0) <= 0.0001 THEN 'NO_RECIBIDO'
                WHEN COALESCE(d.recibido, 0) >= COALESCE(d.pedido, 0) - 0.0001 THEN 'RECIBIDO'
                ELSE 'PARCIAL'
-             END AS estado_recepcion
+             END AS estado_recepcion,
+             f.id_factura_oc AS factura_adjunta_id,
+             f.nro_comprobante AS factura_adjunta_nro,
+             f.fecha_emision AS factura_adjunta_fecha
       FROM OrdenesCompra oc
       LEFT JOIN Proveedores p ON p.id_proveedor = oc.id_proveedor
       LEFT JOIN Servicios s ON s.id_servicio = oc.id_servicio
@@ -1617,6 +1699,7 @@ class OrdenCompraService {
           FROM DetalleOrdenCompra
          GROUP BY id_oc
       ) d ON d.id_oc = oc.id_oc
+      LEFT JOIN OrdenCompraFactura f ON f.id_oc = oc.id_oc
       ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
       ORDER BY oc.fecha_emision DESC, oc.id_oc DESC
       LIMIT ?`;
@@ -1809,14 +1892,17 @@ class OrdenCompraService {
         [nroComp, data.fecha_factura, idGasto]
       );
 
-      // Mover OC a FACTURADA
+      // Mover OC a TERMINADA + estado_factura=FACTURADA. El estado 'FACTURADA'
+      // del state machine viejo fue reemplazado por TERMINADA en mig 062.
       await conn.query(
-        `UPDATE OrdenesCompra SET estado = 'FACTURADA' WHERE id_oc = ?`,
+        `UPDATE OrdenesCompra
+            SET estado = 'TERMINADA', estado_factura = 'FACTURADA', facturada_at = NOW()
+          WHERE id_oc = ?`,
         [id_oc]
       );
 
       await conn.commit();
-      return { success: true, estado: 'FACTURADA', id_gasto: idGasto };
+      return { success: true, estado: 'TERMINADA', id_gasto: idGasto };
     } catch (e) {
       await conn.rollback();
       throw e;
@@ -1865,6 +1951,24 @@ class OrdenCompraService {
       [id_oc]
     );
 
+    // Lista de pagos individuales registrados — viene del libro bancos.
+    // Filtramos por ref_tipo + ref_id (no por descripción) para evitar matches
+    // con OCs anteriores que reusen el correlativo después de un eliminar.
+    // Pagos ALMACEN: ref_tipo='COMPRA' + ref_id=id_compra_generada.
+    // Pagos GENERAL/SERVICIO: ref_tipo='GASTO' + ref_id IN (gastos con nro_oc).
+    const [pagos] = await db.query(`
+      SELECT mb.id_movimiento, mb.fecha, mb.nro_operacion, mb.descripcion_banco,
+             mb.monto, mb.comentario, mb.id_cuenta, c.nombre AS cuenta_nombre, c.moneda AS cuenta_moneda
+        FROM MovimientoBancario mb
+        LEFT JOIN Cuentas c ON c.id_cuenta = mb.id_cuenta
+       WHERE mb.tipo = 'CARGO'
+         AND (
+              (mb.ref_tipo = 'COMPRA' AND mb.ref_id = ?)
+           OR (mb.ref_tipo = 'GASTO' AND mb.ref_id IN (SELECT id_gasto FROM Gastos WHERE nro_oc = ?))
+         )
+       ORDER BY mb.fecha, mb.id_movimiento
+    `, [oc.id_compra_generada || -1, oc.nro_oc]);
+
     // Calcular estado_recepcion en runtime desde el detalle.
     // (listar() ya lo devuelve via SELECT, pero obtener() no lo hacía.)
     const detalle = det as any[];
@@ -1877,7 +1981,7 @@ class OrdenCompraService {
     if (recibido >= pedido - 0.0001 && pedido > 0) estado_recepcion = 'RECIBIDO';
     else if (recibido > 0.0001) estado_recepcion = 'PARCIAL';
 
-    return { ...oc, detalle, aprobaciones: apro, estado_recepcion };
+    return { ...oc, detalle, aprobaciones: apro, pagos, estado_recepcion };
   }
 
   /**
@@ -1937,24 +2041,43 @@ class OrdenCompraService {
   }
 
   /**
+   * Wrapper público del auto-avance — para llamarlo desde otros services
+   * que no estén dentro de una transacción (ej. FacturaOCService).
+   */
+  async checkAutoAvance(id_oc: number): Promise<void> {
+    return this._checkAutoAvance(db, id_oc);
+  }
+
+  /**
+   * Las OCs GENERAL (gastos administrativos, alquileres, servicios) y no-honorario
+   * NO tienen mercadería ni trabajo a "recibir". El paso RECEPCION no aplica para
+   * ellas — saltean a FACTURACION directo desde PAGO.
+   */
+  private _requiereRecepcion(tipo_oc?: string | null, es_honorario?: boolean | number): boolean {
+    return tipo_oc === 'ALMACEN' || !!es_honorario || tipo_oc === 'SERVICIO';
+  }
+
+  /**
    * Auto-avance del estado: si recepción al 100% y pago al 100% y factura OK, mueve a TERMINADA.
    * Si recepción al 100% y pago al 100% pero falta factura, mueve a FACTURACION.
    * Si recepción no completa, deja como esté.
+   * OCs GENERAL no-honorario consideran recepción implícitamente completa.
    */
   private async _checkAutoAvance(conn: any, id_oc: number) {
     const [r]: any = await conn.query(`
-      SELECT oc.estado, oc.estado_pago, oc.estado_factura,
+      SELECT oc.estado, oc.estado_pago, oc.estado_factura, oc.tipo_oc, oc.es_honorario,
              SUM(d.cantidad) AS total_pedido,
              SUM(d.cantidad_recibida) AS total_recibido
         FROM OrdenesCompra oc
         JOIN DetalleOrdenCompra d ON d.id_oc = oc.id_oc
        WHERE oc.id_oc = ?
-       GROUP BY oc.id_oc, oc.estado, oc.estado_pago, oc.estado_factura
+       GROUP BY oc.id_oc, oc.estado, oc.estado_pago, oc.estado_factura, oc.tipo_oc, oc.es_honorario
     `, [id_oc]);
     const row = r[0];
     if (!row) return;
 
-    const recibidoCompleto = Number(row.total_recibido) >= Number(row.total_pedido) - 0.0001;
+    const requiereRec = this._requiereRecepcion(row.tipo_oc, row.es_honorario);
+    const recibidoCompleto = !requiereRec || (Number(row.total_recibido) >= Number(row.total_pedido) - 0.0001);
     const pagoCompleto = row.estado_pago === 'PAGADO';
     const facturaOK = row.estado_factura === 'FACTURADA';
 

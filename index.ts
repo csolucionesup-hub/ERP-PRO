@@ -689,6 +689,15 @@ apiRouter.put('/cotizaciones/:id/fecha', validateIdParam, auditLog('Cotizacion',
   res.json(await CotizacionService.actualizarFecha(id, fecha));
 });
 
+// Actualizar SOLO la fecha de aprobación comercial (corrige carga histórica
+// donde el estado se cambió a APROBADA en fecha distinta a la real).
+apiRouter.put('/cotizaciones/:id/fecha-aprobacion', validateIdParam, auditLog('Cotizacion', 'UPDATE'), async (req: Request, res: Response) => {
+  const id = parseInt(req.params.id as string);
+  const fecha = String(req.body?.fecha || '').trim();
+  if (!fecha) return res.status(400).json({ error: 'fecha requerida' });
+  res.json(await CotizacionService.actualizarFechaAprobacion(id, fecha));
+});
+
 apiRouter.post('/cotizaciones/:id/anular', validateIdParam, auditLog('Cotizacion', 'ANULAR'), async (req: Request, res: Response) => {
   await CotizacionService.anularCotizacion(parseInt(req.params.id as string));
   res.json({ success: true });
@@ -1609,26 +1618,200 @@ ocRouter.get('/roc', async (req: Request, res: Response) => {
 
 // Export Excel del listado completo — DEBE ir ANTES de /:id
 ocRouter.get('/listado/excel', async (_req: Request, res: Response) => {
-  const ocs = await OrdenCompraService.listar({});
+  const ocs: any[] = await OrdenCompraService.listar({}) as any[];
   const wb = new ExcelJS.Workbook();
-  const ws = wb.addWorksheet('OCs');
-  ws.columns = [
-    { header: 'Nro OC',         key: 'nro_oc',              width: 16 },
-    { header: 'Fecha',          key: 'fecha_emision',       width: 12 },
-    { header: 'Proveedor',      key: 'razon_social',        width: 36 },
-    { header: 'Centro Costo',   key: 'centro_costo',        width: 18 },
-    { header: 'Marca',          key: 'empresa',             width: 8 },
-    { header: 'Moneda',         key: 'moneda',              width: 8 },
-    { header: 'Total',          key: 'total',               width: 14 },
-    { header: 'Estado',         key: 'estado',              width: 22 },
-    { header: 'Estado Pago',    key: 'estado_pago',         width: 14 },
-    { header: 'Estado Fact.',   key: 'estado_factura',      width: 14 },
-    { header: 'Forma Pago',     key: 'forma_pago',          width: 12 },
-    { header: 'Crédito Vence',  key: 'fecha_credito_vence', width: 14 },
-    { header: 'Pagada At',      key: 'pagada_at',           width: 18 },
-    { header: 'Facturada At',   key: 'facturada_at',        width: 18 },
+  wb.creator = 'Metal Engineers ERP';
+  wb.created = new Date();
+  const ws = wb.addWorksheet('OCs', {
+    views: [{ state: 'frozen', ySplit: 4 }],   // congelar título + header
+    properties: { defaultRowHeight: 18 },
+  });
+
+  // ── Título superior + meta ─────────────────────────────────────────
+  ws.mergeCells('A1:N1');
+  const tituloCell = ws.getCell('A1');
+  tituloCell.value = 'Listado de Órdenes de Compra · Metal Engineers';
+  tituloCell.font = { name: 'Calibri', size: 16, bold: true, color: { argb: 'FFFFFFFF' } };
+  tituloCell.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
+  tituloCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0F172A' } };
+  ws.getRow(1).height = 28;
+
+  ws.mergeCells('A2:N2');
+  const metaCell = ws.getCell('A2');
+  const fechaHoy = new Date().toLocaleDateString('es-PE', { year: 'numeric', month: 'long', day: 'numeric' });
+  metaCell.value = `Generado el ${fechaHoy} · ${ocs.length} OC${ocs.length === 1 ? '' : 's'} en total`;
+  metaCell.font = { name: 'Calibri', size: 10, italic: true, color: { argb: 'FF64748B' } };
+  metaCell.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
+  metaCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF8FAFC' } };
+  ws.getRow(2).height = 18;
+
+  // ── Fila 3 vacía (separador) ───────────────────────────────────────
+  ws.getRow(3).height = 6;
+
+  // ── Header (fila 4) ────────────────────────────────────────────────
+  const headers = [
+    { h: 'Nro OC',        key: 'nro_oc',              width: 16 },
+    { h: 'Fecha',         key: 'fecha_emision',       width: 12 },
+    { h: 'Proveedor',     key: 'proveedor_nombre',    width: 36 },
+    { h: 'Centro Costo',  key: 'centro_costo',        width: 22 },
+    { h: 'Marca',         key: 'empresa',             width: 8 },
+    { h: 'Tipo',          key: 'tipo_oc',             width: 11 },
+    { h: 'Moneda',        key: 'moneda',              width: 8 },
+    { h: 'Total',         key: 'total',               width: 14 },
+    { h: 'Estado',        key: 'estado',              width: 18 },
+    { h: 'Pago',          key: 'estado_pago',         width: 12 },
+    { h: 'Factura',       key: 'estado_factura',      width: 12 },
+    { h: 'Forma Pago',    key: 'forma_pago',          width: 12 },
+    { h: 'Crédito Vence', key: 'fecha_credito_vence', width: 14 },
+    { h: 'Pagada',        key: 'pagada_at',           width: 18 },
   ];
-  ws.addRows(ocs as any[]);
+  ws.columns = headers.map(c => ({ key: c.key, width: c.width }));
+  const headerRow = ws.getRow(4);
+  headers.forEach((c, i) => { headerRow.getCell(i + 1).value = c.h; });
+  headerRow.height = 26;
+  headerRow.eachCell((cell) => {
+    cell.font = { name: 'Calibri', size: 11, bold: true, color: { argb: 'FFFFFFFF' } };
+    cell.alignment = { vertical: 'middle', horizontal: 'center' };
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E293B' } };
+    cell.border = {
+      top:    { style: 'thin', color: { argb: 'FF334155' } },
+      bottom: { style: 'medium', color: { argb: 'FF0F172A' } },
+      left:   { style: 'thin', color: { argb: 'FF334155' } },
+      right:  { style: 'thin', color: { argb: 'FF334155' } },
+    };
+  });
+
+  // ── Mapping de colores por estado (matchea el kanban) ──────────────
+  const estadoColor: Record<string, { bg: string; fg: string }> = {
+    BORRADOR:            { bg: 'FFFEF3C7', fg: 'FF92400E' }, // amber
+    APROBADA:            { bg: 'FFDBEAFE', fg: 'FF1E40AF' }, // blue
+    PAGO:                { bg: 'FFFEE2E2', fg: 'FF991B1B' }, // red
+    RECEPCION:           { bg: 'FFFEF9C3', fg: 'FF854D0E' }, // yellow
+    FACTURACION:         { bg: 'FFFEF3C7', fg: 'FF92400E' }, // amber
+    TERMINADA:           { bg: 'FFD1FAE5', fg: 'FF065F46' }, // emerald
+    CERRADA_SIN_FACTURA: { bg: 'FFFCE7F3', fg: 'FF9D174D' }, // pink
+    ANULADA:             { bg: 'FFE5E7EB', fg: 'FF374151' }, // slate
+  };
+
+  // ── Filas de datos ─────────────────────────────────────────────────
+  ocs.forEach((oc, idx) => {
+    const r = ws.addRow({
+      nro_oc:              oc.nro_oc || '',
+      fecha_emision:       oc.fecha_emision ? String(oc.fecha_emision).slice(0, 10) : '',
+      proveedor_nombre:    oc.proveedor_nombre || oc.razon_social || '—',
+      centro_costo:        oc.centro_costo || '',
+      empresa:             oc.empresa || '',
+      tipo_oc:             oc.tipo_oc || '',
+      moneda:              oc.moneda || '',
+      total:               Number(oc.total) || 0,
+      estado:              oc.estado || '',
+      estado_pago:         oc.estado_pago || '—',
+      estado_factura:      oc.estado_factura || '—',
+      forma_pago:          oc.forma_pago || '',
+      fecha_credito_vence: oc.fecha_credito_vence ? String(oc.fecha_credito_vence).slice(0, 10) : '',
+      pagada_at:           oc.pagada_at ? new Date(oc.pagada_at).toLocaleDateString('es-PE') : '',
+    });
+
+    const isEven = idx % 2 === 0;
+    const bgZebra = isEven ? 'FFFFFFFF' : 'FFF8FAFC';
+
+    r.height = 20;
+    r.eachCell({ includeEmpty: true }, (cell, colNumber) => {
+      cell.font = { name: 'Calibri', size: 10, color: { argb: 'FF1E293B' } };
+      cell.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: bgZebra } };
+      cell.border = {
+        top:    { style: 'hair', color: { argb: 'FFE2E8F0' } },
+        bottom: { style: 'hair', color: { argb: 'FFE2E8F0' } },
+        left:   { style: 'hair', color: { argb: 'FFE2E8F0' } },
+        right:  { style: 'hair', color: { argb: 'FFE2E8F0' } },
+      };
+
+      // Columna 1 (Nro OC) en bold
+      if (colNumber === 1) {
+        cell.font = { name: 'Calibri', size: 10, bold: true, color: { argb: 'FF1E293B' } };
+      }
+      // Columna 8 (Total) — formato moneda + alineación derecha
+      if (colNumber === 8) {
+        const sym = oc.moneda === 'USD' ? '$' : 'S/';
+        cell.numFmt = `"${sym}" #,##0.00`;
+        cell.alignment = { vertical: 'middle', horizontal: 'right', indent: 1 };
+        cell.font = { name: 'Calibri', size: 10, bold: true, color: { argb: 'FF1E293B' } };
+      }
+      // Columna 5 (Marca), 6 (Tipo), 7 (Moneda) — centrados
+      if ([5, 6, 7].includes(colNumber)) {
+        cell.alignment = { vertical: 'middle', horizontal: 'center' };
+      }
+    });
+
+    // Pintar la celda Estado con color del kanban
+    const estadoCell = r.getCell(9);
+    const c = estadoColor[oc.estado] || { bg: 'FFE5E7EB', fg: 'FF374151' };
+    estadoCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: c.bg } };
+    estadoCell.font = { name: 'Calibri', size: 10, bold: true, color: { argb: c.fg } };
+    estadoCell.alignment = { vertical: 'middle', horizontal: 'center' };
+
+    // Estado Pago: PAGADO verde, PARCIAL ámbar, PENDIENTE rojo
+    if (oc.estado_pago) {
+      const pagoCell = r.getCell(10);
+      const pagoColor = oc.estado_pago === 'PAGADO'   ? { bg: 'FFD1FAE5', fg: 'FF065F46' }
+                      : oc.estado_pago === 'PARCIAL'  ? { bg: 'FFFEF3C7', fg: 'FF92400E' }
+                      : oc.estado_pago === 'PENDIENTE'? { bg: 'FFFEE2E2', fg: 'FF991B1B' }
+                      : null;
+      if (pagoColor) {
+        pagoCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: pagoColor.bg } };
+        pagoCell.font = { name: 'Calibri', size: 10, bold: true, color: { argb: pagoColor.fg } };
+        pagoCell.alignment = { vertical: 'middle', horizontal: 'center' };
+      }
+    }
+
+    // Estado Factura: FACTURADA verde, PENDIENTE rojo
+    if (oc.estado_factura) {
+      const facCell = r.getCell(11);
+      const facColor = oc.estado_factura === 'FACTURADA'   ? { bg: 'FFD1FAE5', fg: 'FF065F46' }
+                     : oc.estado_factura === 'SIN_FACTURA' ? { bg: 'FFFCE7F3', fg: 'FF9D174D' }
+                     : oc.estado_factura === 'PENDIENTE'   ? { bg: 'FFFEE2E2', fg: 'FF991B1B' }
+                     : null;
+      if (facColor) {
+        facCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: facColor.bg } };
+        facCell.font = { name: 'Calibri', size: 10, bold: true, color: { argb: facColor.fg } };
+        facCell.alignment = { vertical: 'middle', horizontal: 'center' };
+      }
+    }
+  });
+
+  // ── Auto-filter sobre el header ────────────────────────────────────
+  ws.autoFilter = { from: { row: 4, column: 1 }, to: { row: 4, column: headers.length } };
+
+  // ── Fila de totales al final ───────────────────────────────────────
+  if (ocs.length > 0) {
+    const totalPEN = ocs.filter(o => o.moneda === 'PEN').reduce((s, o) => s + Number(o.total || 0), 0);
+    const totalUSD = ocs.filter(o => o.moneda === 'USD').reduce((s, o) => s + Number(o.total || 0), 0);
+    const totalRow = ws.addRow({});
+    totalRow.height = 22;
+    totalRow.getCell(7).value = 'TOTAL PEN:';
+    totalRow.getCell(7).font = { name: 'Calibri', size: 11, bold: true, color: { argb: 'FF0F172A' } };
+    totalRow.getCell(7).alignment = { vertical: 'middle', horizontal: 'right' };
+    totalRow.getCell(8).value = totalPEN;
+    totalRow.getCell(8).numFmt = '"S/" #,##0.00';
+    totalRow.getCell(8).font = { name: 'Calibri', size: 11, bold: true, color: { argb: 'FF065F46' } };
+    totalRow.getCell(8).alignment = { vertical: 'middle', horizontal: 'right', indent: 1 };
+    totalRow.getCell(8).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD1FAE5' } };
+
+    if (totalUSD > 0) {
+      const usdRow = ws.addRow({});
+      usdRow.height = 22;
+      usdRow.getCell(7).value = 'TOTAL USD:';
+      usdRow.getCell(7).font = { name: 'Calibri', size: 11, bold: true, color: { argb: 'FF0F172A' } };
+      usdRow.getCell(7).alignment = { vertical: 'middle', horizontal: 'right' };
+      usdRow.getCell(8).value = totalUSD;
+      usdRow.getCell(8).numFmt = '"$" #,##0.00';
+      usdRow.getCell(8).font = { name: 'Calibri', size: 11, bold: true, color: { argb: 'FF065F46' } };
+      usdRow.getCell(8).alignment = { vertical: 'middle', horizontal: 'right', indent: 1 };
+      usdRow.getCell(8).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD1FAE5' } };
+    }
+  }
+
   res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
   res.setHeader('Content-Disposition', `attachment; filename="OCs_${new Date().toISOString().slice(0,10)}.xlsx"`);
   await wb.xlsx.write(res);
@@ -1711,6 +1894,31 @@ ocRouter.post('/:id/factura', validateIdParam, ocFacturaUpload.single('archivo')
 ocRouter.get('/:id/factura', validateIdParam, async (req: Request, res: Response) => {
   const f = await FacturaOCService.getDeOC(Number(req.params.id));
   res.json(f);
+});
+
+// Proxy del PDF/imagen de la factura adjunta. Cloudinary no permite CORS para
+// fetch desde el browser, así que descargamos en el servidor y reenviamos al
+// cliente. Esto deja preview inline funcionando en el helper window.previewArchivo.
+ocRouter.get('/:id/factura/preview', validateIdParam, async (req: Request, res: Response) => {
+  const f = await FacturaOCService.getDeOC(Number(req.params.id));
+  if (!f || !f.url_pdf) {
+    res.status(404).json({ error: 'No hay archivo adjunto para esta OC' });
+    return;
+  }
+  try {
+    const upstream = await fetch(f.url_pdf);
+    if (!upstream.ok) {
+      res.status(upstream.status).json({ error: `Cloudinary respondió ${upstream.status}` });
+      return;
+    }
+    const ct = upstream.headers.get('content-type') || 'application/octet-stream';
+    res.setHeader('Content-Type', ct);
+    res.setHeader('Cache-Control', 'private, max-age=300');
+    const buf = Buffer.from(await upstream.arrayBuffer());
+    res.send(buf);
+  } catch (e: any) {
+    res.status(502).json({ error: 'Error proxeando archivo: ' + (e.message || e) });
+  }
 });
 
 ocRouter.delete('/:id/factura', validateIdParam, auditLog('OrdenCompra', 'UPDATE'), async (req: any, res: Response) => {
@@ -1816,10 +2024,23 @@ ocRouter.put('/:id', validateIdParam, auditLog('OrdenCompra', 'UPDATE'), async (
   res.json(await OrdenCompraService.actualizar(Number(req.params.id), req.body));
 });
 
-// ELIMINAR OC físico — permitido en CUALQUIER estado (excepto que ya esté
-// borrada), solo GERENTE. El Service hace cascada completa: reverso de
-// stock+kárdex (ALMACEN), DELETE de Compras/Gastos generados, Transacciones
-// de caja asociadas, CostosServicio vinculados.
+// MANDAR A BORRADOR — cascada reversiva pero conserva la OC + correlativo.
+// Disponible en cualquier estado salvo BORRADOR/ANULADA. Solo GERENTE.
+ocRouter.post('/:id/mandar-a-borrador', validateIdParam, auditLog('OrdenCompra', 'UPDATE'), async (req: any, res: Response) => {
+  if (req.user?.rol !== 'GERENTE') {
+    return res.status(403).json({ error: 'Solo el GERENTE puede mandar una OC a borrador' });
+  }
+  try {
+    const r = await OrdenCompraService.mandarABorrador(Number(req.params.id), req.user.id_usuario);
+    res.json(r);
+  } catch (e: any) {
+    res.status(400).json({ error: e.message || 'Error mandando a borrador' });
+  }
+});
+
+// ELIMINAR OC físico — DELETE total con cascada. Disponible solo en BORRADOR
+// o ANULADA — para deshacer otros estados, usar "Mandar a borrador" antes.
+// Solo GERENTE.
 ocRouter.delete('/:id', validateIdParam, auditLog('OrdenCompra', 'DELETE'), async (req: any, res: Response) => {
   if (req.user?.rol !== 'GERENTE') {
     return res.status(403).json({ error: 'Solo el GERENTE puede eliminar una OC' });

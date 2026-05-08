@@ -33,7 +33,7 @@ export const Proveedores = async () => {
       : '<span style="color:#e65100;font-size:11px">⚠️ Sin método de pago</span>';
 
     return `
-      <tr>
+      <tr data-tipo="${p.tipo === 'PERSONA_NATURAL' ? 'PERSONA' : 'EMPRESA'}">
         <td style="font-size:11px">${tipoBadge}<br><span style="font-weight:600">${docLabel}: ${doc}</span></td>
         <td>
           <strong style="font-size:13px">${p.razon_social}</strong>
@@ -222,18 +222,53 @@ export const Proveedores = async () => {
 
   // ─── Setup post-render ──────────────────────────────────
   setTimeout(() => {
-    const form = document.getElementById('form-prov-nuevo');
-    if (form) {
-      bindTipoToggle(form);
-      form.onsubmit = async (e) => {
-        e.preventDefault();
-        try {
-          await api.purchases.createProveedor(collectForm(form));
-          showSuccess('Proveedor registrado correctamente');
-          window.navigate('proveedores');
-        } catch (err) {
-          showError(err.detalles?.[0] || err.error || 'Error al registrar proveedor');
-        }
+    // Filtro por tipo (Todos / Empresa / Persona) — oculta filas sin tocar la BD.
+    document.querySelectorAll('.btn-filtro-prov').forEach(btn => {
+      btn.onclick = () => {
+        document.querySelectorAll('.btn-filtro-prov').forEach(b => {
+          b.style.background = 'var(--bg-app)';
+          b.style.color = '';
+        });
+        btn.style.background = 'var(--primary-color)';
+        btn.style.color = 'white';
+        const tipo = btn.dataset.tipo;
+        document.querySelectorAll('#tbody-prov tr').forEach(tr => {
+          tr.style.display = (!tipo || tr.dataset.tipo === tipo) ? '' : 'none';
+        });
+      };
+    });
+
+    // Botón "+ Nuevo Proveedor" — abre form en modal (mismo patrón que editar).
+    const btnNuevo = document.getElementById('btn-prov-nuevo');
+    if (btnNuevo) {
+      btnNuevo.onclick = () => {
+        const overlay = document.createElement('div');
+        overlay.id = 'modal-nuevo-prov';
+        overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px';
+        overlay.innerHTML = `
+          <div style="background:white;border-radius:10px;padding:24px;width:560px;max-height:90vh;overflow-y:auto;box-shadow:0 12px 40px rgba(0,0,0,0.25)">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin:0 0 14px">
+              <h3 style="margin:0;font-size:15px;font-weight:700">➕ Registrar Proveedor</h3>
+              <button data-close type="button" title="Cerrar sin guardar" aria-label="Cerrar" style="background:none;border:none;font-size:20px;cursor:pointer;color:#999">×</button>
+            </div>
+            ${renderProveedorForm({}, 'form-prov-nuevo')}
+          </div>
+        `;
+        document.body.appendChild(overlay);
+        overlay.querySelector('[data-close]').onclick = () => overlay.remove();
+        const form = overlay.querySelector('#form-prov-nuevo');
+        bindTipoToggle(form);
+        form.onsubmit = async (e) => {
+          e.preventDefault();
+          try {
+            await api.purchases.createProveedor(collectForm(form));
+            showSuccess('Proveedor registrado correctamente');
+            overlay.remove();
+            window.navigate('proveedores');
+          } catch (err) {
+            showError(err.detalles?.[0] || err.error || 'Error al registrar proveedor');
+          }
+        };
       };
     }
 
@@ -293,30 +328,31 @@ export const Proveedores = async () => {
       </div>
     </header>
 
-    <div style="display:grid; grid-template-columns: 1.5fr 1fr; gap:20px; align-items:flex-start; margin-top:20px">
-
-      <div class="table-container" style="overflow-x:auto">
-        <table style="width:100%">
-          <thead>
-            <tr>
-              <th>Tipo / Doc</th>
-              <th>Nombre / Contacto</th>
-              <th>Teléfono / Email</th>
-              <th>Métodos de pago</th>
-              <th>Acciones</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${rows || '<tr><td colspan="5" style="text-align:center;color:var(--text-secondary);padding:30px">Sin proveedores registrados — usa el form de la derecha</td></tr>'}
-          </tbody>
-        </table>
+    <div style="margin-top:20px;display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:10px">
+      <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+        <span style="font-size:12px;color:var(--text-secondary);font-weight:600;margin-right:4px">Filtrar:</span>
+        <button class="btn-filtro-prov" data-tipo="" style="padding:6px 12px;border:1px solid var(--border-light);border-radius:4px;cursor:pointer;font-size:12px;background:var(--primary-color);color:white">Todos · ${proveedores.length}</button>
+        <button class="btn-filtro-prov" data-tipo="EMPRESA" style="padding:6px 12px;border:1px solid var(--border-light);border-radius:4px;cursor:pointer;font-size:12px;background:var(--bg-app)">🏢 Empresa · ${proveedores.filter(p => p.tipo !== 'PERSONA_NATURAL').length}</button>
+        <button class="btn-filtro-prov" data-tipo="PERSONA" style="padding:6px 12px;border:1px solid var(--border-light);border-radius:4px;cursor:pointer;font-size:12px;background:var(--bg-app)">👤 Persona · ${proveedores.filter(p => p.tipo === 'PERSONA_NATURAL').length}</button>
       </div>
+      <button id="btn-prov-nuevo" type="button" title="Registrar un nuevo proveedor (empresa o persona natural)." style="padding:8px 16px;background:#7c3aed;color:white;border:none;border-radius:5px;cursor:pointer;font-size:13px;font-weight:600">➕ Nuevo Proveedor</button>
+    </div>
 
-      <div class="card" style="min-width:320px">
-        <h3 style="margin:0 0 12px;font-weight:600;font-size:15px">➕ Registrar Proveedor</h3>
-        ${renderProveedorForm({}, 'form-prov-nuevo')}
-      </div>
-
+    <div class="table-container" style="overflow-x:auto">
+      <table style="width:100%">
+        <thead>
+          <tr>
+            <th>Tipo / Doc</th>
+            <th>Nombre / Contacto</th>
+            <th>Teléfono / Email</th>
+            <th>Métodos de pago</th>
+            <th>Acciones</th>
+          </tr>
+        </thead>
+        <tbody id="tbody-prov">
+          ${rows || '<tr><td colspan="5" style="text-align:center;color:var(--text-secondary);padding:30px">Sin proveedores registrados — usá el botón "➕ Nuevo Proveedor" arriba.</td></tr>'}
+        </tbody>
+      </table>
     </div>
   `;
 };

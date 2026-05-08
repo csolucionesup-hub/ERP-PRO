@@ -52,11 +52,10 @@ class FacturaOCService {
       params.monto, url, cloudId, params.id_usuario,
     ]);
 
-    // Marcar OC como facturada
-    await db.query(
-      `UPDATE OrdenesCompra SET estado_factura='FACTURADA', facturada_at=NOW() WHERE id_oc=?`,
-      [params.id_oc]
-    );
+    // Subir el PDF SOLO adjunta el archivo. NO marca estado_factura='FACTURADA'
+    // ni avanza la OC a TERMINADA. El cierre formal lo dispara el usuario con
+    // el botón "🧾 Recibí factura" cuando considera que ya subió todos los
+    // comprobantes (algunas OCs vienen partidas en varias facturas).
 
     const idFactura = r[0]?.id_factura_oc || r.insertId || 0;
     return { id_factura_oc: idFactura, url_pdf: url };
