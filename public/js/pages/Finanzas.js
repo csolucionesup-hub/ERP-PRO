@@ -61,15 +61,24 @@ function rowCotizacion(c, marca) {
   const aplicaDetra   = detraccion > 0;
   const aplicaRet     = retencion > 0;
 
-  const fAprobC = c.fecha_aprobacion_comercial
-    ? new Date(c.fecha_aprobacion_comercial).toLocaleDateString('es-PE', { day:'2-digit', month:'2-digit', year:'numeric' })
+  // Formatear sin pasar por new Date() — la columna es UTC midnight y Lima
+  // es UTC-5, así que JS la interpretaría como día anterior. Tomamos el
+  // string raw "YYYY-MM-DD..." y lo formateamos directo.
+  const fAprobIso = c.fecha_aprobacion_comercial
+    ? String(c.fecha_aprobacion_comercial).slice(0, 10)
+    : '';
+  const fAprobC = fAprobIso
+    ? fAprobIso.split('-').reverse().join('/')
     : null;
 
   return `
     <tr data-id="${c.id_cotizacion}">
       <td style="font-weight:600">
         <div>${c.nro_cotizacion || '—'}</div>
-        ${fAprobC ? `<div style="font-size:10px;color:#16a34a;font-weight:500" title="Aprobada en Comercial">✓ ${fAprobC}</div>` : ''}
+        ${fAprobC ? `<div style="font-size:10px;color:#16a34a;font-weight:500;display:flex;align-items:center;gap:4px" title="Fecha de aprobación comercial">
+          <span>✓ ${fAprobC}</span>
+          <button onclick="window.editarFechaAprobacionCot(${c.id_cotizacion},'${(c.nro_cotizacion || '').replace(/'/g, "\\'")}','${fAprobIso}')" title="Editar fecha de aprobación (corregir data histórica)" style="background:none;border:none;color:#16a34a;cursor:pointer;font-size:11px;padding:0">📅</button>
+        </div>` : ''}
       </td>
       <td>
         <div style="font-weight:600">${c.cliente || '—'}</div>
@@ -659,9 +668,12 @@ async function modalLibroBancos() {
   try { cuentas = await api.cobranzas.getCuentas(); }
   catch (e) { return showError('Error: ' + e.message); }
 
-  const cuentasBanco = cuentas.filter(c => c.tipo === 'BANCO');
+  // Incluimos todas las cuentas activas (BANCO/CAJA/EFECTIVO/DETRACCION) —
+  // así los pagos hechos contra la Caja también son visibles acá. La
+  // convención SUNAT es "Libro Caja y Bancos" (libro 1.2): un solo libro.
+  const cuentasBanco = cuentas.filter(c => ['BANCO', 'CAJA', 'EFECTIVO', 'DETRACCION'].includes(c.tipo));
   if (cuentasBanco.length === 0) {
-    return showError('No hay cuentas de tipo BANCO registradas');
+    return showError('No hay cuentas activas registradas');
   }
 
   const hoy = new Date();
@@ -2814,6 +2826,47 @@ export const Finanzas = async () => {
 
 // ── Wire handlers después del render ────────────────────────────
 function bindHandlers(cuentas, dashboard) {
+  // Editor de fecha de aprobación comercial — corrige data histórica donde
+  // la cotización se marcó APROBADA en una fecha distinta a la real.
+  window.editarFechaAprobacionCot = (id_cotizacion, nro, fechaActual) => {
+    const ov = document.createElement('div');
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
+    ov.innerHTML = `
+      <div style="background:#fff;border-radius:10px;padding:24px;width:420px;max-width:95vw;box-shadow:0 12px 40px rgba(0,0,0,.25)">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+          <h3 style="margin:0;font-size:15px;font-weight:700">📅 Editar fecha de aprobación</h3>
+          <button data-close type="button" title="Cerrar" aria-label="Cerrar" style="background:none;border:none;font-size:20px;cursor:pointer;color:#999">×</button>
+        </div>
+        <div style="font-size:12px;color:#6b7280;margin-bottom:12px">${nro || ''}</div>
+        <p style="font-size:12px;color:var(--text-secondary);margin:0 0 14px;line-height:1.5">
+          La fecha en que la cotización fue <strong>aprobada por el cliente</strong>.
+          Si cargaste data histórica, corregí acá para que los reportes y dashboards reflejen la fecha real, no la fecha en que la subiste.
+        </p>
+        <label style="font-size:11px;color:#374151;font-weight:600;display:block;margin-bottom:4px">Nueva fecha de aprobación *</label>
+        <input id="fap-fecha" type="date" value="${fechaActual || ''}" required
+          style="width:100%;padding:10px;border:1px solid #d1d5db;border-radius:6px;font-size:14px">
+        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:18px">
+          <button data-close type="button" style="padding:9px 16px;background:#f3f4f6;border:none;border-radius:6px;cursor:pointer;font-weight:600">Cancelar</button>
+          <button data-ok type="button" style="padding:9px 18px;background:#16a34a;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600">Guardar</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(ov);
+    ov.querySelectorAll('[data-close]').forEach(b => b.onclick = () => ov.remove());
+    ov.querySelector('[data-ok]').onclick = async () => {
+      const fecha = ov.querySelector('#fap-fecha').value;
+      if (!fecha) { showError('Fecha requerida'); return; }
+      try {
+        await api.cotizaciones.editarFechaAprobacion(id_cotizacion, fecha);
+        showSuccess('Fecha de aprobación actualizada');
+        ov.remove();
+        window.refreshModule?.();
+      } catch (e) {
+        showError(e?.error || e?.message || 'Error al actualizar fecha');
+      }
+    };
+  };
+
   // Tabs
   document.querySelectorAll('.tab-fin').forEach(btn => {
     btn.onclick = () => {

@@ -5,6 +5,9 @@
    ═══════════════════════════════════════════════════════════════════════ */
 
 /* ─── Page header container ─────────────────────────────────────────── */
+/* No sticky — el título es decorativo. Lo útil al hacer scroll son las
+   pestañas del módulo y los filtros del kanban (esos sí van sticky en
+   sus propios componentes). */
 .header {
   display: flex;
   align-items: flex-end;
@@ -13,9 +16,6 @@
   margin-bottom: 24px;
   padding: 0 0 18px;
   background: transparent;
-  position: sticky;
-  top: 0;
-  z-index: 10;
   border-bottom: 1px solid var(--app-border);
 }
 

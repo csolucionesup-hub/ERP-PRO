@@ -86,6 +86,32 @@ export const CloudinaryService = {
   },
 
   /**
+   * Sube una factura de proveedor (PDF o imagen) a Cloudinary.
+   * Carpeta separada para OC facturas. Sanitiza el nombre del archivo.
+   */
+  async subirFacturaOC(buffer: Buffer, originalName: string) {
+    return new Promise<{ url: string; public_id: string }>((resolve, reject) => {
+      const sanitizedName = originalName
+        .replace(/\.[^.]+$/, '') // elimina extensión
+        .replace(/[^a-zA-Z0-9_-]/g, '_'); // reemplaza caracteres especiales
+
+      const stream = cloudinary.uploader.upload_stream(
+        {
+          folder: 'metalengineers/oc-facturas',
+          resource_type: 'auto', // soporta PDF e imágenes
+          public_id: `factura_${Date.now()}_${sanitizedName}`,
+        },
+        (err, result) => {
+          if (err) return reject(err);
+          if (!result) return reject(new Error('Cloudinary devolvió respuesta vacía'));
+          resolve({ url: result.secure_url, public_id: result.public_id });
+        }
+      );
+      stream.end(buffer);
+    });
+  },
+
+  /**
    * Sube un archivo genérico (PDF, imagen, etc.) a una carpeta dada.
    * No aplica las transformaciones de foto — conserva el archivo tal cual.
    * Usado por AdjuntosService para facturas, gastos, recibos, etc.

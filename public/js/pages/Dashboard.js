@@ -291,13 +291,21 @@ export const Dashboard = async () => {
           buckets[k] = { label: `${meses[d.getMonth()]} ${String(d.getFullYear()).slice(2)}`, ventas: 0, gastos: 0, compras: 0 };
         }
 
-        // Ventas = cotizaciones aprobadas/terminadas
+        // Ventas = cotizaciones aprobadas/terminadas.
+        // IMPORTANTE: en Cotizaciones el campo `total` ya está guardado en PEN
+        // (incluso para moneda='USD' — el calcularTotales del backend lo convierte
+        // antes de persistir). NO hay que multiplicar por tipo_cambio acá, sino
+        // se duplica el valor.
+        // El bucket usa `fecha_aprobacion_comercial` (cuándo el cliente aprobó),
+        // no `fecha` (emisión) — para que cargas históricas y deals cerrados
+        // tarde se reflejen en el mes correcto. Fallback a `fecha` si no existe.
         (hist_cotizaciones || []).forEach(c => {
-          if (!c.fecha) return;
-          const k = String(c.fecha).slice(0, 7);
-          if (k in buckets && ['APROBADA', 'TERMINADA'].includes(c.estado)) {
-            const tc = c.moneda === 'USD' ? Number(c.tipo_cambio) || 1 : 1;
-            buckets[k].ventas += Number(c.total || 0) * tc;
+          if (!['APROBADA', 'TERMINADA'].includes(c.estado)) return;
+          const fechaRef = c.fecha_aprobacion_comercial || c.fecha;
+          if (!fechaRef) return;
+          const k = String(fechaRef).slice(0, 7);
+          if (k in buckets) {
+            buckets[k].ventas += Number(c.total || 0);
           }
         });
         // Gastos
@@ -339,13 +347,13 @@ export const Dashboard = async () => {
           else distGastos.general += monto;
         });
 
-        // Top 5 clientes (por cotizaciones aprobadas)
+        // Top 5 clientes (por cotizaciones aprobadas).
+        // Cotizaciones.total ya viene en PEN — NO multiplicar por tipo_cambio.
         const topCli = {};
         (hist_cotizaciones || []).forEach(c => {
           if (!['APROBADA', 'TERMINADA'].includes(c.estado)) return;
           const k = (c.cliente || 'Sin cliente').trim();
-          const tc = c.moneda === 'USD' ? Number(c.tipo_cambio) || 1 : 1;
-          topCli[k] = (topCli[k] || 0) + Number(c.total || 0) * tc;
+          topCli[k] = (topCli[k] || 0) + Number(c.total || 0);
         });
         const topClientes = Object.entries(topCli)
           .map(([label, valor]) => ({ label: label.slice(0, 22), valor }))
@@ -522,14 +530,17 @@ export const Dashboard = async () => {
 
       // Construye la data agregada por año-mes para la comparativa anual
       function buildComparativaAnual() {
+        // Comparativa anual de ventas — usa fecha_aprobacion_comercial (cuándo
+        // se cerró el deal) con fallback a fecha (emisión). Total ya en PEN.
         const porAnio = {};
         (hist_cotizaciones || []).forEach(c => {
-          if (!c.fecha || !['APROBADA', 'TERMINADA'].includes(c.estado)) return;
-          const y = String(c.fecha).slice(0, 4);
-          const m = parseInt(String(c.fecha).slice(5, 7), 10) - 1;
-          const tc = c.moneda === 'USD' ? Number(c.tipo_cambio) || 1 : 1;
+          if (!['APROBADA', 'TERMINADA'].includes(c.estado)) return;
+          const fechaRef = c.fecha_aprobacion_comercial || c.fecha;
+          if (!fechaRef) return;
+          const y = String(fechaRef).slice(0, 4);
+          const m = parseInt(String(fechaRef).slice(5, 7), 10) - 1;
           if (!porAnio[y]) porAnio[y] = new Array(12).fill(0);
-          porAnio[y][m] += Number(c.total || 0) * tc;
+          porAnio[y][m] += Number(c.total || 0);
         });
         const anios = Object.keys(porAnio).sort();
         return {

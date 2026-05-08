@@ -125,7 +125,7 @@ class FinanceService {
     const [rowsCxP_OCs] = await db.query(`
       SELECT IFNULL(SUM(CASE WHEN moneda='PEN' THEN total ELSE total * tipo_cambio END), 0) as deuda_ocs
       FROM OrdenesCompra
-      WHERE estado IN ('APROBADA','ENVIADA','RECIBIDA_PARCIAL','RECIBIDA')
+      WHERE estado IN ('APROBADA','PAGO','RECEPCION')
     `);
     const cxpGlobal =
       Number((rowsCxP_Compras as any)[0]?.deuda_prov   || 0) +
@@ -218,7 +218,7 @@ class FinanceService {
         0 AS pagado
       FROM OrdenesCompra oc
       JOIN Proveedores p ON p.id_proveedor = oc.id_proveedor
-      WHERE oc.estado IN ('APROBADA','ENVIADA','RECIBIDA_PARCIAL','RECIBIDA')
+      WHERE oc.estado IN ('APROBADA','PAGO','RECEPCION')
     `;
 
     const [compras] = await db.query(queryCompras);

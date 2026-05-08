@@ -962,13 +962,52 @@ function bindForm(marca, opts = {}) {
 }
 
 // ── Archivo: tabla de cotizaciones con filtro por marca ─────────
-function archivoTable(cotizaciones, filtroMarca) {
-  const filtradas = filtroMarca
-    ? cotizaciones.filter(c => c.marca === filtroMarca)
-    : cotizaciones;
+// Filtros del archivo de cotizaciones — module-scope para persistir entre
+// re-renders (al cambiar tab y volver, al cambiar de estado, etc).
+const _archivoFiltros = {
+  marca:   '',       // '' (Todas) | 'METAL' | 'PERFOTOOLS'
+  cliente: 'Todos',  // 'Todos' | nombre exacto
+  anio:    'Todos',  // 'Todos' | año YYYY
+  mes:     'Todos',  // 'Todos' | '01'..'12'
+  moneda:  'Todas',  // 'Todas' | 'PEN' | 'USD'
+};
+
+function aplicarFiltrosArchivo(cotizaciones) {
+  const f = _archivoFiltros;
+  return cotizaciones.filter(c => {
+    if (f.marca && c.marca !== f.marca) return false;
+    if (f.cliente !== 'Todos' && c.cliente !== f.cliente) return false;
+    const fecha = String(c.fecha || '');
+    if (f.anio !== 'Todos' && !fecha.startsWith(f.anio)) return false;
+    if (f.mes !== 'Todos' && fecha.slice(5, 7) !== f.mes) return false;
+    if (f.moneda !== 'Todas' && c.moneda !== f.moneda) return false;
+    return true;
+  });
+}
+
+function archivoTable(cotizaciones, _filtroMarcaLegacy) {
+  // _filtroMarcaLegacy se mantiene por backward compat con llamadas viejas,
+  // pero los filtros vienen del objeto _archivoFiltros. Si llega un valor
+  // legacy, lo aplicamos también para no romper.
+  if (_filtroMarcaLegacy && _archivoFiltros.marca !== _filtroMarcaLegacy) {
+    _archivoFiltros.marca = _filtroMarcaLegacy;
+  }
+  const filtradas = aplicarFiltrosArchivo(cotizaciones);
 
   if (filtradas.length === 0) {
-    return `<div style="padding:40px;text-align:center;color:var(--text-secondary)">Sin cotizaciones${filtroMarca ? ` para ${MARCAS[filtroMarca].label}` : ''}.</div>`;
+    const f = _archivoFiltros;
+    const filtrosActivos = [
+      f.marca && `marca: ${MARCAS[f.marca]?.label}`,
+      f.cliente !== 'Todos' && `cliente: ${f.cliente}`,
+      f.anio !== 'Todos' && `año: ${f.anio}`,
+      f.mes !== 'Todos' && `mes: ${f.mes}`,
+      f.moneda !== 'Todas' && `moneda: ${f.moneda}`,
+    ].filter(Boolean).join(' · ');
+    return `<div style="padding:40px;text-align:center;color:var(--text-secondary)">
+      <div style="font-size:32px;margin-bottom:8px">🔍</div>
+      <div style="font-size:14px;font-weight:600">Sin cotizaciones para los filtros</div>
+      ${filtrosActivos ? `<div style="font-size:12px;margin-top:6px">${filtrosActivos}</div>` : ''}
+    </div>`;
   }
 
   const rows = filtradas.map(c => {
@@ -1029,9 +1068,10 @@ function archivoTable(cotizaciones, filtroMarca) {
               title="Descargar el PDF de la cotización con el formato oficial Metal Engineers / Perfotools."
               onclick="window.descargarPDFCotizacion(${c.id_cotizacion},'${c.nro_cotizacion.replace(/'/g, "\\'")}')">📄 PDF</button>
             ${!anulada && (c.estado === 'APROBADA' || c.estado === 'TERMINADA') && !c.nro_factura ? `
-            <button class="action-btn" style="background:#16a34a;color:#fff;font-weight:600"
-              title="Emitir la factura electrónica al cliente desde esta cotización. Genera el comprobante en SUNAT (vía Nubefact) y lo asocia automáticamente."
-              onclick="window.emitirFacturaDesdeCot(${c.id_cotizacion},'${c.nro_cotizacion.replace(/'/g, "\\'")}')">🧾 Emitir Factura</button>
+            <span style="background:#fef3c7;color:#92400e;padding:3px 6px;border-radius:4px;font-size:11px;font-weight:600;border:1px solid #fde68a"
+              title="Factura pendiente de emitir. La emisión es responsabilidad contable — andá a Contabilidad → 📤 Facturación pendiente para emitirla en SUNAT.">
+              ⏳ Pend. facturar
+            </span>
             ` : ''}
             ${c.nro_factura ? `
             <span style="background:#dcfce7;color:#166534;padding:3px 6px;border-radius:4px;font-size:11px;font-weight:600;border:1px solid #86efac"
@@ -1504,15 +1544,46 @@ export const Comercial = async () => {
 
     // Archivo: filtros + acciones
     const bindArchivo = () => {
+      // Filtro marca (botones tipo pill)
       document.querySelectorAll('.filtro-marca').forEach(btn => {
         btn.onclick = () => {
           document.querySelectorAll('.filtro-marca').forEach(b => b.classList.toggle('filtro-active', b === btn));
-          const marca = btn.dataset.marca || '';
-          const cont  = document.getElementById('archivo-tabla');
-          if (cont) cont.innerHTML = archivoTable(cotizaciones, marca);
-          wireArchivoRows();
+          _archivoFiltros.marca = btn.dataset.marca || '';
+          rerenderArchivoTabla();
         };
       });
+
+      // Filtros adicionales (cliente / año / mes / moneda)
+      const btnAplicar = document.getElementById('arch-f-aplicar');
+      const btnReset   = document.getElementById('arch-f-reset');
+      if (btnAplicar) btnAplicar.onclick = () => {
+        _archivoFiltros.cliente = document.getElementById('arch-f-cliente').value;
+        _archivoFiltros.anio    = document.getElementById('arch-f-anio').value;
+        _archivoFiltros.mes     = document.getElementById('arch-f-mes').value;
+        _archivoFiltros.moneda  = document.getElementById('arch-f-moneda').value;
+        rerenderArchivoTabla();
+      };
+      if (btnReset) btnReset.onclick = () => {
+        _archivoFiltros.marca   = '';
+        _archivoFiltros.cliente = 'Todos';
+        _archivoFiltros.anio    = 'Todos';
+        _archivoFiltros.mes     = 'Todos';
+        _archivoFiltros.moneda  = 'Todas';
+        // Reset visual de los selects
+        document.getElementById('arch-f-cliente').value = 'Todos';
+        document.getElementById('arch-f-anio').value    = 'Todos';
+        document.getElementById('arch-f-mes').value     = 'Todos';
+        document.getElementById('arch-f-moneda').value  = 'Todas';
+        document.querySelectorAll('.filtro-marca').forEach(b => b.classList.toggle('filtro-active', b.dataset.marca === ''));
+        rerenderArchivoTabla();
+      };
+
+      wireArchivoRows();
+    };
+
+    const rerenderArchivoTabla = () => {
+      const cont = document.getElementById('archivo-tabla');
+      if (cont) cont.innerHTML = archivoTable(cotizaciones);
       wireArchivoRows();
     };
 
@@ -2007,17 +2078,65 @@ export const Comercial = async () => {
     </div>
     <div class="tab-panel" data-tab="archivo"    style="display:none;margin-top:16px">
       <div class="card">
-        <div style="display:flex;gap:8px;align-items:center;margin-bottom:14px;flex-wrap:wrap">
-          <strong style="font-size:12px;color:var(--text-secondary)">Filtrar por marca:</strong>
-          <button class="filtro-marca filtro-active" data-marca=""
+        <!-- Fila 1: filtro de marca como botones (paridad visual con el original) -->
+        <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap">
+          <strong style="font-size:12px;color:var(--text-secondary)">Marca:</strong>
+          <button class="filtro-marca ${_archivoFiltros.marca === '' ? 'filtro-active' : ''}" data-marca=""
             style="padding:6px 14px;border:1px solid #d1d5db;background:#fff;border-radius:20px;cursor:pointer;font-size:12px">Todas</button>
-          <button class="filtro-marca" data-marca="METAL"
+          <button class="filtro-marca ${_archivoFiltros.marca === 'METAL' ? 'filtro-active' : ''}" data-marca="METAL"
             style="padding:6px 14px;border:1px solid #d1d5db;background:#fff;border-radius:20px;cursor:pointer;font-size:12px">Metal</button>
-          <button class="filtro-marca" data-marca="PERFOTOOLS"
+          <button class="filtro-marca ${_archivoFiltros.marca === 'PERFOTOOLS' ? 'filtro-active' : ''}" data-marca="PERFOTOOLS"
             style="padding:6px 14px;border:1px solid #d1d5db;background:#fff;border-radius:20px;cursor:pointer;font-size:12px">Perfotools</button>
         </div>
+
+        <!-- Fila 2: filtros adicionales (cliente / año / mes / moneda) -->
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:14px;padding-top:10px;border-top:1px solid #f3f4f6">
+          <label style="display:flex;flex-direction:column;gap:3px;font-size:11px;color:var(--text-secondary)">
+            Cliente
+            <select id="arch-f-cliente" style="padding:6px 10px;border:1px solid #d1d5db;border-radius:5px;font-size:12px;min-width:200px">
+              <option value="Todos">Todos</option>
+              ${[...new Set(cotizaciones.map(c => c.cliente).filter(Boolean))].sort().map(cl => `<option value="${String(cl).replace(/"/g, '&quot;')}" ${_archivoFiltros.cliente === cl ? 'selected' : ''}>${cl}</option>`).join('')}
+            </select>
+          </label>
+          <label style="display:flex;flex-direction:column;gap:3px;font-size:11px;color:var(--text-secondary)">
+            Año
+            <select id="arch-f-anio" style="padding:6px 10px;border:1px solid #d1d5db;border-radius:5px;font-size:12px;min-width:90px">
+              <option value="Todos">Todos</option>
+              ${[...new Set(cotizaciones.map(c => (c.fecha || '').slice(0, 4)).filter(Boolean))].sort().reverse().map(a => `<option value="${a}" ${_archivoFiltros.anio === a ? 'selected' : ''}>${a}</option>`).join('')}
+            </select>
+          </label>
+          <label style="display:flex;flex-direction:column;gap:3px;font-size:11px;color:var(--text-secondary)">
+            Mes
+            <select id="arch-f-mes" style="padding:6px 10px;border:1px solid #d1d5db;border-radius:5px;font-size:12px;min-width:130px">
+              <option value="Todos" ${_archivoFiltros.mes === 'Todos' ? 'selected' : ''}>Todos</option>
+              <option value="01" ${_archivoFiltros.mes === '01' ? 'selected' : ''}>Enero</option>
+              <option value="02" ${_archivoFiltros.mes === '02' ? 'selected' : ''}>Febrero</option>
+              <option value="03" ${_archivoFiltros.mes === '03' ? 'selected' : ''}>Marzo</option>
+              <option value="04" ${_archivoFiltros.mes === '04' ? 'selected' : ''}>Abril</option>
+              <option value="05" ${_archivoFiltros.mes === '05' ? 'selected' : ''}>Mayo</option>
+              <option value="06" ${_archivoFiltros.mes === '06' ? 'selected' : ''}>Junio</option>
+              <option value="07" ${_archivoFiltros.mes === '07' ? 'selected' : ''}>Julio</option>
+              <option value="08" ${_archivoFiltros.mes === '08' ? 'selected' : ''}>Agosto</option>
+              <option value="09" ${_archivoFiltros.mes === '09' ? 'selected' : ''}>Septiembre</option>
+              <option value="10" ${_archivoFiltros.mes === '10' ? 'selected' : ''}>Octubre</option>
+              <option value="11" ${_archivoFiltros.mes === '11' ? 'selected' : ''}>Noviembre</option>
+              <option value="12" ${_archivoFiltros.mes === '12' ? 'selected' : ''}>Diciembre</option>
+            </select>
+          </label>
+          <label style="display:flex;flex-direction:column;gap:3px;font-size:11px;color:var(--text-secondary)">
+            Moneda
+            <select id="arch-f-moneda" style="padding:6px 10px;border:1px solid #d1d5db;border-radius:5px;font-size:12px;min-width:110px">
+              <option value="Todas" ${_archivoFiltros.moneda === 'Todas' ? 'selected' : ''}>Todas</option>
+              <option value="PEN"   ${_archivoFiltros.moneda === 'PEN'   ? 'selected' : ''}>Soles (S/)</option>
+              <option value="USD"   ${_archivoFiltros.moneda === 'USD'   ? 'selected' : ''}>Dólares ($)</option>
+            </select>
+          </label>
+          <button id="arch-f-aplicar" class="btn-secondary" style="padding:6px 16px;font-size:12px">Aplicar</button>
+          <button id="arch-f-reset" class="btn-secondary" style="padding:6px 12px;font-size:12px;background:transparent" title="Limpiar todos los filtros">⟲ Reset</button>
+        </div>
+
         <div class="table-container" id="archivo-tabla" style="overflow-x:auto">
-          ${archivoTable(cotizaciones, '')}
+          ${archivoTable(cotizaciones)}
         </div>
       </div>
     </div>
@@ -2038,3 +2157,89 @@ export const Comercial = async () => {
     </style>
   `;
 };
+
+// ════════════════════════════════════════════════════════════════
+// EXPOSICIÓN GLOBAL — top-level (corre apenas se importa Comercial.js)
+// ════════════════════════════════════════════════════════════════
+// Estas funciones se exponen globalmente para que estén disponibles desde
+// otros módulos (ej. Contabilidad → Facturación pendiente) sin que el
+// usuario haya entrado primero a Comercial. Antes solo se asignaban dentro
+// del setTimeout del render, lo cual obligaba a visitar Comercial primero.
+
+const _fetchPDFCotizacionGlobal = async (id) => {
+  const token = localStorage.getItem('erp_token');
+  const r = await fetch(`/api/cotizaciones/${id}/pdf`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!r.ok) {
+    let detalle = '';
+    try { const d = await r.json(); detalle = d?.error || JSON.stringify(d); }
+    catch { try { detalle = await r.text(); } catch {} }
+    throw new Error(`HTTP ${r.status}${detalle ? ' — ' + detalle : ''}`);
+  }
+  return await r.blob();
+};
+
+if (typeof window !== 'undefined') {
+  // Preview de PDF de cotización en modal con iframe.
+  window.previewPDFCotizacion = window.previewPDFCotizacion || (async (id, nro) => {
+    let blobUrl = null;
+    let overlay = null;
+    try {
+      const blob = await _fetchPDFCotizacionGlobal(id);
+      blobUrl = URL.createObjectURL(blob);
+      const filename = `${String(nro).replace(/\s+/g, '_')}.pdf`;
+      overlay = document.createElement('div');
+      overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.65);z-index:9000;display:flex;align-items:center;justify-content:center;padding:20px';
+      overlay.innerHTML = `
+        <div style="background:#fff;border-radius:8px;width:min(960px,95vw);height:min(92vh,1200px);display:flex;flex-direction:column;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.4)">
+          <div style="padding:12px 16px;border-bottom:1px solid #e5e7eb;display:flex;justify-content:space-between;align-items:center;background:#f9fafb;flex-wrap:wrap;gap:8px">
+            <div>
+              <strong style="font-size:14px;color:#111">📄 Vista previa</strong>
+              <span style="font-size:12px;color:#6b7280;margin-left:10px">${nro}</span>
+            </div>
+            <div style="display:flex;gap:8px">
+              <a href="${blobUrl}" download="${filename}" style="padding:7px 14px;background:#dc2626;color:#fff;border:none;border-radius:4px;font-size:12px;font-weight:600;text-decoration:none">📥 Descargar</a>
+              <button data-close type="button" style="padding:7px 14px;background:#fff;color:#374151;border:1px solid #d1d5db;border-radius:4px;cursor:pointer;font-size:12px">Cerrar</button>
+            </div>
+          </div>
+          <iframe src="${blobUrl}" style="flex:1;border:none;width:100%;background:#525659" title="${nro}"></iframe>
+        </div>`;
+      document.body.appendChild(overlay);
+      overlay.querySelector('[data-close]').onclick = () => {
+        overlay.remove();
+        if (blobUrl) URL.revokeObjectURL(blobUrl);
+      };
+    } catch (err) {
+      if (overlay && overlay.parentNode) overlay.remove();
+      if (blobUrl) URL.revokeObjectURL(blobUrl);
+      window.showError?.('Error abriendo preview: ' + (err.message || err));
+    }
+  });
+
+  // Emitir factura electrónica desde una cotización aprobada.
+  // Usa modalEmitirFactura definido más arriba en este mismo archivo.
+  window.emitirFacturaDesdeCot = window.emitirFacturaDesdeCot || (async (id, nro) => {
+    // `api` ya está importado al top del archivo (top-level scope).
+    let preview;
+    try { preview = await api.facturas.previewCotizacion(id); }
+    catch (err) { return window.showError?.('Error cargando preview: ' + err.message); }
+    let diag = null;
+    try { diag = await api.facturacion.diagnostico(); } catch {}
+    const esReal = diag?.modo === 'REAL';
+    const data = await modalEmitirFactura(preview, { nro, esReal, proveedor: diag?.proveedor });
+    if (!data) return;
+    try {
+      const r = await api.facturas.crearYEmitir(data);
+      const label = r.simulado ? '🟡 Emisión simulada' : '🟢 Factura aceptada por SUNAT';
+      window.showSuccess?.(`${label}: ${r.numero_formateado}`);
+      const pdfUrl = r.pdf_url || api.facturas.pdfUrl(r.id_factura);
+      setTimeout(() => window.open(pdfUrl, '_blank'), 600);
+      // Refresh contextual: si hay refreshModule (Contabilidad/Comercial), úsalo
+      setTimeout(() => window.refreshModule?.() || window.navigate?.('comercial'), 1500);
+    } catch (err) {
+      const msg = err?.debugging || err?.error || err?.message || JSON.stringify(err);
+      window.showError?.('Error al emitir: ' + msg);
+    }
+  });
+}

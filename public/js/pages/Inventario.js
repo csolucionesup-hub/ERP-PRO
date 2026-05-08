@@ -119,87 +119,114 @@ function renderCatalogo(panel) {
       ], 4)}
     </div>
 
-    <div style="margin-top:16px; display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
-      <span style="font-size:12px; color:var(--text-secondary); font-weight:600">Filtrar:</span>
-      <button class="btn-filtro-cat" data-cat="" style="${btnStyle}">Todos</button>
-      <button class="btn-filtro-cat" data-cat="Material" style="${btnStyle}">Material</button>
-      <button class="btn-filtro-cat" data-cat="Consumible" style="${btnStyle}">Consumible</button>
-      <button class="btn-filtro-cat" data-cat="Herramienta" style="${btnStyle}">Herramienta</button>
-      <button class="btn-filtro-cat" data-cat="Equipo" style="${btnStyle}">Equipo</button>
-      <button class="btn-filtro-cat" data-cat="EPP" style="${btnStyle}">EPP</button>
+    <div style="margin-top:16px;display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between">
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <span style="font-size:12px;color:var(--text-secondary);font-weight:600">Filtrar:</span>
+        <button class="btn-filtro-cat" data-cat="" style="${btnStyle}">Todos</button>
+        <button class="btn-filtro-cat" data-cat="Material" style="${btnStyle}">Material</button>
+        <button class="btn-filtro-cat" data-cat="Consumible" style="${btnStyle}">Consumible</button>
+        <button class="btn-filtro-cat" data-cat="Herramienta" style="${btnStyle}">Herramienta</button>
+        <button class="btn-filtro-cat" data-cat="Equipo" style="${btnStyle}">Equipo</button>
+        <button class="btn-filtro-cat" data-cat="EPP" style="${btnStyle}">EPP</button>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button id="btn-nuevo-insumo" type="button" title="Crear un nuevo ítem en el catálogo de almacén." style="padding:8px 14px;background:#7c3aed;color:white;border:none;border-radius:5px;cursor:pointer;font-size:13px;font-weight:600">➕ Nuevo ítem</button>
+        <button id="btn-retirar-insumo" type="button" title="Retirar insumos del almacén e imputar el costo a una cotización fondeada o trabajo en riesgo." style="padding:8px 14px;background:#dc2626;color:white;border:none;border-radius:5px;cursor:pointer;font-size:13px;font-weight:600">📤 Retirar a servicio</button>
+      </div>
     </div>
 
-    <div style="display:flex; gap:20px; align-items:flex-start; margin-top:16px">
-      <div class="table-container" style="flex:2">
-        <table>
-          <thead>
-            <tr>
-              <th>SKU</th><th>Insumo / Categoría</th><th>Unidad</th>
-              <th style="text-align:right">Stock</th>
-              <th style="text-align:right">Costo Und</th>
-              <th style="text-align:right">Valoración</th>
-              <th>Tracking</th>
-            </tr>
-          </thead>
-          <tbody id="tbody-inv">
-            ${rows || '<tr><td colspan="7" style="text-align:center;padding:30px;color:var(--text-secondary)">Sin ítems en almacén</td></tr>'}
-          </tbody>
-        </table>
-      </div>
-
-      <div style="flex:1; display:flex; flex-direction:column; gap:20px;">
-        <div class="card">
-          <h3 style="margin-bottom:15px;font-weight:600;font-size:15px">➕ Añadir Insumo Base</h3>
-          <form id="form-insumo" style="display:flex;flex-direction:column;gap:10px">
-            <label style="font-size:12px;color:var(--text-secondary)">Categoría ${tip('Tipo de ítem.\n• Material: insumo que se consume (acero, soldadura).\n• Consumible: gasto recurrente (guantes, lijas).\n• Herramienta: durable, se reutiliza.\n• Equipo: maquinaria registrable.\n• EPP: protección personal.')}</label>
-            <select name="categoria" required style="padding:10px;border-radius:6px;border:1px solid #d1d5db">
-              <option value="Material">Material</option>
-              <option value="Consumible">Consumible</option>
-              <option value="Herramienta">Herramienta</option>
-              <option value="Equipo">Equipo</option>
-              <option value="EPP">EPP</option>
-            </select>
-            <label style="font-size:12px;color:var(--text-secondary)">Nombre comercial ${tip('Cómo lo identificás en tu día a día. Ej: Plancha acero A36 1/4, Soldadura 6011.')}</label>
-            <input name="nombre" placeholder="Nombre Comercial" required style="padding:10px;border-radius:6px;border:1px solid #d1d5db">
-            <label style="font-size:12px;color:var(--text-secondary)">Unidad de medida ${tip('Cómo lo medís. UND=unidad, KG=kilo, M=metro lineal, M2=m², M3=m³, PAR=par, LOTE=lote, HRA=hora, DIA=día, NIU=no aplica.')}</label>
-            <select name="unidad" required style="padding:10px;border-radius:6px;border:1px solid #d1d5db">
-              <option value="UND">UND</option><option value="KG">KG</option><option value="M">M</option>
-              <option value="M2">M2</option><option value="M3">M3</option><option value="PAR">PAR</option>
-              <option value="LOTE">LOTE</option><option value="HRA">HRA</option><option value="DIA">DIA</option><option value="NIU">NIU</option>
-            </select>
-            <label style="font-size:12px;color:var(--text-secondary)">Alerta de Stock Mínimo ${tip('Cuando el stock baje a este número, te llegará una alerta para reponer. Ej: si tu mínimo es 10 y bajás a 8, ⚠️ alerta de stock bajo. Si llega a 0, 🚫 sin stock.')}</label>
-            <input name="stock_minimo" type="number" step="0.0001" value="10" required style="padding:10px;border-radius:6px;border:1px solid #d1d5db">
-            <p style="font-size:11px;color:var(--text-secondary);margin:0">El SKU se genera automáticamente según categoría.</p>
-            <button type="submit" style="padding:10px;border:none;background:var(--bg-sidebar);border-radius:6px;cursor:pointer;font-weight:bold;color:black">Crear Catálogo</button>
-          </form>
-        </div>
-
-        <div class="card" style="border-left:4px solid var(--danger)">
-          <h3 style="margin-bottom:6px;font-weight:600;font-size:15px">📤 Retirar Insumos hacia Servicio</h3>
-          <p style="font-size:12px;color:var(--text-secondary);margin-bottom:12px">Resta stock e imputa costo a la cotización fondeada (o trabajo a riesgo) para no inflar utilidades. Es el insumo del futuro módulo Producción.</p>
-          ${(!cotsAprobadas.length && !cotsRiesgo.length) ? `
-            <div style="background:#fef3c7;color:#92400e;padding:10px 12px;border-radius:6px;font-size:11px;line-height:1.5">
-              ⚠️ Sin cotizaciones APROBADAS o TRABAJO_EN_RIESGO.<br>
-              Pedí a Comercial que apruebe la cotización primero (o pasala a TRABAJO_EN_RIESGO si vas a trabajar con capital propio).
-            </div>
-          ` : `
-          <form id="form-consumo" style="display:flex;flex-direction:column;gap:10px">
-            <select name="id_cotizacion" required style="padding:10px;border-radius:6px;border:1px solid #d1d5db">
-              <option value="">— Cotización destino —</option>
-              ${cotizacionesOptions}
-            </select>
-            <select name="id_item" required style="padding:10px;border-radius:6px;border:1px solid #d1d5db">
-              <option value="">— Material utilizado —</option>
-              ${itemOptions}
-            </select>
-            <input name="cantidad" type="number" step="0.0001" placeholder="Volumen retirado" required style="padding:10px;border-radius:6px;border:1px solid #d1d5db">
-            <button type="submit" style="padding:12px;border:none;background:var(--danger);color:white;border-radius:6px;cursor:pointer;font-weight:bold;font-size:14px">Mermar Material</button>
-          </form>
-          `}
-        </div>
-      </div>
+    <div class="table-container" style="margin-top:14px">
+      <table>
+        <thead>
+          <tr>
+            <th>SKU</th><th>Insumo / Categoría</th><th>Unidad</th>
+            <th style="text-align:right">Stock</th>
+            <th style="text-align:right">Costo Und</th>
+            <th style="text-align:right">Valoración</th>
+            <th>Tracking</th>
+          </tr>
+        </thead>
+        <tbody id="tbody-inv">
+          ${rows || '<tr><td colspan="7" style="text-align:center;padding:30px;color:var(--text-secondary)">Sin ítems en almacén</td></tr>'}
+        </tbody>
+      </table>
     </div>
   `;
+
+  // Builders de los modales (se invocan al apretar los botones).
+  const formInsumoHTML = `
+    <form id="form-insumo" style="display:flex;flex-direction:column;gap:10px">
+      <label style="font-size:12px;color:var(--text-secondary)">Categoría ${tip('Tipo de ítem.\n• Material: insumo que se consume (acero, soldadura).\n• Consumible: gasto recurrente (guantes, lijas).\n• Herramienta: durable, se reutiliza.\n• Equipo: maquinaria registrable.\n• EPP: protección personal.')}</label>
+      <select name="categoria" required style="padding:10px;border-radius:6px;border:1px solid #d1d5db">
+        <option value="Material">Material</option>
+        <option value="Consumible">Consumible</option>
+        <option value="Herramienta">Herramienta</option>
+        <option value="Equipo">Equipo</option>
+        <option value="EPP">EPP</option>
+      </select>
+      <label style="font-size:12px;color:var(--text-secondary)">Nombre comercial ${tip('Cómo lo identificás en tu día a día. Ej: Plancha acero A36 1/4, Soldadura 6011.')}</label>
+      <input name="nombre" placeholder="Nombre Comercial" required style="padding:10px;border-radius:6px;border:1px solid #d1d5db">
+      <label style="font-size:12px;color:var(--text-secondary)">Unidad de medida ${tip('Cómo lo medís. UND=unidad, KG=kilo, M=metro lineal, M2=m², M3=m³, PAR=par, LOTE=lote, HRA=hora, DIA=día, NIU=no aplica.')}</label>
+      <select name="unidad" required style="padding:10px;border-radius:6px;border:1px solid #d1d5db">
+        <option value="UND">UND</option><option value="KG">KG</option><option value="M">M</option>
+        <option value="M2">M2</option><option value="M3">M3</option><option value="PAR">PAR</option>
+        <option value="LOTE">LOTE</option><option value="HRA">HRA</option><option value="DIA">DIA</option><option value="NIU">NIU</option>
+      </select>
+      <label style="font-size:12px;color:var(--text-secondary)">Alerta de Stock Mínimo ${tip('Cuando el stock baje a este número, te llegará una alerta para reponer. Ej: si tu mínimo es 10 y bajás a 8, ⚠️ alerta de stock bajo. Si llega a 0, 🚫 sin stock.')}</label>
+      <input name="stock_minimo" type="number" step="0.0001" value="10" required style="padding:10px;border-radius:6px;border:1px solid #d1d5db">
+      <p style="font-size:11px;color:var(--text-secondary);margin:0">El SKU se genera automáticamente según categoría.</p>
+      <button type="submit" style="padding:10px;border:none;background:#7c3aed;color:white;border-radius:6px;cursor:pointer;font-weight:bold">Crear Catálogo</button>
+    </form>
+  `;
+  const formConsumoHTML = (!cotsAprobadas.length && !cotsRiesgo.length) ? `
+    <div style="background:#fef3c7;color:#92400e;padding:10px 12px;border-radius:6px;font-size:11px;line-height:1.5">
+      ⚠️ Sin cotizaciones APROBADAS o TRABAJO_EN_RIESGO.<br>
+      Pedí a Comercial que apruebe la cotización primero (o pasala a TRABAJO_EN_RIESGO si vas a trabajar con capital propio).
+    </div>
+  ` : `
+    <form id="form-consumo" style="display:flex;flex-direction:column;gap:10px">
+      <select name="id_cotizacion" required style="padding:10px;border-radius:6px;border:1px solid #d1d5db">
+        <option value="">— Cotización destino —</option>
+        ${cotizacionesOptions}
+      </select>
+      <select name="id_item" required style="padding:10px;border-radius:6px;border:1px solid #d1d5db">
+        <option value="">— Material utilizado —</option>
+        ${itemOptions}
+      </select>
+      <input name="cantidad" type="number" step="0.0001" placeholder="Volumen retirado" required style="padding:10px;border-radius:6px;border:1px solid #d1d5db">
+      <button type="submit" style="padding:12px;border:none;background:var(--danger);color:white;border-radius:6px;cursor:pointer;font-weight:bold;font-size:14px">Mermar Material</button>
+    </form>
+  `;
+
+  // Helper: abre un modal genérico con título + contenido HTML, retorna el overlay.
+  function abrirModalInv(titulo, contenidoHTML, opcionesAdicionales = '') {
+    const ov = document.createElement('div');
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9999;display:flex;align-items:flex-start;justify-content:center;padding:40px 20px;overflow-y:auto';
+    ov.innerHTML = `
+      <div style="background:#fff;border-radius:8px;width:min(540px,95vw);padding:22px;box-shadow:0 20px 60px rgba(0,0,0,.3);max-height:calc(100vh - 80px);overflow-y:auto">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+          <h3 style="margin:0;font-size:16px;font-weight:700">${titulo}</h3>
+          <button data-close type="button" style="background:transparent;border:none;font-size:22px;line-height:1;color:#94a3b8;cursor:pointer">×</button>
+        </div>
+        ${opcionesAdicionales ? `<p style="font-size:12px;color:var(--text-secondary);margin:0 0 14px;line-height:1.5">${opcionesAdicionales}</p>` : ''}
+        ${contenidoHTML}
+      </div>
+    `;
+    document.body.appendChild(ov);
+    ov.querySelector('[data-close]').onclick = () => ov.remove();
+    return ov;
+  }
+
+  // Botones que abren los modales
+  document.getElementById('btn-nuevo-insumo').onclick = () => {
+    const ov = abrirModalInv('➕ Añadir Insumo Base', formInsumoHTML);
+    bindFormInsumo(ov);
+  };
+  document.getElementById('btn-retirar-insumo').onclick = () => {
+    const desc = 'Resta stock e imputa costo a la cotización fondeada (o trabajo a riesgo) para no inflar utilidades. Es el insumo del futuro módulo Producción.';
+    const ov = abrirModalInv('📤 Retirar Insumos hacia Servicio', formConsumoHTML, desc);
+    bindFormConsumo(ov);
+  };
 
   // Filtro categoría
   panel.querySelectorAll('.btn-filtro-cat').forEach(btn => {
@@ -213,42 +240,50 @@ function renderCatalogo(panel) {
     };
   });
 
-  // Form Nuevo Insumo
-  const formItem = panel.querySelector('#form-insumo');
-  if (formItem) formItem.onsubmit = async (e) => {
-    e.preventDefault();
-    const data = {
-      nombre: e.target.nombre.value,
-      categoria: e.target.categoria.value,
-      unidad: e.target.unidad.value,
-      stock_minimo: Number(e.target.stock_minimo.value) || 10
+  // Bind del form Nuevo Insumo dentro de un overlay
+  function bindFormInsumo(ov) {
+    const formItem = ov.querySelector('#form-insumo');
+    if (!formItem) return;
+    formItem.onsubmit = async (e) => {
+      e.preventDefault();
+      const data = {
+        nombre: e.target.nombre.value,
+        categoria: e.target.categoria.value,
+        unidad: e.target.unidad.value,
+        stock_minimo: Number(e.target.stock_minimo.value) || 10
+      };
+      try {
+        const res = await api.inventory.createInventarioItem(data);
+        showSuccess('Insumo registrado con SKU: ' + res.sku);
+        ov.remove();
+        window.navigate('inventario');
+      } catch (err) {
+        showError(err.detalles?.[0] || err.error || 'Error al registrar insumo');
+      }
     };
-    try {
-      const res = await api.inventory.createInventarioItem(data);
-      showSuccess('Insumo registrado con SKU: ' + res.sku);
-      window.navigate('inventario');
-    } catch (err) {
-      showError(err.detalles?.[0] || err.error || 'Error al registrar insumo');
-    }
-  };
+  }
 
-  // Form Consumo — imputa contra cotización fondeada (o trabajo a riesgo).
-  // Es el insumo del futuro módulo Producción Metalmecánica.
-  const formConsumo = panel.querySelector('#form-consumo');
-  if (formConsumo) formConsumo.onsubmit = async (e) => {
-    e.preventDefault();
-    const data = {
-      id_cotizacion: Number(e.target.id_cotizacion.value),
-      detalles: [{ id_item: Number(e.target.id_item.value), cantidad: Number(e.target.cantidad.value) }]
+  // Bind del form Retirar Insumos — imputa contra cotización fondeada
+  // (o trabajo a riesgo). Es el insumo del futuro módulo Producción.
+  function bindFormConsumo(ov) {
+    const formConsumo = ov.querySelector('#form-consumo');
+    if (!formConsumo) return;
+    formConsumo.onsubmit = async (e) => {
+      e.preventDefault();
+      const data = {
+        id_cotizacion: Number(e.target.id_cotizacion.value),
+        detalles: [{ id_item: Number(e.target.id_item.value), cantidad: Number(e.target.cantidad.value) }]
+      };
+      try {
+        await api.inventory.consumirInventario(data);
+        showSuccess('Almacén rebajado y costo imputado a la cotización');
+        ov.remove();
+        window.navigate('inventario');
+      } catch (err) {
+        showError(err.detalles?.[0] || err.error || 'Error al registrar consumo');
+      }
     };
-    try {
-      await api.inventory.consumirInventario(data);
-      showSuccess('Almacén rebajado y costo imputado a la cotización');
-      window.navigate('inventario');
-    } catch (err) {
-      showError(err.detalles?.[0] || err.error || 'Error al registrar consumo');
-    }
-  };
+  }
 }
 
 // ─── TAB Dashboard ───────────────────────────────────────────────────

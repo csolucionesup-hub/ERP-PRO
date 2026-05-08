@@ -65,7 +65,7 @@ export const Logistica = async () => {
         <span style="color:var(--text-secondary)">Hub de operaciones: proveedores, OCs, gastos por centro de costo. Todas las salidas generan OC formal.</span>
       </div>
     </header>
-    <div id="logi-tabbar" style="margin-top:20px"></div>
+    <div id="logi-tabbar" style="margin-top:20px;position:sticky;top:0;z-index:10;background:var(--app-bg);padding-top:8px"></div>
     <div id="logi-panel-proveedores" class="logi-tab-content"></div>
     <div id="logi-panel-oc"            class="logi-tab-content" style="display:none"></div>
     <div id="logi-panel-centros"       class="logi-tab-content" style="display:none"></div>
@@ -179,32 +179,47 @@ async function renderTabCentros(panel) {
   }).join('');
 
   panel.innerHTML = `
-    <div style="display:grid;grid-template-columns:1.5fr 1fr;gap:20px;margin-top:16px;align-items:start">
-      <div class="card">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
-          <h3 style="margin:0;font-size:15px">Centros de Costo registrados</h3>
-          <span style="font-size:11px;color:var(--text-secondary)">${resumen.length} centro(s) · año ${new Date().getFullYear()}</span>
-        </div>
-        <div style="overflow-x:auto">
-          <table style="width:100%;border-collapse:collapse;font-size:12px">
-            <thead><tr style="background:#fafafa;border-bottom:2px solid #e5e7eb">
-              <th style="padding:8px;text-align:left">Tipo</th>
-              <th style="padding:8px;text-align:left">Nombre</th>
-              <th style="padding:8px;text-align:right">OCs</th>
-              <th style="padding:8px;text-align:right">Monto Total</th>
-              <th style="padding:8px;text-align:left">Última OC</th>
-              <th style="padding:8px;text-align:center">Activo</th>
-              <th style="padding:8px;text-align:center">Acciones</th>
-            </tr></thead>
-            <tbody>
-              ${rows || '<tr><td colspan="7" style="padding:30px;text-align:center;color:var(--text-secondary)">Sin centros — crea uno con el form de la derecha</td></tr>'}
-            </tbody>
-          </table>
-        </div>
+    <div style="margin-top:16px;display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+      <div>
+        <h3 style="margin:0;font-size:15px">Centros de Costo registrados</h3>
+        <span style="font-size:11px;color:var(--text-secondary)">${resumen.length} centro(s) · año ${new Date().getFullYear()}</span>
       </div>
+      <button id="btn-cc-nuevo" type="button" title="Crear un nuevo centro de costo (oficina, proyecto, almacén)." style="padding:8px 14px;background:#7c3aed;color:white;border:none;border-radius:5px;cursor:pointer;font-size:13px;font-weight:600">➕ Nuevo Centro de Costo</button>
+    </div>
+    <div class="card">
+      <div style="overflow-x:auto">
+        <table style="width:100%;border-collapse:collapse;font-size:12px">
+          <thead><tr style="background:#fafafa;border-bottom:2px solid #e5e7eb">
+            <th style="padding:8px;text-align:left">Tipo</th>
+            <th style="padding:8px;text-align:left">Nombre</th>
+            <th style="padding:8px;text-align:right">OCs</th>
+            <th style="padding:8px;text-align:right">Monto Total</th>
+            <th style="padding:8px;text-align:left">Última OC</th>
+            <th style="padding:8px;text-align:center">Activo</th>
+            <th style="padding:8px;text-align:center">Acciones</th>
+          </tr></thead>
+          <tbody>
+            ${rows || '<tr><td colspan="7" style="padding:30px;text-align:center;color:var(--text-secondary)">Sin centros — usá el botón "➕ Nuevo Centro de Costo" arriba.</td></tr>'}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div style="margin-top:14px;padding:10px;background:#f0f9ff;border-left:3px solid #0284c7;border-radius:4px;font-size:11px;color:#075985">
+      💡 <strong>Tip:</strong> En cada OC, el campo "Centro de Costo" autocompleta desde esta lista.
+      Si escribís un nombre nuevo, se crea automáticamente al guardar la OC.
+    </div>
+  `;
 
-      <div class="card">
-        <h3 style="margin:0 0 12px;font-size:15px">➕ Nuevo Centro de Costo</h3>
+  // Botón "+ Nuevo Centro de Costo" — abre form en modal
+  panel.querySelector('#btn-cc-nuevo').onclick = () => {
+    const ov = document.createElement('div');
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1500;display:flex;align-items:center;justify-content:center;padding:20px';
+    ov.innerHTML = `
+      <div style="background:white;border-radius:10px;padding:24px;width:440px;max-width:95vw">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+          <h3 style="margin:0;font-size:15px;font-weight:700">➕ Nuevo Centro de Costo</h3>
+          <button data-close type="button" title="Cerrar sin guardar" aria-label="Cerrar" style="background:none;border:none;font-size:20px;cursor:pointer;color:#999">×</button>
+        </div>
         <form id="form-cc-nuevo" style="display:flex;flex-direction:column;gap:10px">
           <div>
             <label style="font-size:11px;color:var(--text-secondary)">Tipo *</label>
@@ -221,33 +236,28 @@ async function renderTabCentros(panel) {
             <label style="font-size:11px;color:var(--text-secondary)">Descripción (opcional)</label>
             <input name="descripcion" placeholder="Notas internas sobre el centro" style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
           </div>
-          <button type="submit" style="padding:11px;border:none;background:var(--primary-color);color:white;border-radius:6px;cursor:pointer;font-weight:600;font-size:13px">
-            ➕ Guardar
-          </button>
+          <button type="submit" style="padding:11px;border:none;background:var(--primary-color);color:white;border-radius:6px;cursor:pointer;font-weight:600;font-size:13px">➕ Guardar</button>
         </form>
-        <div style="margin-top:14px;padding:10px;background:#f0f9ff;border-left:3px solid #0284c7;border-radius:4px;font-size:11px;color:#075985">
-          💡 <strong>Tip:</strong> En cada OC, el campo "Centro de Costo" autocompleta desde esta lista.
-          Si escribís un nombre nuevo, se crea automáticamente al guardar la OC.
-        </div>
       </div>
-    </div>
-  `;
-
-  // Form crear
-  panel.querySelector('#form-cc-nuevo').onsubmit = async (e) => {
-    e.preventDefault();
-    const f = e.target;
-    try {
-      await api.centrosCosto.create({
-        nombre: f.nombre.value,
-        tipo: f.tipo.value,
-        descripcion: f.descripcion.value || undefined,
-      });
-      showSuccess('Centro de costo creado');
-      window.navigate('logistica');
-    } catch (err) {
-      showError(err?.error || err?.message || 'Error al crear');
-    }
+    `;
+    document.body.appendChild(ov);
+    ov.querySelector('[data-close]').onclick = () => ov.remove();
+    ov.querySelector('#form-cc-nuevo').onsubmit = async (e) => {
+      e.preventDefault();
+      const f = e.target;
+      try {
+        await api.centrosCosto.create({
+          nombre: f.nombre.value,
+          tipo: f.tipo.value,
+          descripcion: f.descripcion.value || undefined,
+        });
+        showSuccess('Centro de costo creado');
+        ov.remove();
+        window.navigate('logistica');
+      } catch (err) {
+        showError(err?.error || err?.message || 'Error al crear');
+      }
+    };
   };
 }
 
@@ -621,62 +631,163 @@ async function verROC(centroNombre) {
   await cargar();
 }
 
+// Filtros por tab (Año/Mes). Persisten en module-scope para no perderlos
+// al re-renderizar después de "Aplicar".
+const _filtrosTabOC = {
+  GENERAL:     { anio: new Date().getFullYear(), mes: 'Todos' },
+  SERVICIO:    { anio: new Date().getFullYear(), mes: 'Todos' },
+  ALMACEN:     { anio: new Date().getFullYear(), mes: 'Todos' },
+  SIN_FACTURA: { anio: new Date().getFullYear(), mes: 'Todos' },
+};
+
+// Aplica filtros de Año/Mes a una lista de OCs.
+function filtrarOCsPorFecha(ocs, tipoOC) {
+  const f = _filtrosTabOC[tipoOC];
+  if (!f) return ocs;
+  return ocs.filter(oc => {
+    const fecha = String(oc.fecha_emision || '');
+    if (f.anio && !fecha.startsWith(String(f.anio))) return false;
+    if (f.mes !== 'Todos' && fecha.slice(5, 7) !== f.mes) return false;
+    return true;
+  });
+}
+
+// HTML de la barra de filtros — compartido por los 3 tabs.
+function filtrosBarHTML(tipoOC, ocsFuente) {
+  const f = _filtrosTabOC[tipoOC];
+  const aniosDisp = [...new Set(ocsFuente.map(o => (o.fecha_emision || '').slice(0, 4)).filter(Boolean))].sort().reverse();
+  const meses = [
+    { v: 'Todos', l: 'Todos' }, { v: '01', l: 'Enero' }, { v: '02', l: 'Febrero' },
+    { v: '03', l: 'Marzo' }, { v: '04', l: 'Abril' }, { v: '05', l: 'Mayo' },
+    { v: '06', l: 'Junio' }, { v: '07', l: 'Julio' }, { v: '08', l: 'Agosto' },
+    { v: '09', l: 'Septiembre' }, { v: '10', l: 'Octubre' }, { v: '11', l: 'Noviembre' },
+    { v: '12', l: 'Diciembre' },
+  ];
+  return `
+    <div class="card" style="padding:12px 14px;margin-bottom:12px;display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end">
+      <label style="display:flex;flex-direction:column;gap:3px;font-size:11px;color:var(--text-secondary)">
+        Año
+        <select id="ftab-${tipoOC}-anio" style="padding:6px 10px;border:1px solid #d1d5db;border-radius:5px;font-size:12px;min-width:90px">
+          ${aniosDisp.map(a => `<option value="${a}" ${String(f.anio) === a ? 'selected' : ''}>${a}</option>`).join('')}
+        </select>
+      </label>
+      <label style="display:flex;flex-direction:column;gap:3px;font-size:11px;color:var(--text-secondary)">
+        Mes
+        <select id="ftab-${tipoOC}-mes" style="padding:6px 10px;border:1px solid #d1d5db;border-radius:5px;font-size:12px;min-width:130px">
+          ${meses.map(m => `<option value="${m.v}" ${f.mes === m.v ? 'selected' : ''}>${m.l}</option>`).join('')}
+        </select>
+      </label>
+      <button id="ftab-${tipoOC}-aplicar" class="btn-secondary" style="padding:6px 14px;font-size:12px">Aplicar</button>
+      <button id="ftab-${tipoOC}-reset" class="btn-secondary" style="padding:6px 12px;font-size:12px;background:transparent" title="Limpiar filtros">⟲ Reset</button>
+    </div>
+  `;
+}
+
+// Bind de los handlers de la barra de filtros, recibe el panel y la función
+// para re-renderizar el tab con los filtros aplicados.
+function bindFiltrosTab(panel, tipoOC, reRender) {
+  panel.querySelector(`#ftab-${tipoOC}-aplicar`).onclick = () => {
+    _filtrosTabOC[tipoOC].anio = Number(panel.querySelector(`#ftab-${tipoOC}-anio`).value);
+    _filtrosTabOC[tipoOC].mes  = panel.querySelector(`#ftab-${tipoOC}-mes`).value;
+    reRender();
+  };
+  panel.querySelector(`#ftab-${tipoOC}-reset`).onclick = () => {
+    _filtrosTabOC[tipoOC] = { anio: new Date().getFullYear(), mes: 'Todos' };
+    reRender();
+  };
+}
+
 // ─── TAB Gastos Generales / Servicios (ambos comparten layout multi-línea) ──
 function renderTabGastos(panel, tipoOC) {
   panel.dataset.rendered = '1';
   const esServicio = tipoOC === 'SERVICIO';
-  const ocs = esServicio ? _ocsServicio : _ocsGeneral;
+  const ocsFuente = esServicio ? _ocsServicio : _ocsGeneral;
+  const ocs = filtrarOCsPorFecha(ocsFuente, tipoOC);
   const total = ocs.reduce((s, o) => s + Number(o.total || 0), 0);
 
   const tituloPanel = esServicio
     ? 'Gastos vinculados a Servicios / Proyectos'
     : 'Gastos Generales — Oficina, Marketing, SUNAT, Servicios públicos';
+  const btnLabel = esServicio ? '➕ Nueva OC de Servicio' : '➕ Nueva OC General';
+  const f = _filtrosTabOC[tipoOC];
+  const filtroDesc = f.mes === 'Todos' ? `año ${f.anio}` : `${f.anio}-${f.mes}`;
 
   panel.innerHTML = `
-    <div style="display:grid;grid-template-columns:1.2fr 1fr;gap:20px;margin-top:16px;align-items:start">
-      <div class="card">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
-          <h3 style="margin:0;font-size:15px">${tituloPanel}</h3>
-          <span style="font-size:11px;color:var(--text-secondary)">${ocs.length} OC(s) · ${fPEN(total)}</span>
-        </div>
-        ${ocs.length ? renderTablaOCs(ocs, { mostrarServicio: esServicio }) : emptyState(
-          esServicio ? 'Sin gastos de servicio todavía' : 'Sin gastos generales registrados',
-          'Cada OC que crees aparece aquí con su PDF descargable.'
-        )}
+    <div style="margin-top:16px;display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+      <div>
+        <h3 style="margin:0;font-size:15px">${tituloPanel}</h3>
+        <span style="font-size:11px;color:var(--text-secondary)">${ocs.length} OC(s) · ${fPEN(total)} · ${filtroDesc}</span>
       </div>
-      ${renderFormOC(tipoOC)}
+      <button id="btn-oc-${tipoOC.toLowerCase()}" type="button" style="padding:8px 14px;background:#7c3aed;color:white;border:none;border-radius:5px;cursor:pointer;font-size:13px;font-weight:600">${btnLabel}</button>
+    </div>
+    ${filtrosBarHTML(tipoOC, ocsFuente)}
+    <div class="card">
+      ${ocs.length ? renderTablaOCs(ocs, { mostrarServicio: esServicio }) : emptyState(
+        'No hay OCs para los filtros seleccionados',
+        ocsFuente.length ? 'Probá ajustar el Año/Mes o presioná ⟲ Reset.' : 'Apretá el botón "' + btnLabel + '" arriba para empezar.'
+      )}
     </div>
   `;
 
-  bindFormOCMulti(panel, tipoOC);
+  panel.querySelector(`#btn-oc-${tipoOC.toLowerCase()}`).onclick = () => abrirModalNuevaOC(tipoOC);
+  bindFiltrosTab(panel, tipoOC, () => {
+    panel.dataset.rendered = '';
+    renderTabGastos(panel, tipoOC);
+  });
 }
 
 // ─── TAB Compras Almacén (usa el mismo form unificado) ──────────────────
 function renderTabAlmacen(panel) {
   panel.dataset.rendered = '1';
-  const ocs = _ocsAlmacen;
+  const ocsFuente = _ocsAlmacen;
+  const ocs = filtrarOCsPorFecha(ocsFuente, 'ALMACEN');
   const total = ocs.reduce((s, o) => s + Number(o.total || 0), 0);
+  const f = _filtrosTabOC.ALMACEN;
+  const filtroDesc = f.mes === 'Todos' ? `año ${f.anio}` : `${f.anio}-${f.mes}`;
 
   panel.innerHTML = `
-    <div style="display:grid;grid-template-columns:1.2fr 1fr;gap:20px;margin-top:16px;align-items:start">
-      <div class="card">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
-          <h3 style="margin:0;font-size:15px">Compras de Almacén</h3>
-          <span style="font-size:11px;color:var(--text-secondary)">${ocs.length} OC(s) · ${fPEN(total)}</span>
-        </div>
-        <p style="font-size:12px;color:var(--text-secondary);margin-bottom:14px;padding:10px;background:#f9fafb;border-radius:6px">
-          📦 Los ítems aparecen en <a href="#inventario" style="color:var(--primary-color);font-weight:600">Inventario</a> cuando marques la OC como <strong>Recibida</strong>.
-        </p>
-        ${ocs.length ? renderTablaOCs(ocs, { mostrarAlmacen: true }) : emptyState(
-          'Sin compras de almacén',
-          'Registrá una OC con ítems y cantidades.'
-        )}
+    <div style="margin-top:16px;display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+      <div>
+        <h3 style="margin:0;font-size:15px">Compras de Almacén</h3>
+        <span style="font-size:11px;color:var(--text-secondary)">${ocs.length} OC(s) · ${fPEN(total)} · ${filtroDesc}</span>
       </div>
-      ${renderFormOC('ALMACEN')}
+      <button id="btn-oc-almacen" type="button" style="padding:8px 14px;background:#7c3aed;color:white;border:none;border-radius:5px;cursor:pointer;font-size:13px;font-weight:600">➕ Nueva OC Almacén</button>
+    </div>
+    ${filtrosBarHTML('ALMACEN', ocsFuente)}
+    <div class="card" style="margin-bottom:14px;padding:10px 14px;background:#f9fafb;border-left:3px solid var(--primary-color);font-size:12px;color:var(--text-secondary)">
+      📦 Los ítems aparecen en <a href="#inventario" style="color:var(--primary-color);font-weight:600">Inventario</a> cuando marques la OC como <strong>Recibida</strong>.
+    </div>
+    <div class="card">
+      ${ocs.length ? renderTablaOCs(ocs, { mostrarAlmacen: true }) : emptyState(
+        'No hay OCs para los filtros seleccionados',
+        ocsFuente.length ? 'Probá ajustar el Año/Mes o presioná ⟲ Reset.' : 'Apretá "➕ Nueva OC Almacén" para registrar la primera.'
+      )}
     </div>
   `;
 
-  bindFormOCMulti(panel, 'ALMACEN');
+  panel.querySelector('#btn-oc-almacen').onclick = () => abrirModalNuevaOC('ALMACEN');
+  bindFiltrosTab(panel, 'ALMACEN', () => {
+    panel.dataset.rendered = '';
+    renderTabAlmacen(panel);
+  });
+}
+
+// Helper: abre modal con el form completo de OC (multi-línea) y bindea handlers.
+// Usado por los 3 tabs (General, Servicio, Almacén).
+function abrirModalNuevaOC(tipoOC) {
+  const ov = document.createElement('div');
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9999;display:flex;align-items:flex-start;justify-content:center;padding:30px 20px;overflow-y:auto';
+  ov.innerHTML = `
+    <div style="background:#fff;border-radius:8px;width:min(720px,95vw);box-shadow:0 20px 60px rgba(0,0,0,.3);max-height:calc(100vh - 60px);overflow-y:auto;position:relative">
+      <button data-close type="button" title="Cerrar sin guardar" aria-label="Cerrar" style="position:absolute;top:14px;right:14px;background:#fff;border:1px solid #d1d5db;border-radius:50%;width:30px;height:30px;font-size:18px;cursor:pointer;color:#64748b;z-index:10;display:flex;align-items:center;justify-content:center;line-height:1">×</button>
+      <div style="padding:8px">
+        ${renderFormOC(tipoOC)}
+      </div>
+    </div>
+  `;
+  document.body.appendChild(ov);
+  ov.querySelector('[data-close]').onclick = () => ov.remove();
+  bindFormOCMulti(ov, tipoOC);
 }
 
 // ─── TAB Sin facturar ──────────────────────────────────────────────────
@@ -685,12 +796,39 @@ function renderTabAlmacen(panel) {
 // Los botones usan OC.verOC y OC.asociarFactura — el namespace window.OC
 // se inicializa como side-effect del import del módulo OrdenesCompra
 // (top-level del archivo), así que está disponible siempre.
+//
+// Recarga local de la tabla (sin pisar la pestaña activa). Se invoca después
+// de subir factura o mandar a terminada, así no perdemos contexto.
+async function refrescarTablaSinFactura() {
+  try {
+    _ocsSinFactura = await api.ordenesCompra.list({ estado: 'CERRADA_SIN_FACTURA' }).catch(() => []);
+  } catch (_) { _ocsSinFactura = _ocsSinFactura || []; }
+  const panel = document.getElementById('logi-panel-sin-factura');
+  if (panel) {
+    panel.dataset.rendered = '';
+    renderTabSinFactura(panel);
+  }
+}
+window._logiRefrescarSinFactura = refrescarTablaSinFactura;
+
+// Helper para previsualizar el PDF adjunto de una OC desde un onclick inline.
+// Usa el proxy backend (previewFacturaOC) para evitar CORS de Cloudinary.
+window._logiVerPDFFactura = async (id_oc) => {
+  try {
+    const f = await api.ordenesCompra.getFactura(id_oc);
+    if (f && f.url_pdf) {
+      window.previewFacturaOC(id_oc, 'Factura ' + (f.nro_comprobante || ''));
+    } else {
+      showError('No se pudo cargar el PDF (puede que no se haya subido archivo, solo datos).');
+    }
+  } catch (e) {
+    showError('Error abriendo preview: ' + (e.message || e));
+  }
+};
+
 function renderTabSinFactura(panel) {
   panel.dataset.rendered = '1';
-  const total = _ocsSinFactura.reduce((s, oc) => {
-    const t = oc.moneda === 'USD' ? Number(oc.total) * (Number(oc.tipo_cambio) || 1) : Number(oc.total);
-    return s + (t || 0);
-  }, 0);
+  const _esGerente = JSON.parse(localStorage.getItem('erp_user') || '{}').rol === 'GERENTE';
 
   if (!_ocsSinFactura.length) {
     panel.innerHTML = `
@@ -706,18 +844,31 @@ function renderTabSinFactura(panel) {
     return;
   }
 
+  // Aplicar filtros año/mes (mismo patrón que los otros tabs).
+  const ocsFiltradas = filtrarOCsPorFecha(_ocsSinFactura, 'SIN_FACTURA');
+  const total = ocsFiltradas.reduce((s, oc) => {
+    const t = oc.moneda === 'USD' ? Number(oc.total) * (Number(oc.tipo_cambio) || 1) : Number(oc.total);
+    return s + (t || 0);
+  }, 0);
+  const f = _filtrosTabOC.SIN_FACTURA;
+  const filtroDesc = f.mes === 'Todos' ? `año ${f.anio}` : `${f.anio}-${f.mes}`;
+
   panel.innerHTML = `
-    <div class="card" style="margin-top:16px">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
-        <div>
-          <h3 style="margin:0;font-size:15px">🗂 OCs Cerradas Sin Factura</h3>
-          <div style="font-size:12px;color:var(--text-secondary);margin-top:2px">
-            Pendientes de asociar comprobante. Total acumulado equivalente: <strong>${fPEN(total)}</strong>
-          </div>
+    <div style="margin-top:16px;display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+      <div>
+        <h3 style="margin:0;font-size:15px">🗂 OCs Cerradas Sin Factura</h3>
+        <div style="font-size:12px;color:var(--text-secondary);margin-top:2px">
+          Pendientes de asociar comprobante · ${filtroDesc} · Total: <strong>${fPEN(total)}</strong>
         </div>
-        <span style="background:#fff7ed;color:#9a3412;padding:5px 12px;border-radius:14px;font-size:12px;font-weight:600">
-          ${_ocsSinFactura.length} pendiente(s)
-        </span>
+      </div>
+      <span style="background:#fff7ed;color:#9a3412;padding:5px 12px;border-radius:14px;font-size:12px;font-weight:600">
+        ${ocsFiltradas.length} pendiente(s)
+      </span>
+    </div>
+    ${filtrosBarHTML('SIN_FACTURA', _ocsSinFactura)}
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+        <h3 style="margin:0;font-size:14px;color:var(--text-secondary)">${ocsFiltradas.length === 0 ? 'No hay OCs para los filtros' : 'Listado'}</h3>
       </div>
       <div style="overflow-x:auto">
         <table style="width:100%;border-collapse:collapse;font-size:12px">
@@ -728,31 +879,56 @@ function renderTabSinFactura(panel) {
               <th style="padding:10px;text-align:left">Proveedor</th>
               <th style="padding:10px;text-align:left">Tipo</th>
               <th style="padding:10px;text-align:left">Centro de costo</th>
+              <th style="padding:10px;text-align:left">PDF</th>
               <th style="padding:10px;text-align:right">Total</th>
               <th style="padding:10px;text-align:center">Acciones</th>
             </tr>
           </thead>
           <tbody>
-            ${_ocsSinFactura.map(oc => `
-              <tr style="border-bottom:1px solid #e5e7eb">
-                <td style="padding:10px;font-weight:700">
-                  <a href="#" onclick="event.preventDefault();OC.verOC(${oc.id_oc})" style="color:var(--primary-color);text-decoration:none">${oc.nro_oc}</a>
-                </td>
-                <td style="padding:10px;color:#6b7280">${fmtDate(oc.fecha_emision)}</td>
-                <td style="padding:10px">${oc.proveedor_nombre || '—'}</td>
-                <td style="padding:10px"><span style="font-size:10px;background:#e5e7eb;padding:2px 6px;border-radius:4px">${oc.tipo_oc}</span></td>
-                <td style="padding:10px;color:#6b7280">${oc.centro_costo || '—'}</td>
-                <td style="padding:10px;text-align:right;font-weight:700">${oc.moneda === 'USD' ? fUSD(oc.total) : fPEN(oc.total)}</td>
-                <td style="padding:10px;text-align:center;white-space:nowrap">
-                  <button onclick="OC.verOC(${oc.id_oc})" style="padding:5px 10px;background:#fff;color:#374151;border:1px solid #d1d5db;border-radius:4px;cursor:pointer;font-size:11px;margin-right:4px">👁 Ver</button>
-                  <button onclick="OC.asociarFactura(${oc.id_oc}, '${oc.nro_oc.replace(/'/g, "\\'")}')" style="padding:5px 10px;background:#7c3aed;color:white;border:none;border-radius:4px;cursor:pointer;font-size:11px">🧾 Asociar factura</button>
-                </td>
-              </tr>
-            `).join('')}
+            ${ocsFiltradas.map(oc => {
+              const tienePDF = !!oc.factura_adjunta_id;
+              const nroSafe = oc.nro_oc.replace(/'/g, "\\'");
+              const onSubir = `OC.subirFactura(${oc.id_oc}).then(ok => { if (ok) window._logiRefrescarSinFactura?.(); })`;
+              const onTerminar = `OC.facturar(${oc.id_oc}).then(() => window._logiRefrescarSinFactura?.())`;
+              return `
+                <tr style="border-bottom:1px solid #e5e7eb">
+                  <td style="padding:10px;font-weight:700">
+                    <a href="#" onclick="event.preventDefault();OC.verOC(${oc.id_oc})" style="color:var(--primary-color);text-decoration:none">${oc.nro_oc}</a>
+                  </td>
+                  <td style="padding:10px;color:#6b7280">${fmtDate(oc.fecha_emision)}</td>
+                  <td style="padding:10px">${oc.proveedor_nombre || '—'}</td>
+                  <td style="padding:10px"><span style="font-size:10px;background:#e5e7eb;padding:2px 6px;border-radius:4px">${oc.tipo_oc}</span></td>
+                  <td style="padding:10px;color:#6b7280">${oc.centro_costo || '—'}</td>
+                  <td style="padding:10px">
+                    ${tienePDF
+                      ? `<span title="Factura ${oc.factura_adjunta_nro || ''} adjunta" style="font-size:10px;background:#dcfce7;color:#166534;padding:3px 8px;border-radius:10px;font-weight:600;margin-right:4px">✓ PDF</span>
+                         <button onclick="window._logiVerPDFFactura(${oc.id_oc})" title="Previsualizar el PDF de la factura adjunta para verificar que es el documento correcto." style="background:transparent;color:#15803d;border:1px solid #86efac;border-radius:4px;padding:2px 7px;cursor:pointer;font-size:11px">👁️</button>`
+                      : `<span style="font-size:10px;color:#9ca3af">—</span>`}
+                  </td>
+                  <td style="padding:10px;text-align:right;font-weight:700">${oc.moneda === 'USD' ? fUSD(oc.total) : fPEN(oc.total)}</td>
+                  <td style="padding:10px;text-align:center;white-space:nowrap">
+                    <button onclick="OC.verOC(${oc.id_oc})" title="Abrir el detalle completo de la OC con todas las acciones contextuales." style="padding:5px 10px;background:#fff;color:#374151;border:1px solid #d1d5db;border-radius:4px;cursor:pointer;font-size:11px;margin-right:4px">👁 Ver</button>
+                    ${tienePDF
+                      ? `<button onclick="${onTerminar}" title="Confirmar la factura ${oc.factura_adjunta_nro || ''} y mandar la OC a TERMINADA. Enriquece la Compra/Gasto con el N° de comprobante." style="padding:5px 10px;background:#15803d;color:white;border:none;border-radius:4px;cursor:pointer;font-size:11px;margin-right:4px">✅ Mandar a TERMINADA</button>
+                         <button onclick="${onSubir}" title="Reemplazar el PDF actual con uno distinto." style="padding:5px 10px;background:transparent;color:#2563eb;border:1px solid #93c5fd;border-radius:4px;cursor:pointer;font-size:11px;margin-right:4px">🔁 Reemplazar PDF</button>`
+                      : `<button onclick="${onSubir}" title="Subir el PDF de la factura del proveedor + N° comprobante + fecha + monto. Cuando esté subido, aparece el botón verde para mandar la OC a TERMINADA." style="padding:5px 10px;background:#2563eb;color:white;border:none;border-radius:4px;cursor:pointer;font-size:11px;margin-right:4px">📄 Subir factura</button>
+                         <button onclick="OC.asociarFactura(${oc.id_oc}, '${nroSafe}')" title="Atajo solo-datos: cargar N° y fecha sin PDF. Preferí 'Subir factura' para tener respaldo." style="padding:5px 10px;background:transparent;color:#7c3aed;border:1px solid #c4b5fd;border-radius:4px;cursor:pointer;font-size:11px;margin-right:4px">🧾 Asociar sin PDF</button>`}
+                    ${_esGerente ? `<button onclick="OC.mandarABorrador(${oc.id_oc}, '${nroSafe}')" title="Volver la OC a BORRADOR conservando el N° (solo GERENTE). Revierte cascada completa pero deja el correlativo intacto para re-editar." style="padding:5px 10px;background:transparent;color:#0891b2;border:1px solid #0891b2;border-radius:4px;cursor:pointer;font-size:11px">↩ A borrador</button>` : ''}
+                  </td>
+                </tr>
+              `;
+            }).join('')}
           </tbody>
         </table>
       </div>
-    </div>`;
+    </div>
+  `;
+
+  // Bind de los filtros año/mes
+  bindFiltrosTab(panel, 'SIN_FACTURA', () => {
+    panel.dataset.rendered = '';
+    renderTabSinFactura(panel);
+  });
 }
 
 // ─── TAB Dashboard ──────────────────────────────────────────────────────
@@ -764,7 +940,7 @@ function renderDashboard(panel) {
   const totalSrv  = _ocsServicio.reduce((s, o) => s + Number(o.total || 0), 0);
   const totalAlm  = _ocsAlmacen.reduce((s, o) => s + Number(o.total || 0), 0);
   const totalAll  = totalGen + totalSrv + totalAlm;
-  const pendientes = [..._ocsGeneral, ..._ocsServicio, ..._ocsAlmacen].filter(o => o.estado !== 'PAGADA' && o.estado !== 'ANULADA' && o.estado !== 'CERRADA_SIN_FACTURA').length;
+  const pendientes = [..._ocsGeneral, ..._ocsServicio, ..._ocsAlmacen].filter(o => !['TERMINADA', 'ANULADA', 'CERRADA_SIN_FACTURA'].includes(o.estado)).length;
 
   panel.innerHTML = `
     <div style="margin-top:16px">
@@ -850,7 +1026,7 @@ function renderTablaOCs(ocs, opts = {}) {
         <tbody>
           ${ocs.map(o => {
             const nroSafe = String(o.nro_oc).replace(/'/g, "\\'");
-            const btnAnular = !['ANULADA', 'PAGADA', 'PAGADA_PEND_FACTURA', 'FACTURADA', 'CERRADA_SIN_FACTURA'].includes(o.estado)
+            const btnAnular = !['ANULADA', 'TERMINADA', 'CERRADA_SIN_FACTURA'].includes(o.estado)
               ? `<button onclick="Logistica.anularOC(${o.id_oc})" title="Anular esta OC (cambia el estado, no borra). El correlativo queda quemado. Disponible hasta antes de pagar o facturar." aria-label="Anular OC" style="padding:3px 8px;border:1px solid #dc2626;background:transparent;color:#dc2626;border-radius:4px;cursor:pointer;font-size:11px;margin-left:4px">✕</button>`
               : '';
             const btnReactivar = (o.estado === 'ANULADA' && esGerente)

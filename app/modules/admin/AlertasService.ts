@@ -25,7 +25,13 @@ export interface Alerta {
     | 'PRESTAMO_OTORGADO_VENCIDO' | 'PRESTAMO_TOMADO_PROXIMO'
     | 'CAJA_BAJA' | 'IGV_PROXIMO'
     | 'COTIZACION_SIN_FACTURAR' | 'TRABAJO_NO_INICIADO'
-    | 'OC_BORRADOR_OLVIDADA' | 'INVENTARIO_MUERTO';
+    | 'OC_BORRADOR_OLVIDADA' | 'INVENTARIO_MUERTO'
+    // Nuevas (mig 062 — rediseño kanban OC)
+    | 'OC_DEUDA_PROVEEDOR'
+    | 'OC_PAGO_SIN_RECEPCION'
+    | 'OC_CREDITO_POR_VENCER'
+    | 'OC_SIN_FACTURA_PROVEEDOR'
+    | 'OC_CERRADAS_SIN_FACT_MES';
   severidad: 'info' | 'warn' | 'danger';
   titulo: string;
   detalle: string;
@@ -366,11 +372,11 @@ class AlertasService {
     // ═══════════════════════════════════════════════════════════
 
     if (tieneLogistica) {
-      // 12. OCs sin facturar (ENVIADA/RECIBIDA hace >15 días)
+      // 12. OCs sin facturar (PAGO/RECEPCION hace >15 días)
       const [ocPend]: any = await db.query(`
         SELECT id_oc, nro_oc, fecha_emision, estado, total
         FROM OrdenesCompra
-        WHERE estado IN ('ENVIADA','RECIBIDA','RECIBIDA_PARCIAL')
+        WHERE estado IN ('PAGO','RECEPCION')
           AND fecha_emision < (CURRENT_DATE - INTERVAL '15 days')
         ORDER BY fecha_emision ASC
         LIMIT 5
@@ -408,6 +414,142 @@ class AlertasService {
           link: '#logistica',
         });
       }
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // LOGISTICA — Alertas del rediseño kanban (mig 062)
+    // ═══════════════════════════════════════════════════════════
+    if (tieneLogistica) {
+      const UMBRAL = 15;
+
+      // 1. Deudas a proveedor sin pagar > 15 días
+      try {
+        const [deudas]: any = await db.query(`
+          SELECT oc.id_oc, oc.nro_oc, p.razon_social,
+                 (oc.total - COALESCE(oc.monto_pagado, 0)) AS saldo,
+                 oc.created_at
+            FROM OrdenesCompra oc
+            JOIN Proveedores p ON p.id_proveedor = oc.id_proveedor
+           WHERE oc.estado_pago IN ('PENDIENTE','PARCIAL')
+             AND oc.estado NOT IN ('BORRADOR','ANULADA','TERMINADA','CERRADA_SIN_FACTURA')
+             AND oc.created_at < (CURRENT_TIMESTAMP - INTERVAL '${UMBRAL} days')
+           ORDER BY oc.created_at ASC
+           LIMIT 10
+        `);
+        for (const r of deudas as any[]) {
+          alertas.push({
+            id: `oc-deuda-${r.id_oc}`,
+            modulo: 'LOGISTICA',
+            tipo: 'OC_DEUDA_PROVEEDOR',
+            severidad: 'danger',
+            titulo: `💸 Deuda con ${r.razon_social}`,
+            detalle: `OC ${r.nro_oc} · saldo S/ ${Number(r.saldo).toFixed(2)} · creada hace +${UMBRAL}d`,
+            link: `#logistica/oc?id=${r.id_oc}`,
+          });
+        }
+      } catch (_) { /* tabla puede no existir aún */ }
+
+      // 2. Pago hecho sin recepción > 15 días
+      try {
+        const [pagosSinRec]: any = await db.query(`
+          SELECT oc.id_oc, oc.nro_oc, p.razon_social, oc.total, oc.pagada_at,
+                 SUM(d.cantidad_recibida) AS recibido,
+                 SUM(d.cantidad) AS pedido
+            FROM OrdenesCompra oc
+            JOIN Proveedores p ON p.id_proveedor = oc.id_proveedor
+            JOIN DetalleOrdenCompra d ON d.id_oc = oc.id_oc
+           WHERE oc.estado_pago='PAGADO'
+             AND oc.pagada_at < (CURRENT_TIMESTAMP - INTERVAL '${UMBRAL} days')
+             AND oc.estado NOT IN ('TERMINADA','CERRADA_SIN_FACTURA','ANULADA')
+           GROUP BY oc.id_oc, oc.nro_oc, p.razon_social, oc.total, oc.pagada_at
+           HAVING SUM(d.cantidad_recibida) < SUM(d.cantidad)
+           LIMIT 10
+        `);
+        for (const r of pagosSinRec as any[]) {
+          alertas.push({
+            id: `oc-pago-sin-rec-${r.id_oc}`,
+            modulo: 'LOGISTICA',
+            tipo: 'OC_PAGO_SIN_RECEPCION',
+            severidad: 'danger',
+            titulo: `📦❌ Pagamos pero no recibimos`,
+            detalle: `OC ${r.nro_oc} · ${r.razon_social} · S/ ${Number(r.total).toFixed(2)} pagada hace +${UMBRAL}d`,
+            link: `#logistica/oc?id=${r.id_oc}`,
+          });
+        }
+      } catch (_) { /* tabla puede no existir aún */ }
+
+      // 3. Crédito por vencer (en los próximos 15 días)
+      try {
+        const [credPorVenc]: any = await db.query(`
+          SELECT oc.id_oc, oc.nro_oc, p.razon_social, oc.total, oc.fecha_credito_vence
+            FROM OrdenesCompra oc
+            JOIN Proveedores p ON p.id_proveedor = oc.id_proveedor
+           WHERE oc.forma_pago='CREDITO'
+             AND oc.estado_pago <> 'PAGADO'
+             AND oc.fecha_credito_vence IS NOT NULL
+             AND oc.fecha_credito_vence <= (CURRENT_DATE + INTERVAL '${UMBRAL} days')
+           ORDER BY oc.fecha_credito_vence ASC
+           LIMIT 10
+        `);
+        for (const r of credPorVenc as any[]) {
+          alertas.push({
+            id: `oc-cred-${r.id_oc}`,
+            modulo: 'LOGISTICA',
+            tipo: 'OC_CREDITO_POR_VENCER',
+            severidad: 'warn',
+            titulo: `📅 Crédito vence ${r.fecha_credito_vence}`,
+            detalle: `OC ${r.nro_oc} · ${r.razon_social} · S/ ${Number(r.total).toFixed(2)}`,
+            link: `#logistica/oc?id=${r.id_oc}`,
+          });
+        }
+      } catch (_) { /* col fecha_credito_vence puede no existir aún */ }
+
+      // 4. OCs en facturación sin factura del proveedor > 15 días
+      try {
+        const [sinFact]: any = await db.query(`
+          SELECT oc.id_oc, oc.nro_oc, p.razon_social, oc.updated_at
+            FROM OrdenesCompra oc
+            JOIN Proveedores p ON p.id_proveedor = oc.id_proveedor
+           WHERE oc.estado='FACTURACION'
+             AND oc.estado_factura='PENDIENTE'
+             AND oc.updated_at < (CURRENT_TIMESTAMP - INTERVAL '${UMBRAL} days')
+           ORDER BY oc.updated_at ASC
+           LIMIT 10
+        `);
+        for (const r of sinFact as any[]) {
+          alertas.push({
+            id: `oc-sin-fact-${r.id_oc}`,
+            modulo: 'LOGISTICA',
+            tipo: 'OC_SIN_FACTURA_PROVEEDOR',
+            severidad: 'warn',
+            titulo: `📄❌ Falta factura del proveedor`,
+            detalle: `OC ${r.nro_oc} · ${r.razon_social} · esperando hace +${UMBRAL}d`,
+            link: `#logistica/oc?id=${r.id_oc}`,
+          });
+        }
+      } catch (_) { /* col estado_factura puede no existir aún */ }
+
+      // 5. OCs cerradas sin factura este mes (info para Gerencia)
+      try {
+        const [cerradasMes]: any = await db.query(`
+          SELECT COUNT(*) AS cnt, COALESCE(SUM(total),0) AS monto
+            FROM OrdenesCompra
+           WHERE estado='CERRADA_SIN_FACTURA'
+             AND DATE_TRUNC('month', updated_at) = DATE_TRUNC('month', CURRENT_DATE)
+        `);
+        const cnt = Number(cerradasMes[0]?.cnt || 0);
+        if (cnt > 0) {
+          alertas.push({
+            id: `oc-cerradas-sin-fact-mes`,
+            modulo: 'LOGISTICA',
+            tipo: 'OC_CERRADAS_SIN_FACT_MES',
+            severidad: 'info',
+            titulo: `📊 ${cnt} OCs cerradas sin factura este mes`,
+            detalle: `Monto total S/ ${Number(cerradasMes[0].monto).toFixed(2)} · IGV no recuperable`,
+            link: `#logistica/oc?filtro=cerradas_sin_factura`,
+          });
+        }
+      } catch (_) { /* */ }
     }
 
     return alertas;

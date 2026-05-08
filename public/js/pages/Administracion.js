@@ -356,16 +356,55 @@ function renderTopList(items, labelKey, valueKey, countKey) {
 const fmtDate = (s) => s ? String(s).slice(0, 10).split('-').reverse().join('/') : '—';
 const fmtMoney = (n, mon = 'PEN') => (mon === 'USD' ? '$' : 'S/') + ' ' + Number(n || 0).toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
+// Filtros del tab Rendiciones — persistidos en module-scope para que no se
+// pisen al re-renderizar tras crear/editar una rendición.
+const _filtrosRend = {
+  centro: 'Todos',
+  anio:   new Date().getFullYear(),
+  mes:    'Todos',
+};
+
 async function renderRendiciones(panel) {
   panel.innerHTML = '<div style="padding:30px;text-align:center;color:#6b7280">⏳ Cargando rendiciones…</div>';
-  let lista = [];
-  let pendientes = [];
+  let listaFull = [];
+  let pendientesFull = [];
   try {
-    [lista, pendientes] = await Promise.all([
+    [listaFull, pendientesFull] = await Promise.all([
       api.rendiciones.list(),
       api.rendiciones.ocsPendientes(),
     ]);
   } catch (e) { return showError(e?.message || 'Error cargando'); }
+
+  // Aplicar filtros
+  const f = _filtrosRend;
+  const matchFiltros = (cc, fecha) => {
+    if (f.centro !== 'Todos' && cc !== f.centro) return false;
+    const fSt = String(fecha || '');
+    if (f.anio && !fSt.startsWith(String(f.anio))) return false;
+    if (f.mes !== 'Todos' && fSt.slice(5, 7) !== f.mes) return false;
+    return true;
+  };
+  const lista = listaFull.filter(r => matchFiltros(r.centro_costo, r.fecha_rendicion));
+  const pendientes = pendientesFull.filter(o => matchFiltros(o.centro_costo, o.fecha_emision));
+
+  // Opciones para los dropdowns (basados en datos completos, no filtrados)
+  const centrosDisp = [...new Set([
+    ...listaFull.map(r => r.centro_costo).filter(Boolean),
+    ...pendientesFull.map(o => o.centro_costo).filter(Boolean),
+  ])].sort();
+  const aniosDisp = [...new Set([
+    ...listaFull.map(r => (r.fecha_rendicion || '').slice(0, 4)).filter(Boolean),
+    ...pendientesFull.map(o => (o.fecha_emision || '').slice(0, 4)).filter(Boolean),
+  ])].sort().reverse();
+  const meses = [
+    { v: 'Todos', l: 'Todos' }, { v: '01', l: 'Enero' }, { v: '02', l: 'Febrero' },
+    { v: '03', l: 'Marzo' }, { v: '04', l: 'Abril' }, { v: '05', l: 'Mayo' },
+    { v: '06', l: 'Junio' }, { v: '07', l: 'Julio' }, { v: '08', l: 'Agosto' },
+    { v: '09', l: 'Septiembre' }, { v: '10', l: 'Octubre' }, { v: '11', l: 'Noviembre' },
+    { v: '12', l: 'Diciembre' },
+  ];
+  const filtroDesc = f.mes === 'Todos' ? `año ${f.anio}` : `${f.anio}-${f.mes}`;
+  const filtroCentroDesc = f.centro === 'Todos' ? 'todos los centros' : f.centro;
 
   const estadoBadge = (e) => {
     const map = {
@@ -454,11 +493,35 @@ async function renderRendiciones(panel) {
     <div style="display:flex;justify-content:space-between;align-items:center;margin:18px 0 14px">
       <div>
         <h3 style="margin:0;font-size:15px">🧾 Rendiciones de Gastos por OC</h3>
-        <div style="font-size:11px;color:#6b7280;margin-top:2px">Una OC = una rendición. Adjuntá comprobantes, marcá las firmas y descargá el expediente en PDF.</div>
+        <div style="font-size:11px;color:#6b7280;margin-top:2px">Una OC = una rendición · ${filtroDesc} · ${filtroCentroDesc} · ${lista.length} registrada(s) · ${pendientes.length} pendiente(s)</div>
       </div>
       <button id="btn-nueva-rendicion"
         title="Crear rendición desde cualquier OC (incluye no pagadas) — fallback manual"
         style="padding:9px 16px;background:#fff;color:#111827;border:1px solid #d1d5db;border-radius:5px;cursor:pointer;font-size:12px;font-weight:600">+ Nueva desde OC</button>
+    </div>
+
+    <div style="background:#fff;border:1px solid #e5e7eb;border-radius:6px;padding:12px 14px;margin-bottom:14px;display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end">
+      <label style="display:flex;flex-direction:column;gap:3px;font-size:11px;color:#6b7280">
+        Centro de costo
+        <select id="frend-centro" style="padding:6px 10px;border:1px solid #d1d5db;border-radius:5px;font-size:12px;min-width:200px">
+          <option value="Todos">Todos</option>
+          ${centrosDisp.map(c => `<option value="${c.replace(/"/g, '&quot;')}" ${f.centro === c ? 'selected' : ''}>${c}</option>`).join('')}
+        </select>
+      </label>
+      <label style="display:flex;flex-direction:column;gap:3px;font-size:11px;color:#6b7280">
+        Año
+        <select id="frend-anio" style="padding:6px 10px;border:1px solid #d1d5db;border-radius:5px;font-size:12px;min-width:90px">
+          ${aniosDisp.map(a => `<option value="${a}" ${String(f.anio) === a ? 'selected' : ''}>${a}</option>`).join('')}
+        </select>
+      </label>
+      <label style="display:flex;flex-direction:column;gap:3px;font-size:11px;color:#6b7280">
+        Mes
+        <select id="frend-mes" style="padding:6px 10px;border:1px solid #d1d5db;border-radius:5px;font-size:12px;min-width:130px">
+          ${meses.map(m => `<option value="${m.v}" ${f.mes === m.v ? 'selected' : ''}>${m.l}</option>`).join('')}
+        </select>
+      </label>
+      <button id="frend-aplicar" class="btn-secondary" style="padding:6px 14px;font-size:12px">Aplicar</button>
+      <button id="frend-reset" class="btn-secondary" style="padding:6px 12px;font-size:12px;background:transparent" title="Limpiar filtros">⟲ Reset</button>
     </div>
 
     ${bloquePendientes}
@@ -488,6 +551,20 @@ async function renderRendiciones(panel) {
   `;
 
   document.getElementById('btn-nueva-rendicion').onclick = abrirModalNueva;
+
+  // Filtros año/mes/centro
+  document.getElementById('frend-aplicar').onclick = () => {
+    _filtrosRend.centro = document.getElementById('frend-centro').value;
+    _filtrosRend.anio   = Number(document.getElementById('frend-anio').value);
+    _filtrosRend.mes    = document.getElementById('frend-mes').value;
+    renderRendiciones(panel);
+  };
+  document.getElementById('frend-reset').onclick = () => {
+    _filtrosRend.centro = 'Todos';
+    _filtrosRend.anio   = new Date().getFullYear();
+    _filtrosRend.mes    = 'Todos';
+    renderRendiciones(panel);
+  };
   panel.querySelectorAll('button[data-abrir-rendicion]').forEach(b => {
     b.onclick = () => abrirModalEditar(Number(b.dataset.abrirRendicion));
   });
@@ -517,9 +594,10 @@ async function renderRendiciones(panel) {
 async function abrirModalNueva() {
   let ocs = [];
   try { ocs = await api.ordenesCompra.list(); } catch (e) { return showError('Error cargando OCs'); }
-  // Solo OCs APROBADAS / RECIBIDAS / FACTURADAS / PAGADAS / CERRADA_SIN_FACTURA
+  // Solo OCs en estados activos del nuevo state machine (post mig 062).
+  // Excluye BORRADOR (todavía no aprobada) y ANULADA.
   const elegibles = (ocs || []).filter(o =>
-    ['APROBADA', 'ENVIADA', 'RECIBIDA_PARCIAL', 'RECIBIDA', 'FACTURADA', 'PAGADA', 'CERRADA_SIN_FACTURA'].includes(o.estado)
+    ['APROBADA', 'PAGO', 'RECEPCION', 'FACTURACION', 'TERMINADA', 'CERRADA_SIN_FACTURA'].includes(o.estado)
   );
 
   const ov = document.createElement('div');
@@ -1336,7 +1414,7 @@ async function abrirModalOCHonorario(onCreated) {
         </div>
 
         <div style="background:#fef9c3;padding:8px 12px;border-radius:6px;font-size:11px;color:#854d0e">
-          💡 Sin IGV (persona natural). Empresa: <b>METAL ENGINEERS SAC</b>. Moneda: <b>PEN</b>. La OC quedará en BORRADOR/APROBADA según el monto y configuración.
+          💡 Sin IGV (persona natural). Empresa: <b>METAL ENGINEERS SAC</b>. Moneda: <b>PEN</b>. La OC se crea en <b>BORRADOR</b> y aparece en <b>Logística → Órdenes de Compra → columna BORRADOR</b>. Desde ahí apretá "✓ Lista para aprobación" para avanzarla en el flujo.
         </div>
 
         <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:6px">

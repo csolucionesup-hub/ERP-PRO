@@ -1,11 +1,13 @@
 /**
- * OrdenesCompra.js — Módulo 📋 Órdenes de Compra
+ * OrdenesCompra.js — Módulo 📋 Órdenes de Compra (rediseño 2026-05-06)
  *
- * Workflow estándar ERP mundial (SAP B1 / Odoo / Epicor):
- *   BORRADOR → APROBADA → ENVIADA → RECIBIDA_PARCIAL → RECIBIDA → FACTURADA → PAGADA
- *              (o ANULADA si no llegó a FACTURADA)
+ * State machine simplificado:
+ *   BORRADOR → APROBADA → PAGO → RECEPCION → FACTURACION → TERMINADA
+ *                                                       ↘ CERRADA_SIN_FACTURA
+ *                                       (o ANULADA en pasos previos a FACTURACION)
  *
- * Vista kanban con columnas por estado para flujo visual.
+ * Card lleva dot semáforo (🔴/🟠/🟢) según fase + badges para problemas heredados.
+ * Spec: docs/superpowers/specs/2026-05-06-logistica-kanban-rediseno-design.md
  */
 
 import { api } from '../services/api.js';
@@ -15,17 +17,20 @@ import { kpiGrid } from '../components/KpiCard.js';
 import { pill } from '../components/Pill.js';
 
 const ESTADO_COLOR = {
-  BORRADOR:            { bg: '#f3f4f6', fg: '#374151', icon: '📝', label: 'Borrador' },
-  APROBADA:            { bg: '#dbeafe', fg: '#1e40af', icon: '✅', label: 'Aprobada' },
-  ENVIADA:             { bg: '#e0e7ff', fg: '#3730a3', icon: '📤', label: 'Enviada' },
-  RECIBIDA_PARCIAL:    { bg: '#fef3c7', fg: '#92400e', icon: '📦', label: 'Recibida parcial' },
-  RECIBIDA:            { bg: '#dcfce7', fg: '#166534', icon: '📥', label: 'Recibida' },
-  FACTURADA:           { bg: '#ede9fe', fg: '#5b21b6', icon: '🧾', label: 'Factura · pend. pago' },
-  PAGADA_PEND_FACTURA: { bg: '#fef3c7', fg: '#854d0e', icon: '💰', label: 'Pagada · pend. factura' },
-  PAGADA:              { bg: '#d1fae5', fg: '#065f46', icon: '✅', label: 'Cerrada (pago + factura)' },
-  ANULADA:             { bg: '#fee2e2', fg: '#991b1b', icon: '❌', label: 'Anulada' },
-  CERRADA_SIN_FACTURA: { bg: '#fff7ed', fg: '#9a3412', icon: '🗂', label: 'Cerrada sin factura' },
+  BORRADOR:           { bg: '#f3f4f6', fg: '#374151', icon: '📝', label: 'Borrador' },
+  APROBADA:           { bg: '#dbeafe', fg: '#1e3a8a', icon: '✅', label: 'Aprobada' },
+  PAGO:               { bg: '#fee2e2', fg: '#991b1b', icon: '💰', label: 'Pago' },
+  RECEPCION:          { bg: '#fef9c3', fg: '#713f12', icon: '📦', label: 'Recepción' },
+  FACTURACION:        { bg: '#fef3c7', fg: '#854d0e', icon: '🧾', label: 'Facturación / RH' },
+  TERMINADA:          { bg: '#dcfce7', fg: '#166534', icon: '✓', label: 'Terminada' },
+  CERRADA_SIN_FACTURA:{ bg: '#fce7f3', fg: '#9d174d', icon: '🗂', label: 'Cerrada sin factura' },
+  ANULADA:            { bg: '#e5e7eb', fg: '#6b7280', icon: '❌', label: 'Anulada' },
 };
+
+const COLUMNAS_KANBAN_PRINCIPALES = [
+  'BORRADOR','APROBADA','PAGO','RECEPCION','FACTURACION','TERMINADA'
+];
+const COLUMNAS_KANBAN_TERMINALES = ['CERRADA_SIN_FACTURA','ANULADA'];
 
 const fPEN = (v) => new Intl.NumberFormat('es-PE', { style: 'currency', currency: 'PEN' }).format(Number(v) || 0);
 const fUSD = (v) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(Number(v) || 0);
@@ -135,6 +140,134 @@ window.previewPDFOC = async (id, nro) => {
   }
 };
 
+// ─────────── Preview de la factura adjunta de una OC vía backend proxy ──
+// Cloudinary no permite CORS para fetch desde browser, así que vamos a
+// /api/ordenes-compra/:id/factura/preview que reenvía el archivo desde el
+// servidor. Mantiene preview inline sin "Failed to fetch".
+window.previewFacturaOC = async (id_oc, titulo = 'Factura') => {
+  const overlay = abrirOverlayPreview(titulo, null);
+  let blobUrl = null;
+  const cleanup = () => {
+    if (overlay.parentNode) overlay.remove();
+    if (blobUrl) URL.revokeObjectURL(blobUrl);
+  };
+  overlay.querySelector('[data-close]').onclick = cleanup;
+  const content = overlay.querySelector('[data-content]');
+
+  try {
+    const token = localStorage.getItem('erp_token');
+    const r = await fetch(`/api/ordenes-compra/${id_oc}/factura/preview`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    if (!r.ok) {
+      const errBody = await r.json().catch(() => ({}));
+      throw new Error(errBody.error || `HTTP ${r.status}`);
+    }
+    const blob = await r.blob();
+    blobUrl = URL.createObjectURL(blob);
+    const ct = (r.headers.get('content-type') || '').toLowerCase();
+    if (ct.startsWith('image/')) {
+      content.innerHTML = `<img src="${blobUrl}" alt="${titulo}" style="max-width:100%;max-height:100%;object-fit:contain">`;
+    } else {
+      content.innerHTML = `<iframe src="${blobUrl}" style="flex:1;border:none;width:100%;height:100%;background:#525659" title="${titulo}"></iframe>`;
+    }
+  } catch (err) {
+    content.innerHTML = `
+      <div style="text-align:center;color:#fef3c7;padding:24px;max-width:400px">
+        <div style="font-size:36px;margin-bottom:10px">⚠️</div>
+        <div style="font-size:14px;margin-bottom:8px;font-weight:600">No se pudo cargar el archivo</div>
+        <div style="font-size:12px;color:#d1d5db">${err.message || err}</div>
+      </div>
+    `;
+  }
+};
+
+// Helper interno reutilizable para armar el overlay del preview.
+function abrirOverlayPreview(titulo, urlExterna) {
+  const overlay = document.createElement('div');
+  overlay.style.cssText =
+    'position:fixed;inset:0;background:rgba(0,0,0,0.65);z-index:9000;' +
+    'display:flex;align-items:center;justify-content:center;padding:20px';
+  const linkExt = urlExterna
+    ? `<a href="${urlExterna}" target="_blank" rel="noopener" style="padding:7px 14px;background:#fff;color:#374151;border:1px solid #d1d5db;border-radius:4px;font-size:12px;text-decoration:none">↗ Abrir en pestaña</a>`
+    : '';
+  overlay.innerHTML = `
+    <div style="background:#fff;border-radius:8px;width:min(960px,95vw);height:min(92vh,1200px);display:flex;flex-direction:column;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.4)">
+      <div style="padding:12px 16px;border-bottom:1px solid #e5e7eb;display:flex;justify-content:space-between;align-items:center;background:#f9fafb;flex-wrap:wrap;gap:8px">
+        <strong style="font-size:14px;color:#111">👁️ ${titulo}</strong>
+        <div style="display:flex;gap:8px">
+          ${linkExt}
+          <button data-close type="button" style="padding:7px 14px;background:#fff;color:#374151;border:1px solid #d1d5db;border-radius:4px;cursor:pointer;font-size:12px">Cerrar</button>
+        </div>
+      </div>
+      <div data-content style="flex:1;display:flex;align-items:center;justify-content:center;background:#525659;overflow:auto">
+        <div style="color:#d1d5db;font-size:13px">⏳ Cargando…</div>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  return overlay;
+}
+
+// ─────────── Preview genérico de archivo por URL pública ───────────
+// Para casos donde la URL no es de Cloudinary o sí permite CORS. Si falla
+// el fetch, ofrece fallback "Abrir en pestaña nueva".
+window.previewArchivo = async (url, titulo = 'Archivo') => {
+  if (!url) return;
+  const lower = String(url).toLowerCase().split('?')[0];
+  const esImagen = /\.(jpe?g|png|webp|gif|bmp|heic|heif)$/i.test(lower);
+
+  const overlay = document.createElement('div');
+  overlay.style.cssText =
+    'position:fixed;inset:0;background:rgba(0,0,0,0.65);z-index:9000;' +
+    'display:flex;align-items:center;justify-content:center;padding:20px';
+  overlay.innerHTML = `
+    <div style="background:#fff;border-radius:8px;width:min(960px,95vw);height:min(92vh,1200px);display:flex;flex-direction:column;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.4)">
+      <div style="padding:12px 16px;border-bottom:1px solid #e5e7eb;display:flex;justify-content:space-between;align-items:center;background:#f9fafb;flex-wrap:wrap;gap:8px">
+        <strong style="font-size:14px;color:#111">👁️ ${titulo}</strong>
+        <div style="display:flex;gap:8px">
+          <a href="${url}" target="_blank" rel="noopener" style="padding:7px 14px;background:#fff;color:#374151;border:1px solid #d1d5db;border-radius:4px;font-size:12px;text-decoration:none">↗ Abrir en pestaña</a>
+          <button data-close type="button" style="padding:7px 14px;background:#fff;color:#374151;border:1px solid #d1d5db;border-radius:4px;cursor:pointer;font-size:12px">Cerrar</button>
+        </div>
+      </div>
+      <div data-content style="flex:1;display:flex;align-items:center;justify-content:center;background:#525659;overflow:auto">
+        <div style="color:#d1d5db;font-size:13px">⏳ Cargando…</div>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  let blobUrl = null;
+  const cleanup = () => {
+    if (overlay.parentNode) overlay.remove();
+    if (blobUrl) URL.revokeObjectURL(blobUrl);
+  };
+  overlay.querySelector('[data-close]').onclick = cleanup;
+  const content = overlay.querySelector('[data-content]');
+
+  try {
+    if (esImagen) {
+      content.innerHTML = `<img src="${url}" alt="${titulo}" style="max-width:100%;max-height:100%;object-fit:contain">`;
+    } else {
+      // PDF: fetch + blob URL para que el browser lo renderice nativamente
+      // (en lugar de que Cloudinary devuelva una imagen estática).
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const blob = await res.blob();
+      blobUrl = URL.createObjectURL(blob);
+      content.innerHTML = `<iframe src="${blobUrl}" style="flex:1;border:none;width:100%;height:100%;background:#525659" title="${titulo}"></iframe>`;
+    }
+  } catch (err) {
+    content.innerHTML = `
+      <div style="text-align:center;color:#fef3c7;padding:24px;max-width:400px">
+        <div style="font-size:36px;margin-bottom:10px">⚠️</div>
+        <div style="font-size:14px;margin-bottom:8px;font-weight:600">No se pudo cargar el archivo en línea</div>
+        <div style="font-size:12px;color:#d1d5db;margin-bottom:14px">${err.message || err}</div>
+        <a href="${url}" target="_blank" rel="noopener" style="display:inline-block;padding:8px 18px;background:#2563eb;color:#fff;border-radius:4px;text-decoration:none;font-size:13px;font-weight:600">Abrir en pestaña nueva</a>
+      </div>
+    `;
+  }
+};
+
 // Confirmación destructiva: requiere tipear texto exacto para habilitar el botón.
 function confirmarTexto({ titulo, mensaje, textoRequerido }) {
   return new Promise((resolve) => {
@@ -192,7 +325,9 @@ async function refreshOC() {
     }
     return;
   }
-  window.navigate('ordenes-compra');
+  // El kanban OC vive dentro de Logística — navegamos al sub-tab para
+  // mantener el sidebar y los demás tabs accesibles.
+  window.location.hash = 'logistica/oc';
 }
 
 export const OrdenesCompra = async () => {
@@ -272,7 +407,7 @@ window.ensureOCModal = ensureOCModal;
 // a OC.verOC sin haber montado el TabBar de OrdenesCompra). Las function
 // declarations se hoistean, así que las referencias funcionan aunque estén
 // definidas más abajo en el archivo.
-window.OC = { nuevaOC, verOC, aprobar, enviar, recibir, facturar, registrarPago, cerrarSinFactura, cerrarPagaSinFactura, asociarFactura, anular, reactivar, eliminarOC, editar, editarFecha, editarMetadata: editarMetadataOC, descargarPDF, reporteROC };
+window.OC = { nuevaOC, verOC, aprobar, aprobarParaPago, listoParaFacturar, marcarCredito, subirFactura, eliminarFactura, agregarNota, borrarNota, recibir, facturar, registrarPago, cerrarSinFactura, cerrarPagaSinFactura, asociarFactura, anular, reactivar, eliminarOC, mandarABorrador, editar, editarFecha, editarMetadata: editarMetadataOC, descargarPDF, reporteROC, descargarExcel: () => api.ordenesCompra.descargarExcel().catch(e => showError(e.message || 'Error descargando Excel')) };
 
 // Editar SOLO la fecha de emisión (corregir data histórica) — disponible en
 // cualquier estado salvo ANULADA. No toca estado/items/totales/correlativo.
@@ -424,67 +559,322 @@ function semanaISOHoy() {
 }
 
 // ──────── Tab Kanban ────────
+// mes: null = aún no inicializado (aplica default mes actual)
+//      ''   = el usuario eligió "Todos" explícitamente
+//      'YYYY-MM' = mes específico
+let _kanbanFiltros = { cc: '', mes: null, soloProblemas: false };
+
 function renderKanban(panel) {
   panel.dataset.rendered = '1';
-  // CERRADA_SIN_FACTURA va al final, después de PAGADA: representa OCs ya
-  // pagadas pero sin sustento documental (caja chica, marketing, etc).
-  // Ver migración 054 + OrdenCompraService.cerrarSinFactura().
-  const estadosOrden = [
-    'BORRADOR', 'APROBADA', 'ENVIADA',
-    'RECIBIDA_PARCIAL', 'RECIBIDA',
-    'FACTURADA', 'PAGADA_PEND_FACTURA', 'PAGADA',
-    'CERRADA_SIN_FACTURA',
-  ];
-  const porEstado = {};
-  estadosOrden.forEach(e => porEstado[e] = []);
-  _ocs.forEach(oc => {
-    if (oc.estado !== 'ANULADA' && porEstado[oc.estado]) porEstado[oc.estado].push(oc);
-  });
+  // Calcular opciones para los filtros
+  const centrosCosto = [...new Set(_ocs.map(o => o.centro_costo).filter(Boolean))].sort();
+  const meses = [...new Set(_ocs.map(o => (o.fecha_emision || '').slice(0,7)).filter(Boolean))].sort().reverse();
+  const mesActual = new Date().toISOString().slice(0,7);
+  // Default sólo la primera vez. Si el usuario eligió "" (Todos), respetarlo.
+  if (_kanbanFiltros.mes === null) {
+    _kanbanFiltros.mes = meses.includes(mesActual) ? mesActual : (meses[0] || '');
+  }
 
   panel.innerHTML = `
-    <div style="display:grid;grid-template-columns:repeat(${estadosOrden.length},1fr);gap:10px;margin-top:16px;overflow-x:auto">
-      ${estadosOrden.map(estado => {
-        const color = ESTADO_COLOR[estado];
-        const ocs = porEstado[estado];
-        return `
-          <div style="min-width:180px;background:${color.bg};border-radius:10px;padding:10px">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;padding-bottom:8px;border-bottom:2px solid ${color.fg}22">
-              <strong style="font-size:11px;color:${color.fg};text-transform:uppercase;letter-spacing:0.5px">${color.icon} ${estado.replace('_', ' ')}</strong>
-              <span style="background:${color.fg};color:white;padding:1px 8px;border-radius:10px;font-size:10px;font-weight:700">${ocs.length}</span>
-            </div>
-            <div style="display:flex;flex-direction:column;gap:6px;min-height:100px">
-              ${ocs.length ? ocs.map(oc => kanbanCard(oc, color)).join('') :
-                `<div style="padding:30px 10px;text-align:center;color:${color.fg}77;font-size:11px">—</div>`}
-            </div>
-          </div>
-        `;
-      }).join('')}
+    <div class="oc-kanban-filtros">
+      <label>Centro de costo:
+        <select id="oc-filtro-cc">
+          <option value="">Todos</option>
+          ${centrosCosto.map(c => `<option value="${escapeHtml(c)}" ${_kanbanFiltros.cc === c ? 'selected' : ''}>${escapeHtml(c)}</option>`).join('')}
+        </select>
+      </label>
+      <label>Mes/Año:
+        <select id="oc-filtro-mes">
+          <option value="">Todos</option>
+          ${meses.map(m => `<option value="${m}" ${_kanbanFiltros.mes === m ? 'selected' : ''}>${m}</option>`).join('')}
+        </select>
+      </label>
+      <label class="check">
+        <input type="checkbox" id="oc-filtro-problemas" ${_kanbanFiltros.soloProblemas ? 'checked' : ''}>
+        Solo problemas
+      </label>
+      <button id="oc-btn-preview-listado" class="btn-secondary" type="button" title="Previsualizar el listado de OCs en pantalla, con el mismo formato y colores que tendrá el Excel — útil para revisar antes de descargar.">👁️ Vista previa</button>
+      <button id="oc-btn-export" class="btn-secondary" type="button" title="Descargar TODAS las OCs en Excel con formato.">📊 Exportar Excel</button>
     </div>
-    <div style="margin-top:12px;padding:10px;background:#f9fafb;border-radius:6px;font-size:11px;color:var(--text-secondary)">
-      💡 <strong>Auto-aprobación:</strong> OCs ≤ ${fPEN(_cfg.monto_limite_sin_aprobacion)} pasan directo a APROBADA.
-      Para cambiarlo ve a ⚙️ Configuración → Preferencias → Monto límite sin aprobación.
+    <div id="oc-kanban-board" class="oc-kanban-board"></div>
+  `;
+
+  // Bind filter handlers
+  document.getElementById('oc-filtro-cc').addEventListener('change', e => {
+    _kanbanFiltros.cc = e.target.value;
+    pintarColumnasKanban();
+  });
+  document.getElementById('oc-filtro-mes').addEventListener('change', e => {
+    _kanbanFiltros.mes = e.target.value;
+    pintarColumnasKanban();
+  });
+  document.getElementById('oc-filtro-problemas').addEventListener('change', e => {
+    _kanbanFiltros.soloProblemas = e.target.checked;
+    pintarColumnasKanban();
+  });
+  document.getElementById('oc-btn-export').addEventListener('click', () => {
+    const token = localStorage.getItem('erp_token');
+    fetch('/api/ordenes-compra/listado/excel', {
+      headers: { 'Authorization': 'Bearer ' + token }
+    }).then(r => r.blob()).then(b => {
+      const url = URL.createObjectURL(b);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `OCs_${new Date().toISOString().slice(0,10)}.xlsx`;
+      a.click();
+      URL.revokeObjectURL(url);
+    });
+  });
+  document.getElementById('oc-btn-preview-listado').addEventListener('click', () => previewListadoOC());
+
+  pintarColumnasKanban();
+}
+
+// Vista previa del listado de OCs con el mismo formato visual que el Excel.
+// Reusa _ocs (la data ya cargada por listar()). Aplica filtros activos del
+// kanban (centro, mes, solo problemas) para ser coherente con lo visible.
+function previewListadoOC() {
+  const filtradas = _ocs.filter(oc => {
+    if (oc.estado === 'ANULADA' && !_kanbanFiltros.soloProblemas) {/* dejamos pasar — el listado completo las incluye */}
+    if (_kanbanFiltros.cc && oc.centro_costo !== _kanbanFiltros.cc) return false;
+    if (_kanbanFiltros.mes && !(oc.fecha_emision || '').startsWith(_kanbanFiltros.mes)) return false;
+    if (_kanbanFiltros.soloProblemas && !ocTieneProblema(oc)) return false;
+    return true;
+  });
+
+  // Mapping de colores por estado — matchea el del Excel y el kanban.
+  const estColor = {
+    BORRADOR:            { bg: '#fef3c7', fg: '#92400e' },
+    APROBADA:            { bg: '#dbeafe', fg: '#1e40af' },
+    PAGO:                { bg: '#fee2e2', fg: '#991b1b' },
+    RECEPCION:           { bg: '#fef9c3', fg: '#854d0e' },
+    FACTURACION:         { bg: '#fef3c7', fg: '#92400e' },
+    TERMINADA:           { bg: '#d1fae5', fg: '#065f46' },
+    CERRADA_SIN_FACTURA: { bg: '#fce7f3', fg: '#9d174d' },
+    ANULADA:             { bg: '#e5e7eb', fg: '#374151' },
+  };
+  const pagoColor = (e) => e === 'PAGADO'   ? { bg: '#d1fae5', fg: '#065f46' }
+                       : e === 'PARCIAL'    ? { bg: '#fef3c7', fg: '#92400e' }
+                       : e === 'PENDIENTE'  ? { bg: '#fee2e2', fg: '#991b1b' }
+                       : null;
+  const facColor = (e) => e === 'FACTURADA'   ? { bg: '#d1fae5', fg: '#065f46' }
+                      : e === 'SIN_FACTURA' ? { bg: '#fce7f3', fg: '#9d174d' }
+                      : e === 'PENDIENTE'   ? { bg: '#fee2e2', fg: '#991b1b' }
+                      : null;
+  const fmt = (n, m) => `${m === 'USD' ? '$' : 'S/'} ${Number(n || 0).toFixed(2)}`;
+
+  const totalPEN = filtradas.filter(o => o.moneda === 'PEN').reduce((s, o) => s + Number(o.total || 0), 0);
+  const totalUSD = filtradas.filter(o => o.moneda === 'USD').reduce((s, o) => s + Number(o.total || 0), 0);
+
+  const filas = filtradas.map((oc, i) => {
+    const c = estColor[oc.estado] || { bg: '#e5e7eb', fg: '#374151' };
+    const pc = pagoColor(oc.estado_pago);
+    const fc = facColor(oc.estado_factura);
+    const zebra = i % 2 === 0 ? '#ffffff' : '#f8fafc';
+    const tdBase = `padding:8px 10px;border-bottom:1px solid #e2e8f0;background:${zebra};font-size:12px;color:#1e293b;font-variant-numeric:tabular-nums`;
+    return `
+      <tr>
+        <td style="${tdBase};font-weight:700">${escapeHtml(oc.nro_oc || '')}</td>
+        <td style="${tdBase}">${oc.fecha_emision ? String(oc.fecha_emision).slice(0,10) : ''}</td>
+        <td style="${tdBase}">${escapeHtml(oc.proveedor_nombre || '—')}</td>
+        <td style="${tdBase}">${escapeHtml(oc.centro_costo || '')}</td>
+        <td style="${tdBase};text-align:center">${escapeHtml(oc.empresa || '')}</td>
+        <td style="${tdBase};text-align:center">${escapeHtml(oc.tipo_oc || '')}</td>
+        <td style="${tdBase};text-align:center">${escapeHtml(oc.moneda || '')}</td>
+        <td style="${tdBase};text-align:right;font-weight:700">${fmt(oc.total, oc.moneda)}</td>
+        <td style="padding:8px 10px;border-bottom:1px solid #e2e8f0;background:${c.bg};color:${c.fg};font-size:11px;font-weight:700;text-align:center">${escapeHtml(oc.estado || '')}</td>
+        <td style="padding:8px 10px;border-bottom:1px solid #e2e8f0;background:${pc ? pc.bg : zebra};color:${pc ? pc.fg : '#1e293b'};font-size:11px;font-weight:${pc ? 700 : 400};text-align:center">${escapeHtml(oc.estado_pago || '—')}</td>
+        <td style="padding:8px 10px;border-bottom:1px solid #e2e8f0;background:${fc ? fc.bg : zebra};color:${fc ? fc.fg : '#1e293b'};font-size:11px;font-weight:${fc ? 700 : 400};text-align:center">${escapeHtml(oc.estado_factura || '—')}</td>
+        <td style="${tdBase};text-align:center">${escapeHtml(oc.forma_pago || '')}</td>
+        <td style="${tdBase}">${oc.fecha_credito_vence ? String(oc.fecha_credito_vence).slice(0,10) : ''}</td>
+        <td style="${tdBase}">${oc.pagada_at ? new Date(oc.pagada_at).toLocaleDateString('es-PE') : ''}</td>
+      </tr>
+    `;
+  }).join('');
+
+  const headers = ['Nro OC','Fecha','Proveedor','Centro Costo','Marca','Tipo','Moneda','Total','Estado','Pago','Factura','Forma Pago','Crédito Vence','Pagada'];
+  const thHtml = headers.map(h => `<th style="padding:10px 12px;background:#1e293b;color:#fff;font-size:11px;font-weight:700;text-align:center;border-bottom:2px solid #0f172a;white-space:nowrap">${h}</th>`).join('');
+
+  const fechaHoy = new Date().toLocaleDateString('es-PE', { year: 'numeric', month: 'long', day: 'numeric' });
+  const ov = document.createElement('div');
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9000;display:flex;align-items:center;justify-content:center;padding:20px';
+  ov.innerHTML = `
+    <div style="background:#fff;border-radius:8px;width:min(1200px,98vw);max-height:92vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.4)">
+      <div style="padding:16px 20px;background:#0f172a;color:#fff;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+        <div>
+          <div style="font-size:16px;font-weight:700">📋 Listado de Órdenes de Compra · Metal Engineers</div>
+          <div style="font-size:11px;color:#94a3b8;font-style:italic;margin-top:3px">Generado el ${fechaHoy} · ${filtradas.length} OC${filtradas.length === 1 ? '' : 's'} ${_kanbanFiltros.cc || _kanbanFiltros.mes || _kanbanFiltros.soloProblemas ? '(con filtros activos)' : 'en total'}</div>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button data-export type="button" style="padding:7px 14px;background:#15803d;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:12px;font-weight:700">📊 Descargar Excel</button>
+          <button data-close type="button" style="padding:7px 14px;background:#fff;color:#374151;border:1px solid #d1d5db;border-radius:4px;cursor:pointer;font-size:12px">Cerrar</button>
+        </div>
+      </div>
+      <div style="flex:1;overflow:auto;background:#fff">
+        <table style="width:100%;border-collapse:collapse">
+          <thead style="position:sticky;top:0;z-index:1">
+            <tr>${thHtml}</tr>
+          </thead>
+          <tbody>${filas || `<tr><td colspan="${headers.length}" style="padding:40px;text-align:center;color:#94a3b8">No hay OCs que coincidan con los filtros.</td></tr>`}</tbody>
+          ${filtradas.length > 0 ? `
+            <tfoot>
+              <tr>
+                <td colspan="7" style="padding:10px 12px;text-align:right;font-weight:700;background:#f1f5f9;border-top:2px solid #1e293b;color:#0f172a">TOTAL PEN:</td>
+                <td style="padding:10px 12px;text-align:right;font-weight:700;background:#d1fae5;color:#065f46;border-top:2px solid #1e293b;font-variant-numeric:tabular-nums">S/ ${totalPEN.toFixed(2)}</td>
+                <td colspan="6" style="background:#f1f5f9;border-top:2px solid #1e293b"></td>
+              </tr>
+              ${totalUSD > 0 ? `
+                <tr>
+                  <td colspan="7" style="padding:10px 12px;text-align:right;font-weight:700;background:#f1f5f9;color:#0f172a">TOTAL USD:</td>
+                  <td style="padding:10px 12px;text-align:right;font-weight:700;background:#d1fae5;color:#065f46;font-variant-numeric:tabular-nums">$ ${totalUSD.toFixed(2)}</td>
+                  <td colspan="6" style="background:#f1f5f9"></td>
+                </tr>
+              ` : ''}
+            </tfoot>
+          ` : ''}
+        </table>
+      </div>
     </div>
   `;
+  document.body.appendChild(ov);
+  ov.querySelector('[data-close]').onclick = () => ov.remove();
+  ov.querySelector('[data-export]').onclick = () => {
+    document.getElementById('oc-btn-export')?.click();
+  };
+}
+
+function pintarColumnasKanban() {
+  const board = document.getElementById('oc-kanban-board');
+  if (!board) return;
+
+  const filtradas = _ocs.filter(oc => {
+    if (oc.estado === 'ANULADA') return false;
+    if (_kanbanFiltros.cc && oc.centro_costo !== _kanbanFiltros.cc) return false;
+    if (_kanbanFiltros.mes && !(oc.fecha_emision || '').startsWith(_kanbanFiltros.mes)) return false;
+    if (_kanbanFiltros.soloProblemas && !ocTieneProblema(oc)) return false;
+    return true;
+  });
+
+  const estadosOrden = ['BORRADOR', 'APROBADA', 'PAGO', 'RECEPCION', 'FACTURACION', 'TERMINADA'];
+  const porEstado = {};
+  estadosOrden.forEach(e => porEstado[e] = []);
+  filtradas.forEach(oc => {
+    if (porEstado[oc.estado]) porEstado[oc.estado].push(oc);
+  });
+
+  board.innerHTML = estadosOrden.map(estado => {
+    const color = ESTADO_COLOR[estado];
+    const ocs = porEstado[estado];
+    return `
+      <div class="oc-kanban-column" data-estado="${estado}" style="background:${color.bg}">
+        <div class="oc-kanban-header" style="border-bottom:2px solid ${color.fg}22">
+          <strong style="color:${color.fg}">${color.icon} ${estado.replace('_', ' ')}</strong>
+          <span class="count" style="background:${color.fg}">${ocs.length}</span>
+        </div>
+        <div class="oc-kanban-cards">
+          ${ocs.length ? ocs.map(oc => kanbanCard(oc, color)).join('') :
+            `<div class="oc-kanban-empty" style="color:${color.fg}77">—</div>`}
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function ocTieneProblema(oc) {
+  if (oc.estado_pago === 'PARCIAL' || oc.estado_pago === 'PENDIENTE') return true;
+  if (oc.forma_pago === 'CREDITO' && oc.estado_pago !== 'PAGADO') return true;
+  if (oc.estado === 'FACTURACION' && oc.estado_factura === 'PENDIENTE') return true;
+  return false;
+}
+
+// Mismo criterio que el backend (_requiereRecepcion en OrdenCompraService.ts):
+// las OCs GENERAL no-honorario son gastos administrativos sin mercadería ni
+// trabajo a recibir → saltean el paso RECEPCION del kanban.
+function requiereRecepcion(oc) {
+  return oc.tipo_oc === 'ALMACEN' || !!oc.es_honorario || oc.tipo_oc === 'SERVICIO';
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]);
 }
 
 function kanbanCard(oc, color) {
   const monto = oc.moneda === 'USD' ? fUSD(oc.total) : fPEN(oc.total);
+  const dotClass = calcularDotClass(oc);
+  const badges = calcularBadges(oc);
+  const dotTitle = `Estado: ${oc.estado} · Pago: ${oc.estado_pago || '-'} · Factura: ${oc.estado_factura || '-'}${oc.estado_recepcion ? ' · Recepción: ' + oc.estado_recepcion : ''}`;
+
   return `
-    <div onclick="OC.verOC(${oc.id_oc})" style="background:white;padding:10px;border-radius:8px;cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,0.06);border-left:3px solid ${color.fg}">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
-        <strong style="font-size:12px">${oc.nro_oc}</strong>
-        <span style="font-size:10px;padding:1px 6px;border-radius:4px;background:${oc.empresa === 'PT' ? '#16a34a' : '#676767'};color:white">${oc.empresa}</span>
+    <div class="oc-card" onclick="OC.verOC(${oc.id_oc})" style="border-left:3px solid ${color.fg}">
+      <div class="oc-card-head">
+        <span class="oc-dot ${dotClass}" title="${dotTitle}"></span>
+        <strong class="oc-nro">${oc.nro_oc}</strong>
+        <span class="oc-marca" style="background:${oc.empresa === 'PT' ? '#16a34a' : '#676767'}">${oc.empresa}</span>
       </div>
-      <div style="font-size:11px;color:var(--text-secondary);margin-bottom:4px">${(oc.proveedor_nombre || '—').slice(0, 24)}</div>
-      <div style="display:flex;justify-content:space-between;align-items:center">
-        <span style="font-size:10px;color:var(--text-secondary)">${fmtDate(oc.fecha_emision)}</span>
-        <strong style="font-size:12px">${monto}</strong>
+      <div class="oc-prov">${escapeHtml((oc.proveedor_nombre || '—').slice(0, 32))}</div>
+      <div class="oc-row">
+        <span class="oc-fecha">${fmtDate(oc.fecha_emision)}</span>
+        <strong class="oc-monto">${monto}</strong>
       </div>
+      ${badges.map(b => `<div class="oc-badge ${b.tipo}">${b.texto}</div>`).join('')}
     </div>
   `;
 }
 
+function calcularDotClass(oc) {
+  switch (oc.estado) {
+    case 'APROBADA':           return 'dot-neutro';
+    case 'PAGO':               return 'dot-rojo';
+    case 'RECEPCION': {
+      const r = oc.estado_recepcion || 'NO_RECIBIDO';
+      if (r === 'RECIBIDO') return 'dot-verde';
+      if (r === 'PARCIAL')  return 'dot-naranja';
+      return 'dot-rojo';
+    }
+    case 'FACTURACION':        return oc.estado_factura === 'FACTURADA' ? 'dot-verde' : 'dot-rojo';
+    case 'TERMINADA':          return 'dot-verde';
+    case 'CERRADA_SIN_FACTURA':return 'dot-gris';
+    case 'ANULADA':            return 'dot-gris';
+    default:                   return 'dot-neutro';
+  }
+}
+
+function calcularBadges(oc) {
+  const bs = [];
+  // Saldo pendiente
+  if (oc.estado_pago === 'PARCIAL') {
+    const saldo = Number(oc.total) - Number(oc.monto_pagado || 0);
+    bs.push({ tipo: 'warn', texto: `⚠ Saldo S/ ${saldo.toFixed(2)} pdte` });
+  }
+  // Crédito vence
+  if (oc.forma_pago === 'CREDITO' && oc.estado_pago !== 'PAGADO' && oc.fecha_credito_vence) {
+    const fechaCorta = String(oc.fecha_credito_vence).slice(0, 10);
+    bs.push({ tipo: 'warn', texto: `⚠ Crédito vence ${fechaCorta}` });
+  }
+  // Demora en recepción — solo aplica si el tipo de OC requiere recepción.
+  if (oc.estado === 'RECEPCION' && oc.estado_pago === 'PAGADO' && oc.pagada_at && requiereRecepcion(oc)) {
+    const dias = Math.floor((Date.now() - new Date(oc.pagada_at).getTime()) / 86400000);
+    if (dias > 15) bs.push({ tipo: 'danger', texto: `⚠ Sin recibir hace ${dias}d` });
+  }
+  // Demora en factura
+  if (oc.estado === 'FACTURACION' && oc.estado_factura === 'PENDIENTE' && oc.updated_at) {
+    const dias = Math.floor((Date.now() - new Date(oc.updated_at).getTime()) / 86400000);
+    if (dias > 15) bs.push({ tipo: 'warn', texto: `⚠ Sin factura hace ${dias}d` });
+  }
+  return bs;
+}
+
 // ──────── Tab Lista ────────
+// Filtros del Listado completo. Persisten en module-scope para que al
+// re-renderizar (después de aplicar filtros) los valores no se pisen.
+let _listaFiltros = {
+  anio:    new Date().getFullYear(),
+  mes:     'Todos',
+  centro:  'Todos',
+  marca:   'Todos',
+  estado:  'Todos',
+};
+
 function renderLista(panel) {
   panel.dataset.rendered = '1';
   if (!_ocs.length) {
@@ -496,42 +886,210 @@ function renderLista(panel) {
     return;
   }
 
+  // Opciones derivadas de los datos
+  const aniosDisp = [...new Set(_ocs.map(o => (o.fecha_emision || '').slice(0, 4)).filter(Boolean))].sort().reverse();
+  const centrosDisp = [...new Set(_ocs.map(o => o.centro_costo).filter(Boolean))].sort();
+  const meses = [
+    { v: 'Todos', l: 'Todos' }, { v: '01', l: 'Enero' }, { v: '02', l: 'Febrero' },
+    { v: '03', l: 'Marzo' }, { v: '04', l: 'Abril' }, { v: '05', l: 'Mayo' },
+    { v: '06', l: 'Junio' }, { v: '07', l: 'Julio' }, { v: '08', l: 'Agosto' },
+    { v: '09', l: 'Septiembre' }, { v: '10', l: 'Octubre' }, { v: '11', l: 'Noviembre' },
+    { v: '12', l: 'Diciembre' },
+  ];
+
   panel.innerHTML = `
-    <div class="card" style="margin-top:16px">
+    <div style="margin-top:16px">
+      <!-- Filtros -->
+      <div class="card" style="padding:14px 16px;margin-bottom:14px;display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end">
+        <label style="display:flex;flex-direction:column;gap:3px;font-size:12px;color:var(--text-secondary)">
+          Año
+          <select id="lst-anio" style="padding:7px 10px;border:1px solid #d1d5db;border-radius:5px;font-size:13px;min-width:90px">
+            ${aniosDisp.map(a => `<option value="${a}" ${String(_listaFiltros.anio) === a ? 'selected' : ''}>${a}</option>`).join('')}
+          </select>
+        </label>
+        <label style="display:flex;flex-direction:column;gap:3px;font-size:12px;color:var(--text-secondary)">
+          Mes
+          <select id="lst-mes" style="padding:7px 10px;border:1px solid #d1d5db;border-radius:5px;font-size:13px;min-width:130px">
+            ${meses.map(m => `<option value="${m.v}" ${_listaFiltros.mes === m.v ? 'selected' : ''}>${m.l}</option>`).join('')}
+          </select>
+        </label>
+        <label style="display:flex;flex-direction:column;gap:3px;font-size:12px;color:var(--text-secondary)">
+          Centro de costo
+          <select id="lst-centro" style="padding:7px 10px;border:1px solid #d1d5db;border-radius:5px;font-size:13px;min-width:200px">
+            <option value="Todos">Todos</option>
+            ${centrosDisp.map(c => `<option value="${escapeHtml(c)}" ${_listaFiltros.centro === c ? 'selected' : ''}>${escapeHtml(c)}</option>`).join('')}
+          </select>
+        </label>
+        <label style="display:flex;flex-direction:column;gap:3px;font-size:12px;color:var(--text-secondary)">
+          Marca
+          <select id="lst-marca" style="padding:7px 10px;border:1px solid #d1d5db;border-radius:5px;font-size:13px;min-width:100px">
+            <option value="Todos" ${_listaFiltros.marca === 'Todos' ? 'selected' : ''}>Ambas</option>
+            <option value="ME"    ${_listaFiltros.marca === 'ME'    ? 'selected' : ''}>Metal Engineers</option>
+            <option value="PT"    ${_listaFiltros.marca === 'PT'    ? 'selected' : ''}>Perfotools</option>
+          </select>
+        </label>
+        <label style="display:flex;flex-direction:column;gap:3px;font-size:12px;color:var(--text-secondary)">
+          Estado
+          <select id="lst-estado" style="padding:7px 10px;border:1px solid #d1d5db;border-radius:5px;font-size:13px;min-width:140px">
+            <option value="Todos">Todos</option>
+            ${Object.keys(ESTADO_COLOR).map(e => `<option value="${e}" ${_listaFiltros.estado === e ? 'selected' : ''}>${e.replace('_', ' ')}</option>`).join('')}
+          </select>
+        </label>
+        <button id="lst-btn-aplicar" class="btn-secondary" style="padding:7px 16px">Aplicar</button>
+        <button id="lst-btn-reset" class="btn-secondary" style="padding:7px 14px;background:transparent" title="Limpiar todos los filtros">⟲ Reset</button>
+        <div style="flex:1"></div>
+        <button id="lst-btn-preview" class="btn-secondary" style="padding:7px 14px" title="Vista previa del listado con formato del Excel">👁️ Vista previa</button>
+        <button id="lst-btn-export" class="btn-secondary" style="padding:7px 14px" title="Descargar TODAS las OCs en Excel">📊 Exportar Excel</button>
+      </div>
+      <div id="lst-cuerpo"></div>
+    </div>
+  `;
+
+  // Bind filtros
+  document.getElementById('lst-btn-aplicar').onclick = () => {
+    _listaFiltros.anio   = Number(document.getElementById('lst-anio').value);
+    _listaFiltros.mes    = document.getElementById('lst-mes').value;
+    _listaFiltros.centro = document.getElementById('lst-centro').value;
+    _listaFiltros.marca  = document.getElementById('lst-marca').value;
+    _listaFiltros.estado = document.getElementById('lst-estado').value;
+    pintarListaCuerpo();
+  };
+  document.getElementById('lst-btn-reset').onclick = () => {
+    _listaFiltros = { anio: new Date().getFullYear(), mes: 'Todos', centro: 'Todos', marca: 'Todos', estado: 'Todos' };
+    panel.dataset.rendered = '';
+    renderLista(panel);
+  };
+  document.getElementById('lst-btn-export').onclick = () => OC.descargarExcel();
+  document.getElementById('lst-btn-preview').onclick = () => previewListadoOC();
+
+  pintarListaCuerpo();
+}
+
+// Aplica filtros + agrupa por centro de costo + pinta KPIs y secciones.
+function pintarListaCuerpo() {
+  const cont = document.getElementById('lst-cuerpo');
+  if (!cont) return;
+  const f = _listaFiltros;
+
+  const filtradas = _ocs.filter(oc => {
+    const fecha = String(oc.fecha_emision || '');
+    if (f.anio   && !fecha.startsWith(String(f.anio))) return false;
+    if (f.mes !== 'Todos' && fecha.slice(5, 7) !== f.mes) return false;
+    if (f.centro !== 'Todos' && oc.centro_costo !== f.centro) return false;
+    if (f.marca  !== 'Todos' && oc.empresa !== f.marca) return false;
+    if (f.estado !== 'Todos' && oc.estado !== f.estado) return false;
+    return true;
+  });
+
+  if (!filtradas.length) {
+    cont.innerHTML = `
+      <div class="card" style="padding:40px;text-align:center;color:var(--text-secondary)">
+        <div style="font-size:36px;margin-bottom:8px">🔍</div>
+        <div style="font-size:14px;font-weight:600">No hay OCs con esos filtros</div>
+        <div style="font-size:12px;margin-top:4px">Probá ajustar los filtros o presionar ⟲ Reset.</div>
+      </div>`;
+    return;
+  }
+
+  // KPIs en PEN equivalente (USD * tipo_cambio)
+  const totalGeneral = filtradas.reduce((s, o) => s + (o.moneda === 'USD' ? Number(o.total) * (Number(o.tipo_cambio) || 1) : Number(o.total || 0)), 0);
+  const porTipo = { ALMACEN: 0, GENERAL: 0, SERVICIO: 0 };
+  const cntTipo = { ALMACEN: 0, GENERAL: 0, SERVICIO: 0 };
+  filtradas.forEach(o => {
+    const m = o.moneda === 'USD' ? Number(o.total) * (Number(o.tipo_cambio) || 1) : Number(o.total || 0);
+    if (porTipo[o.tipo_oc] !== undefined) { porTipo[o.tipo_oc] += m; cntTipo[o.tipo_oc] += 1; }
+  });
+
+  // Agrupar por centro de costo
+  const grupos = {};
+  filtradas.forEach(oc => {
+    const k = oc.centro_costo || 'SIN CENTRO';
+    if (!grupos[k]) grupos[k] = { ocs: [], totalPEN: 0, totalUSD: 0 };
+    grupos[k].ocs.push(oc);
+    if (oc.moneda === 'USD') grupos[k].totalUSD += Number(oc.total || 0);
+    else grupos[k].totalPEN += Number(oc.total || 0);
+  });
+  const centrosOrdenados = Object.keys(grupos).sort();
+
+  // Render
+  cont.innerHTML = `
+    <!-- KPIs -->
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-bottom:16px">
+      ${kpiCard('TOTAL GENERAL (PEN equiv.)', fPEN(totalGeneral), `${filtradas.length} OC${filtradas.length === 1 ? '' : 's'}`, '#0f172a', '#fff')}
+      ${kpiCard('ALMACÉN', fPEN(porTipo.ALMACEN), `${cntTipo.ALMACEN} OC${cntTipo.ALMACEN === 1 ? '' : 's'}`, '#1e40af', '#dbeafe')}
+      ${kpiCard('GENERAL', fPEN(porTipo.GENERAL), `${cntTipo.GENERAL} OC${cntTipo.GENERAL === 1 ? '' : 's'}`, '#92400e', '#fef3c7')}
+      ${kpiCard('SERVICIO', fPEN(porTipo.SERVICIO), `${cntTipo.SERVICIO} OC${cntTipo.SERVICIO === 1 ? '' : 's'}`, '#065f46', '#d1fae5')}
+    </div>
+
+    <!-- Secciones por centro de costo -->
+    ${centrosOrdenados.map(c => seccionCentro(c, grupos[c])).join('')}
+  `;
+}
+
+// Helper: card de KPI (usa el patrón de Administración Personal)
+function kpiCard(label, value, sub, fgColor, bgColor) {
+  return `
+    <div style="background:${bgColor};border:1px solid ${fgColor}33;border-left:4px solid ${fgColor};border-radius:6px;padding:12px 14px">
+      <div style="font-size:10px;color:${fgColor};font-weight:700;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">${label}</div>
+      <div style="font-size:22px;font-weight:700;color:${fgColor};font-variant-numeric:tabular-nums">${value}</div>
+      <div style="font-size:11px;color:${fgColor}aa;margin-top:2px">${sub}</div>
+    </div>
+  `;
+}
+
+// Helper: una sección por centro de costo con su tabla y subtotal
+function seccionCentro(nombreCentro, grupo) {
+  const ocsOrdenadas = grupo.ocs.slice().sort((a, b) => String(b.fecha_emision || '').localeCompare(String(a.fecha_emision || '')));
+  const totales = [];
+  if (grupo.totalPEN > 0) totales.push(`<span style="color:#065f46">${fPEN(grupo.totalPEN)}</span>`);
+  if (grupo.totalUSD > 0) totales.push(`<span style="color:#1e40af">${fUSD(grupo.totalUSD)}</span>`);
+
+  return `
+    <div class="card" style="margin-bottom:14px;overflow:hidden">
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px;background:#f1f5f9;border-bottom:2px solid #cbd5e1">
+        <div>
+          <h3 style="margin:0;font-size:14px;color:#0f172a;display:flex;align-items:center;gap:8px">
+            📁 ${escapeHtml(nombreCentro)}
+            <span style="background:#cbd5e1;color:#0f172a;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600">${grupo.ocs.length} OC${grupo.ocs.length === 1 ? '' : 's'}</span>
+          </h3>
+        </div>
+        <div style="font-size:14px;font-weight:700;font-variant-numeric:tabular-nums">${totales.join(' · ') || '—'}</div>
+      </div>
       <div style="overflow-x:auto">
         <table style="width:100%;border-collapse:collapse;font-size:12px">
           <thead>
-            <tr style="background:#f9fafb;border-bottom:2px solid #d9dad9">
-              <th style="padding:10px;text-align:left">N° OC</th>
-              <th style="padding:10px;text-align:left">Fecha</th>
-              <th style="padding:10px;text-align:left">Proveedor</th>
-              <th style="padding:10px;text-align:center">Tipo</th>
-              <th style="padding:10px;text-align:center">Empresa</th>
-              <th style="padding:10px;text-align:right">Total</th>
-              <th style="padding:10px;text-align:center">Estado</th>
-              <th style="padding:10px;text-align:center">Acciones</th>
+            <tr style="background:#f9fafb;border-bottom:1px solid #e5e7eb">
+              <th style="padding:9px 10px;text-align:left;font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:0.4px;font-weight:600">N° OC</th>
+              <th style="padding:9px 10px;text-align:left;font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:0.4px;font-weight:600">Fecha</th>
+              <th style="padding:9px 10px;text-align:left;font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:0.4px;font-weight:600">Proveedor</th>
+              <th style="padding:9px 10px;text-align:center;font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:0.4px;font-weight:600">Tipo</th>
+              <th style="padding:9px 10px;text-align:center;font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:0.4px;font-weight:600">Marca</th>
+              <th style="padding:9px 10px;text-align:right;font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:0.4px;font-weight:600">Total</th>
+              <th style="padding:9px 10px;text-align:center;font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:0.4px;font-weight:600">Estado</th>
+              <th style="padding:9px 10px;text-align:center;font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:0.4px;font-weight:600">Acción</th>
             </tr>
           </thead>
           <tbody>
-            ${_ocs.map(oc => {
-              const color = ESTADO_COLOR[oc.estado];
+            ${ocsOrdenadas.map(oc => {
+              const color = ESTADO_COLOR[oc.estado] || { bg: '#e5e7eb', fg: '#374151', icon: '' };
               const monto = oc.moneda === 'USD' ? fUSD(oc.total) : fPEN(oc.total);
               const fechaIso = oc.fecha_emision ? String(oc.fecha_emision).split('T')[0] : '';
               const puedeEditarFecha = oc.estado !== 'ANULADA';
+              const nroSafe = String(oc.nro_oc || '').replace(/'/g, "\\'");
               return `
                 <tr style="border-bottom:1px solid #e5e7eb">
-                  <td style="padding:8px;font-weight:700"><a href="#" onclick="event.preventDefault();OC.verOC(${oc.id_oc})" style="color:var(--primary-color);text-decoration:none">${oc.nro_oc}</a></td>
-                  <td style="padding:8px;white-space:nowrap">
+                  <td style="padding:8px 10px;font-weight:700"><a href="#" onclick="event.preventDefault();OC.verOC(${oc.id_oc})" style="color:var(--primary-color);text-decoration:none">${oc.nro_oc}</a></td>
+                  <td style="padding:8px 10px;white-space:nowrap;font-variant-numeric:tabular-nums">
                     ${fmtDate(oc.fecha_emision)}
-                    ${puedeEditarFecha ? `<button onclick="OC.editarFecha(${oc.id_oc},'${oc.nro_oc.replace(/'/g, "\\'")}','${fechaIso}')" title="Editar fecha (corregir data histórica)" style="background:none;border:none;color:#2563eb;cursor:pointer;font-size:12px;padding:0 2px;margin-left:4px">📅</button>` : ''}
+                    ${puedeEditarFecha ? `<button onclick="OC.editarFecha(${oc.id_oc},'${nroSafe}','${fechaIso}')" title="Editar fecha (corregir data histórica)" style="background:none;border:none;color:#2563eb;cursor:pointer;font-size:12px;padding:0 2px;margin-left:4px">📅</button>` : ''}
                   </td>
-                  <td style="padding:8px">${oc.proveedor_nombre || '—'}</td>
-                  <td style="padding:8px;text-align:center"><span style="font-size:10px;background:#e5e7eb;padding:2px 6px;border-radius:4px">${oc.tipo_oc}</span></td>
-                  <td style="padding:8px;text-align:center"><span style="font-size:10px;padding:1px 6px;border-radius:4px;background:${oc.empresa === 'PT' ? '#16a34a' : '#676767'};color:white">${oc.empresa}</span></td>
-                  <td style="padding:8px;text-align:right;font-weight:700">${monto}</td>
-                  <td style="padding:8px;text-align:center"><span style="background:${color.bg};color:${color.fg};padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700">${color.icon} ${oc.estado.replace('_', ' ')}</span></td>
-                  <td style="padding:8px;text-align:center;white-space:nowrap">
-                    <button onclick="OC.verOC(${oc.id_oc})" style="padding:4px 10px;background:var(--primary-color);color:white;border:none;border-radius:4px;cursor:pointer;font-size:11px">Ver</button>
+                  <td style="padding:8px 10px">${escapeHtml(oc.proveedor_nombre || '—')}</td>
+                  <td style="padding:8px 10px;text-align:center"><span style="font-size:10px;background:#e5e7eb;padding:2px 6px;border-radius:4px">${oc.tipo_oc}</span></td>
+                  <td style="padding:8px 10px;text-align:center"><span style="font-size:10px;padding:1px 6px;border-radius:4px;background:${oc.empresa === 'PT' ? '#16a34a' : '#676767'};color:white">${oc.empresa}</span></td>
+                  <td style="padding:8px 10px;text-align:right;font-weight:700;font-variant-numeric:tabular-nums">${monto}</td>
+                  <td style="padding:8px 10px;text-align:center"><span style="background:${color.bg};color:${color.fg};padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;white-space:nowrap">${color.icon} ${oc.estado.replace('_', ' ')}</span></td>
+                  <td style="padding:8px 10px;text-align:center">
+                    <button onclick="OC.verOC(${oc.id_oc})" style="padding:4px 10px;background:var(--primary-color);color:white;border:none;border-radius:4px;cursor:pointer;font-size:11px">👁 Ver</button>
                   </td>
                 </tr>
               `;
@@ -549,8 +1107,8 @@ function renderDashboard(panel) {
   const ocsActivas = _ocs.filter(o => o.estado !== 'ANULADA');
   const totalPEN = ocsActivas.reduce((s, o) => s + (o.moneda === 'USD' ? Number(o.total) * Number(o.tipo_cambio) : Number(o.total)), 0);
   const pendientesAprobar = _ocs.filter(o => o.estado === 'BORRADOR').length;
-  const porRecibir = _ocs.filter(o => ['APROBADA', 'ENVIADA', 'RECIBIDA_PARCIAL'].includes(o.estado)).length;
-  const porFacturar = _ocs.filter(o => ['RECIBIDA', 'RECIBIDA_PARCIAL'].includes(o.estado)).length;
+  const porRecibir = _ocs.filter(o => ['PAGO', 'RECEPCION'].includes(o.estado)).length;
+  const porFacturar = _ocs.filter(o => o.estado === 'FACTURACION' && o.estado_factura === 'PENDIENTE').length;
 
   panel.innerHTML = `
     <div style="margin-top:16px">
@@ -580,10 +1138,16 @@ function renderDashboard(panel) {
 // ──────── Modal: Ver detalle de OC ────────
 async function verOC(id_oc) {
   try {
-    const oc = await api.ordenesCompra.get(id_oc);
+    const [oc, facturaAdjunta, notas] = await Promise.all([
+      api.ordenesCompra.get(id_oc),
+      api.ordenesCompra.getFactura(id_oc).catch(() => null),
+      api.ordenesCompra.listarNotas(id_oc).catch(() => []),
+    ]);
     const color = ESTADO_COLOR[oc.estado];
     const monto = oc.moneda === 'USD' ? fUSD(oc.total) : fPEN(oc.total);
 
+    // Inyectar la factura al objeto oc para que accionesSegunEstado la considere
+    oc.factura_adjunta = facturaAdjunta;
     const botonesAccion = accionesSegunEstado(oc);
 
     ensureOCModal().innerHTML = `
@@ -650,6 +1214,161 @@ async function verOC(id_oc) {
 
           ${oc.observaciones ? `<div style="padding:10px;background:#fffbeb;border-radius:6px;margin-bottom:16px;font-size:12px"><strong>Observaciones:</strong> ${oc.observaciones}</div>` : ''}
 
+          ${(() => {
+            // Bloque "Pago" — solo se muestra si la OC ya pasó por aprobación
+            // (BORRADOR/APROBADA todavía no aplica). Muestra Total / Ya pagado /
+            // Saldo pendiente para que el usuario sepa cuánto debe.
+            if (['BORRADOR', 'APROBADA', 'ANULADA'].includes(oc.estado)) return '';
+            const _sym = oc.moneda === 'USD' ? '$' : 'S/';
+            const _total = Number(oc.total) || 0;
+            const _pagado = Number(oc.monto_pagado || 0);
+            const _saldo = Math.max(0, _total - _pagado);
+            const _pagOk = oc.estado_pago === 'PAGADO';
+            const _esCredito = oc.forma_pago === 'CREDITO';
+            const _bg = _pagOk ? '#ecfdf5' : '#fef3c7';
+            const _border = _pagOk ? '#a7f3d0' : '#fde68a';
+            const _txt = _pagOk ? '#065f46' : '#92400e';
+            const _label = _pagOk ? '✅ Pago completo' : (_esCredito && _pagado <= 0.01 ? '💳 A crédito (sin pago aún)' : '💰 Pago en curso');
+            return `
+              <div style="padding:12px 14px;background:${_bg};border:1px solid ${_border};border-radius:6px;margin-bottom:16px;font-size:13px;color:${_txt}">
+                <div style="font-weight:700;margin-bottom:6px">${_label}</div>
+                <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;font-size:12px">
+                  <div>Total OC: <strong>${_sym} ${_total.toFixed(2)}</strong></div>
+                  <div>Ya pagado: <strong>${_sym} ${_pagado.toFixed(2)}</strong></div>
+                  <div>Saldo pdte: <strong style="${_saldo > 0.01 ? 'color:#b91c1c' : ''}">${_sym} ${_saldo.toFixed(2)}</strong></div>
+                </div>
+                ${_esCredito && oc.fecha_credito_vence ? `<div style="margin-top:6px;font-size:11px">📅 Vence: ${fmtDate(oc.fecha_credito_vence)}</div>` : ''}
+              </div>
+            `;
+          })()}
+
+          ${(() => {
+            // Lista detallada de pagos individuales (cada uno con N° operación y cuenta).
+            // Viene de MovimientoBancario filtrando por descripción que contiene el nro_oc.
+            const pagos = oc.pagos || [];
+            if (!pagos.length) return '';
+            return `
+              <details open style="margin-bottom:16px;padding:12px 14px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px">
+                <summary style="cursor:pointer;font-size:13px;color:#14532d;font-weight:700">💰 Pagos registrados (${pagos.length})</summary>
+                <table style="width:100%;border-collapse:collapse;font-size:12px;margin-top:10px;background:white;border-radius:4px;overflow:hidden">
+                  <thead>
+                    <tr style="background:#dcfce7;color:#14532d">
+                      <th style="padding:6px 8px;text-align:left">Fecha</th>
+                      <th style="padding:6px 8px;text-align:left">Cuenta</th>
+                      <th style="padding:6px 8px;text-align:left">N° operación</th>
+                      <th style="padding:6px 8px;text-align:right">Monto</th>
+                      <th style="padding:6px 8px;text-align:left">Observaciones</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${pagos.map(p => {
+                      const fecha = fmtDate(p.fecha);
+                      const cuenta = p.cuenta_nombre ? `${escapeHtml(p.cuenta_nombre)}${p.cuenta_moneda ? ' (' + p.cuenta_moneda + ')' : ''}` : '—';
+                      const nroOp = p.nro_operacion ? escapeHtml(p.nro_operacion) : '<span style="color:#9ca3af">—</span>';
+                      const monto = `S/ ${Number(p.monto || 0).toFixed(2)}`;
+                      const obs = p.comentario ? escapeHtml(p.comentario) : '<span style="color:#9ca3af">—</span>';
+                      return `
+                        <tr style="border-top:1px solid #e5e7eb">
+                          <td style="padding:6px 8px">${fecha}</td>
+                          <td style="padding:6px 8px">${cuenta}</td>
+                          <td style="padding:6px 8px;font-family:ui-monospace,monospace">${nroOp}</td>
+                          <td style="padding:6px 8px;text-align:right;font-weight:700">${monto}</td>
+                          <td style="padding:6px 8px;color:#6b7280">${obs}</td>
+                        </tr>
+                      `;
+                    }).join('')}
+                  </tbody>
+                </table>
+              </details>
+            `;
+          })()}
+
+          ${(() => {
+            // Bloque "Recepción" — solo si la OC ya está en RECEPCION, FACTURACION o TERMINADA.
+            // Para honorarios la palabra es "Trabajo realizado" en vez de "Recepción".
+            // Las OCs GENERAL no-honorario no tienen recepción — se omite el bloque.
+            if (!['RECEPCION', 'FACTURACION', 'TERMINADA'].includes(oc.estado)) return '';
+            if (!requiereRecepcion(oc)) return '';
+            const _esHon = !!oc.es_honorario;
+            const _label_estado = oc.estado_recepcion || 'NO_RECIBIDO';
+            let _totalPedido = 0, _totalRecibido = 0;
+            for (const l of (oc.detalle || [])) {
+              _totalPedido   += Number(l.cantidad) || 0;
+              _totalRecibido += Number(l.cantidad_recibida) || 0;
+            }
+            const _falta = Math.max(0, _totalPedido - _totalRecibido);
+            const _bg     = _label_estado === 'RECIBIDO' ? '#ecfdf5' : (_label_estado === 'PARCIAL' ? '#fef3c7' : '#fee2e2');
+            const _border = _label_estado === 'RECIBIDO' ? '#a7f3d0' : (_label_estado === 'PARCIAL' ? '#fde68a' : '#fecaca');
+            const _txt    = _label_estado === 'RECIBIDO' ? '#065f46' : (_label_estado === 'PARCIAL' ? '#92400e' : '#991b1b');
+            const _icono  = _label_estado === 'RECIBIDO' ? '✅' : (_label_estado === 'PARCIAL' ? '📦' : '⚠️');
+            const _verbo = _esHon ? 'Trabajo realizado' : 'Recepción';
+            const _verboFalta = _esHon ? 'falta confirmar' : 'faltan recibir';
+            const _msg = _label_estado === 'RECIBIDO'
+              ? `${_verbo} completa`
+              : (_label_estado === 'PARCIAL' ? `${_verbo} parcial` : `Sin ${_verbo.toLowerCase()} aún`);
+            return `
+              <div style="padding:12px 14px;background:${_bg};border:1px solid ${_border};border-radius:6px;margin-bottom:16px;font-size:13px;color:${_txt}">
+                <div style="font-weight:700;margin-bottom:6px">${_icono} ${_msg}</div>
+                <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;font-size:12px">
+                  <div>Total pedido: <strong>${_totalPedido}</strong></div>
+                  <div>Ya recibido: <strong>${_totalRecibido}</strong></div>
+                  <div>${_verboFalta.charAt(0).toUpperCase() + _verboFalta.slice(1)}: <strong style="${_falta > 0.01 ? 'color:#b91c1c' : ''}">${_falta}</strong></div>
+                </div>
+              </div>
+            `;
+          })()}
+
+          ${facturaAdjunta ? `
+            <div style="padding:12px 14px;background:#ecfdf5;border:1px solid #a7f3d0;border-radius:6px;margin-bottom:16px;font-size:13px;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+              <div>
+                📄 <strong>Factura adjunta:</strong>
+                ${facturaAdjunta.nro_comprobante} ·
+                Emitida ${fmtDate(facturaAdjunta.fecha_emision)} ·
+                ${oc.moneda === 'USD' ? '$' : 'S/'} ${Number(facturaAdjunta.monto).toFixed(2)}
+              </div>
+              <div style="display:flex;gap:6px;align-items:center">
+                ${facturaAdjunta.url_pdf ? `
+                  <button onclick="window.previewFacturaOC(${oc.id_oc}, 'Factura ${escapeHtml(facturaAdjunta.nro_comprobante || '')}')" title="Previsualizar el comprobante adjunto en un modal — sirve para verificar visualmente que es el documento correcto." style="background:#16a34a;color:white;padding:6px 14px;border-radius:5px;border:none;font-weight:600;font-size:12px;cursor:pointer">👁️ Ver comprobante</button>
+                ` : '<span style="color:#6b7280;font-size:12px">(sin archivo subido)</span>'}
+                ${(JSON.parse(localStorage.getItem('erp_user') || '{}').rol === 'GERENTE') ? `
+                  <button onclick="OC.eliminarFactura(${oc.id_oc})" title="Eliminar factura adjunta. Vuelve la OC a estado_factura=PENDIENTE. El archivo en Cloudinary queda huérfano (no se borra). Solo GERENTE." style="background:transparent;color:#dc2626;border:1px solid #fecaca;border-radius:5px;padding:5px 9px;cursor:pointer;font-weight:700;font-size:13px">✕</button>
+                ` : ''}
+              </div>
+            </div>
+          ` : ''}
+
+          ${(() => {
+            if (!notas || !notas.length) return '';
+            const userActual = JSON.parse(localStorage.getItem('erp_user') || '{}');
+            const esGer = userActual.rol === 'GERENTE';
+            const idUser = userActual.id_usuario;
+            return `
+              <details open style="margin-bottom:16px;padding:12px 14px;background:#fefce8;border:1px solid #fde68a;border-radius:6px">
+                <summary style="cursor:pointer;font-size:13px;color:#713f12;font-weight:700">📝 Notas internas (${notas.length})</summary>
+                <div style="margin-top:10px;display:flex;flex-direction:column;gap:8px">
+                  ${notas.map(n => {
+                    const puedeBorrar = esGer || n.id_usuario === idUser;
+                    const autor = n.nombre_usuario || 'Usuario';
+                    const fecha = new Date(n.fecha).toLocaleString('es-PE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+                    const txt = String(n.texto || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                    return `
+                      <div style="background:white;border:1px solid #fde68a;border-radius:6px;padding:10px 12px;font-size:12px;color:#374151">
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;font-size:11px;color:#6b7280">
+                          <strong style="color:#374151">${autor}</strong>
+                          <span style="display:flex;gap:8px;align-items:center">
+                            <span>${fecha}</span>
+                            ${puedeBorrar ? `<button onclick="OC.borrarNota(${oc.id_oc}, ${n.id_nota})" title="Borrar esta nota. Sólo el autor o un GERENTE pueden hacerlo." style="background:transparent;color:#dc2626;border:1px solid #fecaca;border-radius:4px;padding:2px 7px;cursor:pointer;font-size:11px">✕</button>` : ''}
+                          </span>
+                        </div>
+                        <div style="white-space:pre-wrap;line-height:1.5">${txt}</div>
+                      </div>
+                    `;
+                  }).join('')}
+                </div>
+              </details>
+            `;
+          })()}
+
           ${oc.aprobaciones?.length ? `
             <details>
               <summary style="cursor:pointer;font-size:12px;color:var(--primary-color);font-weight:600;margin-bottom:10px">Historial de aprobaciones (${oc.aprobaciones.length})</summary>
@@ -679,7 +1398,12 @@ function accionesSegunEstado(oc) {
   btns.push(`<button onclick="window.previewPDFOC(${oc.id_oc}, '${nroSafe}')" title="Previsualizar el PDF de la OC en una ventana modal sin descargarlo." style="padding:10px 18px;background:#fff;color:#374151;border:1px solid #d1d5db;border-radius:6px;cursor:pointer;font-weight:600">👁️ Ver</button>`);
   btns.push(`<button onclick="OC.descargarPDF(${oc.id_oc})" title="Descargar el PDF de la OC con el formato oficial Metal Engineers / Perfotools." style="padding:10px 18px;background:#dc2626;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">📄 Descargar PDF</button>`);
   if (oc.estado === 'BORRADOR') {
-    btns.push(`<button onclick="OC.aprobar(${oc.id_oc})" title="Aprobar la OC. Pasa de BORRADOR a APROBADA y queda lista para enviar al proveedor." style="padding:10px 18px;background:#16a34a;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">✓ Aprobar</button>`);
+    btns.push(`<button onclick="OC.aprobar(${oc.id_oc})" title="Marcar la OC como lista para aprobación. Pasa de BORRADOR a APROBADA y queda en revisión hasta que se le dé 'Aprobado para pago'." style="padding:10px 18px;background:#16a34a;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">✓ Lista para aprobación</button>`);
+  }
+  // APROBADA = puesto de control de revisión. Único avance hacia adelante: "Aprobado para pago" → PAGO.
+  // No mostramos Registrar pago / Marcar crédito acá: esas acciones viven en PAGO.
+  if (oc.estado === 'APROBADA' && !oc.es_honorario) {
+    btns.push(`<button onclick="OC.aprobarParaPago(${oc.id_oc})" title="Marcar la OC como revisada y aprobada para pago. La envía a la bandeja de Finanzas (columna PAGO) para que registren el pago o crédito." style="padding:10px 18px;background:#16a34a;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">✅ Aprobado para pago</button>`);
   }
   // Etiquetas contextuales: las OCs de honorarios (es_honorario=true)
   // representan trabajo de persona natural — NO hay envío ni recepción de
@@ -695,46 +1419,96 @@ function accionesSegunEstado(oc) {
     : 'Cargar la factura/boleta del proveedor. Genera la Compra (ALMACEN) o el Gasto (GENERAL/SERVICIO) y la Tx en caja. Después de esto la OC ya no se puede anular.';
   const txtFacturaTardia = esHon ? '🧾 Recibí RxH' : '🧾 Recibí factura';
 
-  // "Marcar como Enviada" no aplica a honorarios.
-  if (oc.estado === 'APROBADA' && !esHon) {
-    btns.push(`<button onclick="OC.enviar(${oc.id_oc})" title="Marcar la OC como enviada al proveedor (no envía mail automático — es un cambio de estado para el seguimiento). Después solo se podrá editar metadata, no items." style="padding:10px 18px;background:#3b82f6;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">📤 Marcar como Enviada</button>`);
+  // "Marcar como Enviada" eliminado — ENVIADA ya no es un estado del flujo.
+  // PAGO = bandeja de Finanzas. Botón principal verde: Registrar pago (total o parcial).
+  // Recepción NO va acá: vive en RECEPCION.
+  if (oc.estado === 'PAGO') {
+    btns.push(`<button onclick="OC.registrarPago(${oc.id_oc}, '${nroSafe}')" title="Registrar el pago al proveedor. Soporta pago total o parcial. Genera Tx EGRESO + movimiento bancario por el monto pagado. La OC pasa a RECEPCIÓN (con badge de saldo pendiente si fue parcial)." style="padding:10px 18px;background:#15803d;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">💰 Registrar pago</button>`);
   }
-  if (['APROBADA', 'ENVIADA', 'RECIBIDA_PARCIAL'].includes(oc.estado)) {
+  // RECEPCION → permite registrar recepción de mercadería/servicio.
+  // Solo si todavía hay algo pendiente de recibir (estado_recepcion !== RECIBIDO).
+  // Las OCs GENERAL no-honorario no requieren este paso.
+  if (oc.estado === 'RECEPCION' && oc.estado_recepcion !== 'RECIBIDO' && requiereRecepcion(oc)) {
     btns.push(`<button onclick="OC.recibir(${oc.id_oc})" title="${ttRecepcion}" style="padding:10px 18px;background:#059669;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">${txtRecepcion}</button>`);
+  }
+  // En RECEPCION (sea recibido completo o no), si todavía hay saldo pendiente
+  // de pago, ofrecer "Pagar saldo" para terminar de cerrar la fase.
+  if (oc.estado === 'RECEPCION' && oc.estado_pago !== 'PAGADO') {
+    btns.push(`<button onclick="OC.registrarPago(${oc.id_oc}, '${nroSafe}')" title="Pagar el saldo pendiente del proveedor." style="padding:10px 18px;background:#15803d;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">💰 Pagar saldo</button>`);
   }
   // En honorarios permitimos pagar directo desde APROBADA (atajo común:
   // contraté → trabajó → pagué, todo en el mismo día). Para no-honorarios
-  // mantener flujo existente que requiere RECIBIDA primero.
+  // hay que pasar por PAGO formalmente.
   if (esHon && oc.estado === 'APROBADA') {
-    btns.push(`<button onclick="OC.registrarPago(${oc.id_oc}, '${nroSafe}')" title="Pagar directamente al colaborador. Saltea los pasos de envío y recepción (no aplican en honorarios). La OC pasa a 'Pagada · pend. RxH' hasta que entregue el Recibo por Honorarios." style="padding:10px 18px;background:#15803d;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">💰 Registrar pago</button>`);
+    btns.push(`<button onclick="OC.registrarPago(${oc.id_oc}, '${nroSafe}')" title="Pagar directamente al colaborador. Saltea PAGO/RECEPCIÓN (no aplican en honorarios). La OC pasa a 'Pagada · pend. RxH' hasta que entregue el Recibo por Honorarios." style="padding:10px 18px;background:#15803d;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">💰 Registrar pago</button>`);
   }
-  if (['RECIBIDA', 'RECIBIDA_PARCIAL'].includes(oc.estado)) {
-    btns.push(`<button onclick="OC.facturar(${oc.id_oc})" title="${ttFactura}" style="padding:10px 18px;background:#7c3aed;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">${txtFactura}</button>`);
-    btns.push(`<button onclick="OC.registrarPago(${oc.id_oc}, '${nroSafe}')" title="Registrar el pago sin haber recibido el comprobante todavía (caso típico: pago primero, comprobante llega después). La OC pasa a 'Pagada · pend. comprobante' y se genera la Tx + movimiento bancario." style="padding:10px 18px;background:#15803d;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">💰 Registrar pago</button>`);
-    // "Cerrar sin facturar" solo aplica a GENERAL/SERVICIO (no ALMACEN).
-    // ALMACEN siempre requiere comprobante porque genera stock valorizado.
-    if (oc.tipo_oc !== 'ALMACEN') {
-      btns.push(`<button onclick="OC.cerrarSinFactura(${oc.id_oc}, '${nroSafe}')" title="Cerrar la OC sin comprobante formal (compra al contado, caja chica, etc). Genera el Gasto contable pero deja la OC en bandeja 'Sin facturar' por si después llega el comprobante." style="padding:10px 18px;background:#ea580c;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">🗂 Cerrar sin comprobante</button>`);
-    }
+  // RECEPCION + recepción completa + pago completo → habilitar "Listo para facturas/RH"
+  // (avanza a FACTURACIÓN sin generar comprobante; recién en esa columna se sube el documento).
+  // En RECEPCIÓN ya NO mostramos "Recibí factura" ni "Subir factura": esas acciones viven en FACTURACIÓN.
+  // Para OCs GENERAL no-honorario no se exige recepción (no aplica).
+  const recepcionOK = oc.estado_recepcion === 'RECIBIDO' || !requiereRecepcion(oc);
+  if (oc.estado === 'RECEPCION' && recepcionOK && oc.estado_pago === 'PAGADO') {
+    btns.push(`<button onclick="OC.listoParaFacturar(${oc.id_oc})" title="Pago cerrado${requiereRecepcion(oc) ? ' y recepción cerrada' : ''}. Avanzá a FACTURACIÓN/RH para subir el comprobante del proveedor (factura o Recibo por Honorarios)." style="padding:10px 18px;background:#7c3aed;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">📤 Listo para subir facturas/RH</button>`);
   }
-  // FACTURADA → falta el pago. Ofrecer Registrar pago para cerrar a PAGADA.
-  if (oc.estado === 'FACTURADA') {
-    btns.push(`<button onclick="OC.registrarPago(${oc.id_oc}, '${nroSafe}')" title="Registrar el pago al proveedor de este comprobante. Genera el movimiento bancario y cierra la OC en 'Cerrada (pago + comprobante)'." style="padding:10px 18px;background:#15803d;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">💰 Registrar pago</button>`);
+  // Cerrar sin comprobante: aplica a GENERAL/SERVICIO en RECEPCIÓN (caja chica, sin factura).
+  // ALMACEN siempre requiere comprobante porque genera stock valorizado.
+  if (oc.estado === 'RECEPCION' && oc.estado_recepcion === 'RECIBIDO' && oc.tipo_oc !== 'ALMACEN') {
+    btns.push(`<button onclick="OC.cerrarSinFactura(${oc.id_oc}, '${nroSafe}')" title="Cerrar la OC sin comprobante formal (compra al contado, caja chica, etc). Genera el Gasto contable pero deja la OC en bandeja 'Sin facturar' por si después llega el comprobante." style="padding:10px 18px;background:#ea580c;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">🗂 Cerrar sin comprobante</button>`);
   }
-  // PAGADA_PEND_FACTURA → falta el comprobante. Ofrecer Recibí factura/RxH,
+  // FACTURACION con factura recibida pero sin pago → ofrecer Registrar pago para cerrar a TERMINADA.
+  // Si pago ya estaba PAGADO el backend auto-avanza a TERMINADA al subir la factura
+  // (FacturaOCService → checkAutoAvance), así que acá no aparece el botón.
+  if (oc.estado === 'FACTURACION' && oc.estado_factura === 'FACTURADA' && oc.estado_pago !== 'PAGADO') {
+    btns.push(`<button onclick="OC.registrarPago(${oc.id_oc}, '${nroSafe}')" title="Registrar el pago al proveedor de este comprobante. Genera el movimiento bancario y cierra la OC en 'Terminada (pago + comprobante)'." style="padding:10px 18px;background:#15803d;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">💰 Registrar pago</button>`);
+  }
+  // FACTURACION con pago registrado pero sin comprobante → ofrecer Recibí factura/RxH,
   // o "Dar por cerrada sin comprobante" si el proveedor nunca lo va a entregar (no aplica a ALMACEN).
-  if (oc.estado === 'PAGADA_PEND_FACTURA') {
-    btns.push(`<button onclick="OC.facturar(${oc.id_oc})" title="Cargar el comprobante (factura, boleta o RxH) que llegó después del pago. Enriquece la Compra/Gasto provisorio con el N° de comprobante y cierra la OC en 'Cerrada (pago + comprobante)'." style="padding:10px 18px;background:#7c3aed;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">${txtFactura}</button>`);
+  // El botón "Recibí factura" sólo se habilita si ya hay PDF adjunto: si no, se exige
+  // subir primero el comprobante (evita registrar formal sin respaldo).
+  if (oc.estado === 'FACTURACION' && oc.estado_factura === 'PENDIENTE' && oc.estado_pago === 'PAGADO') {
+    const tienePDF = !!oc.factura_adjunta;
+    if (tienePDF) {
+      btns.push(`<button onclick="OC.facturar(${oc.id_oc})" title="Cargar el comprobante (factura, boleta o RxH) que llegó después del pago. Enriquece la Compra/Gasto provisorio con el N° de comprobante y cierra la OC en 'Terminada (pago + comprobante)'." style="padding:10px 18px;background:#7c3aed;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">${txtFactura}</button>`);
+    } else {
+      btns.push(`<button disabled title="Subí primero el PDF del comprobante con el botón '📄 Subir factura'. Cuando esté adjunto, este botón se habilita." style="padding:10px 18px;background:#e5e7eb;color:#9ca3af;border:1px solid #d1d5db;border-radius:6px;cursor:not-allowed;font-weight:600">${txtFactura} <span style="font-size:11px">(subí el PDF antes)</span></button>`);
+    }
     if (oc.tipo_oc !== 'ALMACEN') {
       btns.push(`<button onclick="OC.cerrarPagaSinFactura(${oc.id_oc}, '${nroSafe}')" title="Dar por cerrada esta OC sin esperar comprobante (el proveedor no lo entregará). El Gasto provisorio que se creó al registrar el pago queda en BD sin nro de comprobante. ALMACEN no permite esta acción." style="padding:10px 18px;background:#ea580c;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">🗂 Cerrar sin comprobante</button>`);
     }
   }
-  // OC cerrada sin factura — ofrecer asociar factura tardía
+  // OC cerrada sin factura — paridad con FACTURACION: subir PDF + Recibí factura.
+  // El "Asociar factura tardía" legacy queda como atajo solo-datos sin PDF.
   if (oc.estado === 'CERRADA_SIN_FACTURA') {
-    btns.push(`<button onclick="OC.asociarFactura(${oc.id_oc}, '${nroSafe}')" title="El proveedor mandó la factura después de cerrar. Vinculala a esta OC y pasa al estado FACTURADA." style="padding:10px 18px;background:#7c3aed;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">🧾 Asociar factura tardía</button>`);
+    const tienePDF = !!oc.factura_adjunta;
+    if (tienePDF) {
+      btns.push(`<button onclick="OC.facturar(${oc.id_oc})" title="Confirmar la factura del proveedor con los datos del PDF subido. La OC pasa de 'Cerrada sin factura' a TERMINADA y se enriquece la Compra/Gasto con el N° de comprobante." style="padding:10px 18px;background:#7c3aed;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">${txtFactura}</button>`);
+    } else {
+      btns.push(`<button disabled title="Subí primero el PDF del comprobante con el botón '📄 Subir factura'. Cuando esté adjunto, este botón se habilita." style="padding:10px 18px;background:#e5e7eb;color:#9ca3af;border:1px solid #d1d5db;border-radius:6px;cursor:not-allowed;font-weight:600">${txtFactura} <span style="font-size:11px">(subí el PDF antes)</span></button>`);
+    }
+    btns.push(`<button onclick="OC.asociarFactura(${oc.id_oc}, '${nroSafe}')" title="Atajo solo-datos: cargar N° y fecha del comprobante sin PDF (no recomendado — preferí 'Subir factura' para tener el respaldo)." style="padding:10px 18px;background:transparent;color:#7c3aed;border:1px solid #c4b5fd;border-radius:6px;cursor:pointer;font-weight:600">🧾 Asociar sin PDF</button>`);
   }
-  // Editar líneas/montos — hasta ENVIADA inclusive (después la mercadería ya fue recibida).
-  if (['BORRADOR', 'APROBADA', 'ENVIADA'].includes(oc.estado)) {
+  // Marcar crédito — solo en PAGO (Finanzas decide si pagar o postergar). En APROBADA no aplica.
+  if (oc.estado === 'PAGO') {
+    btns.push(`<button onclick="OC.marcarCredito(${oc.id_oc})" title="Registrar días de crédito y fecha de vencimiento para esta OC. Útil cuando el proveedor da plazo de pago." style="padding:10px 18px;background:#0891b2;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">💳 Marcar crédito</button>`);
+  }
+  // Subir factura del proveedor manualmente — en FACTURACION o CERRADA_SIN_FACTURA.
+  // En RECEPCION recién se gestiona pago y recepción; los comprobantes viven aquí.
+  // En CERRADA_SIN_FACTURA permite regularizar cuando el proveedor manda el PDF tarde.
+  // Si ya hay una factura adjunta, el botón cambia de etiqueta a "Reemplazar".
+  if (oc.estado === 'FACTURACION' || oc.estado === 'CERRADA_SIN_FACTURA') {
+    const yaTiene = !!oc.factura_adjunta;
+    const etiqueta = yaTiene ? '🔁 Reemplazar factura' : '📄 Subir factura';
+    const tip = yaTiene
+      ? 'Reemplazar el comprobante actual del proveedor (PDF o imagen) con uno nuevo.'
+      : 'Adjuntar la factura o comprobante del proveedor (PDF o imagen) con su N° y monto.';
+    btns.push(`<button onclick="OC.subirFactura(${oc.id_oc})" title="${tip}" style="padding:10px 18px;background:#7c3aed;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">${etiqueta}</button>`);
+  }
+  // Agregar nota libre — disponible en cualquier estado activo (no ANULADA ni TERMINADA ni CERRADA_SIN_FACTURA).
+  if (!['ANULADA', 'TERMINADA', 'CERRADA_SIN_FACTURA'].includes(oc.estado)) {
+    btns.push(`<button onclick="OC.agregarNota(${oc.id_oc})" title="Añadir una nota interna a esta OC (seguimiento, acuerdos, observaciones)." style="padding:10px 18px;background:#fff;color:#374151;border:1px solid #d1d5db;border-radius:6px;cursor:pointer;font-weight:600">📝 Nota</button>`);
+  }
+  // Editar líneas/montos — hasta PAGO inclusive (después la mercadería ya fue recibida).
+  if (['BORRADOR', 'APROBADA', 'PAGO'].includes(oc.estado)) {
     btns.push(`<button onclick="OC.editar(${oc.id_oc})" title="Edición completa: cambiar items, cantidades, precios, totales, proveedor. Solo disponible antes de recibir mercadería." style="padding:10px 18px;background:#f59e0b;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">✎ Editar líneas</button>`);
   }
   // Editar metadata segura (centro_costo, concepto, observaciones, contactos) —
@@ -742,12 +1516,19 @@ function accionesSegunEstado(oc) {
   if (oc.estado !== 'ANULADA') {
     btns.push(`<button onclick="OC.editarMetadata(${oc.id_oc}, '${nroSafe}')" title="Edición segura en cualquier estado: corregir centro de costo, concepto, atención, contactos. NO toca números ni inventario." style="padding:10px 18px;background:#fff;color:#7c3aed;border:1px solid #c4b5fd;border-radius:6px;cursor:pointer;font-weight:600">✎ Editar concepto/CC</button>`);
   }
-  // Eliminar físico — disponible en CUALQUIER estado, solo GERENTE.
-  // Backend hace cascada completa (Tx, Compras/Gastos, Inventario, CostosServicio).
-  if (esGerente) {
-    btns.push(`<button onclick="OC.eliminarOC(${oc.id_oc}, '${nroSafe}')" title="Eliminar permanente con cascada total (solo GERENTE). Borra OC + Compra/Gasto generado + Tx caja + Movimientos inventario + reverso de stock. Pide tipear el N° de OC para confirmar." style="padding:10px 18px;background:transparent;color:#7f1d1d;border:1px solid #7f1d1d;border-radius:6px;cursor:pointer;font-weight:600">🗑 Eliminar</button>`);
+  // Mandar a borrador — disponible en estados activos (no BORRADOR, no ANULADA).
+  // Hace la misma cascada que eliminar pero CONSERVA la OC con estado='BORRADOR'.
+  // Útil para deshacer sin perder el correlativo. Solo GERENTE.
+  if (esGerente && !['BORRADOR', 'ANULADA'].includes(oc.estado)) {
+    btns.push(`<button onclick="OC.mandarABorrador(${oc.id_oc}, '${nroSafe}')" title="Volver la OC a BORRADOR conservando el N° (solo GERENTE). Revierte cascada completa: Compras/Gastos, Tx caja, MovBancario, recepción de inventario, factura adjunta. La OC queda lista para re-editarse desde cero sin perder el correlativo." style="padding:10px 18px;background:transparent;color:#0891b2;border:1px solid #0891b2;border-radius:6px;cursor:pointer;font-weight:600">↩ Mandar a borrador</button>`);
   }
-  if (!['FACTURADA', 'PAGADA_PEND_FACTURA', 'PAGADA', 'ANULADA'].includes(oc.estado)) {
+  // Eliminar definitivo — disponible en BORRADOR o ANULADA, solo GERENTE.
+  // En otros estados se exige primero "Mandar a borrador" para forzar revisión
+  // de los efectos de cascada antes del DELETE permanente.
+  if (esGerente && ['BORRADOR', 'ANULADA'].includes(oc.estado)) {
+    btns.push(`<button onclick="OC.eliminarOC(${oc.id_oc}, '${nroSafe}')" title="Eliminar permanente con cascada total (solo GERENTE). Borra OC + Compra/Gasto generado + Tx caja + Movimientos inventario + reverso de stock. Pide tipear el N° de OC para confirmar." style="padding:10px 18px;background:transparent;color:#7f1d1d;border:1px solid #7f1d1d;border-radius:6px;cursor:pointer;font-weight:600">🗑 Eliminar definitivo</button>`);
+  }
+  if (!['TERMINADA', 'ANULADA', 'CERRADA_SIN_FACTURA'].includes(oc.estado)) {
     btns.push(`<button onclick="OC.anular(${oc.id_oc})" title="Anular la OC (cambia el estado, no borra nada). El correlativo queda quemado y la OC pasa al archivo. Disponible hasta antes de facturar o pagar." style="padding:10px 18px;background:transparent;color:#dc2626;border:1px solid #dc2626;border-radius:6px;cursor:pointer;font-weight:600">Anular</button>`);
   }
   // Reactivar — solo si está ANULADA y eres GERENTE. Vuelve la OC a BORRADOR.
@@ -759,35 +1540,258 @@ function accionesSegunEstado(oc) {
 
 // ──────── Acciones workflow ────────
 async function aprobar(id) {
-  const c = prompt('Comentario de aprobación (opcional):');
-  if (c === null) return;
+  const ok = await confirmarAccion({
+    titulo: '✓ Lista para aprobación',
+    mensaje: 'La OC pasará de <strong>BORRADOR</strong> a <strong>APROBADA</strong> y quedará en revisión hasta que se le dé "Aprobado para pago".<br><br>Si querés dejar contexto, usá el botón <strong>📝 Nota</strong>.',
+    tipo: 'info',
+    textoBoton: 'Sí, marcar como lista',
+  });
+  if (!ok) return;
   try {
-    await api.ordenesCompra.aprobar(id, { comentario: c });
-    showSuccess('OC aprobada');
+    await api.ordenesCompra.aprobar(id, { comentario: '' });
+    showSuccess('OC marcada como lista para aprobación');
     setTimeout(() => refreshOC(), 600);
   } catch (e) { showError(e.message); }
 }
 
-async function enviar(id) {
-  // Una vez ENVIADA la OC ya no se puede eliminar: el PDF ya salió al proveedor.
+async function aprobarParaPago(id) {
   const ok = await confirmarAccion({
-    titulo: '📤 Marcar como Enviada',
-    mensaje: 'Una vez marcada como <strong>ENVIADA</strong>, esta OC <strong style="color:#dc2626">ya no podrá eliminarse</strong>. Solo podrás editarla o anularla. ¿Estás seguro?',
-    tipo: 'warning',
-    textoBoton: 'Sí, marcar como Enviada',
+    titulo: '✅ Aprobado para pago',
+    mensaje: 'La OC pasará de <strong>APROBADA</strong> a <strong>PAGO</strong>, quedando en la bandeja de Finanzas para que registren el pago o crédito. ¿Confirmás?',
+    tipo: 'info',
+    textoBoton: 'Sí, aprobar para pago',
   });
   if (!ok) return;
   try {
-    await api.ordenesCompra.enviar(id);
-    showSuccess('OC marcada como enviada');
+    await api.ordenesCompra.aprobarParaPago(id);
+    showSuccess('OC aprobada para pago');
     setTimeout(() => refreshOC(), 600);
   } catch (e) { showError(e.message); }
+}
+
+async function listoParaFacturar(id) {
+  const ok = await confirmarAccion({
+    titulo: '📤 Listo para subir facturas/RH',
+    mensaje: 'Pago y recepción están al 100%. La OC pasará de <strong>RECEPCIÓN</strong> a <strong>FACTURACIÓN/RH</strong>, donde recién se sube el comprobante (factura o Recibo por Honorarios). ¿Confirmás?',
+    tipo: 'info',
+    textoBoton: 'Sí, avanzar a Facturación/RH',
+  });
+  if (!ok) return;
+  try {
+    await api.ordenesCompra.listoParaFacturar(id);
+    showSuccess('OC avanzada a FACTURACIÓN/RH');
+    setTimeout(() => refreshOC(), 600);
+  } catch (e) { showError(e.message); }
+}
+
+// ──────── promptModal: input/textarea genérico en overlay ────────
+function promptModal({ titulo, label, defecto = '', textarea = false, requerido = false }) {
+  return new Promise((resolve) => {
+    const ov = document.createElement('div');
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
+    ov.innerHTML = `
+      <div style="background:white;border-radius:12px;width:460px;max-width:95vw;padding:24px">
+        <h3 style="margin:0 0 12px;font-size:17px">${titulo}</h3>
+        <label style="display:block;margin-bottom:8px;font-size:13px;color:#374151">${label}</label>
+        ${textarea
+          ? `<textarea id="prompt-input" rows="4" style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;font-family:inherit;resize:vertical;box-sizing:border-box">${defecto}</textarea>`
+          : `<input id="prompt-input" value="${String(defecto).replace(/"/g, '&quot;')}" style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;box-sizing:border-box">`}
+        <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:16px">
+          <button id="prompt-cancel" style="padding:9px 18px;background:#f3f4f6;border:none;border-radius:6px;cursor:pointer;font-weight:600">Cancelar</button>
+          <button id="prompt-ok" style="padding:9px 18px;background:#2563eb;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">Aceptar</button>
+        </div>
+      </div>`;
+    document.body.appendChild(ov);
+    const input = ov.querySelector('#prompt-input');
+    ov.querySelector('#prompt-cancel').onclick = () => { ov.remove(); resolve(null); };
+    ov.querySelector('#prompt-ok').onclick = () => {
+      const v = input.value.trim();
+      if (requerido && !v) { input.focus(); return; }
+      ov.remove();
+      resolve(v);
+    };
+    input.focus();
+  });
+}
+
+// ──────── Acciones rápidas nuevas ────────
+
+async function marcarCredito(id) {
+  const dias = await promptModal({
+    titulo: '💳 Marcar crédito',
+    label: 'Días de crédito',
+    defecto: '30',
+    requerido: true,
+  });
+  if (dias == null) return;
+  const numDias = Number(dias);
+  if (!numDias || numDias <= 0) { showError('Días debe ser un número positivo'); return; }
+  const fecha = new Date(Date.now() + numDias * 86400000).toISOString().slice(0, 10);
+
+  try {
+    const token = localStorage.getItem('erp_token');
+    const r = await fetch(`/api/ordenes-compra/${id}/marcar-credito`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+      body: JSON.stringify({ dias_credito: numDias, fecha_vence: fecha }),
+    });
+    if (!r.ok) {
+      const err = await r.json().catch(() => ({}));
+      throw new Error(err.error || `HTTP ${r.status}`);
+    }
+    showSuccess(`Marcada como crédito · vence ${fecha}`);
+    setTimeout(() => refreshOC(), 600);
+  } catch (e) {
+    showError(e.message || 'Error al marcar crédito');
+  }
+}
+
+async function agregarNota(id) {
+  const texto = await promptModal({
+    titulo: '📝 Agregar nota',
+    label: 'Texto de la nota',
+    textarea: true,
+    requerido: true,
+  });
+  if (!texto) return;
+
+  try {
+    await api.ordenesCompra.agregarNota(id, texto);
+    showSuccess('Nota guardada');
+    // Recargar el modal para que la nota recién creada se vea sin cerrar/abrir.
+    if (document.getElementById('oc-modal')?.innerHTML) {
+      verOC(id);
+    }
+  } catch (e) {
+    showError(e.message || 'Error al guardar nota');
+  }
+}
+
+async function borrarNota(id_oc, id_nota) {
+  const ok = await confirmarAccion({
+    titulo: 'Borrar nota',
+    mensaje: '¿Seguro que querés borrar esta nota? La acción no se puede deshacer.',
+    tipo: 'danger',
+    textoBoton: 'Borrar',
+  });
+  if (!ok) return;
+  try {
+    await api.ordenesCompra.borrarNota(id_oc, id_nota);
+    showSuccess('Nota borrada');
+    if (document.getElementById('oc-modal')?.innerHTML) {
+      verOC(id_oc);
+    }
+  } catch (e) {
+    showError(e.message || 'Error al borrar nota');
+  }
+}
+
+async function eliminarFactura(id) {
+  const ok = await confirmarAccion({
+    titulo: '🗑️ Eliminar factura adjunta',
+    mensaje: 'Vas a quitar la factura asociada a esta OC. La OC vuelve a estado_factura <strong>PENDIENTE</strong> y, si estaba en TERMINADA, retrocede a FACTURACION.<br><br>El archivo en Cloudinary <strong>NO se borra</strong> (queda huérfano por seguridad/audit). Esta acción es solo para GERENTE. ¿Confirmás?',
+    tipo: 'danger',
+    textoBoton: 'Sí, eliminar factura',
+  });
+  if (!ok) return;
+  try {
+    await api.ordenesCompra.eliminarFactura(id);
+    showSuccess('Factura eliminada');
+    // Refresh contextual igual que en subirFactura: preservar el lugar donde
+    // estaba el usuario (modal de detalle, tab "Sin facturar", o kanban).
+    if (document.getElementById('oc-modal')?.innerHTML) {
+      verOC(id);
+    } else if (window._logiRefrescarSinFactura &&
+               document.getElementById('logi-panel-sin-factura')?.style.display !== 'none') {
+      window._logiRefrescarSinFactura();
+    } else {
+      setTimeout(() => refreshOC(), 600);
+    }
+  } catch (e) {
+    showError(e.message || 'Error al eliminar factura');
+  }
+}
+
+async function subirFactura(id) {
+  // Modal con form para nro_comprobante, fecha_emision, monto, archivo (PDF/imagen)
+  return new Promise((resolve) => {
+    const ov = document.createElement('div');
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
+    ov.innerHTML = `
+      <div style="background:white;border-radius:12px;width:480px;max-width:95vw;padding:24px">
+        <h3 style="margin:0 0 16px;font-size:17px">📄 Subir factura del proveedor</h3>
+        <form id="oc-form-subir-factura" enctype="multipart/form-data" style="display:flex;flex-direction:column;gap:10px">
+          <label style="display:flex;flex-direction:column;gap:4px;font-size:13px">
+            Nº Comprobante
+            <input name="nro_comprobante" required style="padding:7px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
+          </label>
+          <label style="display:flex;flex-direction:column;gap:4px;font-size:13px">
+            Fecha de emisión
+            <input name="fecha_emision" type="date" required style="padding:7px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
+          </label>
+          <label style="display:flex;flex-direction:column;gap:4px;font-size:13px">
+            Monto
+            <input name="monto" type="number" step="0.01" min="0.01" required style="padding:7px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
+          </label>
+          <label style="display:flex;flex-direction:column;gap:4px;font-size:13px">
+            Archivo PDF/imagen <span style="color:#6b7280;font-size:11px">(opcional)</span>
+            <input name="archivo" type="file" accept=".pdf,image/*" style="padding:7px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
+          </label>
+          <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:14px">
+            <button type="button" data-cancel style="padding:9px 18px;background:#f3f4f6;border:none;border-radius:6px;cursor:pointer;font-weight:600">Cancelar</button>
+            <button type="submit" style="padding:9px 18px;background:#2563eb;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">Subir</button>
+          </div>
+        </form>
+      </div>`;
+    document.body.appendChild(ov);
+
+    ov.querySelector('[data-cancel]').onclick = () => { ov.remove(); resolve(false); };
+    ov.querySelector('#oc-form-subir-factura').onsubmit = async (e) => {
+      e.preventDefault();
+      const fd = new FormData(e.target);
+      try {
+        const token = localStorage.getItem('erp_token');
+        const r = await fetch(`/api/ordenes-compra/${id}/factura`, {
+          method: 'POST',
+          headers: { 'Authorization': 'Bearer ' + token },
+          body: fd,
+        });
+        if (!r.ok) {
+          const err = await r.json().catch(() => ({}));
+          throw new Error(err.error || `HTTP ${r.status}`);
+        }
+        showSuccess('Factura subida y registrada');
+        ov.remove();
+        resolve(true);
+        // Refresh contextual — preserva el lugar donde el usuario disparó la acción:
+        //  1. Modal de detalle de OC abierto → recargarlo.
+        //  2. Tab "Sin facturar" de Logística visible → refrescar solo esa tabla.
+        //  3. Caso default → refrescar el kanban OC.
+        if (document.getElementById('oc-modal')?.innerHTML) {
+          verOC(id);
+        } else if (window._logiRefrescarSinFactura &&
+                   document.getElementById('logi-panel-sin-factura')?.style.display !== 'none') {
+          window._logiRefrescarSinFactura();
+        } else {
+          setTimeout(() => refreshOC(), 600);
+        }
+      } catch (err) {
+        showError(err.message || 'Error al subir factura');
+      }
+    };
+  });
 }
 
 async function recibir(id) {
   const oc = await api.ordenesCompra.get(id);
   if (!oc.detalle || oc.detalle.length === 0) {
     showError('La OC no tiene líneas para recibir');
+    return;
+  }
+  // Guard: si la recepción ya está al 100%, no abrir el modal — no hay nada que registrar.
+  // Esto evita duplicar registros cuando ya está todo recibido.
+  if (oc.estado_recepcion === 'RECIBIDO') {
+    showError('Esta OC ya tiene la recepción al 100%. No hay líneas pendientes.');
     return;
   }
   await abrirModalRecepcion(oc);
@@ -800,7 +1804,7 @@ async function abrirModalRecepcion(oc) {
   const f = (n) => Number(n).toLocaleString('es-PE', { minimumFractionDigits: 0, maximumFractionDigits: 4 });
 
   // Banner solo en la primera recepción (estados APROBADA/ENVIADA)
-  const esPrimera = ['APROBADA', 'ENVIADA'].includes(oc.estado);
+  const esPrimera = ['APROBADA', 'PAGO'].includes(oc.estado);
   const banner = esPrimera ? `
     <div style="background:#fef3c7;border:1px solid #fbbf24;color:#92400e;padding:10px 14px;border-radius:6px;margin-bottom:14px;font-size:13px">
       ⚠️ Primera recepción: una vez confirmada, esta OC <strong style="color:#dc2626">ya no podrá editarse</strong>.
@@ -1140,26 +2144,41 @@ async function abrirModalResolucionItems(id_oc, lineasPendientes) {
 }
 
 async function facturar(id) {
+  // Defensa runtime: exigir PDF adjunto antes de registrar la factura formal.
+  // El botón ya se renderiza disabled si no hay PDF, pero si se llama desde
+  // un onclick legacy o la UI quedó stale, abortamos acá con mensaje claro.
+  const adjunta = await api.ordenesCompra.getFactura(id).catch(() => null);
+  if (!adjunta) {
+    showError('Subí primero el PDF del comprobante con "📄 Subir factura". Después podés registrar la factura formal.');
+    return;
+  }
+  // Reusamos los datos que el usuario ya cargó al subir el PDF (nro_comprobante
+  // y fecha_emision viven en OrdenCompraFactura). No le pedimos otra vez lo
+  // mismo. Si necesita corregirlos, reemplaza el PDF con "🔁 Reemplazar factura".
+  const nro = String(adjunta.nro_comprobante || '').trim();
+  const fecha = String(adjunta.fecha_emision || '').slice(0, 10);
+  if (!nro || !fecha) {
+    showError('La factura adjunta no tiene N° de comprobante o fecha. Reemplazá el PDF con esos datos completos.');
+    return;
+  }
+
   // Una vez FACTURADA, el botón Anular desaparece. Para corregir hay dos
   // caminos según ya entró al SIRE de SUNAT o no.
   const ok = await confirmarAccion({
     titulo: '🧾 Registrar factura del proveedor',
     mensaje:
-      `Vas a registrar la factura del proveedor sobre esta OC. Después:` +
+      `Vas a registrar la factura <strong>${escapeHtml(nro)}</strong> (${fecha}) sobre esta OC.` +
       `<ul style="margin:8px 0 8px 20px;line-height:1.6;font-size:13px">` +
-      `<li>El botón <strong>Anular</strong> desaparece (la factura ya entró a Compras y al cálculo del IGV).</li>` +
+      `<li>La OC pasa a <strong>TERMINADA</strong> y queda registrada en Compras / Gastos para SUNAT.</li>` +
+      `<li>El botón <strong>Anular</strong> desaparece (la factura ya entró al cálculo del IGV).</li>` +
       `<li>Si te equivocás: <strong>🗑 Eliminar</strong> sigue disponible para GERENTE — borra todo en cascada (Compra, Gasto, Tx, Inventario).</li>` +
-      `<li>Si la factura ya fue declarada al <strong>SIRE de SUNAT</strong>, el ajuste correcto es pedirle al proveedor una <strong>Nota de Crédito</strong> y registrarla cuando llegue (módulo aún por construir).</li>` +
+      `<li>Si la factura ya fue declarada al <strong>SIRE de SUNAT</strong>, el ajuste correcto es pedirle al proveedor una <strong>Nota de Crédito</strong>.</li>` +
       `</ul>` +
       `¿Continuamos?`,
     tipo: 'warning',
     textoBoton: 'Sí, registrar factura',
   });
   if (!ok) return;
-  const nro = prompt('N° factura del proveedor (ej. F001-00123):');
-  if (!nro) return;
-  const fecha = prompt('Fecha de la factura (YYYY-MM-DD):', new Date().toISOString().slice(0, 10));
-  if (!fecha) return;
   try {
     await api.ordenesCompra.facturar(id, { nro_factura_proveedor: nro, fecha_factura: fecha });
     showSuccess('OC facturada — se creó registro en Compras');
@@ -1175,11 +2194,25 @@ async function facturar(id) {
 //    PAGADA (cerrada).
 async function registrarPago(id, nro) {
   let cuentas = [];
+  let oc = null;
   try {
-    cuentas = await api.cobranzas.getCuentas();
-  } catch (e) { return showError('No se pudieron cargar las cuentas: ' + e.message); }
+    [cuentas, oc] = await Promise.all([
+      api.cobranzas.getCuentas(),
+      api.ordenesCompra.get(id),
+    ]);
+  } catch (e) { return showError('No se pudieron cargar datos: ' + e.message); }
   const cuentasActivas = (cuentas || []).filter(c => c.activo !== false);
   if (cuentasActivas.length === 0) return showError('No hay cuentas bancarias activas. Configurá una en Finanzas → Cuentas.');
+  if (!oc) return showError('OC no encontrada');
+
+  const totalOC  = Number(oc.total) || 0;
+  const yaPagado = Number(oc.monto_pagado || 0);
+  const saldoPdte = Math.max(0, totalOC - yaPagado);
+  const sym = oc.moneda === 'USD' ? '$' : 'S/';
+
+  if (saldoPdte <= 0.01) {
+    return showError('La OC ya está pagada al 100% — no hay saldo pendiente');
+  }
 
   const data = await new Promise((resolve) => {
     const ov = document.createElement('div');
@@ -1193,6 +2226,13 @@ async function registrarPago(id, nro) {
         <div style="background:#f0fdf4;border:1px solid #bbf7d0;color:#166534;padding:10px 12px;border-radius:6px;margin-bottom:14px;font-size:12px">
           Esto registra el egreso real en tu cuenta bancaria. Se genera la transacción + el movimiento del libro bancos automáticamente.
         </div>
+
+        <div style="background:#f9fafb;border:1px solid #e5e7eb;padding:8px 12px;border-radius:6px;margin-bottom:14px;font-size:12px;display:grid;grid-template-columns:1fr 1fr;gap:6px;color:#374151">
+          <div>Total OC: <strong>${sym} ${totalOC.toFixed(2)}</strong></div>
+          <div>Ya pagado: <strong>${sym} ${yaPagado.toFixed(2)}</strong></div>
+          <div style="grid-column:1/-1;color:#92400e">Saldo pendiente: <strong>${sym} ${saldoPdte.toFixed(2)}</strong></div>
+        </div>
+
         <label style="font-size:11px;color:#374151;font-weight:600;display:block;margin-bottom:4px">Cuenta de la que sale el pago *</label>
         <select id="rp-cuenta" style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:5px;font-size:13px;margin-bottom:12px">
           ${cuentasOpts}
@@ -1200,6 +2240,13 @@ async function registrarPago(id, nro) {
         <label style="font-size:11px;color:#374151;font-weight:600;display:block;margin-bottom:4px">Fecha del pago *</label>
         <input id="rp-fecha" type="date" value="${new Date().toISOString().slice(0,10)}"
           style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:5px;font-size:13px;margin-bottom:12px">
+
+        <label style="font-size:11px;color:#374151;font-weight:600;display:block;margin-bottom:4px">Monto a pagar (${oc.moneda}) *</label>
+        <input id="rp-monto" type="number" step="0.01" min="0.01" max="${saldoPdte.toFixed(2)}"
+          value="${saldoPdte.toFixed(2)}"
+          style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:5px;font-size:13px;margin-bottom:4px;font-family:monospace">
+        <div style="font-size:10px;color:#6b7280;margin-bottom:12px">Default: saldo pendiente. Bajá el monto si solo pagás parcial.</div>
+
         <label style="font-size:11px;color:#374151;font-weight:600;display:block;margin-bottom:4px">N° operación (opcional)</label>
         <input id="rp-nro" placeholder="Ej. 12345678" maxlength="50"
           style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:5px;font-size:13px;margin-bottom:12px;font-family:monospace">
@@ -1216,27 +2263,43 @@ async function registrarPago(id, nro) {
     const close = (val) => { ov.remove(); resolve(val); };
     ov.querySelector('#rp-cancel').onclick = () => close(null);
     ov.querySelector('#rp-ok').onclick = () => {
+      const err = ov.querySelector('#rp-error');
       const id_cuenta = Number(ov.querySelector('#rp-cuenta').value);
       const fecha_pago = ov.querySelector('#rp-fecha').value;
+      const monto = Number(ov.querySelector('#rp-monto').value);
       const nro_operacion = ov.querySelector('#rp-nro').value.trim() || undefined;
       const observaciones = ov.querySelector('#rp-obs').value.trim() || undefined;
       if (!id_cuenta || !fecha_pago) {
-        const err = ov.querySelector('#rp-error');
         err.textContent = 'Cuenta y fecha son obligatorias';
         err.style.display = 'block';
         return;
       }
-      close({ id_cuenta, fecha_pago, nro_operacion, observaciones });
+      if (!Number.isFinite(monto) || monto <= 0) {
+        err.textContent = 'El monto debe ser mayor a 0';
+        err.style.display = 'block';
+        return;
+      }
+      if (monto > saldoPdte + 0.01) {
+        err.textContent = `El monto no puede exceder el saldo pendiente (${sym} ${saldoPdte.toFixed(2)})`;
+        err.style.display = 'block';
+        return;
+      }
+      close({ id_cuenta, fecha_pago, monto, nro_operacion, observaciones });
     };
   });
   if (!data) return;
   try {
     const r = await api.ordenesCompra.registrarPago(id, data);
-    if (r.estado === 'PAGADA') {
-      showSuccess(`OC ${nro} cerrada — pago + factura registrados`);
+    const cierraTotal = r.estado_pago === 'PAGADO';
+    let msg;
+    if (r.estado === 'TERMINADA') {
+      msg = `OC ${nro} cerrada — pago total + factura registrados`;
+    } else if (cierraTotal) {
+      msg = `OC ${nro} pagada al 100% — esperando recepción/factura`;
     } else {
-      showSuccess(`OC ${nro} pagada — esperando factura del proveedor`);
+      msg = `OC ${nro}: pago parcial registrado · saldo pdte ${sym} ${Number(r.saldo_pendiente).toFixed(2)}`;
     }
+    showSuccess(msg);
     setTimeout(() => (window.refreshModule || refreshOC)(), 800);
   } catch (e) { showError(e.message); }
 }
@@ -1370,12 +2433,20 @@ async function asociarFactura(id, nro) {
 }
 
 async function anular(id) {
-  const motivo = prompt('Motivo de anulación:');
+  const motivo = await promptModal({
+    titulo: '⊘ Anular OC',
+    label: 'Motivo de anulación (queda en el historial)',
+    textarea: true,
+    requerido: true,
+  });
   if (!motivo) return;
   try {
     await api.ordenesCompra.anular(id, motivo);
     showSuccess('OC anulada');
-    setTimeout(() => refreshOC(), 600);
+    if (document.getElementById('oc-modal')?.innerHTML) {
+      verOC(id);
+    }
+    setTimeout(() => (window.refreshModule || refreshOC)(), 600);
   } catch (e) { showError(e.message); }
 }
 
@@ -1400,7 +2471,7 @@ async function reactivar(id, nro) {
 async function editar(id) {
   try {
     const oc = await api.ordenesCompra.get(id);
-    if (!['BORRADOR', 'APROBADA', 'ENVIADA'].includes(oc.estado)) {
+    if (!['BORRADOR', 'APROBADA', 'PAGO'].includes(oc.estado)) {
       return showError(`No se puede editar una OC en estado ${oc.estado}`);
     }
     nuevaOC(oc);
@@ -1427,8 +2498,47 @@ async function eliminarOC(id, nro) {
   try {
     await api.ordenesCompra.eliminar(id);
     showSuccess('OC eliminada con cascada completa');
+    // Cerrar el modal abierto (si lo hay) y refrescar contexto.
+    const modal = document.getElementById('oc-modal');
+    if (modal) modal.innerHTML = '';
     setTimeout(() => (window.refreshModule || refreshOC)(), 600);
   } catch (e) { showError(e.message); }
+}
+
+// Vuelve la OC a BORRADOR conservando el correlativo. Cascada reversiva:
+// borra Compras/Gastos/Tx/MovBancario/Inventario/Factura adjunta, pero deja
+// la OC en BORRADOR para re-editarse y rearmar.
+async function mandarABorrador(id, nro) {
+  const ok = await confirmarTexto({
+    titulo: '↩ Mandar OC a borrador',
+    mensaje:
+      `Vas a deshacer la OC <strong>${nro}</strong> y conservarla en <strong>BORRADOR</strong> con su número intacto.` +
+      `<ul style="margin:8px 0 8px 20px;line-height:1.6">` +
+      `<li>Se revierten Compras / Gastos / Transacciones de caja / Movimientos bancarios</li>` +
+      `<li>Se devuelve el stock al inventario (si era ALMACEN)</li>` +
+      `<li>Se desadjunta la factura del proveedor (archivo en Cloudinary queda huérfano)</li>` +
+      `<li>El correlativo <strong>${nro}</strong> se conserva — la OC queda lista para re-editar desde 0</li>` +
+      `</ul>` +
+      `Para confirmar, tipeá el número de OC exacto.`,
+    textoRequerido: nro,
+  });
+  if (!ok) return;
+  try {
+    await api.ordenesCompra.mandarABorrador(id);
+    showSuccess('OC mandada a BORRADOR — cascada revertida');
+    // Refrescar la lista del kanban / "Sin facturar" detrás (con datos frescos
+    // de BD) — sino la card se queda en la columna vieja aunque el estado en
+    // BD ya cambió. Si hay modal abierto, también lo recargamos.
+    if (window._logiRefrescarSinFactura &&
+        document.getElementById('logi-panel-sin-factura')?.style.display !== 'none') {
+      window._logiRefrescarSinFactura();
+    } else {
+      setTimeout(() => (window.refreshModule || refreshOC)(), 600);
+    }
+    if (document.getElementById('oc-modal')?.innerHTML) {
+      verOC(id);
+    }
+  } catch (e) { showError(e.message || 'Error mandando a borrador'); }
 }
 
 // Editar metadata "segura" en cualquier estado (centro_costo, concepto, etc.)

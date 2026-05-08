@@ -151,6 +151,7 @@ export const api = {
     updateCotizacion: (id, d)  => put(`/cotizaciones/${id}`, d),
     updateEstado:     (id, e)  => put(`/cotizaciones/${id}/estado`, { estado: e }),
     editarFecha:      (id, f)  => put(`/cotizaciones/${id}/fecha`, { fecha: f }),
+    editarFechaAprobacion: (id, f) => put(`/cotizaciones/${id}/fecha-aprobacion`, { fecha: f }),
     editarMetadata:   (id, d)  => put(`/cotizaciones/${id}/metadata`, d),
     proyectosActivos: (filtros = {}) => {
       const p = new URLSearchParams();
@@ -404,8 +405,10 @@ export const api = {
     create:     (data)       => post('/ordenes-compra', data),
     actualizar: (id, data)   => put(`/ordenes-compra/${id}`, data),
     eliminar:   (id)         => del(`/ordenes-compra/${id}`),
+    mandarABorrador: (id)    => post(`/ordenes-compra/${id}/mandar-a-borrador`, {}),
     aprobar:    (id, data)   => post(`/ordenes-compra/${id}/aprobar`, data || {}),
-    enviar:     (id)         => post(`/ordenes-compra/${id}/enviar`, {}),
+    aprobarParaPago: (id)    => post(`/ordenes-compra/${id}/aprobar-para-pago`, {}),
+    listoParaFacturar: (id)  => post(`/ordenes-compra/${id}/listo-para-facturar`, {}),
     recibir:    (id, lineas) => post(`/ordenes-compra/${id}/recibir`, { lineas }),
     asignarItems: (id, asignaciones) => post(`/ordenes-compra/${id}/asignar-items`, { asignaciones }),
     editarFecha: (id, fecha) => put(`/ordenes-compra/${id}/fecha`, { fecha }),
@@ -462,6 +465,47 @@ export const api = {
       document.body.removeChild(a);
       setTimeout(() => URL.revokeObjectURL(url), 30_000);
       return { nombre };
+    },
+    // Rediseño 2026-05-06: kanban OC simplificado
+    marcarCredito: (id, body) => post(`/ordenes-compra/${id}/marcar-credito`, body || {}),
+    // Notas en OC
+    listarNotas:   (id)        => get(`/ordenes-compra/${id}/notas`),
+    agregarNota:   (id, texto) => post(`/ordenes-compra/${id}/notas`, { texto }),
+    borrarNota:    (id, idNota) => del(`/ordenes-compra/${id}/notas/${idNota}`),
+    // Historial de transiciones
+    historial:     (id)        => get(`/ordenes-compra/${id}/historial`),
+    // Factura del proveedor
+    subirFactura:  async (id, formData) => {
+      const token = localStorage.getItem('erp_token');
+      const r = await fetch(`${API_BASE_URL}/ordenes-compra/${id}/factura`, {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: formData,
+      });
+      if (!r.ok) {
+        const err = await r.json().catch(() => ({}));
+        throw new Error(err.error || `Error subiendo factura: HTTP ${r.status}`);
+      }
+      return r.json();
+    },
+    getFactura:    (id) => get(`/ordenes-compra/${id}/factura`),
+    eliminarFactura: (id) => del(`/ordenes-compra/${id}/factura`),
+    // Export Excel del listado completo
+    descargarExcel: async () => {
+      const token = localStorage.getItem('erp_token');
+      const r = await fetch(`${API_BASE_URL}/ordenes-compra/listado/excel`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!r.ok) throw new Error('Error descargando Excel: HTTP ' + r.status);
+      const blob = await r.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `OCs_${new Date().toISOString().slice(0, 10)}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 30_000);
     },
   },
   ple: {

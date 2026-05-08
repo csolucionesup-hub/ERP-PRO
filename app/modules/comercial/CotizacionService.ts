@@ -869,6 +869,42 @@ class CotizacionService {
     }
   }
 
+  /**
+   * Actualiza SOLO la fecha de aprobación comercial. Útil para corregir
+   * data histórica donde el estado se cambió a APROBADA en una fecha
+   * distinta a la real (típicamente al cargar cotizaciones viejas).
+   * Solo aplica si la cotización está APROBADA o TERMINADA.
+   */
+  async actualizarFechaAprobacion(id: number, fecha: string) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) {
+      throw new Error('Fecha inválida — debe ser YYYY-MM-DD');
+    }
+    const conn = await db.getConnection();
+    await conn.beginTransaction();
+    try {
+      const [rows]: any = await conn.query(
+        `SELECT estado FROM Cotizaciones WHERE id_cotizacion = ? FOR UPDATE`,
+        [id]
+      );
+      const cot = rows[0];
+      if (!cot) throw new Error('Cotización no encontrada');
+      if (!['APROBADA', 'TERMINADA', 'TRABAJO_EN_RIESGO'].includes(cot.estado)) {
+        throw new Error('Solo se puede editar la fecha de aprobación de cotizaciones APROBADAS o TERMINADAS');
+      }
+      await conn.query(
+        `UPDATE Cotizaciones SET fecha_aprobacion_comercial = ? WHERE id_cotizacion = ?`,
+        [fecha, id]
+      );
+      await conn.commit();
+      return { ok: true, fecha };
+    } catch (e) {
+      await conn.rollback();
+      throw e;
+    } finally {
+      conn.release();
+    }
+  }
+
   async anularCotizacion(id: number) {
     const conn = await db.getConnection();
     await conn.beginTransaction();
