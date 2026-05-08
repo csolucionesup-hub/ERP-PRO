@@ -46,6 +46,7 @@ import HistorialOCService from './app/modules/compras/HistorialOCService';
 import NotaOCService from './app/modules/compras/NotaOCService';
 import FacturaOCService from './app/modules/compras/FacturaOCService';
 import PagoOCService from './app/modules/compras/PagoOCService';
+import OCFirmasService from './app/modules/compras/OCFirmasService';
 import ExcelJS from 'exceljs';
 import ProductionService from './app/modules/produccion/ProductionService';
 import CentrosCostoService from './app/modules/compras/CentrosCostoService';
@@ -1819,6 +1820,37 @@ ocRouter.get('/listado/excel', async (_req: Request, res: Response) => {
   res.end();
 });
 
+// Reglas de firmas — DEBE ir ANTES de /:id porque sino Express resuelve
+// "firmas-reglas" como id_oc inválido y dispara 400 (validateIdParam).
+ocRouter.get('/firmas-reglas', async (_req: Request, res: Response) => {
+  res.json(await OCFirmasService.listarReglas());
+});
+
+ocRouter.post('/firmas-reglas', auditLog('OrdenCompra', 'UPDATE'), async (req: any, res: Response) => {
+  if (req.user?.rol !== 'GERENTE') {
+    return res.status(403).json({ error: 'Solo GERENTE puede gestionar reglas de firmas' });
+  }
+  res.json(await OCFirmasService.crearRegla(req.body || {}));
+});
+
+ocRouter.put('/firmas-reglas/:id_regla', auditLog('OrdenCompra', 'UPDATE'), async (req: any, res: Response) => {
+  if (req.user?.rol !== 'GERENTE') {
+    return res.status(403).json({ error: 'Solo GERENTE puede gestionar reglas de firmas' });
+  }
+  const id = Number(req.params.id_regla);
+  if (!Number.isFinite(id) || id <= 0) return res.status(400).json({ error: 'id_regla inválido' });
+  res.json(await OCFirmasService.editarRegla(id, req.body || {}));
+});
+
+ocRouter.delete('/firmas-reglas/:id_regla', auditLog('OrdenCompra', 'UPDATE'), async (req: any, res: Response) => {
+  if (req.user?.rol !== 'GERENTE') {
+    return res.status(403).json({ error: 'Solo GERENTE puede gestionar reglas de firmas' });
+  }
+  const id = Number(req.params.id_regla);
+  if (!Number.isFinite(id) || id <= 0) return res.status(400).json({ error: 'id_regla inválido' });
+  res.json(await OCFirmasService.eliminarRegla(id));
+});
+
 ocRouter.get('/:id', validateIdParam, async (req: Request, res: Response) => {
   res.json(await OrdenCompraService.obtener(Number(req.params.id)));
 });
@@ -1831,6 +1863,27 @@ ocRouter.post('/', auditLog('OrdenCompra', 'CREATE'), async (req: any, res: Resp
 ocRouter.post('/:id/aprobar', validateIdParam, auditLog('OrdenCompra', 'UPDATE'), async (req: any, res: Response) => {
   res.json(await OrdenCompraService.aprobar(
     Number(req.params.id), req.user!.id_usuario, req.user!.rol, req.body?.comentario
+  ));
+});
+
+// Multifirma — firmar/desfirmar individual de un casillero (mig 065)
+ocRouter.post('/:id/firmar', validateIdParam, auditLog('OrdenCompra', 'UPDATE'), async (req: any, res: Response) => {
+  const casillero = req.body?.casillero;
+  if (!['preparado', 'revisado', 'autorizado'].includes(casillero)) {
+    return res.status(400).json({ error: 'casillero inválido (preparado | revisado | autorizado)' });
+  }
+  res.json(await OCFirmasService.firmar(
+    Number(req.params.id), casillero, req.user!.id_usuario, req.user!.rol, req.body?.comentario
+  ));
+});
+
+ocRouter.post('/:id/desfirmar', validateIdParam, auditLog('OrdenCompra', 'UPDATE'), async (req: any, res: Response) => {
+  const casillero = req.body?.casillero;
+  if (!['preparado', 'revisado', 'autorizado'].includes(casillero)) {
+    return res.status(400).json({ error: 'casillero inválido (preparado | revisado | autorizado)' });
+  }
+  res.json(await OCFirmasService.desfirmar(
+    Number(req.params.id), casillero, req.user!.id_usuario, req.user!.rol
   ));
 });
 

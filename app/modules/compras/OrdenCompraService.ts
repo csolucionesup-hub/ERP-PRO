@@ -315,29 +315,32 @@ class OrdenCompraService {
    * BORRADOR → APROBADA. La card se queda en APROBADA esperando que alguien
    * dé el "Aprobado para pago" (puesto de control de revisión humana).
    */
+  /**
+   * Aprobar OC — atajo "todo en uno" para GERENTE/APROBADOR.
+   *
+   * Mig 065 introdujo multifirma (3 casilleros: PREPARADO/REVISADO/AUTORIZADO).
+   * Este método queda como wrapper de compat: firma los 3 casilleros con el
+   * mismo usuario en cascada, lo que garantiza que se alcance cualquier umbral
+   * configurado en OCFirmasReglas (1, 2 o 3 firmas) y la OC pase a APROBADA.
+   *
+   * Si Julio quiere aprobación más estricta, usa el modal de firmas individual
+   * (firmar/desfirmar) en lugar de este atajo.
+   */
   async aprobar(id_oc: number, id_usuario_aprueba: number, rol: string, comentario?: string) {
     if (!['GERENTE', 'APROBADOR'].includes(rol)) {
       throw new Error('Solo GERENTE o APROBADOR pueden aprobar OC');
     }
-    const [rows]: any = await db.query('SELECT estado, total, moneda FROM OrdenesCompra WHERE id_oc = ?', [id_oc]);
-    if (!rows[0]) throw new Error('OC no encontrada');
-    const oc = rows[0];
-    if (oc.estado !== 'BORRADOR') throw new Error(`OC no está en BORRADOR (estado actual: ${oc.estado})`);
-
-    await db.query(
-      `UPDATE OrdenesCompra
-          SET estado='APROBADA', id_usuario_aprueba=?, fecha_aprobacion=NOW()
-        WHERE id_oc=?`,
-      [id_usuario_aprueba, id_oc]
-    );
-    await db.query(
-      `INSERT INTO AprobacionesOC (id_oc, id_usuario, accion, comentario, monto_total_aprobado, moneda)
-       VALUES (?, ?, 'APROBAR', ?, ?, ?)`,
-      [id_oc, id_usuario_aprueba, comentario || null, oc.total, oc.moneda]
-    );
-    await this._registrarTransicion(id_oc, 'BORRADOR', 'APROBADA', id_usuario_aprueba, 'Aprobada — en revisión');
-
-    return { success: true, estado: 'APROBADA' as const };
+    // Import lazy para evitar ciclo de imports entre los dos services.
+    const OCFirmasService = (await import('./OCFirmasService')).default;
+    let resultado: any = null;
+    for (const cas of ['preparado', 'revisado', 'autorizado'] as const) {
+      resultado = await OCFirmasService.firmar(id_oc, cas, id_usuario_aprueba, rol, comentario);
+      // Si tras firmar uno la OC ya pasó a APROBADA (umbral=1 o 2), cortamos
+      // el bucle — los siguientes firmar() rechazarían porque la OC ya no
+      // está en BORRADOR.
+      if (resultado.estado === 'APROBADA') break;
+    }
+    return { success: true, estado: resultado?.estado || 'BORRADOR' };
   }
 
   /**
@@ -1993,10 +1996,16 @@ class OrdenCompraService {
               cot.cliente        AS cotizacion_cliente,
               cot.proyecto       AS cotizacion_proyecto,
               cot.moneda         AS cotizacion_moneda,
-              cot.total          AS cotizacion_total
+              cot.total          AS cotizacion_total,
+              u_prep.nombre  AS preparado_por_nombre,
+              u_rev.nombre   AS revisado_por_nombre,
+              u_aut.nombre   AS autorizado_por_nombre
        FROM OrdenesCompra oc
        LEFT JOIN Proveedores p ON p.id_proveedor = oc.id_proveedor
        LEFT JOIN Cotizaciones cot ON cot.id_cotizacion = oc.id_cotizacion
+       LEFT JOIN Usuarios u_prep ON u_prep.id_usuario = oc.preparado_por_id
+       LEFT JOIN Usuarios u_rev  ON u_rev.id_usuario  = oc.revisado_por_id
+       LEFT JOIN Usuarios u_aut  ON u_aut.id_usuario  = oc.autorizado_por_id
        WHERE oc.id_oc = ?`,
       [id_oc]
     );
@@ -2041,7 +2050,21 @@ class OrdenCompraService {
     if (recibido >= pedido - 0.0001 && pedido > 0) estado_recepcion = 'RECIBIDO';
     else if (recibido > 0.0001) estado_recepcion = 'PARCIAL';
 
-    return { ...oc, detalle, aprobaciones: apro, pagos, estado_recepcion };
+    // Multifirma (mig 065): cuántas firmas requiere esta OC y cuántas tiene.
+    let firmas_requeridas = 1;
+    try {
+      const OCFirmasService = (await import('./OCFirmasService')).default;
+      firmas_requeridas = await OCFirmasService.getFirmasRequeridas(id_oc);
+    } catch (_e) { /* tabla aún no migrada en algún entorno: default 1 */ }
+    let firmas_actuales = 0;
+    if (oc.preparado_por_id)  firmas_actuales++;
+    if (oc.revisado_por_id)   firmas_actuales++;
+    if (oc.autorizado_por_id) firmas_actuales++;
+
+    return {
+      ...oc, detalle, aprobaciones: apro, pagos, estado_recepcion,
+      firmas_requeridas, firmas_actuales,
+    };
   }
 
   /**
