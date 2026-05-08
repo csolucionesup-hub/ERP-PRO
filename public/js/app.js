@@ -1,29 +1,29 @@
-// Cache busting para imports ES module: cada path lleva su ?v=YYYYMMDDr#
+﻿// Cache busting para imports ES module: cada path lleva su ?v=YYYYMMDDr#
 // hardcodeado. Si se cambia CUALQUIER archivo de pages/components/services
-// hay que bumpear el sufijo en TODAS las líneas (Find/Replace de v=2026...).
-import { renderSidebar } from './components/Sidebar.js?v=20260506r48';
-import { Dashboard }   from './pages/Dashboard.js?v=20260506r48';
-import { Finanzas }    from './pages/Finanzas.js?v=20260506r48';
-import { Inventario }  from './pages/Inventario.js?v=20260506r48';
-import { Usuarios }    from './pages/Usuarios.js?v=20260506r48';
-import { Compras }       from './pages/Compras.js?v=20260506r48';
-// Servicios — módulo deprecado al cierre 03/05/2026 (Camino A vació la tabla
-// en producción; flujo migrado a Cotizaciones APROBADAS + OCs). El backend
-// sigue vivo porque Logística/OC consumen api.services.getServiciosActivos()
-// para popular dropdowns, pero la página ya no se navega.
-import { Proveedores }   from './pages/Proveedores.js?v=20260506r48';
-import { Prestamos }     from './pages/Prestamos.js?v=20260506r48';
-import { Comercial }     from './pages/Comercial.js?v=20260506r48';
-import { ConfiguracionComercial } from './pages/ConfiguracionComercial.js?v=20260506r48';
-import { Logistica }     from './pages/Logistica.js?v=20260506r48';
-import { Administracion } from './pages/Administracion.js?v=20260506r48';
-import { Configuracion }  from './pages/Configuracion.js?v=20260506r48';
-import { Contabilidad }   from './pages/Contabilidad.js?v=20260506r48';
-import { Importador }     from './pages/Importador.js?v=20260506r48';
-import { OrdenesCompra }  from './pages/OrdenesCompra.js?v=20260506r48';
-import { Produccion }     from './pages/Produccion.js?v=20260506r48';
-import { Alertas }        from './pages/Alertas.js?v=20260506r48';
-import { showSuccess, showError, showToast } from './services/ui.js?v=20260506r48';
+// hay que bumpear el sufijo en TODAS las lÃ­neas (Find/Replace de v=2026...).
+import { renderSidebar } from './components/Sidebar.js?v=20260508r1';
+import { Dashboard }   from './pages/Dashboard.js?v=20260508r1';
+import { Finanzas }    from './pages/Finanzas.js?v=20260508r1';
+import { Inventario }  from './pages/Inventario.js?v=20260508r1';
+import { Usuarios }    from './pages/Usuarios.js?v=20260508r1';
+import { Compras }       from './pages/Compras.js?v=20260508r1';
+// Servicios â€” mÃ³dulo deprecado al cierre 03/05/2026 (Camino A vaciÃ³ la tabla
+// en producciÃ³n; flujo migrado a Cotizaciones APROBADAS + OCs). El backend
+// sigue vivo porque LogÃ­stica/OC consumen api.services.getServiciosActivos()
+// para popular dropdowns, pero la pÃ¡gina ya no se navega.
+import { Proveedores }   from './pages/Proveedores.js?v=20260508r1';
+import { Prestamos }     from './pages/Prestamos.js?v=20260508r1';
+import { Comercial }     from './pages/Comercial.js?v=20260508r1';
+import { ConfiguracionComercial } from './pages/ConfiguracionComercial.js?v=20260508r1';
+import { Logistica }     from './pages/Logistica.js?v=20260508r1';
+import { Administracion } from './pages/Administracion.js?v=20260508r1';
+import { Configuracion }  from './pages/Configuracion.js?v=20260508r1';
+import { Contabilidad }   from './pages/Contabilidad.js?v=20260508r1';
+import { Importador }     from './pages/Importador.js?v=20260508r1';
+import { OrdenesCompra }  from './pages/OrdenesCompra.js?v=20260508r1';
+import { Produccion }     from './pages/Produccion.js?v=20260508r1';
+import { Alertas }        from './pages/Alertas.js?v=20260508r1';
+import { showSuccess, showError, showToast } from './services/ui.js?v=20260508r1';
 
 // Exponer helpers de toast globalmente (los modules ES no tienen acceso
 // directo desde otros modules sin import; varios usan window.showSuccess?.()
@@ -32,7 +32,7 @@ window.showSuccess = showSuccess;
 window.showError   = showError;
 window.showToast   = showToast;
 
-// ── Módulos en orden de preferencia para redirección inicial ──
+// â”€â”€ MÃ³dulos en orden de preferencia para redirecciÃ³n inicial â”€â”€
 const MODULE_ORDER = ['GERENCIA', 'COMERCIAL', 'FINANZAS', 'LOGISTICA', 'ALMACEN', 'ADMINISTRACION'];
 
 const MODULE_TO_PAGE = {
@@ -45,7 +45,7 @@ const MODULE_TO_PAGE = {
   ADMINISTRACION: 'administracion',
 };
 
-// Módulos que requieren acceso específico (GERENTE lo pasa siempre)
+// MÃ³dulos que requieren acceso especÃ­fico (GERENTE lo pasa siempre)
 const PAGE_MODULE = {
   dashboard:      'GERENCIA',
   comercial:      'COMERCIAL',
@@ -57,7 +57,7 @@ const PAGE_MODULE = {
   administracion: 'ADMINISTRACION',
   usuarios:       null, // solo GERENTE, controlado aparte
   configuracion:  null, // solo GERENTE
-  contabilidad:   null, // GERENTE o CONTADOR — chequeo aparte
+  contabilidad:   null, // GERENTE o CONTADOR â€” chequeo aparte
   importador:     null, // solo GERENTE
   'ordenes-compra': 'LOGISTICA',
   alertas:        null, // accesible a todos; el contenido se filtra server-side
@@ -83,13 +83,13 @@ const PAGES = {
   alertas:        Alertas,
 };
 
-// ── Auth helpers ──────────────────────────────────────────────
+// â”€â”€ Auth helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function getUser() {
   try { return JSON.parse(localStorage.getItem('erp_user') || '{}'); }
   catch { return {}; }
 }
 
-// Exponer navigate globalmente para que los onclick en páginas puedan llamarlo
+// Exponer navigate globalmente para que los onclick en pÃ¡ginas puedan llamarlo
 window.navigate = (page) => navigate(page);
 
 window.logout = function () {
@@ -100,8 +100,8 @@ window.logout = function () {
 };
 
 // Toggle ocultar/mostrar sidebar (desktop). Persiste en localStorage para
-// que el estado sobreviva al reload. En mobile no se usa (allí está el
-// hamburger), las reglas CSS de .sidebar-collapsed están scopeadas a desktop.
+// que el estado sobreviva al reload. En mobile no se usa (allÃ­ estÃ¡ el
+// hamburger), las reglas CSS de .sidebar-collapsed estÃ¡n scopeadas a desktop.
 window.toggleSidebarCollapse = function () {
   const collapsed = document.body.classList.toggle('sidebar-collapsed');
   try { localStorage.setItem('erp_sidebar_collapsed', collapsed ? '1' : '0'); } catch {}
@@ -113,28 +113,28 @@ function getPaginaInicio(user) {
   for (const m of MODULE_ORDER) {
     if (modulos.includes(m)) return MODULE_TO_PAGE[m];
   }
-  return null; // sin módulos asignados
+  return null; // sin mÃ³dulos asignados
 }
 
 function tieneAcceso(user, page) {
   if (user.rol === 'GERENTE') return true;
-  // Solo GERENTE puede gestionar usuarios y configuración del sistema
+  // Solo GERENTE puede gestionar usuarios y configuraciÃ³n del sistema
   if (page === 'usuarios' || page === 'configuracion') return false;
   // Acceso granular por flags por usuario (asignados desde el modal de Usuarios).
   // El GERENTE puede dar/quitar Contabilidad e Importador a cualquier rol.
   if (page === 'contabilidad') return !!user.puede_contabilidad;
   if (page === 'importador')   return !!user.puede_importar;
   const moduloRequerido = PAGE_MODULE[page];
-  if (!moduloRequerido) return true; // páginas sin módulo requerido
+  if (!moduloRequerido) return true; // pÃ¡ginas sin mÃ³dulo requerido
   return (user.modulos || []).includes(moduloRequerido);
 }
 
-// ── Pantallas de error/estado ─────────────────────────────────
+// â”€â”€ Pantallas de error/estado â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function paginaAccesoRestringido(page) {
   return `
     <div class="placeholder-page">
       <h2>Acceso restringido</h2>
-      <p>No tienes permiso para acceder al módulo <strong>${page}</strong>.</p>
+      <p>No tienes permiso para acceder al mÃ³dulo <strong>${page}</strong>.</p>
       <p>Contacta al administrador para solicitar acceso.</p>
     </div>`;
 }
@@ -142,21 +142,21 @@ function paginaAccesoRestringido(page) {
 function paginaSinModulos() {
   return `
     <div class="placeholder-page">
-      <h2>Sin módulos asignados</h2>
-      <p>Tu usuario no tiene módulos habilitados.</p>
+      <h2>Sin mÃ³dulos asignados</h2>
+      <p>Tu usuario no tiene mÃ³dulos habilitados.</p>
       <p>Contacta al administrador del sistema.</p>
     </div>`;
 }
 
-// ── Router SPA ────────────────────────────────────────────────
+// â”€â”€ Router SPA â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 let currentPage = null;
 
-// Redirecciones legacy: páginas standalone absorbidas en hubs. Si alguien
-// aterriza vía URL vieja o link viejo, lo mandamos al deeplink correcto del
-// hub para que tenga el menú de tabs y pueda navegar de vuelta.
+// Redirecciones legacy: pÃ¡ginas standalone absorbidas en hubs. Si alguien
+// aterriza vÃ­a URL vieja o link viejo, lo mandamos al deeplink correcto del
+// hub para que tenga el menÃº de tabs y pueda navegar de vuelta.
 const REDIRECTS_LEGACY = {
   proveedores: 'logistica/proveedores',
-  // El kanban OC standalone está integrado dentro de Logística como sub-tab.
+  // El kanban OC standalone estÃ¡ integrado dentro de LogÃ­stica como sub-tab.
   // Redirigimos para evitar tener dos vistas duplicadas y el usuario "atrapado"
   // en una pantalla sin sidebar contextual.
   'ordenes-compra': 'logistica/oc',
@@ -168,9 +168,9 @@ async function navigate(page) {
     return;
   }
 
-  // Re-chequea sesión contra BD en cada cambio de página (sin bloquear).
-  // Si el GERENTE cambió rol/módulos, los pickea aquí. Si hay cambio de
-  // rol/flags, hace reload automático para garantizar que TODOS los
+  // Re-chequea sesiÃ³n contra BD en cada cambio de pÃ¡gina (sin bloquear).
+  // Si el GERENTE cambiÃ³ rol/mÃ³dulos, los pickea aquÃ­. Si hay cambio de
+  // rol/flags, hace reload automÃ¡tico para garantizar que TODOS los
   // componentes vean el localStorage fresco.
   const cambio = await refreshSessionFromServer({ reloadOnChange: true });
   if (cambio) return; // reload en curso, no seguimos pintando la SPA
@@ -185,9 +185,9 @@ async function navigate(page) {
   currentPage = page;
   renderSidebar(page);
 
-  // Preservar sub-tab si estamos re-navegando al MISMO módulo (caso típico:
-  // refreshModule() después de una acción). Si cambiamos de módulo, el
-  // sub-tab anterior pertenece a otro módulo y no debe arrastrarse.
+  // Preservar sub-tab si estamos re-navegando al MISMO mÃ³dulo (caso tÃ­pico:
+  // refreshModule() despuÃ©s de una acciÃ³n). Si cambiamos de mÃ³dulo, el
+  // sub-tab anterior pertenece a otro mÃ³dulo y no debe arrastrarse.
   // Hash format: #modulo o #modulo/sub-tab (sin slash inicial).
   const partesHash = (window.location.hash || '').replace(/^#\/?/, '').split('/');
   const moduloAnterior = partesHash[0];
@@ -195,13 +195,13 @@ async function navigate(page) {
   const nuevoHash = subTabAnterior ? `#${page}/${subTabAnterior}` : `#${page}`;
   history.pushState({ page }, '', nuevoHash);
 
-  // Persistimos la última página visitada para que un Ctrl+Shift+R o
-  // un cierre/apertura de pestaña re-aterrice al usuario donde estaba,
-  // incluso si el hash se pierde por algún motivo (cache, redirect, etc.).
+  // Persistimos la Ãºltima pÃ¡gina visitada para que un Ctrl+Shift+R o
+  // un cierre/apertura de pestaÃ±a re-aterrice al usuario donde estaba,
+  // incluso si el hash se pierde por algÃºn motivo (cache, redirect, etc.).
   try { localStorage.setItem('erp_last_page', page); } catch {}
 
   const mainContent = document.getElementById('main-content');
-  mainContent.innerHTML = '<div style="padding:50px;text-align:center;color:var(--text-secondary);">Cargando módulo...</div>';
+  mainContent.innerHTML = '<div style="padding:50px;text-align:center;color:var(--text-secondary);">Cargando mÃ³dulo...</div>';
 
   if (!PAGES[page]) {
     navigate(getPaginaInicio(user));
@@ -211,12 +211,12 @@ async function navigate(page) {
   try {
     mainContent.innerHTML = await Component();
   } catch (err) {
-    console.error('[Router] Error cargando página:', err);
-    mainContent.innerHTML = `<div class="text-danger" style="padding:40px;">Error cargando el módulo: ${err.message}</div>`;
+    console.error('[Router] Error cargando pÃ¡gina:', err);
+    mainContent.innerHTML = `<div class="text-danger" style="padding:40px;">Error cargando el mÃ³dulo: ${err.message}</div>`;
   }
 }
 
-// ── ¿Existe ya la ConfiguracionEmpresa? ──────────────────────
+// â”€â”€ Â¿Existe ya la ConfiguracionEmpresa? â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Si NO existe y el usuario es GERENTE, forzamos #configuracion para ejecutar
 // el wizard antes de que se topen con errores en Contabilidad / OCs / Facturas.
 async function configEmpresaExiste() {
@@ -233,14 +233,14 @@ async function configEmpresaExiste() {
 }
 
 /**
- * Refresca rol/módulos/permisos contra la BD. El JWT y el localStorage se
- * setean SOLO al hacer login — si el GERENTE cambia el rol/módulos de un
- * usuario después, sin esto la pantalla queda stale hasta logout/login.
+ * Refresca rol/mÃ³dulos/permisos contra la BD. El JWT y el localStorage se
+ * setean SOLO al hacer login â€” si el GERENTE cambia el rol/mÃ³dulos de un
+ * usuario despuÃ©s, sin esto la pantalla queda stale hasta logout/login.
  *
  * /api/auth/me ahora consulta BD fresca y devuelve `{ usuario, cambio, token }`.
  * Si `cambio: true`, regrabamos `erp_user` y `erp_token` en localStorage.
  *
- * Best-effort: si falla (sin red, 401, etc.), no bloqueamos el arranque —
+ * Best-effort: si falla (sin red, 401, etc.), no bloqueamos el arranque â€”
  * el flujo legacy con el JWT existente sigue funcionando hasta que el
  * usuario haga logout o el token expire.
  */
@@ -252,7 +252,7 @@ async function refreshSessionFromServer({ reloadOnChange = false } = {}) {
       headers: { 'Authorization': 'Bearer ' + token }
     });
     if (r.status === 401) {
-      // JWT inválido o usuario desactivado → al login.
+      // JWT invÃ¡lido o usuario desactivado â†’ al login.
       localStorage.removeItem('erp_token');
       localStorage.removeItem('erp_user');
       window.location.replace('/login.html');
@@ -263,8 +263,8 @@ async function refreshSessionFromServer({ reloadOnChange = false } = {}) {
     if (!data?.usuario) return false;
 
     // Detectar si el rol o flags cambiaron contra el localStorage actual.
-    // Si cambian, varias páginas leyeron el rol viejo en variables locales
-    // y la única forma 100% segura es recargar.
+    // Si cambian, varias pÃ¡ginas leyeron el rol viejo en variables locales
+    // y la Ãºnica forma 100% segura es recargar.
     let prev = {};
     try { prev = JSON.parse(localStorage.getItem('erp_user') || '{}'); } catch {}
     const cambioRolOFlags =
@@ -278,14 +278,14 @@ async function refreshSessionFromServer({ reloadOnChange = false } = {}) {
     }
 
     if (cambioRolOFlags && reloadOnChange) {
-      // Aviso visible 1.5s antes del reload para que el usuario sepa qué pasa.
-      try { window.showToast?.('Tus permisos fueron actualizados. Refrescando…', 'info'); } catch {}
+      // Aviso visible 1.5s antes del reload para que el usuario sepa quÃ© pasa.
+      try { window.showToast?.('Tus permisos fueron actualizados. Refrescandoâ€¦', 'info'); } catch {}
       setTimeout(() => window.location.reload(), 1500);
       return true;
     }
     return cambioRolOFlags;
   } catch {
-    // sin red / endpoint caído → no bloqueamos
+    // sin red / endpoint caÃ­do â†’ no bloqueamos
     return false;
   }
 }
@@ -296,19 +296,19 @@ async function init() {
     return;
   }
 
-  // Refresca antes de pintar la SPA, así Sidebar y todos los chequeos de
-  // rol leen valores frescos de BD. Si el rol cambió y el usuario quedó
-  // sin acceso a la página actual, navigate() se encarga del redirect.
+  // Refresca antes de pintar la SPA, asÃ­ Sidebar y todos los chequeos de
+  // rol leen valores frescos de BD. Si el rol cambiÃ³ y el usuario quedÃ³
+  // sin acceso a la pÃ¡gina actual, navigate() se encarga del redirect.
   await refreshSessionFromServer();
 
   const user = getUser();
 
-  // Shell estática con sidebar + main-content + hamburger mobile
+  // Shell estÃ¡tica con sidebar + main-content + hamburger mobile
   document.getElementById('root').innerHTML = `
-    <button class="mobile-menu-toggle" id="mobile-menu-toggle" aria-label="Menú">☰</button>
+    <button class="mobile-menu-toggle" id="mobile-menu-toggle" aria-label="MenÃº">â˜°</button>
     <button class="app-sidebar-show" id="app-sidebar-show" type="button"
-            aria-label="Mostrar menú lateral" title="Mostrar menú"
-            onclick="toggleSidebarCollapse()">☰</button>
+            aria-label="Mostrar menÃº lateral" title="Mostrar menÃº"
+            onclick="toggleSidebarCollapse()">â˜°</button>
     <div class="mobile-overlay" id="mobile-overlay"></div>
     <div class="app-container">
       <aside class="sidebar" id="sidebar"></aside>
@@ -317,7 +317,7 @@ async function init() {
   `;
 
   // Restaurar estado colapsado de la sidebar (solo aplica visualmente en desktop;
-  // en mobile la regla CSS está scopeada a min-width:769px y no afecta).
+  // en mobile la regla CSS estÃ¡ scopeada a min-width:769px y no afecta).
   try {
     if (localStorage.getItem('erp_sidebar_collapsed') === '1') {
       document.body.classList.add('sidebar-collapsed');
@@ -344,7 +344,7 @@ async function init() {
   });
   overlayEl.addEventListener('click', closeMobileSidebar);
 
-  // Delegación de eventos en sidebar
+  // DelegaciÃ³n de eventos en sidebar
   document.getElementById('sidebar').addEventListener('click', (e) => {
     const item = e.target.closest('[data-page]');
     if (item) {
@@ -353,33 +353,33 @@ async function init() {
     }
   });
 
-  // Botón atrás del browser
+  // BotÃ³n atrÃ¡s del browser
   window.addEventListener('popstate', (e) => {
     const page = e.state?.page || getPaginaInicio(user) || 'dashboard';
     navigate(page);
   });
 
-  // Navegación por hash (links internos tipo <a href="#pagina">). Tomamos
-  // sólo el primer segmento porque algunos módulos usan sub-rutas internas
+  // NavegaciÃ³n por hash (links internos tipo <a href="#pagina">). Tomamos
+  // sÃ³lo el primer segmento porque algunos mÃ³dulos usan sub-rutas internas
   // (#logistica/general, #logistica/almacen) y no queremos re-navegar al
-  // módulo cada vez que cambia la pestaña interna.
+  // mÃ³dulo cada vez que cambia la pestaÃ±a interna.
   window.addEventListener('hashchange', () => {
     const page = window.location.hash.replace('#', '').trim().split('/')[0];
     if (page && PAGES[page] && page !== currentPage) navigate(page);
   });
 
-  // Helper para refrescar el módulo actual (re-fetch + re-render) tras una
-  // mutation. El listener de hashchange por sí solo NO re-navega cuando el
-  // page no cambia (decisión consciente para preservar state de pestañas
+  // Helper para refrescar el mÃ³dulo actual (re-fetch + re-render) tras una
+  // mutation. El listener de hashchange por sÃ­ solo NO re-navega cuando el
+  // page no cambia (decisiÃ³n consciente para preservar state de pestaÃ±as
   // internas tipo #logistica/general). Para post-cobranza/post-OC/etc.
-  // necesitamos forzar el re-render — este helper lo cubre.
+  // necesitamos forzar el re-render â€” este helper lo cubre.
   window.refreshModule = () => {
     if (currentPage && PAGES[currentPage]) navigate(currentPage);
   };
 
-  // Página inicial — primer segmento del hash (algunos módulos usan
-  // sub-rutas internas tipo #logistica/general para sus pestañas, así
-  // que partimos por '/' y nos quedamos con el módulo).
+  // PÃ¡gina inicial â€” primer segmento del hash (algunos mÃ³dulos usan
+  // sub-rutas internas tipo #logistica/general para sus pestaÃ±as, asÃ­
+  // que partimos por '/' y nos quedamos con el mÃ³dulo).
   const hashRaw  = window.location.hash.replace('#', '').trim();
   const hashPage = hashRaw.split('/')[0];
   const paginaInicio = getPaginaInicio(user);
@@ -390,8 +390,8 @@ async function init() {
     return;
   }
 
-  // Si el GERENTE entra y aún no existe ConfiguracionEmpresa, llevarlo directo
-  // al wizard de setup. Cualquier otro destino fallaría en backend.
+  // Si el GERENTE entra y aÃºn no existe ConfiguracionEmpresa, llevarlo directo
+  // al wizard de setup. Cualquier otro destino fallarÃ­a en backend.
   if (user.rol === 'GERENTE') {
     const existe = await configEmpresaExiste();
     if (!existe) {
@@ -401,12 +401,12 @@ async function init() {
   }
 
   // Resolver destino con fallback en cascada para que un Ctrl+Shift+R
-  // mantenga al usuario en el módulo donde estaba (clave: muchos usuarios
-  // no son GERENTE y no tienen acceso al dashboard, así que recargar y
-  // caer ahí los mete en "Acceso restringido").
-  // 1) hash explícito en la URL (#finanzas) — top priority
-  // 2) última página guardada en localStorage (sobrevive a reloads)
-  // 3) página de inicio según rol/módulos (último recurso)
+  // mantenga al usuario en el mÃ³dulo donde estaba (clave: muchos usuarios
+  // no son GERENTE y no tienen acceso al dashboard, asÃ­ que recargar y
+  // caer ahÃ­ los mete en "Acceso restringido").
+  // 1) hash explÃ­cito en la URL (#finanzas) â€” top priority
+  // 2) Ãºltima pÃ¡gina guardada en localStorage (sobrevive a reloads)
+  // 3) pÃ¡gina de inicio segÃºn rol/mÃ³dulos (Ãºltimo recurso)
   let lastPage = null;
   try { lastPage = localStorage.getItem('erp_last_page'); } catch {}
 
@@ -421,9 +421,9 @@ async function init() {
 
 document.addEventListener('DOMContentLoaded', init);
 
-// ── Tooltips .tip — soporte tap-to-show en mobile ─────────────
+// â”€â”€ Tooltips .tip â€” soporte tap-to-show en mobile â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // En desktop con `:hover` el tooltip aparece solo. En mobile no hay hover,
-// así que cualquier click en un .tip lo activa, y un click fuera lo cierra.
+// asÃ­ que cualquier click en un .tip lo activa, y un click fuera lo cierra.
 document.addEventListener('click', (e) => {
   const tipEl = e.target.closest?.('.tip');
   // Cerrar todos los tooltips activos primero
@@ -436,11 +436,11 @@ document.addEventListener('click', (e) => {
   }
 }, true);
 
-// ── Auto-cierre flotante para modales ─────────────────────────
+// â”€â”€ Auto-cierre flotante para modales â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // En el ERP los modales son divs con `position:fixed; inset:0;` y un hijo box.
-// El botón "Cerrar" suele estar al final → en mobile queda fuera del viewport
-// y el usuario no sabe cómo cerrar. Inyectamos un ✕ flotante arriba a la derecha
-// que dispara el handler del botón Cerrar existente (o remueve el overlay).
+// El botÃ³n "Cerrar" suele estar al final â†’ en mobile queda fuera del viewport
+// y el usuario no sabe cÃ³mo cerrar. Inyectamos un âœ• flotante arriba a la derecha
+// que dispara el handler del botÃ³n Cerrar existente (o remueve el overlay).
 (function setupFloatingCloseButton() {
   const isModalOverlay = (el) => {
     if (!el || el.nodeType !== 1) return false;
@@ -457,10 +457,10 @@ document.addEventListener('click', (e) => {
     const x = document.createElement('button');
     x.type = 'button';
     x.setAttribute('aria-label', 'Cerrar');
-    x.textContent = '✕';
+    x.textContent = 'âœ•';
     x.style.cssText = [
       // Pegado al overlay (fixed position), NO al box (que tiene overflow:auto)
-      // así el ✕ no se va con el scroll del contenido del modal.
+      // asÃ­ el âœ• no se va con el scroll del contenido del modal.
       'position:absolute', 'top:14px', 'right:14px',
       'width:40px', 'height:40px',
       'border:none', 'border-radius:50%',
@@ -476,13 +476,13 @@ document.addEventListener('click', (e) => {
     x.onclick = (ev) => {
       ev.stopPropagation();
       ev.preventDefault();
-      // Si hay un botón "Cerrar" existente, dispará su handler (mantiene reglas
+      // Si hay un botÃ³n "Cerrar" existente, disparÃ¡ su handler (mantiene reglas
       // de negocio si el modal hace algo extra al cerrar).
       const cerrarExistente = box.querySelector('button[id^="close-"], button[data-close]');
       if (cerrarExistente) cerrarExistente.click();
       else overlay.remove();
     };
-    // Append al overlay (position:fixed) para que el ✕ siempre esté visible
+    // Append al overlay (position:fixed) para que el âœ• siempre estÃ© visible
     overlay.appendChild(x);
   };
 

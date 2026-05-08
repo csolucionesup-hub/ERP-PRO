@@ -60,6 +60,13 @@ function rowCotizacion(c, marca) {
   const cobradoDet    = Number(c.monto_cobrado_detraccion) || 0;
   const aplicaDetra   = detraccion > 0;
   const aplicaRet     = retencion > 0;
+  // ⚠ Convención sistema: Cotizaciones.total/igv/monto_* están SIEMPRE en PEN
+  // (ver CotizacionService.calcularTotales — multiplica por tipo_cambio si USD).
+  // Por eso formateamos todo con S/ y mostramos al lado el USD original como
+  // referencia cuando la cotización es en dólares.
+  const esUSD = c.moneda === 'USD';
+  const tc    = Number(c.tipo_cambio) || 1;
+  const totalUsdOrig = esUSD ? Number(c.total) / tc : null;
 
   // Formatear sin pasar por new Date() — la columna es UTC midnight y Lima
   // es UTC-5, así que JS la interpretaría como día anterior. Tomamos el
@@ -84,27 +91,30 @@ function rowCotizacion(c, marca) {
         <div style="font-weight:600">${c.cliente || '—'}</div>
         <div style="font-size:11px;color:var(--text-secondary)">${c.proyecto || ''}</div>
       </td>
-      <td style="text-align:right">${fMoney(c.total, c.moneda)}</td>
+      <td style="text-align:right">
+        <div>${fMoney(c.total, 'PEN')}</div>
+        ${esUSD ? `<div style="font-size:10px;color:#16a34a;font-weight:600" title="Monto original cotizado en USD (TC ${tc.toFixed(4)})">${fMoney(totalUsdOrig, 'USD')} USD</div>` : ''}
+      </td>
       <td style="text-align:right;color:#1e40af">
-        <div>${fMoney(c.igv, c.moneda)}</div>
+        <div>${fMoney(c.igv, 'PEN')}</div>
         <div style="font-size:10px;color:#6b7280">IGV 18%</div>
       </td>
       <td style="text-align:right">
-        <div>${fMoney(esperadoBanco, c.moneda)}</div>
+        <div>${fMoney(esperadoBanco, 'PEN')}</div>
         ${cobradoBanco + 0.01 >= esperadoBanco && esperadoBanco > 0
           ? `<div style="font-size:10px;color:#16a34a;font-weight:600">✓ Cobrado completo</div>`
-          : `<div style="font-size:10px;color:var(--text-secondary)">Cobrado: ${fMoney(cobradoBanco, c.moneda)} · Falta: <span style="color:#dc2626">${fMoney(Math.max(0, esperadoBanco - cobradoBanco), c.moneda)}</span></div>`
+          : `<div style="font-size:10px;color:var(--text-secondary)">Cobrado: ${fMoney(cobradoBanco, 'PEN')} · Falta: <span style="color:#dc2626">${fMoney(Math.max(0, esperadoBanco - cobradoBanco), 'PEN')}</span></div>`
         }
       </td>
       <td style="text-align:right">
-        ${aplicaDetra ? `<div>${fMoney(detraccion, c.moneda)} <span style="color:#9ca3af">(${Number(c.detraccion_porcentaje)}%)</span></div>
+        ${aplicaDetra ? `<div>${fMoney(detraccion, 'PEN')} <span style="color:#9ca3af">(${Number(c.detraccion_porcentaje)}%)</span></div>
           ${cobradoDet + 0.01 >= detraccion
             ? `<div style="font-size:10px;color:#16a34a;font-weight:600">✓ Cobrado completo</div>`
-            : `<div style="font-size:10px;color:var(--text-secondary)">Cobrado: ${fMoney(cobradoDet, c.moneda)} · Falta: <span style="color:#dc2626">${fMoney(detraccion - cobradoDet, c.moneda)}</span></div>`
+            : `<div style="font-size:10px;color:var(--text-secondary)">Cobrado: ${fMoney(cobradoDet, 'PEN')} · Falta: <span style="color:#dc2626">${fMoney(detraccion - cobradoDet, 'PEN')}</span></div>`
           }` : '<span style="color:#9ca3af">N/A</span>'}
       </td>
       <td style="text-align:right">
-        ${aplicaRet ? `<div style="color:#7c3aed">${fMoney(retencion, c.moneda)}</div>
+        ${aplicaRet ? `<div style="color:#7c3aed">${fMoney(retencion, 'PEN')}</div>
           <div style="font-size:10px;color:#9ca3af">${Number(c.retencion_porcentaje)}% agente</div>` : '<span style="color:#9ca3af">—</span>'}
       </td>
       <td style="text-align:center">${semaforoDias(c.dias_esperando)}</td>
@@ -273,20 +283,21 @@ async function modalRegistrarCobranza(cot, cuentas, existing = null) {
         <div style="padding:18px 22px;border-top:4px solid ${cfg.color};border-bottom:1px solid #e5e7eb">
           <h3 style="margin:0 0 4px 0;font-size:15px">${isEdit ? '✎ Editar cobranza' : 'Registrar cobranza'}</h3>
           <div style="font-size:12px;color:var(--text-secondary)">
-            ${cot.nro_cotizacion} · ${cot.cliente} · Total ${fMoney(cot.total, cot.moneda)}
+            ${cot.nro_cotizacion} · ${cot.cliente} · Total ${fMoney(cot.total, 'PEN')}${cot.moneda === 'USD' ? ` <span style="color:#16a34a">(${fMoney(Number(cot.total)/(Number(cot.tipo_cambio)||1), 'USD')} USD orig.)</span>` : ''}
           </div>
           ${isEdit ? `<div style="margin-top:6px;font-size:11px;color:#92400e;background:#fef3c7;padding:4px 8px;border-radius:4px;display:inline-block">El tipo no se puede modificar — solo los datos del movimiento.</div>` : ''}
         </div>
 
         <div style="padding:16px 22px">
-          <!-- Resumen -->
+          <!-- Resumen (todos los montos en PEN — convención sistema) -->
           <div style="background:#f9fafb;padding:10px;border-radius:6px;margin-bottom:12px;font-size:11px;display:grid;grid-template-columns:1fr 1fr;gap:6px">
-            <div><strong>Neto al banco:</strong> ${fMoney(esperadoBanco, cot.moneda)}</div>
-            <div><strong>Cobrado banco:</strong> ${fMoney(cot.monto_cobrado_banco, cot.moneda)} <span style="color:#dc2626">(falta ${fMoney(faltaBanco, cot.moneda)})</span></div>
+            <div><strong>Neto al banco:</strong> ${fMoney(esperadoBanco, 'PEN')}</div>
+            <div><strong>Cobrado banco:</strong> ${fMoney(cot.monto_cobrado_banco, 'PEN')} <span style="color:#dc2626">(falta ${fMoney(faltaBanco, 'PEN')})</span></div>
             ${aplicaDetra ? `
-              <div><strong>Detracción:</strong> ${fMoney(cot.monto_detraccion, cot.moneda)} (${cot.detraccion_porcentaje}%)</div>
-              <div><strong>Cobrada det:</strong> ${fMoney(cot.monto_cobrado_detraccion, cot.moneda)} <span style="color:#dc2626">(falta ${fMoney(faltaDet, cot.moneda)})</span></div>
+              <div><strong>Detracción:</strong> ${fMoney(cot.monto_detraccion, 'PEN')} (${cot.detraccion_porcentaje}%)</div>
+              <div><strong>Cobrada det:</strong> ${fMoney(cot.monto_cobrado_detraccion, 'PEN')} <span style="color:#dc2626">(falta ${fMoney(faltaDet, 'PEN')})</span></div>
             ` : `<div style="grid-column:span 2;color:#16a34a">Esta cotización no aplica detracción</div>`}
+            ${cot.moneda === 'USD' ? `<div style="grid-column:span 2;background:#ecfdf5;border:1px solid #a7f3d0;border-radius:4px;padding:6px;color:#065f46;font-size:10px">💱 Cotización USD · TC ${Number(cot.tipo_cambio).toFixed(4)} · Monto original cotizado: ${fMoney(Number(cot.total)/(Number(cot.tipo_cambio)||1), 'USD')}. Los montos arriba están en PEN (DB).</div>` : ''}
           </div>
 
           <form id="form-cob" style="display:flex;flex-direction:column;gap:10px">
@@ -1462,7 +1473,7 @@ async function modalEditarTributario(cot) {
       <div style="background:#fff;border-radius:8px;max-width:460px;width:100%;box-shadow:0 20px 50px rgba(0,0,0,.3);overflow:hidden">
         <div style="padding:16px 20px;border-top:4px solid ${cfg.color};border-bottom:1px solid #e5e7eb">
           <h3 style="margin:0 0 3px 0;font-size:15px">Editar detracción / retención</h3>
-          <div style="font-size:12px;color:var(--text-secondary)">${cot.nro_cotizacion} · Total ${fMoney(total, cot.moneda)}</div>
+          <div style="font-size:12px;color:var(--text-secondary)">${cot.nro_cotizacion} · Total ${fMoney(total, 'PEN')}${cot.moneda === 'USD' ? ` <span style="color:#16a34a">(${fMoney(total/(Number(cot.tipo_cambio)||1), 'USD')} USD orig.)</span>` : ''}</div>
         </div>
         <div style="padding:16px 20px">
           <div style="background:#fef3c7;border:1px solid #fde68a;padding:10px;border-radius:6px;font-size:11px;color:#92400e;margin-bottom:14px">
@@ -1486,7 +1497,7 @@ async function modalEditarTributario(cot) {
                 <span style="align-self:center;font-weight:600">%</span>
               </div>
               <div id="prev-det" style="margin-top:6px;font-size:12px;color:#92400e">
-                Monto detracción: <strong>${fMoney(total * pctActual / 100, cot.moneda)}</strong>
+                Monto detracción: <strong>${fMoney(total * pctActual / 100, 'PEN')}</strong>
               </div>
             </div>
 
@@ -1503,7 +1514,7 @@ async function modalEditarTributario(cot) {
                 <span style="align-self:center;font-weight:600">%</span>
               </div>
               <div id="prev-ret" style="margin-top:6px;font-size:12px;color:#6b21a8">
-                Monto retención: <strong>${fMoney(total * pctRetActual / 100, cot.moneda)}</strong>
+                Monto retención: <strong>${fMoney(total * pctRetActual / 100, 'PEN')}</strong>
               </div>
             </div>
           </form>
@@ -1523,11 +1534,11 @@ async function modalEditarTributario(cot) {
 
     const refreshDet = () => {
       const v = Number(form.detraccion_porcentaje.value) || 0;
-      prevDet.innerHTML = `Monto detracción: <strong>${fMoney(total * v / 100, cot.moneda)}</strong>`;
+      prevDet.innerHTML = `Monto detracción: <strong>${fMoney(total * v / 100, 'PEN')}</strong>`;
     };
     const refreshRet = () => {
       const v = Number(form.retencion_porcentaje.value) || 0;
-      prevRet.innerHTML = `Monto retención: <strong>${fMoney(total * v / 100, cot.moneda)}</strong>`;
+      prevRet.innerHTML = `Monto retención: <strong>${fMoney(total * v / 100, 'PEN')}</strong>`;
     };
 
     preset.onchange = () => {
@@ -1565,7 +1576,7 @@ function modalFacturar(cot) {
     box.style.cssText = 'background:#fff;border-radius:8px;padding:22px;max-width:480px;width:100%';
     box.innerHTML = `
       <div style="font-size:16px;font-weight:700;margin-bottom:4px">📄 Registrar factura</div>
-      <div style="font-size:12px;color:#6b7280;margin-bottom:14px">${cot.nro_cotizacion} · ${cot.cliente} · ${fMoney(cot.total, cot.moneda)}</div>
+      <div style="font-size:12px;color:#6b7280;margin-bottom:14px">${cot.nro_cotizacion} · ${cot.cliente} · ${fMoney(cot.total, 'PEN')}${cot.moneda === 'USD' ? ` <span style="color:#16a34a">(${fMoney(Number(cot.total)/(Number(cot.tipo_cambio)||1), 'USD')} USD orig.)</span>` : ''}</div>
       <form id="form-fac">
         <div style="margin-bottom:10px">
           <label style="font-size:11px;color:#6b7280;font-weight:600">Número de factura</label>
@@ -1631,23 +1642,24 @@ async function modalDetalle(id) {
           <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;font-size:12px">
             <div style="padding:10px;background:#f9fafb;border-radius:6px">
               <div style="color:var(--text-secondary);font-size:10px">SUBTOTAL</div>
-              <div style="font-weight:700;font-size:14px">${fMoney(c.subtotal, c.moneda)}</div>
+              <div style="font-weight:700;font-size:14px">${fMoney(c.subtotal, 'PEN')}</div>
             </div>
             <div style="padding:10px;background:#eff6ff;border-radius:6px">
               <div style="color:#1e40af;font-size:10px">IGV 18%</div>
-              <div style="font-weight:700;font-size:14px;color:#1e40af">${fMoney(c.igv, c.moneda)}</div>
+              <div style="font-weight:700;font-size:14px;color:#1e40af">${fMoney(c.igv, 'PEN')}</div>
             </div>
             <div style="padding:10px;background:#fef3c7;border-radius:6px">
               <div style="color:#92400e;font-size:10px">DETRACCIÓN ${Number(c.detraccion_porcentaje) > 0 ? `(${Number(c.detraccion_porcentaje)}%)` : ''}</div>
-              <div style="font-weight:700;font-size:14px;color:#92400e">${Number(c.monto_detraccion) > 0 ? fMoney(c.monto_detraccion, c.moneda) : '— no aplica'}</div>
+              <div style="font-weight:700;font-size:14px;color:#92400e">${Number(c.monto_detraccion) > 0 ? fMoney(c.monto_detraccion, 'PEN') : '— no aplica'}</div>
             </div>
             <div style="padding:10px;background:#f3e8ff;border-radius:6px">
               <div style="color:#6b21a8;font-size:10px">RETENCIÓN ${Number(c.retencion_porcentaje) > 0 ? `(${Number(c.retencion_porcentaje)}%)` : ''}</div>
-              <div style="font-weight:700;font-size:14px;color:#6b21a8">${Number(c.monto_retencion) > 0 ? fMoney(c.monto_retencion, c.moneda) : '— no aplica'}</div>
+              <div style="font-weight:700;font-size:14px;color:#6b21a8">${Number(c.monto_retencion) > 0 ? fMoney(c.monto_retencion, 'PEN') : '— no aplica'}</div>
             </div>
             <div style="padding:10px;background:#ecfdf5;border-radius:6px">
               <div style="color:#166534;font-size:10px">TOTAL</div>
-              <div style="font-weight:700;font-size:14px;color:#166534">${fMoney(c.total, c.moneda)}</div>
+              <div style="font-weight:700;font-size:14px;color:#166534">${fMoney(c.total, 'PEN')}</div>
+              ${c.moneda === 'USD' ? `<div style="font-size:10px;color:#16a34a;margin-top:2px" title="Monto original cotizado en USD">${fMoney(Number(c.total)/(Number(c.tipo_cambio)||1), 'USD')} USD · TC ${Number(c.tipo_cambio).toFixed(4)}</div>` : ''}
             </div>
           </div>
         </div>
@@ -1656,15 +1668,15 @@ async function modalDetalle(id) {
         <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px;font-size:12px">
           <div style="padding:10px;background:#f9fafb;border-radius:6px">
             <div style="color:var(--text-secondary);font-size:10px">NETO AL BANCO</div>
-            <div style="font-weight:700;font-size:14px">${fMoney(Number(c.total) - Number(c.monto_detraccion||0) - Number(c.monto_retencion||0), c.moneda)}</div>
+            <div style="font-weight:700;font-size:14px">${fMoney(Number(c.total) - Number(c.monto_detraccion||0) - Number(c.monto_retencion||0), 'PEN')}</div>
           </div>
           <div style="padding:10px;background:#f9fafb;border-radius:6px">
             <div style="color:var(--text-secondary);font-size:10px">COBRADO BANCO</div>
-            <div style="font-weight:700;font-size:14px">${fMoney(c.monto_cobrado_banco, c.moneda)}</div>
+            <div style="font-weight:700;font-size:14px">${fMoney(c.monto_cobrado_banco, 'PEN')}</div>
           </div>
           <div style="padding:10px;background:#f9fafb;border-radius:6px">
             <div style="color:var(--text-secondary);font-size:10px">COBRADO DETRACCIÓN</div>
-            <div style="font-weight:700;font-size:14px">${fMoney(c.monto_cobrado_detraccion, c.moneda)}</div>
+            <div style="font-weight:700;font-size:14px">${fMoney(c.monto_cobrado_detraccion, 'PEN')}</div>
           </div>
         </div>
 

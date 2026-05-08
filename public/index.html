@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="UTF-8">
@@ -20,7 +20,7 @@
         window.onerror = function(msg, url, lineNo, columnNo, error) {
             console.log('%c [GLOBAL ERROR] ', 'background: #f00; color: #fff', msg, 'at', lineNo + ':' + columnNo);
             const root = document.getElementById('root');
-            if (root) root.innerHTML = `<div style="padding:50px; color:red;"><h3>Error de Aplicación</h3><p>${msg}</p></div>`;
+            if (root) root.innerHTML = `<div style="padding:50px; color:red;"><h3>Error de AplicaciÃ³n</h3><p>${msg}</p></div>`;
             return false;
         };
     </script>
@@ -30,10 +30,10 @@
         <!-- Renderizado principal de la SPA (React style) -->
     </div>
 
-    <!-- Librerías locales (NO CDN) -->
+    <!-- LibrerÃ­as locales (NO CDN) -->
     <script src="./lib/chart.min.js"></script>
 
-    <!-- Cargamos como módulo para importar/exportar componentes nativamente -->
-    <script type="module" src="./js/app.js?v=20260506r48"></script>
+    <!-- Cargamos como mÃ³dulo para importar/exportar componentes nativamente -->
+    <script type="module" src="./js/app.js?v=20260508r1"></script>
 </body>
 </html>
