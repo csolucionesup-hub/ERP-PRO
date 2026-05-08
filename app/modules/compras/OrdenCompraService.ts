@@ -1426,7 +1426,14 @@ class OrdenCompraService {
     //    criterio que eliminarFactura individual).
     await conn.query(`DELETE FROM OrdenCompraFactura WHERE id_oc = ?`, [id_oc]);
 
-    // 6. Defensa: limpiar MovimientoBancario huérfanos cuyo ref_id apunta a
+    // 6. Pagos individuales (mig 064) — borrar las filas de OrdenCompraPago.
+    //    Sin esto los vouchers quedan visibles en la OC al volver a BORRADOR
+    //    aunque los movimientos bancarios y compras/gastos ya estén revertidos
+    //    en los pasos 2-3. Los archivos voucher en Cloudinary quedan huérfanos
+    //    (mismo criterio que facturas).
+    await conn.query(`DELETE FROM OrdenCompraPago WHERE id_oc = ?`, [id_oc]);
+
+    // 7. Defensa: limpiar MovimientoBancario huérfanos cuyo ref_id apunta a
     //    una Compra/Gasto ya borrada. Filtro por descripción que contenga el
     //    nro_oc — la descripción siempre incluye "OC <nro>" según el formato
     //    de registrarPago(). Esto cubre datos sucios de ciclos previos.
@@ -1434,7 +1441,7 @@ class OrdenCompraService {
       `DELETE FROM MovimientoBancario WHERE descripcion_banco LIKE ?`,
       [`%OC ${oc.nro_oc}%`]
     );
-    // 7. Defensa: limpiar Transacciones huérfanas con descripción del nro_oc.
+    // 8. Defensa: limpiar Transacciones huérfanas con descripción del nro_oc.
     await conn.query(
       `DELETE FROM Transacciones WHERE descripcion LIKE ?`,
       [`%OC ${oc.nro_oc}%`]
@@ -1473,6 +1480,10 @@ class OrdenCompraService {
 
       // Reset campos en OrdenesCompra. Conserva: nro_oc, fecha_emision,
       // proveedor, líneas, totales, centro_costo, observaciones, etc.
+      // Reset también las 3 firmas (mig 065) + id_usuario_aprueba/fecha_aprobacion
+      // — un BORRADOR limpio no debe arrastrar firmas previas. Si querés
+      // re-aprobar, las firmás de nuevo (consistente con la regla
+      // "BORRADOR es el sandbox de armado").
       await conn.query(
         `UPDATE OrdenesCompra
             SET estado = 'BORRADOR',
@@ -1482,7 +1493,11 @@ class OrdenCompraService {
                 pagada_at = NULL,
                 facturada_at = NULL,
                 id_compra_generada = NULL,
-                fecha_credito_vence = NULL
+                fecha_credito_vence = NULL,
+                preparado_por_id  = NULL, preparado_at  = NULL,
+                revisado_por_id   = NULL, revisado_at   = NULL,
+                autorizado_por_id = NULL, autorizado_at = NULL,
+                id_usuario_aprueba = NULL, fecha_aprobacion = NULL
           WHERE id_oc = ?`,
         [id_oc]
       );
