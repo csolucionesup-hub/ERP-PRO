@@ -179,13 +179,16 @@ class RendicionService {
     await conn.beginTransaction();
     try {
       // 1. Validar OC y traer datos snapshot — extendemos campos para bridge.
+      // FOR UPDATE OF oc: Postgres no permite FOR UPDATE sobre el lado nullable
+      // de un LEFT JOIN. Especificamos lockear solo OrdenesCompra (la tabla
+      // principal); Proveedores no necesita lock porque solo lo leemos.
       const [ocRows]: any = await conn.query(`
         SELECT oc.id_oc, oc.nro_oc, oc.centro_costo, oc.total, oc.moneda, oc.estado,
                oc.empresa, oc.aplica_igv, oc.tipo_cambio,
                p.razon_social AS proveedor_nombre
           FROM OrdenesCompra oc
           LEFT JOIN Proveedores p ON p.id_proveedor = oc.id_proveedor
-         WHERE oc.id_oc = ? FOR UPDATE`,
+         WHERE oc.id_oc = ? FOR UPDATE OF oc`,
         [data.id_oc]
       );
       const oc = ocRows[0];
