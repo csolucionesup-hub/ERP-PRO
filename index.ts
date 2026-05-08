@@ -107,9 +107,10 @@ app.use(cors({
 }));
 app.use(express.json());
 
-// Rate-limit en /api/auth/* para mitigar fuerza bruta de login.
-// 10 intentos / 15 min por IP. Apenas un usuario olvidadizo lo nota; un atacante no puede
-// hacer 1000 intentos/min como antes.
+// Rate-limit SOLO en /api/auth/login para mitigar fuerza bruta de password.
+// 10 intentos / 15 min por IP. Otros endpoints de /api/auth (/me, /me/firma)
+// están protegidos por JWT y no necesitan rate limit estricto — al haber estado
+// bajo el limiter rompía operaciones legítimas como subir firma escaneada.
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 10,
@@ -117,7 +118,7 @@ const authLimiter = rateLimit({
   legacyHeaders: false,
   message: { error: 'Demasiados intentos. Esperá 15 minutos antes de reintentar.' },
 });
-app.use('/api/auth', authLimiter);
+app.use('/api/auth/login', authLimiter);
 
 // Logs HTTP en formato 'combined' (estándar Apache) — NO incluye request body, evita
 // que passwords/tokens en payloads queden persistidos en stdout de Railway.
