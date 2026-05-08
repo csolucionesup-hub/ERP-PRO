@@ -2,13 +2,19 @@
 
 > **LEER PRIMERO.** Este documento es la fuente de verdad sobre qué está hecho, qué falta y dónde estamos parados. Se actualiza al cierre de cada sesión de trabajo.
 
-**Última actualización:** 2026-05-05 (sesión 8 commits — outbox Rendiciones, preview ROC, módulo Personal en Administración, Inventario→cotizaciones, Fase E v0 visor de OTs)
+**Última actualización:** 2026-05-08 (sesión corta — fix cosmético USD/PEN en Finanzas + descubrimiento bug arquitectural cobranzas)
 **Rama activa:** `main`
-**Último commit pusheado:** `dcbd0d4 fix(produccion): bug al cerrar modal detalle de OT con la X`
+**Último commit pusheado:** `a09369c Merge: fix display USD/PEN en Finanzas (08/05/2026)` (incluye `278a73b` con el fix cosmético de Finanzas.js)
 **Servidor dev:** `npx ts-node index.ts` en `D:\proyectos\ERP-PRO` → `http://localhost:3000`
-**Producción:** `erp-pro-production-e4c0.up.railway.app` — Railway (deploy automático desde main)
-**Cache buster JS actual:** `v=20260504r14` (app.js) — **convención**: hardcoded en CADA import dentro de app.js. Ver gotcha #36 en CLAUDE.md.
-**Migraciones BD:** 001 → 037 + 042 → 060 aplicadas (Supabase Postgres project `fhlrxlsscerfiuuyiejw`). Nuevas en esta sesión: 057 (Proveedores +tarifa_default +unidad_default), 058 (OrdenesCompra +es_honorario), 059 (movinv referencia COTIZACION), 060 (usuariomodulos +PRODUCCION).
+**Producción:** `erp-pro-production-e4c0.up.railway.app` — Railway (deploy automático desde main, ACTIVE confirmado)
+**Cache buster JS actual:** `v=20260508r1` (app.js + 19 imports + index.html) — bumpeado en esta sesión.
+**Migraciones BD:** 001 → 037 + 042 → 063 aplicadas (Supabase Postgres project `fhlrxlsscerfiuuyiejw`). Sin migraciones nuevas en esta sesión.
+
+## 🚨 Bug ACTIVO — Cobranzas USD/PEN (detectado 08/05, parcialmente arreglado)
+
+Detectado por Julio: cotizaciones USD se mostraban con `$` delante de valor PEN (ej. `$8,347.20` cuando debe ser `S/ 8,347.20` o `$2,400 USD`). **Fix cosmético en producción** (`278a73b`/`a09369c`). **Bug arquitectural raíz NO arreglado** — `cobranzascotizacion.monto` se guarda en moneda original pero `recomputeEstado` suma sin convertir, y el modal "Registrar cobranza" prellena con valor PEN bajo label "Monto (USD)". Resultado: 2 cobranzas Venturo Capillo guardaron `8347.20 USD` en vez de `2400 USD`. KPI Caja Dólares infla `+$11,894.40`, Dashboard Gerencial INGRESO PEN infla `+S/41,415.92`.
+
+**Plan de fix en 3 partes acordado con Julio (NO ejecutado), retomar en próximo chat:** ver `C:\Users\Asus\.claude\projects\D--proyectos-ERP-PRO\memory\project_bug_cobranzas_usd_pen.md` con queries SQL listas + IDs de referencia + archivos a tocar.
 
 ---
 
