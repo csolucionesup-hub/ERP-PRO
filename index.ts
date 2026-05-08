@@ -947,6 +947,37 @@ authRouter.get('/me', requireAuth, async (req: any, res: Response) => {
   }
 });
 
+// Firma escaneada del usuario (mig 067) — solo imágenes, ≤ 2MB.
+const firmaUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 2 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    const ok = ['image/jpeg', 'image/png', 'image/webp'].includes(file.mimetype);
+    if (!ok) return cb(new Error('Solo PNG/JPG/WebP'));
+    cb(null, true);
+  }
+});
+
+authRouter.get('/me/firma', requireAuth, async (req: any, res: Response) => {
+  res.json(await AuthService.getFirma(req.user.id_usuario));
+});
+
+authRouter.post('/me/firma', requireAuth, firmaUpload.single('archivo'),
+  async (req: any, res: Response) => {
+    if (!req.file?.buffer) {
+      return res.status(400).json({ error: 'Archivo requerido (PNG/JPG/WebP, máx 2MB)' });
+    }
+    res.json(await AuthService.subirFirma(req.user.id_usuario, {
+      buffer: req.file.buffer,
+      originalname: req.file.originalname,
+    }));
+  }
+);
+
+authRouter.delete('/me/firma', requireAuth, async (req: any, res: Response) => {
+  res.json(await AuthService.eliminarFirma(req.user.id_usuario));
+});
+
 app.use('/api/auth', authRouter);
 
 // ===== USUARIOS: Solo GERENTE =====

@@ -105,6 +105,23 @@ class RendicionPDFService {
   private async generarHoja(id_rendicion: number): Promise<Buffer> {
     const r = await RendicionService.obtener(id_rendicion);
 
+    // Pre-descargar las 3 firmas escaneadas (mig 067) en paralelo. Si una
+    // falla o no existe, queda null y el PDF muestra solo nombre+fecha o
+    // "Sin firmar". Best-effort — nunca rompe la generación del PDF.
+    const descargarFirma = async (url: string | null): Promise<Buffer | null> => {
+      if (!url) return null;
+      try {
+        const resp = await fetch(url);
+        if (!resp.ok) return null;
+        return Buffer.from(await resp.arrayBuffer());
+      } catch { return null; }
+    };
+    const [firmaPrep, firmaRev, firmaAut] = await Promise.all([
+      descargarFirma(r.preparado_por_firma),
+      descargarFirma(r.revisado_por_firma),
+      descargarFirma(r.autorizado_por_firma),
+    ]);
+
     return new Promise<Buffer>((resolve, reject) => {
       const doc = new PDFDocument({
         size: 'A4',
@@ -247,7 +264,22 @@ class RendicionPDFService {
       const totalFirmasW = (firmaW * 3) + (gap * 2);
       const xFirmas = (doc.page.width - totalFirmasW) / 2;
 
-      const dibujarFirma = (x: number, label: string, nombre: string | null, fecha: string | null) => {
+      const dibujarFirma = (
+        x: number, label: string, nombre: string | null,
+        fecha: string | null, imgBuf: Buffer | null
+      ) => {
+        // Si hay firma escaneada, embeber la imagen ARRIBA de la línea
+        // (zona de 25px de alto, centrada horizontalmente). Si no, queda
+        // espacio en blanco como antes — la línea + nombre+fecha o "Sin firmar".
+        if (imgBuf) {
+          try {
+            doc.image(imgBuf, x + 30, yFirmas, {
+              fit: [firmaW - 60, 28],
+              align: 'center',
+              valign: 'bottom',
+            });
+          } catch { /* si la imagen es inválida, fallback a solo texto */ }
+        }
         // Línea para firma
         doc.moveTo(x, yFirmas + 30).lineTo(x + firmaW, yFirmas + 30).stroke('#000');
         doc.font('Helvetica-Bold').fontSize(9).fillColor('#000')
@@ -265,9 +297,9 @@ class RendicionPDFService {
         }
       };
 
-      dibujarFirma(xFirmas,                      'Preparado por', r.preparado_por_nombre,  r.preparado_at);
-      dibujarFirma(xFirmas + firmaW + gap,        'Revisado por',  r.revisado_por_nombre,   r.revisado_at);
-      dibujarFirma(xFirmas + (firmaW + gap) * 2,  'Autorizado por', r.autorizado_por_nombre, r.autorizado_at);
+      dibujarFirma(xFirmas,                      'Preparado por', r.preparado_por_nombre,  r.preparado_at,  firmaPrep);
+      dibujarFirma(xFirmas + firmaW + gap,        'Revisado por',  r.revisado_por_nombre,   r.revisado_at,   firmaRev);
+      dibujarFirma(xFirmas + (firmaW + gap) * 2,  'Autorizado por', r.autorizado_por_nombre, r.autorizado_at, firmaAut);
 
       // ── Nota al pie ──
       doc.font('Helvetica-Oblique').fontSize(7.5).fillColor('#6b7280')
