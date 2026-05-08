@@ -153,14 +153,35 @@ class RendicionService {
   }
 
   // ── Crear rendición desde OC ──────────────────────────────────
+  /**
+   * Crea una rendición desde una OC pre-poblando lo que ya exista en el flujo:
+   *  - Cabecera: nro_operacion + fecha_operacion del primer pago (si Julio no
+   *    los manda explícitos en el body) y cuenta_a_cargo_de_id = usuario que
+   *    registró ese pago.
+   *  - 1 RendicionItem por cada OrdenCompraFactura. Importe = monto de la
+   *    factura. Subtotal/IGV se derivan de oc.aplica_igv (18%). Beneficiario =
+   *    proveedor_nombre. Concepto = "Compra OC <nro>" (Julio puede editarlo).
+   *  - 1 RendicionAdjunto FACTURA por cada factura con url_pdf, y 1 CONSTANCIA
+   *    por cada pago con voucher_url. public_id queda NULL para que al borrar
+   *    la rendición NO se borren los archivos originales de la OC en
+   *    Cloudinary (los siguen referenciando OC y eventuales otras rendiciones
+   *    futuras tras un re-crear).
+   *
+   * Si Julio quiere rendir desde cero (sin pre-llenado), simplemente edita
+   * o elimina los items/adjuntos generados.
+   */
   async crearDesdeOC(data: CrearRendicionInput) {
     const conn = await db.getConnection();
     await conn.beginTransaction();
     try {
-      // 1. Validar OC y traer datos snapshot
+      // 1. Validar OC y traer datos snapshot — extendemos campos para bridge.
       const [ocRows]: any = await conn.query(`
-        SELECT id_oc, nro_oc, centro_costo, total, moneda, estado, empresa
-        FROM OrdenesCompra WHERE id_oc = ? FOR UPDATE`,
+        SELECT oc.id_oc, oc.nro_oc, oc.centro_costo, oc.total, oc.moneda, oc.estado,
+               oc.empresa, oc.aplica_igv, oc.tipo_cambio,
+               p.razon_social AS proveedor_nombre
+          FROM OrdenesCompra oc
+          LEFT JOIN Proveedores p ON p.id_proveedor = oc.id_proveedor
+         WHERE oc.id_oc = ? FOR UPDATE`,
         [data.id_oc]
       );
       const oc = ocRows[0];
@@ -170,6 +191,22 @@ class RendicionService {
       // 2. Verificar que no exista una ya
       const existing = await this.obtenerPorOC(data.id_oc);
       if (existing) throw new Error(`Ya existe una rendición para esta OC (id ${existing.id_rendicion}).`);
+
+      // 3. Cargar pagos + facturas de la OC para pre-poblar.
+      const [pagos]: any = await conn.query(
+        `SELECT * FROM OrdenCompraPago WHERE id_oc = ? ORDER BY fecha_pago ASC, id_pago ASC`,
+        [data.id_oc]
+      );
+      const [facturas]: any = await conn.query(
+        `SELECT * FROM OrdenCompraFactura WHERE id_oc = ? ORDER BY fecha_emision ASC, id_factura_oc ASC`,
+        [data.id_oc]
+      );
+      const primerPago = (pagos as any[])[0] || null;
+
+      // 4. Defaults inteligentes para cabecera (Julio puede sobreescribir).
+      const nroOpFinal   = data.nro_operacion   ?? primerPago?.nro_operacion   ?? null;
+      const fechaOpFinal = data.fecha_operacion ?? primerPago?.fecha_pago      ?? null;
+      const cuentaCargoFinal = data.cuenta_a_cargo_de_id ?? primerPago?.id_usuario_registra ?? null;
 
       const importe = Number(oc.total);
       const saldoAnterior = Number(data.saldo_anterior || 0);
@@ -187,15 +224,82 @@ class RendicionService {
       `, [
         data.id_oc, oc.nro_oc, oc.centro_costo, oc.centro_costo,
         importe, oc.moneda || 'PEN',
-        data.banco ?? null, data.nro_operacion ?? null, data.fecha_operacion ?? null,
-        data.cuenta_a_cargo_de_id ?? null, data.cargo ?? null,
+        data.banco ?? null, nroOpFinal, fechaOpFinal,
+        cuentaCargoFinal, data.cargo ?? null,
         data.fecha_rendicion ?? new Date().toISOString().slice(0, 10),
         saldoAnterior, fondoAsignado, fondoAsignado,
         data.observaciones ?? null,
       ]);
+      const id_rendicion: number = insRes.insertId;
+
+      // 5. Pre-poblar RendicionItems desde las facturas adjuntas a la OC.
+      const aplicaIgv = !!oc.aplica_igv;
+      const proveedor = oc.proveedor_nombre || null;
+      let totalItems = 0;
+      for (let i = 0; i < (facturas as any[]).length; i++) {
+        const f = (facturas as any[])[i];
+        const importeTotal = Number(f.monto);
+        const subtotal = aplicaIgv ? +(importeTotal / 1.18).toFixed(2) : importeTotal;
+        const igv      = aplicaIgv ? +(importeTotal - subtotal).toFixed(2) : 0;
+        await conn.query(`
+          INSERT INTO RendicionItems (
+            id_rendicion, orden, fecha, nro_documento, beneficiario, concepto,
+            subtotal, igv, importe_total, observaciones,
+            id_compra_referencia, id_gasto_referencia
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `, [
+          id_rendicion, i + 1, f.fecha_emision,
+          f.nro_comprobante, proveedor, `Compra OC ${oc.nro_oc}`,
+          subtotal, igv, importeTotal, null,
+          null, null,
+        ]);
+        totalItems += importeTotal;
+      }
+
+      // 6. Pre-poblar RendicionAdjuntos:
+      //    - 1 FACTURA por cada factura con url_pdf
+      //    - 1 CONSTANCIA por cada pago con voucher_url
+      //    public_id queda NULL en ambos casos: la rendición es solo "espejo"
+      //    de los archivos de la OC, no dueña. Si Julio elimina la rendición,
+      //    los archivos siguen vivos en Cloudinary (referenciados por la OC).
+      for (const f of (facturas as any[])) {
+        if (!f.url_pdf) continue;
+        await conn.query(`
+          INSERT INTO RendicionAdjuntos (
+            id_rendicion, tipo, url, public_id, nombre_archivo,
+            mime_type, tamano_bytes, subido_por_id
+          ) VALUES (?, 'FACTURA', ?, NULL, ?, NULL, NULL, NULL)
+        `, [id_rendicion, f.url_pdf, `Factura ${f.nro_comprobante}`]);
+      }
+      for (const p of (pagos as any[])) {
+        if (!p.voucher_url) continue;
+        await conn.query(`
+          INSERT INTO RendicionAdjuntos (
+            id_rendicion, tipo, url, public_id, nombre_archivo,
+            mime_type, tamano_bytes, subido_por_id
+          ) VALUES (?, 'CONSTANCIA', ?, NULL, ?, NULL, NULL, NULL)
+        `, [id_rendicion, p.voucher_url, `Constancia ${p.fecha_pago} OC ${oc.nro_oc}`]);
+      }
+
+      // 7. Recalcular totales (ya con los items insertados).
+      if (totalItems > 0) {
+        const saldoDisp = fondoAsignado - totalItems;
+        await conn.query(`
+          UPDATE Rendiciones
+             SET total_gastos = ?, saldo_disponible = ?, updated_at = NOW()
+           WHERE id_rendicion = ?`,
+          [totalItems, saldoDisp, id_rendicion]
+        );
+      }
 
       await conn.commit();
-      return { success: true, id_rendicion: insRes.insertId };
+      return {
+        success: true,
+        id_rendicion,
+        items_creados: (facturas as any[]).length,
+        adjuntos_facturas: (facturas as any[]).filter(f => f.url_pdf).length,
+        adjuntos_constancias: (pagos as any[]).filter(p => p.voucher_url).length,
+      };
     } catch (e) {
       await conn.rollback();
       throw e;
