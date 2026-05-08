@@ -474,7 +474,7 @@ export const api = {
     borrarNota:    (id, idNota) => del(`/ordenes-compra/${id}/notas/${idNota}`),
     // Historial de transiciones
     historial:     (id)        => get(`/ordenes-compra/${id}/historial`),
-    // Factura del proveedor
+    // Factura del proveedor (multi-factura, mig 064)
     subirFactura:  async (id, formData) => {
       const token = localStorage.getItem('erp_token');
       const r = await fetch(`${API_BASE_URL}/ordenes-compra/${id}/factura`, {
@@ -488,8 +488,50 @@ export const api = {
       }
       return r.json();
     },
-    getFactura:    (id) => get(`/ordenes-compra/${id}/factura`),
-    eliminarFactura: (id) => del(`/ordenes-compra/${id}/factura`),
+    listarFacturas:  (id) => get(`/ordenes-compra/${id}/facturas`),
+    // Compat — devuelve la primera. Nuevos consumidores usar listarFacturas.
+    getFactura:      (id) => get(`/ordenes-compra/${id}/factura`),
+    // Borra una factura individual por su id_factura_oc.
+    eliminarFactura: (id_factura_oc) => del(`/ordenes-compra/factura/${id_factura_oc}`),
+
+    // Pagos individuales (multi-pago, mig 064)
+    listarPagos:     (id) => get(`/ordenes-compra/${id}/pagos`),
+    subirVoucherPago: async (id_pago, formData) => {
+      const token = localStorage.getItem('erp_token');
+      const r = await fetch(`${API_BASE_URL}/ordenes-compra/pago/${id_pago}/voucher`, {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: formData,
+      });
+      if (!r.ok) {
+        const err = await r.json().catch(() => ({}));
+        throw new Error(err.error || `Error subiendo voucher: HTTP ${r.status}`);
+      }
+      return r.json();
+    },
+    eliminarVoucherPago: (id_pago) => del(`/ordenes-compra/pago/${id_pago}/voucher`),
+    /**
+     * Variante multipart de registrarPago — incluye un archivo de voucher
+     * (constancia bancaria) opcional. Si no hay archivo, manda JSON normal.
+     */
+    registrarPagoConVoucher: async (id, body, archivo) => {
+      const token = localStorage.getItem('erp_token');
+      const fd = new FormData();
+      Object.entries(body || {}).forEach(([k, v]) => {
+        if (v !== undefined && v !== null) fd.append(k, String(v));
+      });
+      if (archivo) fd.append('voucher', archivo);
+      const r = await fetch(`${API_BASE_URL}/ordenes-compra/${id}/registrar-pago`, {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: fd,
+      });
+      if (!r.ok) {
+        const err = await r.json().catch(() => ({}));
+        throw new Error(err.error || `Error registrando pago: HTTP ${r.status}`);
+      }
+      return r.json();
+    },
     // Export Excel del listado completo
     descargarExcel: async () => {
       const token = localStorage.getItem('erp_token');

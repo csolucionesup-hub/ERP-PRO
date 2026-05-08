@@ -140,11 +140,11 @@ window.previewPDFOC = async (id, nro) => {
   }
 };
 
-// ─────────── Preview de la factura adjunta de una OC vía backend proxy ──
-// Cloudinary no permite CORS para fetch desde browser, así que vamos a
-// /api/ordenes-compra/:id/factura/preview que reenvía el archivo desde el
-// servidor. Mantiene preview inline sin "Failed to fetch".
-window.previewFacturaOC = async (id_oc, titulo = 'Factura') => {
+// ─────────── Preview de archivos adjuntos vía backend proxy ──
+// Cloudinary no permite CORS para fetch desde browser, así que vamos a un
+// endpoint del backend que reenvía el archivo. Mantiene preview inline sin
+// "Failed to fetch".
+async function _previewArchivoBackend(url, titulo) {
   const overlay = abrirOverlayPreview(titulo, null);
   let blobUrl = null;
   const cleanup = () => {
@@ -153,12 +153,9 @@ window.previewFacturaOC = async (id_oc, titulo = 'Factura') => {
   };
   overlay.querySelector('[data-close]').onclick = cleanup;
   const content = overlay.querySelector('[data-content]');
-
   try {
     const token = localStorage.getItem('erp_token');
-    const r = await fetch(`/api/ordenes-compra/${id_oc}/factura/preview`, {
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-    });
+    const r = await fetch(url, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
     if (!r.ok) {
       const errBody = await r.json().catch(() => ({}));
       throw new Error(errBody.error || `HTTP ${r.status}`);
@@ -180,7 +177,19 @@ window.previewFacturaOC = async (id_oc, titulo = 'Factura') => {
       </div>
     `;
   }
-};
+}
+
+// Preview de la PRIMERA factura de una OC (compat).
+window.previewFacturaOC = (id_oc, titulo = 'Factura') =>
+  _previewArchivoBackend(`/api/ordenes-compra/${id_oc}/factura/preview`, titulo);
+
+// Preview de UNA factura individual por su id_factura_oc (multi-factura).
+window.previewFacturaPorId = (id_factura_oc, titulo = 'Factura') =>
+  _previewArchivoBackend(`/api/ordenes-compra/factura/${id_factura_oc}/preview`, titulo);
+
+// Preview del voucher (constancia bancaria) de un pago.
+window.previewVoucherPago = (id_pago, titulo = 'Constancia de pago') =>
+  _previewArchivoBackend(`/api/ordenes-compra/pago/${id_pago}/voucher`, titulo);
 
 // Helper interno reutilizable para armar el overlay del preview.
 function abrirOverlayPreview(titulo, urlExterna) {
@@ -407,7 +416,7 @@ window.ensureOCModal = ensureOCModal;
 // a OC.verOC sin haber montado el TabBar de OrdenesCompra). Las function
 // declarations se hoistean, así que las referencias funcionan aunque estén
 // definidas más abajo en el archivo.
-window.OC = { nuevaOC, verOC, aprobar, aprobarParaPago, listoParaFacturar, marcarCredito, subirFactura, eliminarFactura, agregarNota, borrarNota, recibir, facturar, registrarPago, cerrarSinFactura, cerrarPagaSinFactura, asociarFactura, anular, reactivar, eliminarOC, mandarABorrador, editar, editarFecha, editarMetadata: editarMetadataOC, descargarPDF, reporteROC, descargarExcel: () => api.ordenesCompra.descargarExcel().catch(e => showError(e.message || 'Error descargando Excel')) };
+window.OC = { nuevaOC, verOC, aprobar, aprobarParaPago, listoParaFacturar, marcarCredito, subirFactura, eliminarFactura, subirVoucherPago, eliminarVoucherPago, agregarNota, borrarNota, recibir, facturar, registrarPago, cerrarSinFactura, cerrarPagaSinFactura, asociarFactura, anular, reactivar, eliminarOC, mandarABorrador, editar, editarFecha, editarMetadata: editarMetadataOC, descargarPDF, reporteROC, descargarExcel: () => api.ordenesCompra.descargarExcel().catch(e => showError(e.message || 'Error descargando Excel')) };
 
 // Editar SOLO la fecha de emisión (corregir data histórica) — disponible en
 // cualquier estado salvo ANULADA. No toca estado/items/totales/correlativo.
@@ -1138,15 +1147,21 @@ function renderDashboard(panel) {
 // ──────── Modal: Ver detalle de OC ────────
 async function verOC(id_oc) {
   try {
-    const [oc, facturaAdjunta, notas] = await Promise.all([
+    // Multi-factura + multi-pago (mig 064). Cargamos las listas en paralelo.
+    const [oc, facturasAdjuntas, pagosAdjuntos, notas] = await Promise.all([
       api.ordenesCompra.get(id_oc),
-      api.ordenesCompra.getFactura(id_oc).catch(() => null),
+      api.ordenesCompra.listarFacturas(id_oc).catch(() => []),
+      api.ordenesCompra.listarPagos(id_oc).catch(() => []),
       api.ordenesCompra.listarNotas(id_oc).catch(() => []),
     ]);
     const color = ESTADO_COLOR[oc.estado];
     const monto = oc.moneda === 'USD' ? fUSD(oc.total) : fPEN(oc.total);
 
-    // Inyectar la factura al objeto oc para que accionesSegunEstado la considere
+    // Inyectar la PRIMERA factura al objeto oc para que accionesSegunEstado la
+    // considere (sigue funcionando como antes — basta con tener al menos una
+    // factura para habilitar "Recibí factura"). La lista completa se renderiza
+    // más abajo en su propio bloque.
+    const facturaAdjunta = facturasAdjuntas[0] || null;
     oc.factura_adjunta = facturaAdjunta;
     const botonesAccion = accionesSegunEstado(oc);
 
@@ -1318,24 +1333,72 @@ async function verOC(id_oc) {
             `;
           })()}
 
-          ${facturaAdjunta ? `
-            <div style="padding:12px 14px;background:#ecfdf5;border:1px solid #a7f3d0;border-radius:6px;margin-bottom:16px;font-size:13px;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
-              <div>
-                📄 <strong>Factura adjunta:</strong>
-                ${facturaAdjunta.nro_comprobante} ·
-                Emitida ${fmtDate(facturaAdjunta.fecha_emision)} ·
-                ${oc.moneda === 'USD' ? '$' : 'S/'} ${Number(facturaAdjunta.monto).toFixed(2)}
+          ${(() => {
+            // Lista de PAGOS (multi-pago, mig 064). Cada uno con su voucher.
+            if (!pagosAdjuntos || !pagosAdjuntos.length) return '';
+            const _esGer = (JSON.parse(localStorage.getItem('erp_user') || '{}').rol === 'GERENTE');
+            const filas = pagosAdjuntos.map(p => {
+              const tieneVoucher = !!p.voucher_url;
+              const cuentaTxt = p.cuenta_nombre ? `${p.cuenta_nombre} (${p.cuenta_moneda})` : '—';
+              return `
+                <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 10px;background:#fff;border:1px solid #d1fae5;border-radius:5px;margin-bottom:6px">
+                  <div style="font-size:12px;color:#374151;flex:1">
+                    <div><strong>${fmtDate(p.fecha_pago)}</strong> · ${cuentaTxt} · ${oc.moneda === 'USD' ? '$' : 'S/'} ${Number(p.monto).toFixed(2)}</div>
+                    <div style="color:#6b7280;font-size:11px;margin-top:2px">${p.nro_operacion ? 'Op: ' + escapeHtml(p.nro_operacion) : '<em>sin nº op</em>'}${p.observaciones ? ' · ' + escapeHtml(p.observaciones) : ''}</div>
+                  </div>
+                  <div style="display:flex;gap:5px;align-items:center">
+                    ${tieneVoucher
+                      ? `<button onclick="window.previewVoucherPago(${p.id_pago}, 'Constancia ${fmtDate(p.fecha_pago)}')" title="Ver la constancia bancaria de este pago" style="background:#15803d;color:white;border:none;border-radius:4px;padding:5px 10px;cursor:pointer;font-size:11px">👁️ Ver</button>`
+                      : `<button onclick="OC.subirVoucherPago(${p.id_pago})" title="Adjuntar la constancia bancaria de este pago — se guarda en Cloudinary" style="background:#fff;color:#15803d;border:1px solid #86efac;border-radius:4px;padding:5px 10px;cursor:pointer;font-size:11px">📎 Subir constancia</button>`
+                    }
+                    ${tieneVoucher && _esGer
+                      ? `<button onclick="OC.eliminarVoucherPago(${p.id_pago}, ${oc.id_oc})" title="Quitar la constancia adjunta. El archivo queda huérfano en Cloudinary." style="background:transparent;color:#dc2626;border:1px solid #fecaca;border-radius:4px;padding:5px 8px;cursor:pointer;font-size:11px">✕</button>`
+                      : ''
+                    }
+                  </div>
+                </div>
+              `;
+            }).join('');
+            return `
+              <div style="padding:12px 14px;background:#ecfdf5;border:1px solid #a7f3d0;border-radius:6px;margin-bottom:14px">
+                <div style="font-size:11px;font-weight:700;color:#065f46;letter-spacing:.3px;margin-bottom:8px">💸 PAGOS REGISTRADOS (${pagosAdjuntos.length})</div>
+                ${filas}
               </div>
-              <div style="display:flex;gap:6px;align-items:center">
-                ${facturaAdjunta.url_pdf ? `
-                  <button onclick="window.previewFacturaOC(${oc.id_oc}, 'Factura ${escapeHtml(facturaAdjunta.nro_comprobante || '')}')" title="Previsualizar el comprobante adjunto en un modal — sirve para verificar visualmente que es el documento correcto." style="background:#16a34a;color:white;padding:6px 14px;border-radius:5px;border:none;font-weight:600;font-size:12px;cursor:pointer">👁️ Ver comprobante</button>
-                ` : '<span style="color:#6b7280;font-size:12px">(sin archivo subido)</span>'}
-                ${(JSON.parse(localStorage.getItem('erp_user') || '{}').rol === 'GERENTE') ? `
-                  <button onclick="OC.eliminarFactura(${oc.id_oc})" title="Eliminar factura adjunta. Vuelve la OC a estado_factura=PENDIENTE. El archivo en Cloudinary queda huérfano (no se borra). Solo GERENTE." style="background:transparent;color:#dc2626;border:1px solid #fecaca;border-radius:5px;padding:5px 9px;cursor:pointer;font-weight:700;font-size:13px">✕</button>
-                ` : ''}
+            `;
+          })()}
+
+          ${(() => {
+            // Lista de FACTURAS (multi-factura, mig 064).
+            if (!facturasAdjuntas || !facturasAdjuntas.length) return '';
+            const _esGer = (JSON.parse(localStorage.getItem('erp_user') || '{}').rol === 'GERENTE');
+            const filas = facturasAdjuntas.map(f => {
+              const tienePDF = !!f.url_pdf;
+              return `
+                <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 10px;background:#fff;border:1px solid #a7f3d0;border-radius:5px;margin-bottom:6px">
+                  <div style="font-size:12px;color:#374151;flex:1">
+                    📄 <strong>${escapeHtml(f.nro_comprobante)}</strong>
+                    <span style="color:#6b7280;margin-left:6px">${fmtDate(f.fecha_emision)} · ${oc.moneda === 'USD' ? '$' : 'S/'} ${Number(f.monto).toFixed(2)}</span>
+                  </div>
+                  <div style="display:flex;gap:5px;align-items:center">
+                    ${tienePDF
+                      ? `<button onclick="window.previewFacturaPorId(${f.id_factura_oc}, 'Factura ${escapeHtml(f.nro_comprobante)}')" title="Ver el PDF/imagen del comprobante" style="background:#16a34a;color:white;border:none;border-radius:4px;padding:5px 10px;cursor:pointer;font-size:11px">👁️ Ver</button>`
+                      : '<span style="color:#9ca3af;font-size:11px;padding:5px">sin pdf</span>'
+                    }
+                    ${_esGer
+                      ? `<button onclick="OC.eliminarFactura(${f.id_factura_oc}, ${oc.id_oc})" title="Eliminar esta factura. Si era la única, la OC vuelve a PENDIENTE. Solo GERENTE." style="background:transparent;color:#dc2626;border:1px solid #fecaca;border-radius:4px;padding:5px 8px;cursor:pointer;font-size:11px">✕</button>`
+                      : ''
+                    }
+                  </div>
+                </div>
+              `;
+            }).join('');
+            return `
+              <div style="padding:12px 14px;background:#ecfdf5;border:1px solid #a7f3d0;border-radius:6px;margin-bottom:16px">
+                <div style="font-size:11px;font-weight:700;color:#065f46;letter-spacing:.3px;margin-bottom:8px">📑 FACTURAS ADJUNTAS (${facturasAdjuntas.length})</div>
+                ${filas}
               </div>
-            </div>
-          ` : ''}
+            `;
+          })()}
 
           ${(() => {
             if (!notas || !notas.length) return '';
@@ -1686,21 +1749,29 @@ async function borrarNota(id_oc, id_nota) {
   }
 }
 
-async function eliminarFactura(id) {
+/**
+ * Elimina UNA factura individual (multi-factura, mig 064).
+ * Recibe id_factura_oc (no id_oc). Si tras el borrado quedan 0 facturas,
+ * la OC vuelve a estado_factura=PENDIENTE y retrocede a FACTURACION si
+ * estaba TERMINADA. Si quedan ≥1 facturas, no toca estado.
+ *
+ * id_oc es opcional — solo lo usa el refresh contextual del modal de
+ * detalle. Si no se pasa, hace refresh genérico del kanban.
+ */
+async function eliminarFactura(id_factura_oc, id_oc) {
   const ok = await confirmarAccion({
     titulo: '🗑️ Eliminar factura adjunta',
-    mensaje: 'Vas a quitar la factura asociada a esta OC. La OC vuelve a estado_factura <strong>PENDIENTE</strong> y, si estaba en TERMINADA, retrocede a FACTURACION.<br><br>El archivo en Cloudinary <strong>NO se borra</strong> (queda huérfano por seguridad/audit). Esta acción es solo para GERENTE. ¿Confirmás?',
+    mensaje: 'Vas a quitar esta factura. Si era la última de la OC, vuelve a estado_factura <strong>PENDIENTE</strong> y, si estaba en TERMINADA, retrocede a FACTURACION. Si hay otras facturas adjuntas, el estado de la OC no cambia.<br><br>El archivo en Cloudinary <strong>NO se borra</strong> (queda huérfano por seguridad/audit). Solo GERENTE.',
     tipo: 'danger',
     textoBoton: 'Sí, eliminar factura',
   });
   if (!ok) return;
   try {
-    await api.ordenesCompra.eliminarFactura(id);
+    await api.ordenesCompra.eliminarFactura(id_factura_oc);
     showSuccess('Factura eliminada');
-    // Refresh contextual igual que en subirFactura: preservar el lugar donde
-    // estaba el usuario (modal de detalle, tab "Sin facturar", o kanban).
-    if (document.getElementById('oc-modal')?.innerHTML) {
-      verOC(id);
+    // Refresh contextual: preservar el lugar donde estaba el usuario.
+    if (id_oc && document.getElementById('oc-modal')?.innerHTML) {
+      verOC(id_oc);
     } else if (window._logiRefrescarSinFactura &&
                document.getElementById('logi-panel-sin-factura')?.style.display !== 'none') {
       window._logiRefrescarSinFactura();
@@ -1712,14 +1783,81 @@ async function eliminarFactura(id) {
   }
 }
 
-async function subirFactura(id) {
-  // Modal con form para nro_comprobante, fecha_emision, monto, archivo (PDF/imagen)
-  return new Promise((resolve) => {
+/**
+ * Adjunta el voucher (PDF/imagen de constancia bancaria) a un pago ya
+ * registrado. Útil cuando la constancia llega después del pago en sí.
+ * id_oc se usa solo para el refresh del modal — opcional.
+ */
+async function subirVoucherPago(id_pago, id_oc) {
+  const file = await new Promise((resolve) => {
     const ov = document.createElement('div');
     ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
     ov.innerHTML = `
-      <div style="background:white;border-radius:12px;width:480px;max-width:95vw;padding:24px">
-        <h3 style="margin:0 0 16px;font-size:17px">📄 Subir factura del proveedor</h3>
+      <div style="background:white;border-radius:10px;padding:22px;width:420px;max-width:95vw">
+        <h3 style="margin:0 0 12px;font-size:15px">📎 Adjuntar constancia de pago</h3>
+        <p style="font-size:12px;color:#6b7280;margin:0 0 14px">Subí el PDF/imagen del voucher bancario de este pago. Se guarda en Cloudinary y aparece automáticamente en la rendición de gastos cuando se cree.</p>
+        <input type="file" id="voucher-file" accept=".pdf,image/*" style="width:100%;padding:8px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
+        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:18px">
+          <button data-cancel style="padding:9px 18px;background:#f3f4f6;border:none;border-radius:6px;cursor:pointer;font-weight:600">Cancelar</button>
+          <button data-ok style="padding:9px 18px;background:#2563eb;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">Subir</button>
+        </div>
+      </div>`;
+    document.body.appendChild(ov);
+    ov.querySelector('[data-cancel]').onclick = () => { ov.remove(); resolve(null); };
+    ov.querySelector('[data-ok]').onclick = () => {
+      const f = ov.querySelector('#voucher-file').files[0];
+      if (!f) { showError('Seleccioná un archivo'); return; }
+      ov.remove();
+      resolve(f);
+    };
+  });
+  if (!file) return;
+  try {
+    const fd = new FormData();
+    fd.append('archivo', file);
+    await api.ordenesCompra.subirVoucherPago(id_pago, fd);
+    showSuccess('Constancia adjuntada');
+    if (id_oc && document.getElementById('oc-modal')?.innerHTML) verOC(id_oc);
+  } catch (e) {
+    showError(e.message || 'Error subiendo voucher');
+  }
+}
+
+async function eliminarVoucherPago(id_pago, id_oc) {
+  const ok = await confirmarAccion({
+    titulo: '🗑️ Quitar constancia',
+    mensaje: 'Vas a quitar el archivo de voucher de este pago. El pago en sí <strong>no se borra</strong> — solo se desadjunta el archivo. Solo GERENTE.',
+    tipo: 'danger',
+    textoBoton: 'Sí, quitar',
+  });
+  if (!ok) return;
+  try {
+    await api.ordenesCompra.eliminarVoucherPago(id_pago);
+    showSuccess('Constancia removida');
+    if (id_oc && document.getElementById('oc-modal')?.innerHTML) verOC(id_oc);
+  } catch (e) {
+    showError(e.message || 'Error quitando voucher');
+  }
+}
+
+/**
+ * Modal multi-factura: tras cada upload exitoso resetea el form y deja el
+ * modal abierto para que el usuario suba otra factura sin re-abrir nada.
+ * Una OC puede tener N facturas (mig 064) — proveedor que entrega en
+ * varios comprobantes, RH multiples por servicio, etc. La lista de
+ * facturas ya cargadas en esta sesión se ve abajo del form.
+ */
+async function subirFactura(id) {
+  return new Promise((resolve) => {
+    const ov = document.createElement('div');
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9999;display:flex;align-items:flex-start;justify-content:center;padding:30px;overflow:auto';
+    ov.innerHTML = `
+      <div style="background:white;border-radius:12px;width:520px;max-width:95vw;padding:24px">
+        <h3 style="margin:0 0 4px;font-size:17px">📄 Subir factura del proveedor</h3>
+        <div style="font-size:11px;color:#6b7280;margin-bottom:14px">Podés subir varias facturas a esta OC — cada upload agrega una nueva sin reemplazar las anteriores.</div>
+
+        <div id="oc-fact-status" style="display:none;padding:10px 12px;border-radius:6px;margin-bottom:12px;font-size:13px"></div>
+
         <form id="oc-form-subir-factura" enctype="multipart/form-data" style="display:flex;flex-direction:column;gap:10px">
           <label style="display:flex;flex-direction:column;gap:4px;font-size:13px">
             Nº Comprobante
@@ -1738,17 +1876,111 @@ async function subirFactura(id) {
             <input name="archivo" type="file" accept=".pdf,image/*" style="padding:7px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
           </label>
           <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:14px">
-            <button type="button" data-cancel style="padding:9px 18px;background:#f3f4f6;border:none;border-radius:6px;cursor:pointer;font-weight:600">Cancelar</button>
-            <button type="submit" style="padding:9px 18px;background:#2563eb;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">Subir</button>
+            <button type="button" data-cerrar style="padding:9px 18px;background:#f3f4f6;border:none;border-radius:6px;cursor:pointer;font-weight:600">Cerrar</button>
+            <button type="submit" style="padding:9px 18px;background:#2563eb;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">📤 Subir</button>
           </div>
         </form>
+
+        <div id="oc-fact-lista" style="margin-top:18px;border-top:1px solid #e5e7eb;padding-top:14px">
+          <div style="font-size:11px;font-weight:700;color:#6b7280;letter-spacing:.3px;margin-bottom:8px" id="oc-fact-lista-h">FACTURAS YA SUBIDAS</div>
+          <div id="oc-fact-lista-body" style="font-size:12px;color:#6b7280">Cargando…</div>
+        </div>
       </div>`;
     document.body.appendChild(ov);
 
-    ov.querySelector('[data-cancel]').onclick = () => { ov.remove(); resolve(false); };
-    ov.querySelector('#oc-form-subir-factura').onsubmit = async (e) => {
+    const form = ov.querySelector('#oc-form-subir-factura');
+    const statusEl = ov.querySelector('#oc-fact-status');
+    const listaBody = ov.querySelector('#oc-fact-lista-body');
+    const listaHead = ov.querySelector('#oc-fact-lista-h');
+    let huboCambios = false;
+
+    const pintarStatus = (tipo, msg) => {
+      const colores = {
+        ok:    { bg: '#dcfce7', border: '#86efac', txt: '#166534' },
+        error: { bg: '#fee2e2', border: '#fca5a5', txt: '#991b1b' },
+      };
+      const c = colores[tipo] || colores.ok;
+      statusEl.style.cssText = `display:block;padding:10px 12px;border-radius:6px;margin-bottom:12px;font-size:13px;background:${c.bg};border:1px solid ${c.border};color:${c.txt}`;
+      statusEl.textContent = msg;
+      if (tipo === 'ok') setTimeout(() => { statusEl.style.display = 'none'; }, 4000);
+    };
+
+    const recargarLista = async () => {
+      try {
+        const lista = await api.ordenesCompra.listarFacturas(id);
+        listaHead.textContent = `FACTURAS YA SUBIDAS (${lista.length})`;
+        if (!lista.length) {
+          listaBody.innerHTML = `<div style="color:#9ca3af">Aún no hay facturas adjuntas a esta OC.</div>`;
+          return;
+        }
+        listaBody.innerHTML = lista.map(f => {
+          const fecha = (f.fecha_emision || '').slice(0, 10);
+          const tienePDF = !!f.url_pdf;
+          return `
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:7px 10px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:5px;margin-bottom:6px">
+              <div style="font-size:12px;color:#374151">
+                <strong>${f.nro_comprobante}</strong>
+                <span style="color:#6b7280;margin-left:6px">${fecha} · S/ ${Number(f.monto).toFixed(2)}</span>
+              </div>
+              <div style="display:flex;gap:6px">
+                ${tienePDF ? `<button data-preview="${f.id_factura_oc}" data-nro="${f.nro_comprobante}" title="Ver el PDF/imagen adjunta" style="background:#16a34a;color:white;border:none;border-radius:4px;padding:4px 9px;cursor:pointer;font-size:11px">👁️</button>` : '<span style="color:#9ca3af;font-size:11px;padding:4px 6px">sin pdf</span>'}
+                <button data-eliminar="${f.id_factura_oc}" title="Eliminar esta factura. Solo GERENTE." style="background:transparent;color:#dc2626;border:1px solid #fecaca;border-radius:4px;padding:4px 9px;cursor:pointer;font-size:11px">✕</button>
+              </div>
+            </div>
+          `;
+        }).join('');
+
+        // Hookup botones
+        listaBody.querySelectorAll('[data-preview]').forEach(btn => {
+          btn.onclick = () => {
+            const idF = btn.getAttribute('data-preview');
+            const nro = btn.getAttribute('data-nro') || '';
+            window.previewFacturaPorId?.(Number(idF), `Factura ${nro}`);
+          };
+        });
+        listaBody.querySelectorAll('[data-eliminar]').forEach(btn => {
+          btn.onclick = async () => {
+            if (!confirm('¿Eliminar esta factura? El archivo en Cloudinary queda huérfano.')) return;
+            try {
+              await api.ordenesCompra.eliminarFactura(Number(btn.getAttribute('data-eliminar')));
+              huboCambios = true;
+              await recargarLista();
+              showSuccess('Factura eliminada');
+            } catch (e) { showError(e.message || 'Error eliminando'); }
+          };
+        });
+      } catch (e) {
+        listaBody.innerHTML = `<div style="color:#dc2626">Error cargando lista: ${e.message || e}</div>`;
+      }
+    };
+
+    recargarLista();
+
+    const cerrar = () => {
+      ov.remove();
+      resolve(huboCambios);
+      if (huboCambios) {
+        // Refresh contextual — preserva el lugar donde se disparó la acción.
+        if (document.getElementById('oc-modal')?.innerHTML) {
+          verOC(id);
+        } else if (window._logiRefrescarSinFactura &&
+                   document.getElementById('logi-panel-sin-factura')?.style.display !== 'none') {
+          window._logiRefrescarSinFactura();
+        } else {
+          setTimeout(() => refreshOC(), 600);
+        }
+      }
+    };
+
+    ov.querySelector('[data-cerrar]').onclick = cerrar;
+
+    form.onsubmit = async (e) => {
       e.preventDefault();
-      const fd = new FormData(e.target);
+      const fd = new FormData(form);
+      const submitBtn = form.querySelector('button[type=submit]');
+      submitBtn.disabled = true;
+      const oldTxt = submitBtn.textContent;
+      submitBtn.textContent = '⏳ Subiendo…';
       try {
         const token = localStorage.getItem('erp_token');
         const r = await fetch(`/api/ordenes-compra/${id}/factura`, {
@@ -1760,25 +1992,25 @@ async function subirFactura(id) {
           const err = await r.json().catch(() => ({}));
           throw new Error(err.error || `HTTP ${r.status}`);
         }
-        showSuccess('Factura subida y registrada');
-        ov.remove();
-        resolve(true);
-        // Refresh contextual — preserva el lugar donde el usuario disparó la acción:
-        //  1. Modal de detalle de OC abierto → recargarlo.
-        //  2. Tab "Sin facturar" de Logística visible → refrescar solo esa tabla.
-        //  3. Caso default → refrescar el kanban OC.
-        if (document.getElementById('oc-modal')?.innerHTML) {
-          verOC(id);
-        } else if (window._logiRefrescarSinFactura &&
-                   document.getElementById('logi-panel-sin-factura')?.style.display !== 'none') {
-          window._logiRefrescarSinFactura();
-        } else {
-          setTimeout(() => refreshOC(), 600);
-        }
+        const nro = fd.get('nro_comprobante');
+        huboCambios = true;
+        pintarStatus('ok', `✓ Factura ${nro} subida. Podés cargar otra o cerrar.`);
+        form.reset();
+        // Re-poblamos fecha al día actual para no perder el default
+        const today = new Date().toISOString().slice(0, 10);
+        form.querySelector('input[name=fecha_emision]').value = today;
+        form.querySelector('input[name=nro_comprobante]').focus();
+        await recargarLista();
       } catch (err) {
-        showError(err.message || 'Error al subir factura');
+        pintarStatus('error', err.message || 'Error al subir factura');
+      } finally {
+        submitBtn.disabled = false;
+        submitBtn.textContent = oldTxt;
       }
     };
+
+    // Pre-fill fecha al día actual para acelerar el primer upload
+    form.querySelector('input[name=fecha_emision]').value = new Date().toISOString().slice(0, 10);
   });
 }
 
@@ -2252,7 +2484,12 @@ async function registrarPago(id, nro) {
           style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:5px;font-size:13px;margin-bottom:12px;font-family:monospace">
         <label style="font-size:11px;color:#374151;font-weight:600;display:block;margin-bottom:4px">Observaciones (opcional)</label>
         <input id="rp-obs" placeholder="Comentario interno"
-          style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:5px;font-size:13px">
+          style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:5px;font-size:13px;margin-bottom:12px">
+
+        <label style="font-size:11px;color:#374151;font-weight:600;display:block;margin-bottom:4px">📎 Constancia bancaria (opcional, PDF/imagen)</label>
+        <input id="rp-voucher" type="file" accept=".pdf,image/*"
+          style="width:100%;padding:7px 10px;border:1px solid #d1d5db;border-radius:5px;font-size:12px">
+        <div style="font-size:10px;color:#6b7280;margin-top:3px">Se guarda en Cloudinary y aparece en la rendición de gastos. Si no la tenés a mano, podés adjuntarla después desde el detalle de la OC.</div>
         <div id="rp-error" style="display:none;margin-top:10px;background:#fee2e2;color:#991b1b;padding:7px 10px;border-radius:5px;font-size:12px"></div>
         <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:18px">
           <button id="rp-cancel" style="padding:8px 16px;background:#fff;border:1px solid #d1d5db;border-radius:5px;cursor:pointer;font-size:13px">Cancelar</button>
@@ -2284,12 +2521,16 @@ async function registrarPago(id, nro) {
         err.style.display = 'block';
         return;
       }
-      close({ id_cuenta, fecha_pago, monto, nro_operacion, observaciones });
+      const voucherFile = ov.querySelector('#rp-voucher').files[0] || null;
+      close({ id_cuenta, fecha_pago, monto, nro_operacion, observaciones, voucherFile });
     };
   });
   if (!data) return;
   try {
-    const r = await api.ordenesCompra.registrarPago(id, data);
+    const { voucherFile, ...body } = data;
+    const r = voucherFile
+      ? await api.ordenesCompra.registrarPagoConVoucher(id, body, voucherFile)
+      : await api.ordenesCompra.registrarPago(id, body);
     const cierraTotal = r.estado_pago === 'PAGADO';
     let msg;
     if (r.estado === 'TERMINADA') {

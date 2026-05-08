@@ -886,10 +886,17 @@ function renderTabSinFactura(panel) {
           </thead>
           <tbody>
             ${ocsFiltradas.map(oc => {
-              const tienePDF = !!oc.factura_adjunta_id;
+              // Multi-factura (mig 064): factura_adjunta_count viene del listing.
+              // Mantenemos compat con factura_adjunta_id para data vieja.
+              const cantFact = Number(oc.factura_adjunta_count ?? (oc.factura_adjunta_id ? 1 : 0));
+              const tienePDF = cantFact > 0;
               const nroSafe = oc.nro_oc.replace(/'/g, "\\'");
               const onSubir = `OC.subirFactura(${oc.id_oc}).then(ok => { if (ok) window._logiRefrescarSinFactura?.(); })`;
               const onTerminar = `OC.facturar(${oc.id_oc}).then(() => window._logiRefrescarSinFactura?.())`;
+              const txtBadge = cantFact > 1 ? `✓ ${cantFact} facturas` : '✓ PDF';
+              const tipBadge = cantFact > 1
+                ? `${cantFact} facturas adjuntas (la primera: ${oc.factura_adjunta_nro || ''})`
+                : `Factura ${oc.factura_adjunta_nro || ''} adjunta`;
               return `
                 <tr style="border-bottom:1px solid #e5e7eb">
                   <td style="padding:10px;font-weight:700">
@@ -901,17 +908,17 @@ function renderTabSinFactura(panel) {
                   <td style="padding:10px;color:#6b7280">${oc.centro_costo || '—'}</td>
                   <td style="padding:10px">
                     ${tienePDF
-                      ? `<span title="Factura ${oc.factura_adjunta_nro || ''} adjunta" style="font-size:10px;background:#dcfce7;color:#166534;padding:3px 8px;border-radius:10px;font-weight:600;margin-right:4px">✓ PDF</span>
-                         <button onclick="window._logiVerPDFFactura(${oc.id_oc})" title="Previsualizar el PDF de la factura adjunta para verificar que es el documento correcto." style="background:transparent;color:#15803d;border:1px solid #86efac;border-radius:4px;padding:2px 7px;cursor:pointer;font-size:11px">👁️</button>`
+                      ? `<span title="${tipBadge}" style="font-size:10px;background:#dcfce7;color:#166534;padding:3px 8px;border-radius:10px;font-weight:600;margin-right:4px">${txtBadge}</span>
+                         <button onclick="window._logiVerPDFFactura(${oc.id_oc})" title="Previsualizar el PDF de la primera factura adjunta. Para ver todas, abrí la OC con 👁 Ver." style="background:transparent;color:#15803d;border:1px solid #86efac;border-radius:4px;padding:2px 7px;cursor:pointer;font-size:11px">👁️</button>`
                       : `<span style="font-size:10px;color:#9ca3af">—</span>`}
                   </td>
                   <td style="padding:10px;text-align:right;font-weight:700">${oc.moneda === 'USD' ? fUSD(oc.total) : fPEN(oc.total)}</td>
                   <td style="padding:10px;text-align:center;white-space:nowrap">
                     <button onclick="OC.verOC(${oc.id_oc})" title="Abrir el detalle completo de la OC con todas las acciones contextuales." style="padding:5px 10px;background:#fff;color:#374151;border:1px solid #d1d5db;border-radius:4px;cursor:pointer;font-size:11px;margin-right:4px">👁 Ver</button>
                     ${tienePDF
-                      ? `<button onclick="${onTerminar}" title="Confirmar la factura ${oc.factura_adjunta_nro || ''} y mandar la OC a TERMINADA. Enriquece la Compra/Gasto con el N° de comprobante." style="padding:5px 10px;background:#15803d;color:white;border:none;border-radius:4px;cursor:pointer;font-size:11px;margin-right:4px">✅ Mandar a TERMINADA</button>
-                         <button onclick="${onSubir}" title="Reemplazar el PDF actual con uno distinto." style="padding:5px 10px;background:transparent;color:#2563eb;border:1px solid #93c5fd;border-radius:4px;cursor:pointer;font-size:11px;margin-right:4px">🔁 Reemplazar PDF</button>`
-                      : `<button onclick="${onSubir}" title="Subir el PDF de la factura del proveedor + N° comprobante + fecha + monto. Cuando esté subido, aparece el botón verde para mandar la OC a TERMINADA." style="padding:5px 10px;background:#2563eb;color:white;border:none;border-radius:4px;cursor:pointer;font-size:11px;margin-right:4px">📄 Subir factura</button>
+                      ? `<button onclick="${onTerminar}" title="Cerrar la facturación de esta OC y mandarla a TERMINADA. Considera todas las facturas adjuntas (${cantFact})." style="padding:5px 10px;background:#15803d;color:white;border:none;border-radius:4px;cursor:pointer;font-size:11px;margin-right:4px">✅ Mandar a TERMINADA</button>
+                         <button onclick="${onSubir}" title="Subir otra factura a esta OC. Las anteriores se conservan — multi-factura permitido (mig 064)." style="padding:5px 10px;background:transparent;color:#2563eb;border:1px solid #93c5fd;border-radius:4px;cursor:pointer;font-size:11px;margin-right:4px">➕ Subir otra</button>`
+                      : `<button onclick="${onSubir}" title="Subir el PDF de la factura del proveedor + N° comprobante + fecha + monto. Si el proveedor entrega varios comprobantes, podés subir todos sin reemplazar." style="padding:5px 10px;background:#2563eb;color:white;border:none;border-radius:4px;cursor:pointer;font-size:11px;margin-right:4px">📄 Subir factura</button>
                          <button onclick="OC.asociarFactura(${oc.id_oc}, '${nroSafe}')" title="Atajo solo-datos: cargar N° y fecha sin PDF. Preferí 'Subir factura' para tener respaldo." style="padding:5px 10px;background:transparent;color:#7c3aed;border:1px solid #c4b5fd;border-radius:4px;cursor:pointer;font-size:11px;margin-right:4px">🧾 Asociar sin PDF</button>`}
                     ${_esGerente ? `<button onclick="OC.mandarABorrador(${oc.id_oc}, '${nroSafe}')" title="Volver la OC a BORRADOR conservando el N° (solo GERENTE). Revierte cascada completa pero deja el correlativo intacto para re-editar." style="padding:5px 10px;background:transparent;color:#0891b2;border:1px solid #0891b2;border-radius:4px;cursor:pointer;font-size:11px">↩ A borrador</button>` : ''}
                   </td>
