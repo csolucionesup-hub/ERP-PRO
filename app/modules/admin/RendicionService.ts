@@ -133,9 +133,13 @@ class RendicionService {
     return (rows as any[])[0] || null;
   }
 
-  // ── OCs candidatas a rendición (PAGADA / CERRADA_SIN_FACTURA sin rendición ya creada) ──
-  // Lógica acordada con Julio (04/05): solo OCs que ya consumieron caja real.
-  // FACTURADA aún no pagada NO entra (todavía no hubo desembolso).
+  // ── OCs candidatas a rendición ───────────────────────────────
+  // Solo OCs que ya consumieron caja real y completaron el flujo:
+  //   - TERMINADA: ciclo completo (pago + recepción + factura cerrados).
+  //   - CERRADA_SIN_FACTURA: caja chica sin sustento SUNAT, ya pagada.
+  // Antes el filtro buscaba 'PAGADA' (estado viejo, anterior al rediseño
+  // kanban de mig 062). Tras la migración el estado terminal es TERMINADA
+  // — sin este cambio las OCs cerradas no aparecían como candidatas.
   async listarOCsPendientesDeRendir() {
     const sql = `
       SELECT oc.id_oc, oc.nro_oc, oc.fecha_emision, oc.total, oc.moneda,
@@ -145,7 +149,7 @@ class RendicionService {
       FROM OrdenesCompra oc
       LEFT JOIN Proveedores prov ON prov.id_proveedor = oc.id_proveedor
       LEFT JOIN Rendiciones r    ON r.id_oc = oc.id_oc
-      WHERE oc.estado IN ('PAGADA', 'CERRADA_SIN_FACTURA')
+      WHERE oc.estado IN ('TERMINADA', 'CERRADA_SIN_FACTURA')
         AND r.id_rendicion IS NULL
       ORDER BY oc.fecha_emision DESC, oc.id_oc DESC`;
     const [rows] = await db.query(sql);
