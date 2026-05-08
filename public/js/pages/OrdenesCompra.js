@@ -796,11 +796,18 @@ function ocTieneProblema(oc) {
   return false;
 }
 
-// Mismo criterio que el backend (_requiereRecepcion en OrdenCompraService.ts):
-// las OCs GENERAL no-honorario son gastos administrativos sin mercadería ni
-// trabajo a recibir → saltean el paso RECEPCION del kanban.
+// Mismo criterio que el backend (_requiereRecepcion en OrdenCompraService.ts).
+// Saltan recepción:
+//  - GENERAL (cualquiera): gastos administrativos / alquileres, no hay nada físico.
+//  - HONORARIO de cualquier tipo_oc: persona natural, el pago YA es el
+//    reconocimiento; el RH se sube en FACTURACION sin pasar por recepción.
+// Requieren recepción:
+//  - ALMACEN: mercadería física que se chequea contra remito.
+//  - SERVICIO no-honorario: trabajo externo (técnico tercerizado), confirmar
+//    antes de pagar la factura.
 function requiereRecepcion(oc) {
-  return oc.tipo_oc === 'ALMACEN' || !!oc.es_honorario || oc.tipo_oc === 'SERVICIO';
+  if (oc.es_honorario) return false;
+  return oc.tipo_oc === 'ALMACEN' || oc.tipo_oc === 'SERVICIO';
 }
 
 function escapeHtml(s) {
