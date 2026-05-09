@@ -131,7 +131,7 @@ export function renderSidebar(activePage) {
     </nav>
 
     <div class="app-sidebar-footer">
-      <div class="app-sidebar-user" onclick="window.navigate?.('perfil')" role="button" tabindex="0" title="Mi perfil — gestionar firma escaneada para rendiciones" style="cursor:pointer">
+      <div class="app-sidebar-user">
         <div class="app-sidebar-avatar" aria-hidden="true">${initials}</div>
         <div class="app-sidebar-user__info">
           <span class="app-sidebar-user__name">${user.nombre || 'Usuario'}</span>
