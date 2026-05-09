@@ -64,6 +64,21 @@ export const Usuarios = async () => {
           ${u.activo ? 'ACTIVO' : 'INACTIVO'}
         </span>
       </td>
+      <td style="padding:12px 16px;text-align:center">
+        ${u.firma_url
+          ? `<img src="${u.firma_url}" alt="Firma" style="max-width:90px;max-height:36px;object-fit:contain;border:1px solid #e5e7eb;border-radius:4px;background:#fff;padding:2px" title="Firma escaneada de ${u.nombre}">`
+          : `<span style="font-size:11px;color:#9ca3af;font-style:italic">sin firma</span>`}
+        <div style="margin-top:4px;display:flex;gap:4px;justify-content:center">
+          <button onclick="subirFirmaUsuario(${u.id_usuario}, '${u.nombre.replace(/'/g, "\\'")}')"
+            title="Subir o reemplazar la firma escaneada de este usuario (PNG/JPG, máx 2MB). Se embebe automáticamente en el PDF de las rendiciones que firme."
+            style="padding:3px 8px;border:1px solid #d1d5db;background:#fff;border-radius:4px;font-size:10px;cursor:pointer">📤 ${u.firma_url ? 'Cambiar' : 'Subir'}</button>
+          ${u.firma_url ? `
+            <button onclick="eliminarFirmaUsuario(${u.id_usuario}, '${u.nombre.replace(/'/g, "\\'")}')"
+              title="Quitar la firma escaneada. El archivo en Cloudinary queda huérfano."
+              style="padding:3px 8px;border:1px solid #fecaca;background:transparent;color:#dc2626;border-radius:4px;font-size:10px;cursor:pointer">✕</button>
+          ` : ''}
+        </div>
+      </td>
       <td style="padding:12px 16px;white-space:nowrap;">
         ${u.id_usuario !== erpUser.id_usuario ? `
         <button onclick='editarUsuario(${JSON.stringify(u).replace(/"/g, "&quot;")})'
@@ -106,11 +121,12 @@ export const Usuarios = async () => {
             <th style="padding:12px 16px;font-size:12px;color:var(--text-secondary);text-transform:uppercase;font-weight:600;">Rol</th>
             <th style="padding:12px 16px;font-size:12px;color:var(--text-secondary);text-transform:uppercase;font-weight:600;">Módulos</th>
             <th style="padding:12px 16px;font-size:12px;color:var(--text-secondary);text-transform:uppercase;font-weight:600;">Estado</th>
+            <th style="padding:12px 16px;font-size:12px;color:var(--text-secondary);text-transform:uppercase;font-weight:600;text-align:center">Firma</th>
             <th style="padding:12px 16px;font-size:12px;color:var(--text-secondary);text-transform:uppercase;font-weight:600;">Acciones</th>
           </tr>
         </thead>
         <tbody>
-          ${rows || `<tr><td colspan="6" style="padding:40px;text-align:center;color:var(--text-secondary);">No hay usuarios registrados.</td></tr>`}
+          ${rows || `<tr><td colspan="7" style="padding:40px;text-align:center;color:var(--text-secondary);">No hay usuarios registrados.</td></tr>`}
         </tbody>
       </table>
     </div>
@@ -285,6 +301,43 @@ export const Usuarios = async () => {
         recargar();
       } catch (e) {
         showError('Error: ' + e.message);
+      }
+    };
+
+    // Firma escaneada — GERENTE puede subir/cambiar/eliminar la firma de
+    // cualquier usuario (caso típico: colaborador que no se maneja con la PC).
+    window.subirFirmaUsuario = (id, nombre) => {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'image/png,image/jpeg,image/webp';
+      input.style.display = 'none';
+      document.body.appendChild(input);
+      input.onchange = async () => {
+        const file = input.files?.[0];
+        input.remove();
+        if (!file) return;
+        if (file.size > 2 * 1024 * 1024) {
+          return showError('El archivo no puede exceder 2MB');
+        }
+        try {
+          await api.usuarios.subirFirma(id, file);
+          showSuccess(`Firma de ${nombre} actualizada`);
+          recargar();
+        } catch (e) {
+          showError('Error: ' + (e.message || e));
+        }
+      };
+      input.click();
+    };
+
+    window.eliminarFirmaUsuario = async (id, nombre) => {
+      if (!confirm(`¿Quitar la firma escaneada de ${nombre}? El archivo en Cloudinary queda huérfano. Podés subir una nueva en cualquier momento.`)) return;
+      try {
+        await api.usuarios.eliminarFirma(id);
+        showSuccess(`Firma de ${nombre} eliminada`);
+        recargar();
+      } catch (e) {
+        showError('Error: ' + (e.message || e));
       }
     };
 

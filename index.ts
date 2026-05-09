@@ -1026,6 +1026,25 @@ usuariosRouter.put('/:id/password', async (req: any, res: Response) => {
   res.json(await AuthService.resetearPassword(parseInt(req.params.id as string), password, req.user!.rol));
 });
 
+// Subir / eliminar firma de OTRO usuario (solo GERENTE) — mig 067
+usuariosRouter.post('/:id/firma', firmaUpload.single('archivo'), async (req: any, res: Response) => {
+  if (!req.file?.buffer) {
+    return res.status(400).json({ error: 'Archivo requerido (PNG/JPG/WebP, máx 2MB)' });
+  }
+  res.json(await AuthService.subirFirmaPorAdmin(
+    parseInt(req.params.id as string),
+    { buffer: req.file.buffer, originalname: req.file.originalname },
+    req.user!.rol
+  ));
+});
+
+usuariosRouter.delete('/:id/firma', async (req: any, res: Response) => {
+  res.json(await AuthService.eliminarFirmaPorAdmin(
+    parseInt(req.params.id as string),
+    req.user!.rol
+  ));
+});
+
 app.use('/api/usuarios', usuariosRouter);
 
 // ==========================================

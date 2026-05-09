@@ -284,6 +284,22 @@ export const api = {
     toggleActivo:   (id)      => fetchAPI(`/api/usuarios/${id}/toggle`, { method: 'PUT' }),
     updateUsuario:  (id, data) => fetchAPI(`/api/usuarios/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
     resetPassword:  (id, password) => fetchAPI(`/api/usuarios/${id}/password`, { method: 'PUT', body: JSON.stringify({ password }) }),
+    eliminarFirma:  (id)      => fetchAPI(`/api/usuarios/${id}/firma`, { method: 'DELETE' }),
+    subirFirma: async (id, file) => {
+      const token = localStorage.getItem('erp_token');
+      const fd = new FormData();
+      fd.append('archivo', file);
+      const r = await fetch(`${API_BASE_URL}/usuarios/${id}/firma`, {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: fd,
+      });
+      if (!r.ok) {
+        const err = await r.json().catch(() => ({}));
+        throw new Error(err.error || `Error subiendo firma: HTTP ${r.status}`);
+      }
+      return r.json();
+    },
   },
   // Perfil del usuario actual (firma escaneada — mig 067)
   auth: {
