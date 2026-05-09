@@ -163,6 +163,76 @@ const formCrear = (tipo, tcVenta = 1, tcFecha = '') => {
   </div>`;
 };
 
+// ─── MODAL "+ Nuevo Préstamo" ─────────────────────────────────────────────────
+// Antes el form vivía side-by-side con la tabla (flex 2:1) y se le montaba
+// encima cuando la tabla tenía contenido ancho. Mismo patrón que Logística:
+// botón "+ Nuevo" arriba a la derecha → modal overlay con el form adentro.
+// Se cierra solo con el botón × (no por backdrop click — gotcha #28 CLAUDE.md).
+let _tcCache = { valor_venta: 1, es_hoy: false, fecha: '' };
+
+function abrirModalNuevoPrestamo(tipo) {
+  const tcVenta = _tcCache.valor_venta || 1;
+  const tcFecha = _tcCache.es_hoy ? 'hoy' : (_tcCache.fecha || '');
+  const ov = document.createElement('div');
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9999;display:flex;align-items:flex-start;justify-content:center;padding:30px 20px;overflow-y:auto';
+  ov.innerHTML = `
+    <div style="background:#fff;border-radius:8px;width:min(720px,95vw);box-shadow:0 20px 60px rgba(0,0,0,.3);max-height:calc(100vh - 60px);overflow-y:auto;position:relative">
+      <button data-close type="button" title="Cerrar sin guardar" aria-label="Cerrar" style="position:absolute;top:14px;right:14px;background:#fff;border:1px solid #d1d5db;border-radius:50%;width:30px;height:30px;font-size:18px;cursor:pointer;color:#64748b;z-index:10;display:flex;align-items:center;justify-content:center;line-height:1">×</button>
+      <div style="padding:8px">
+        ${formCrear(tipo, tcVenta, tcFecha)}
+      </div>
+    </div>
+  `;
+  document.body.appendChild(ov);
+  ov.querySelector('[data-close]').onclick = () => ov.remove();
+  bindFormCrearPrestamo(ov.querySelector(`#form-crear-${tipo}`), tipo, ov);
+}
+
+function bindFormCrearPrestamo(form, tipo, overlay) {
+  if (!form) return;
+  form.onsubmit = async (e) => {
+    e.preventDefault();
+    const f = e.target;
+    const moneda = f.moneda.value || 'PEN';
+    const base = {
+      nro_oc: f.nro_oc.value || null,
+      descripcion: f.descripcion.value,
+      comentario: f.comentario.value,
+      fecha_emision: f.fecha_emision.value,
+      fecha_vencimiento: f.fecha_vencimiento.value || null,
+      moneda,
+      tipo_cambio: moneda === 'USD' ? Number(f.tipo_cambio?.value) || 1 : 1,
+      monto_capital: f.monto_capital.value,
+      monto_interes: f.monto_interes.value || 0,
+      tasa_interes: 0,
+    };
+    try {
+      if (tipo === 'tomado') {
+        await api.prestamos.createTomado({
+          ...base,
+          acreedor: f.contraparte.value,
+          monto_pagado_inicial: Number(f.monto_pagado_inicial?.value) || 0,
+        });
+        showSuccess('Préstamo tomado registrado');
+      } else {
+        await api.prestamos.createOtorgado({
+          ...base,
+          deudor: f.contraparte.value,
+          monto_cobrado_inicial: Number(f.monto_pagado_inicial?.value) || 0,
+        });
+        showSuccess('Préstamo otorgado registrado');
+      }
+      if (overlay) overlay.remove();
+      window.navigate('prestamos');
+    } catch (err) {
+      showError(err.error || 'Error al registrar préstamo');
+    }
+  };
+}
+
+// Expone el opener para que el botón inline lo llame por onclick
+window.abrirModalNuevoPrestamo = abrirModalNuevoPrestamo;
+
 // ─── TABLA ─────────────────────────────────────────────────────────────────────
 const buildTabla = (lista, tipo) => {
   const esTomado = tipo === 'tomado';
@@ -249,6 +319,10 @@ export const Prestamos = async () => {
   } catch(err) {
     console.error('[Prestamos] Error:', err);
   }
+
+  // Mirror el TC del día a módulo-scope para que el modal "+ Nuevo" lo lea
+  // (el modal se crea bajo demanda y necesita el TC para prefilear).
+  _tcCache = tcHoy;
 
   // Helper compartido: recalcula saldo restante en el bloque de carga histórica
   const recalcSaldoInicial = (form) => {
@@ -485,57 +559,8 @@ export const Prestamos = async () => {
       });
     }
 
-    // Form crear tomado
-    const formT = document.getElementById('form-crear-tomado');
-    if (formT) formT.onsubmit = async (e) => {
-      e.preventDefault();
-      const f = e.target;
-      const moneda = f.moneda.value || 'PEN';
-      try {
-        await api.prestamos.createTomado({
-          nro_oc: f.nro_oc.value || null,
-          acreedor: f.contraparte.value,
-          descripcion: f.descripcion.value,
-          comentario: f.comentario.value,
-          fecha_emision: f.fecha_emision.value,
-          fecha_vencimiento: f.fecha_vencimiento.value || null,
-          moneda,
-          tipo_cambio: moneda === 'USD' ? Number(f.tipo_cambio?.value) || 1 : 1,
-          monto_capital: f.monto_capital.value,
-          monto_interes: f.monto_interes.value || 0,
-          tasa_interes: 0,
-          monto_pagado_inicial: Number(f.monto_pagado_inicial?.value) || 0,
-        });
-        showSuccess('Préstamo tomado registrado');
-        window.navigate('prestamos');
-      } catch(err) { showError(err.error || 'Error al registrar préstamo'); }
-    };
-
-    // Form crear otorgado
-    const formO = document.getElementById('form-crear-otorgado');
-    if (formO) formO.onsubmit = async (e) => {
-      e.preventDefault();
-      const f = e.target;
-      const moneda = f.moneda.value || 'PEN';
-      try {
-        await api.prestamos.createOtorgado({
-          nro_oc: f.nro_oc.value || null,
-          deudor: f.contraparte.value,
-          descripcion: f.descripcion.value,
-          comentario: f.comentario.value,
-          fecha_emision: f.fecha_emision.value,
-          fecha_vencimiento: f.fecha_vencimiento.value || null,
-          moneda,
-          tipo_cambio: moneda === 'USD' ? Number(f.tipo_cambio?.value) || 1 : 1,
-          monto_capital: f.monto_capital.value,
-          monto_interes: f.monto_interes.value || 0,
-          tasa_interes: 0,
-          monto_cobrado_inicial: Number(f.monto_pagado_inicial?.value) || 0,
-        });
-        showSuccess('Préstamo otorgado registrado');
-        window.navigate('prestamos');
-      } catch(err) { showError(err.error || 'Error al registrar préstamo'); }
-    };
+    // (El submit de "+ Nuevo Préstamo" ahora se bindea dentro del modal —
+    // ver bindFormCrearPrestamo en el módulo-scope.)
 
     // Pagar / Cobrar
     window.registrarPago = async (tipo, id) => {
@@ -679,25 +704,21 @@ export const Prestamos = async () => {
 
     <!-- SECCIÓN TOMADOS -->
     <div id="seccion-tomados" style="margin-top:16px">
-      <div style="display:flex;gap:20px;align-items:flex-start">
-        <div class="table-container" style="flex:2">
-          ${buildTabla(tomados, 'tomado')}
-        </div>
-        <div style="flex:1;min-width:300px">
-          ${formCrear('tomado', tcHoy.valor_venta, tcHoy.es_hoy ? 'hoy' : tcHoy.fecha)}
-        </div>
+      <div style="display:flex;justify-content:flex-end;margin-bottom:10px">
+        <button onclick="window.abrirModalNuevoPrestamo('tomado')" title="Registrar una nueva deuda" style="padding:9px 18px;border:none;background:var(--bg-sidebar);color:#fff;border-radius:var(--radius-sm);cursor:pointer;font-weight:600;font-size:13px">+ Nuevo Préstamo Tomado</button>
+      </div>
+      <div class="table-container">
+        ${buildTabla(tomados, 'tomado')}
       </div>
     </div>
 
     <!-- SECCIÓN OTORGADOS -->
     <div id="seccion-otorgados" style="display:none;margin-top:16px">
-      <div style="display:flex;gap:20px;align-items:flex-start">
-        <div class="table-container" style="flex:2">
-          ${buildTabla(otorgados, 'otorgado')}
-        </div>
-        <div style="flex:1;min-width:300px">
-          ${formCrear('otorgado', tcHoy.valor_venta, tcHoy.es_hoy ? 'hoy' : tcHoy.fecha)}
-        </div>
+      <div style="display:flex;justify-content:flex-end;margin-bottom:10px">
+        <button onclick="window.abrirModalNuevoPrestamo('otorgado')" title="Registrar un nuevo préstamo otorgado" style="padding:9px 18px;border:none;background:var(--bg-sidebar);color:#fff;border-radius:var(--radius-sm);cursor:pointer;font-weight:600;font-size:13px">+ Nuevo Préstamo Otorgado</button>
+      </div>
+      <div class="table-container">
+        ${buildTabla(otorgados, 'otorgado')}
       </div>
     </div>
 
