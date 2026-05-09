@@ -131,13 +131,13 @@ export function renderSidebar(activePage) {
     </nav>
 
     <div class="app-sidebar-footer">
-      <a class="app-sidebar-user" href="#perfil" title="Mi perfil — gestionar firma escaneada para rendiciones" style="text-decoration:none;color:inherit">
+      <div class="app-sidebar-user" onclick="window.navigate?.('perfil')" role="button" tabindex="0" title="Mi perfil — gestionar firma escaneada para rendiciones" style="cursor:pointer">
         <div class="app-sidebar-avatar" aria-hidden="true">${initials}</div>
         <div class="app-sidebar-user__info">
           <span class="app-sidebar-user__name">${user.nombre || 'Usuario'}</span>
           <span class="app-sidebar-user__role">${rolLabel}</span>
         </div>
-      </a>
+      </div>
       <button class="app-sidebar-logout" onclick="logout()" type="button">
         ${icon('log-out', { size: 14 })}
         <span>Cerrar sesión</span>
