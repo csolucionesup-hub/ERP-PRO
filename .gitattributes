@@ -1,0 +1,33 @@
+# Default: trata como texto y normaliza line endings a LF
+* text=auto eol=lf
+
+# Archivos de código y config: forzar texto + UTF-8
+*.ts        text working-tree-encoding=UTF-8
+*.tsx       text working-tree-encoding=UTF-8
+*.js        text working-tree-encoding=UTF-8
+*.jsx       text working-tree-encoding=UTF-8
+*.json      text working-tree-encoding=UTF-8
+*.html      text working-tree-encoding=UTF-8
+*.css       text working-tree-encoding=UTF-8
+*.md        text working-tree-encoding=UTF-8
+*.sql       text working-tree-encoding=UTF-8
+*.yml       text working-tree-encoding=UTF-8
+*.yaml      text working-tree-encoding=UTF-8
+*.sh        text eol=lf
+.env*       text working-tree-encoding=UTF-8
+
+# Binarios: nunca tocar
+*.png       binary
+*.jpg       binary
+*.jpeg      binary
+*.gif       binary
+*.webp      binary
+*.pdf       binary
+*.ico       binary
+*.woff      binary
+*.woff2     binary
+*.ttf       binary
+*.eot       binary
+*.zip       binary
+*.xlsx      binary
+*.xls       binary
