@@ -1,30 +1,30 @@
 ﻿// Cache busting para imports ES module: cada path lleva su ?v=YYYYMMDDr#
 // hardcodeado. Si se cambia CUALQUIER archivo de pages/components/services
 // hay que bumpear el sufijo en TODAS las lÃ­neas (Find/Replace de v=2026...).
-import { renderSidebar } from './components/Sidebar.js?v=20260508r13';
-import { Dashboard }   from './pages/Dashboard.js?v=20260508r13';
-import { Finanzas }    from './pages/Finanzas.js?v=20260508r13';
-import { Inventario }  from './pages/Inventario.js?v=20260508r13';
-import { Usuarios }    from './pages/Usuarios.js?v=20260508r13';
-import { Compras }       from './pages/Compras.js?v=20260508r13';
+import { renderSidebar } from './components/Sidebar.js?v=20260508r14';
+import { Dashboard }   from './pages/Dashboard.js?v=20260508r14';
+import { Finanzas }    from './pages/Finanzas.js?v=20260508r14';
+import { Inventario }  from './pages/Inventario.js?v=20260508r14';
+import { Usuarios }    from './pages/Usuarios.js?v=20260508r14';
+import { Compras }       from './pages/Compras.js?v=20260508r14';
 // Servicios â€” mÃ³dulo deprecado al cierre 03/05/2026 (Camino A vaciÃ³ la tabla
 // en producciÃ³n; flujo migrado a Cotizaciones APROBADAS + OCs). El backend
 // sigue vivo porque LogÃ­stica/OC consumen api.services.getServiciosActivos()
 // para popular dropdowns, pero la pÃ¡gina ya no se navega.
-import { Proveedores }   from './pages/Proveedores.js?v=20260508r13';
-import { Prestamos }     from './pages/Prestamos.js?v=20260508r13';
-import { Comercial }     from './pages/Comercial.js?v=20260508r13';
-import { ConfiguracionComercial } from './pages/ConfiguracionComercial.js?v=20260508r13';
-import { Logistica }     from './pages/Logistica.js?v=20260508r13';
-import { Administracion } from './pages/Administracion.js?v=20260508r13';
-import { Configuracion }  from './pages/Configuracion.js?v=20260508r13';
-import { Contabilidad }   from './pages/Contabilidad.js?v=20260508r13';
-import { Importador }     from './pages/Importador.js?v=20260508r13';
-import { OrdenesCompra }  from './pages/OrdenesCompra.js?v=20260508r13';
-import { Produccion }     from './pages/Produccion.js?v=20260508r13';
-import { Alertas }        from './pages/Alertas.js?v=20260508r13';
-import { Perfil }         from './pages/Perfil.js?v=20260508r13';
-import { showSuccess, showError, showToast } from './services/ui.js?v=20260508r13';
+import { Proveedores }   from './pages/Proveedores.js?v=20260508r14';
+import { Prestamos }     from './pages/Prestamos.js?v=20260508r14';
+import { Comercial }     from './pages/Comercial.js?v=20260508r14';
+import { ConfiguracionComercial } from './pages/ConfiguracionComercial.js?v=20260508r14';
+import { Logistica }     from './pages/Logistica.js?v=20260508r14';
+import { Administracion } from './pages/Administracion.js?v=20260508r14';
+import { Configuracion }  from './pages/Configuracion.js?v=20260508r14';
+import { Contabilidad }   from './pages/Contabilidad.js?v=20260508r14';
+import { Importador }     from './pages/Importador.js?v=20260508r14';
+import { OrdenesCompra }  from './pages/OrdenesCompra.js?v=20260508r14';
+import { Produccion }     from './pages/Produccion.js?v=20260508r14';
+import { Alertas }        from './pages/Alertas.js?v=20260508r14';
+import { Perfil }         from './pages/Perfil.js?v=20260508r14';
+import { showSuccess, showError, showToast } from './services/ui.js?v=20260508r14';
 
 // Exponer helpers de toast globalmente (los modules ES no tienen acceso
 // directo desde otros modules sin import; varios usan window.showSuccess?.()
@@ -207,7 +207,20 @@ async function navigate(page) {
   mainContent.innerHTML = '<div style="padding:50px;text-align:center;color:var(--text-secondary);">Cargando mÃ³dulo...</div>';
 
   if (!PAGES[page]) {
-    navigate(getPaginaInicio(user));
+    // El usuario pidió explícitamente esta página pero el JS cargado no la
+    // conoce. Causa típica: el browser cacheó un app.js viejo que no incluye
+    // este import. Antes redirigíamos silenciosamente a dashboard, lo que
+    // confundía al usuario.
+    console.warn(`[Router] Página "${page}" no está en PAGES. Probable caché viejo.`);
+    mainContent.innerHTML = `
+      <div style="padding:40px;text-align:center;color:var(--text-secondary);max-width:560px;margin:60px auto;background:#fff7ed;border:1px solid #fed7aa;border-radius:8px">
+        <h2 style="color:#9a3412;font-size:18px;margin-bottom:10px">⚠️ Página no disponible en este browser</h2>
+        <p style="color:#374151;font-size:13px">La página <strong>${page}</strong> existe en el servidor pero tu browser está usando una versión vieja del código (caché).</p>
+        <p style="color:#374151;font-size:13px;margin-top:14px"><strong>Solución:</strong> hacé <kbd style="background:#f3f4f6;padding:2px 7px;border:1px solid #d1d5db;border-radius:4px">Ctrl + Shift + R</kbd> para forzar la descarga del código nuevo.</p>
+        <p style="color:#6b7280;font-size:11px;margin-top:14px">Si el problema persiste tras el refresh, abrí una ventana de incógnito (Ctrl+Shift+N) o borrá el caché completo del sitio.</p>
+        <button onclick="location.reload(true)" style="margin-top:16px;padding:9px 20px;background:#2563eb;color:#fff;border:none;border-radius:5px;cursor:pointer;font-weight:600">🔄 Recargar página</button>
+      </div>
+    `;
     return;
   }
   const Component = PAGES[page];
