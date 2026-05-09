@@ -139,7 +139,7 @@ class AuthService {
     // ORDER BY interno (que el adapter Postgres no traduce correctamente).
     const [users] = await db.query(`
       SELECT id_usuario, nombre, email, rol, activo, ultimo_acceso, created_at,
-             puede_contabilidad, puede_importar
+             puede_contabilidad, puede_importar, firma_url
       FROM Usuarios
       ORDER BY nombre ASC
     `);
@@ -356,6 +356,29 @@ class AuthService {
       [id_usuario]
     );
     return { firma_url: (rows as any[])[0]?.firma_url || null };
+  }
+
+  /**
+   * Permite que un GERENTE suba la firma de OTRO usuario (caso típico:
+   * colaborador que no se maneja bien con la PC). Misma logica que
+   * subirFirma() pero recibe id_usuario explícito y valida permiso.
+   */
+  async subirFirmaPorAdmin(
+    id_usuario_target: number,
+    archivo: { buffer: Buffer; originalname: string },
+    actorRol: string
+  ) {
+    if (actorRol !== 'GERENTE') {
+      throw new Error('Solo el GERENTE puede subir la firma de otro usuario');
+    }
+    return this.subirFirma(id_usuario_target, archivo);
+  }
+
+  async eliminarFirmaPorAdmin(id_usuario_target: number, actorRol: string) {
+    if (actorRol !== 'GERENTE') {
+      throw new Error('Solo el GERENTE puede eliminar la firma de otro usuario');
+    }
+    return this.eliminarFirma(id_usuario_target);
   }
 }
 
