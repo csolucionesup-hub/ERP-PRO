@@ -11,16 +11,19 @@ import { api } from '../services/api.js';
 import { showSuccess, showError } from '../services/ui.js';
 
 export const Perfil = async () => {
+  console.log('[Perfil] render iniciado');
   const user = JSON.parse(localStorage.getItem('erp_user') || '{}');
   let firmaUrl = null;
   try {
     const r = await api.auth.getMiFirma();
     firmaUrl = r?.firma_url || null;
+    console.log('[Perfil] firma cargada:', firmaUrl ? 'SI' : 'NO');
   } catch (e) {
     console.error('[Perfil] getMiFirma falló:', e);
   }
 
   setTimeout(() => initHandlers(), 60);
+  console.log('[Perfil] HTML armado, retornando');
   return shell(user, firmaUrl);
 };
 
