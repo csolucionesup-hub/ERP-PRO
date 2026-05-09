@@ -321,10 +321,12 @@ class CotizacionService {
     const [tendencia] = await db.query(
       `SELECT DATE_FORMAT(fecha, '%Y-%m') AS mes,
               COUNT(*) AS cantidad,
-              SUM(CASE WHEN moneda='PEN' THEN total ELSE 0 END) AS monto_pen,
+              SUM(CASE WHEN moneda='PEN' THEN total ELSE total * tipo_cambio END) AS monto_pen,
               SUM(CASE WHEN moneda='USD' THEN total ELSE 0 END) AS monto_usd,
               SUM(CASE WHEN estado='APROBADA' THEN 1 ELSE 0 END) AS aprobadas,
-              SUM(CASE WHEN estado='APROBADA' AND moneda='PEN' THEN total ELSE 0 END) AS aprobadas_pen
+              SUM(CASE WHEN estado='APROBADA' AND moneda='PEN' THEN total
+                       WHEN estado='APROBADA' AND moneda='USD' THEN total * tipo_cambio
+                       ELSE 0 END) AS aprobadas_pen
        FROM Cotizaciones
        WHERE estado != 'ANULADA'
          AND fecha >= DATE_SUB(CURDATE(), INTERVAL 24 MONTH)

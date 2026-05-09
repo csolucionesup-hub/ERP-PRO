@@ -1531,11 +1531,28 @@ export const Comercial = async () => {
         data: {
           labels,
           datasets: [
-            { label: 'Cotizado (PEN)', data: dataCot, borderColor: '#000', backgroundColor: '#00000022', fill: true, tension: 0.3 },
-            { label: 'Aprobado (PEN)', data: dataApr, borderColor: '#16a34a', backgroundColor: '#16a34a22', fill: true, tension: 0.3 },
+            { label: 'Cotizado (PEN)', data: dataCot, borderColor: '#000',     backgroundColor: '#00000022', fill: true, tension: 0.3, yAxisID: 'yCot' },
+            { label: 'Aprobado (PEN)', data: dataApr, borderColor: '#16a34a', backgroundColor: '#16a34a22', fill: true, tension: 0.3, yAxisID: 'yApr' },
           ],
         },
-        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'top' } }, scales: { y: { beginAtZero: true, ticks: { callback: v => 'S/ ' + Number(v).toLocaleString() } } } }
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { position: 'top' } },
+          scales: {
+            yCot: {
+              type: 'linear', position: 'left', beginAtZero: true,
+              title: { display: true, text: 'Cotizado', color: '#000', font: { size: 11 } },
+              ticks: { callback: v => 'S/ ' + Number(v).toLocaleString() },
+            },
+            yApr: {
+              type: 'linear', position: 'right', beginAtZero: true,
+              title: { display: true, text: 'Aprobado', color: '#16a34a', font: { size: 11 } },
+              grid: { drawOnChartArea: false },
+              ticks: { color: '#16a34a', callback: v => 'S/ ' + Number(v).toLocaleString() },
+            },
+          },
+        }
       });
     };
     // Si hay hash #dashboard al cargar, activar ese tab
