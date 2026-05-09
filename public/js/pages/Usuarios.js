@@ -341,9 +341,17 @@ export const Usuarios = async () => {
       }
     };
 
+    // Re-render in-place sin pasar por dashboard (evita el "flash" feo y
+    // la sensación de que el modal se cerró solo). Usa refreshModule que
+    // re-llama a la función de la página actual.
     function recargar() {
-      window.location.hash = 'dashboard';
-      setTimeout(() => { window.location.hash = 'usuarios'; }, 50);
+      if (window.refreshModule) {
+        window.refreshModule();
+      } else {
+        // Fallback al patrón viejo si refreshModule no está disponible
+        window.location.hash = 'dashboard';
+        setTimeout(() => { window.location.hash = 'usuarios'; }, 50);
+      }
     }
 
     document.getElementById('form-usuario').addEventListener('submit', async (e) => {
