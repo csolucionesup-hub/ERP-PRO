@@ -108,7 +108,7 @@ function initTabs() {
     },
   });
 
-  window.Logistica = { descargarPDF, anularOC, reactivarOC, editarCC, toggleCC, eliminarCC, descargarROC, verROC };
+  window.Logistica = { descargarPDF, anularOC, reactivarOC, editarCC, toggleCC, eliminarCC, descargarROC, verROC, regularizarHuerfano };
 }
 
 // ─── TAB Proveedores (delega a página Proveedores.js) ───────────────────
@@ -142,8 +142,12 @@ async function renderTabCentros(panel) {
   panel.innerHTML = '<div style="padding:30px;text-align:center;color:var(--text-secondary)">Cargando…</div>';
 
   let resumen = [];
+  let huerfanos = [];
   try {
-    resumen = await api.centrosCosto.resumen(new Date().getFullYear());
+    [resumen, huerfanos] = await Promise.all([
+      api.centrosCosto.resumen(new Date().getFullYear()),
+      api.centrosCosto.huerfanos().catch(() => []),
+    ]);
   } catch (e) {
     panel.innerHTML = `<div style="padding:30px;color:var(--danger)">Error: ${e.message}</div>`;
     return;
@@ -204,6 +208,23 @@ async function renderTabCentros(panel) {
         </table>
       </div>
     </div>
+    ${huerfanos.length > 0 ? `
+    <div style="margin-top:14px;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:14px">
+      <div style="font-weight:700;font-size:13px;color:#92400e;margin-bottom:8px">⚠️ ${huerfanos.length} centro(s) huérfano(s) detectado(s)</div>
+      <p style="margin:0 0 10px;font-size:11px;color:#78350f">Estos nombres aparecen en OCs/Gastos/Compras pero NO están registrados en el catálogo. Probablemente alguien los tipeó manualmente. Regularizalos para que aparezcan en los selectores y reportes:</p>
+      <table style="width:100%;border-collapse:collapse;font-size:11px">
+        ${huerfanos.map(h => `
+          <tr style="border-bottom:1px solid #fde68a">
+            <td style="padding:6px 4px;font-weight:600;color:#78350f">${h.nombre}</td>
+            <td style="padding:6px 4px;text-align:right;color:#92400e">${h.usos} uso(s)</td>
+            <td style="padding:6px 4px;text-align:right">
+              <button onclick="Logistica.regularizarHuerfano('${h.nombre.replace(/'/g, "\\'")}')" title="Crear este nombre como centro de costo formal (tipo PROYECTO)" style="padding:4px 10px;background:#f59e0b;color:white;border:none;border-radius:4px;cursor:pointer;font-size:11px;font-weight:600">Regularizar</button>
+            </td>
+          </tr>
+        `).join('')}
+      </table>
+    </div>` : ''}
+
     <div style="margin-top:14px;padding:10px;background:#f0f9ff;border-left:3px solid #0284c7;border-radius:4px;font-size:11px;color:#075985">
       💡 <strong>Tip:</strong> En cada OC, el campo "Centro de Costo" autocompleta desde esta lista.
       Si escribís un nombre nuevo, se crea automáticamente al guardar la OC.
@@ -211,53 +232,109 @@ async function renderTabCentros(panel) {
   `;
 
   // Botón "+ Nuevo Centro de Costo" — abre form en modal
-  panel.querySelector('#btn-cc-nuevo').onclick = () => {
-    const ov = document.createElement('div');
-    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1500;display:flex;align-items:center;justify-content:center;padding:20px';
-    ov.innerHTML = `
-      <div style="background:white;border-radius:10px;padding:24px;width:440px;max-width:95vw">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
-          <h3 style="margin:0;font-size:15px;font-weight:700">➕ Nuevo Centro de Costo</h3>
-          <button data-close type="button" title="Cerrar sin guardar" aria-label="Cerrar" style="background:none;border:none;font-size:20px;cursor:pointer;color:#999">×</button>
-        </div>
-        <form id="form-cc-nuevo" style="display:flex;flex-direction:column;gap:10px">
-          <div>
-            <label style="font-size:11px;color:var(--text-secondary)">Tipo *</label>
-            <select name="tipo" required style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
-              ${tipos.map(t => `<option value="${t}">${tipoColor[t].icon} ${t}</option>`).join('')}
-            </select>
-          </div>
-          <div>
-            <label style="font-size:11px;color:var(--text-secondary)">Nombre *</label>
-            <input name="nombre" required placeholder="Ej: FABRICACION AUGER PSV, OFICINA SUR" style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
-            <span style="font-size:10px;color:var(--text-secondary)">Se guarda en MAYÚSCULAS para evitar duplicados</span>
-          </div>
-          <div>
-            <label style="font-size:11px;color:var(--text-secondary)">Descripción (opcional)</label>
-            <input name="descripcion" placeholder="Notas internas sobre el centro" style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
-          </div>
-          <button type="submit" style="padding:11px;border:none;background:var(--primary-color);color:white;border-radius:6px;cursor:pointer;font-weight:600;font-size:13px">➕ Guardar</button>
-        </form>
+  panel.querySelector('#btn-cc-nuevo').onclick = () => abrirModalNuevoCC(tipos, tipoColor);
+}
+
+// Modal "Nuevo Centro de Costo" con picker condicional cuando tipo=PROYECTO.
+// Si elegís una cotización, el nombre se auto-completa "<PROYECTO> · <CLIENTE>".
+// Tradicional manual: si tipo != PROYECTO o eligen "manual", input libre.
+async function abrirModalNuevoCC(tipos, tipoColor) {
+  // Pre-fetch de cotizaciones disponibles (en paralelo con render). Si falla,
+  // no rompemos — la sección picker simplemente no aparece.
+  let cotizacionesDisp = [];
+  try { cotizacionesDisp = await api.centrosCosto.cotizacionesDisponibles(); }
+  catch (_) { cotizacionesDisp = []; }
+
+  const ov = document.createElement('div');
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1500;display:flex;align-items:flex-start;justify-content:center;padding:30px 20px;overflow-y:auto';
+  ov.innerHTML = `
+    <div style="background:white;border-radius:10px;padding:24px;width:520px;max-width:95vw;max-height:calc(100vh - 60px);overflow-y:auto">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+        <h3 style="margin:0;font-size:15px;font-weight:700">➕ Nuevo Centro de Costo</h3>
+        <button data-close type="button" title="Cerrar sin guardar" aria-label="Cerrar" style="background:none;border:none;font-size:20px;cursor:pointer;color:#999">×</button>
       </div>
-    `;
-    document.body.appendChild(ov);
-    ov.querySelector('[data-close]').onclick = () => ov.remove();
-    ov.querySelector('#form-cc-nuevo').onsubmit = async (e) => {
-      e.preventDefault();
-      const f = e.target;
-      try {
-        await api.centrosCosto.create({
-          nombre: f.nombre.value,
-          tipo: f.tipo.value,
-          descripcion: f.descripcion.value || undefined,
-        });
-        showSuccess('Centro de costo creado');
-        ov.remove();
-        window.navigate('logistica');
-      } catch (err) {
-        showError(err?.error || err?.message || 'Error al crear');
-      }
-    };
+      <form id="form-cc-nuevo" style="display:flex;flex-direction:column;gap:10px">
+        <div>
+          <label style="font-size:11px;color:var(--text-secondary)">Tipo *</label>
+          <select name="tipo" id="cc-tipo" required style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
+            ${tipos.map(t => `<option value="${t}">${tipoColor[t].icon} ${t}</option>`).join('')}
+          </select>
+        </div>
+
+        <div id="cc-cotizacion-wrap" style="display:none;background:#f0f9ff;border:1px solid #bae6fd;padding:10px;border-radius:6px">
+          <label style="font-size:11px;color:#0c4a6e;font-weight:700;display:block;margin-bottom:4px">📋 Vincular a cotización aprobada (recomendado)</label>
+          <select name="id_cotizacion" id="cc-cot-picker" style="width:100%;padding:8px 10px;border:1px solid #bae6fd;border-radius:6px;font-size:13px">
+            <option value="">— Manual / sin vincular —</option>
+            ${cotizacionesDisp.map(c => {
+              const lbl = `${c.nro_cotizacion} · ${(c.proyecto || '(sin proyecto)')} · ${c.cliente || ''}`;
+              return `<option value="${c.id_cotizacion}" data-proyecto="${(c.proyecto || '').replace(/"/g, '&quot;')}" data-cliente="${(c.cliente || '').replace(/"/g, '&quot;')}" data-nro="${c.nro_cotizacion}">${lbl}</option>`;
+            }).join('')}
+          </select>
+          <span style="font-size:10px;color:#075985;display:block;margin-top:4px">${cotizacionesDisp.length} cotización(es) disponibles. El nombre se autocompleta al elegir.</span>
+        </div>
+
+        <div>
+          <label style="font-size:11px;color:var(--text-secondary)">Nombre *</label>
+          <input name="nombre" id="cc-nombre" required placeholder="Ej: FABRICACION AUGER PSV, OFICINA SUR" style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
+          <span style="font-size:10px;color:var(--text-secondary)">Se guarda en MAYÚSCULAS para evitar duplicados</span>
+        </div>
+        <div>
+          <label style="font-size:11px;color:var(--text-secondary)">Descripción (opcional)</label>
+          <input name="descripcion" placeholder="Notas internas sobre el centro" style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
+        </div>
+        <button type="submit" style="padding:11px;border:none;background:var(--primary-color);color:white;border-radius:6px;cursor:pointer;font-weight:600;font-size:13px">➕ Guardar</button>
+      </form>
+    </div>
+  `;
+  document.body.appendChild(ov);
+  ov.querySelector('[data-close]').onclick = () => ov.remove();
+
+  const tipoSel = ov.querySelector('#cc-tipo');
+  const cotWrap = ov.querySelector('#cc-cotizacion-wrap');
+  const cotPicker = ov.querySelector('#cc-cot-picker');
+  const nombreInput = ov.querySelector('#cc-nombre');
+
+  // Mostrar picker SOLO cuando tipo=PROYECTO. Para los otros tipos no aplica.
+  const togglePicker = () => {
+    if (tipoSel.value === 'PROYECTO' && cotizacionesDisp.length > 0) {
+      cotWrap.style.display = '';
+    } else {
+      cotWrap.style.display = 'none';
+      cotPicker.value = '';
+    }
+  };
+  tipoSel.addEventListener('change', togglePicker);
+  togglePicker();
+
+  // Cuando se elige una cotización, auto-armar el nombre.
+  cotPicker.addEventListener('change', () => {
+    const opt = cotPicker.options[cotPicker.selectedIndex];
+    if (!opt?.value) return;
+    const proyecto = (opt.dataset.proyecto || '').trim();
+    const cliente = (opt.dataset.cliente || '').trim();
+    const nro = opt.dataset.nro || '';
+    const auto = proyecto
+      ? `${proyecto} · ${cliente}`.toUpperCase()
+      : `${nro} · ${cliente}`.toUpperCase();
+    nombreInput.value = auto;
+  });
+
+  ov.querySelector('#form-cc-nuevo').onsubmit = async (e) => {
+    e.preventDefault();
+    const f = e.target;
+    try {
+      await api.centrosCosto.create({
+        nombre: f.nombre.value,
+        tipo: f.tipo.value,
+        descripcion: f.descripcion.value || undefined,
+        id_cotizacion: f.id_cotizacion?.value ? Number(f.id_cotizacion.value) : null,
+      });
+      showSuccess('Centro de costo creado');
+      ov.remove();
+      window.navigate('logistica');
+    } catch (err) {
+      showError(err?.error || err?.message || 'Error al crear');
+    }
   };
 }
 
@@ -294,13 +371,55 @@ async function editarCC(id) {
   document.getElementById('form-edit-cc').onsubmit = async (e) => {
     e.preventDefault();
     const f = e.target;
+    const nombreNuevo = (f.nombre.value || '').trim().toUpperCase();
+    const cambioNombre = nombreNuevo !== (cc.nombre || '').trim().toUpperCase();
+
+    // Si el nombre cambió, pedir preview del impacto + confirmar propagación.
+    if (cambioNombre) {
+      let impacto;
+      try { impacto = await api.centrosCosto.impactoRename(id, nombreNuevo); }
+      catch (err) { showError(err?.error || err?.message || 'Error consultando impacto'); return; }
+
+      const total = (impacto.afectados_oc || 0) + (impacto.afectados_gastos || 0) + (impacto.afectados_compras || 0);
+      let mensaje = `Vas a renombrar:\n\n` +
+        `   "${impacto.nombre_actual}"\n   →\n   "${impacto.nombre_nuevo}"\n\n`;
+      if (total > 0) {
+        mensaje += `Este nombre se va a actualizar en:\n` +
+          `  • ${impacto.afectados_oc} Órdenes de Compra\n` +
+          `  • ${impacto.afectados_gastos} Gastos\n` +
+          `  • ${impacto.afectados_compras} Compras\n\n` +
+          `La acción es atómica (todo o nada) y queda registrada en Auditoría.\n¿Confirmás?`;
+      } else {
+        mensaje += `Ningún registro tiene este centro asignado — el rename solo afecta al catálogo.\n¿Confirmás?`;
+      }
+      if (!confirm(mensaje)) return;
+
+      try {
+        // Tipo/descripción se actualizan aparte si cambian. El rename va por su endpoint.
+        if (cc.tipo !== f.tipo.value || (cc.descripcion || '') !== (f.descripcion.value || '')) {
+          await api.centrosCosto.update(id, { tipo: f.tipo.value, descripcion: f.descripcion.value || null });
+        }
+        const r = await api.centrosCosto.renombrar(id, nombreNuevo);
+        showSuccess(total > 0
+          ? `Renombrado · propagado a ${total} registro(s)`
+          : 'Renombrado');
+        overlay.remove();
+        window.navigate('logistica');
+      } catch (err) {
+        showError(err?.error || err?.message || 'Error al renombrar');
+      }
+      return;
+    }
+
+    // Sin cambio de nombre — flujo viejo (solo tipo/descripción)
     try {
       await api.centrosCosto.update(id, {
-        nombre: f.nombre.value,
+        nombre: nombreNuevo,
         tipo: f.tipo.value,
         descripcion: f.descripcion.value || null,
       });
       showSuccess('Actualizado');
+      overlay.remove();
       window.navigate('logistica');
     } catch (err) { showError(err?.error || 'Error'); }
   };
@@ -321,6 +440,18 @@ async function eliminarCC(id, nombre) {
     showSuccess(r.desactivado ? `Desactivado (tiene ${r.registros_asociados} OCs asociadas)` : 'Eliminado');
     window.navigate('logistica');
   } catch (e) { showError(e?.error || 'Error'); }
+}
+
+// Regularizar un centro huérfano: crearlo como CentroCosto formal (tipo PROYECTO
+// por defecto). El nombre no cambia, así que las OCs existentes siguen apuntando
+// al mismo string — solo que ahora aparece en el catálogo y en los selectores.
+async function regularizarHuerfano(nombre) {
+  if (!confirm(`¿Crear "${nombre}" como Centro de Costo formal?\n\nTipo: PROYECTO (podés cambiarlo después).\n\nLas OCs/Gastos/Compras que ya usan este nombre no se modifican — simplemente ahora va a aparecer en el catálogo y selectores.`)) return;
+  try {
+    await api.centrosCosto.regularizarHuerfano({ nombre, tipo: 'PROYECTO' });
+    showSuccess('Huérfano regularizado · ahora está en el catálogo');
+    window.navigate('logistica');
+  } catch (e) { showError(e?.error || e?.message || 'Error'); }
 }
 
 function semanaISOActual() {
