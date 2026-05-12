@@ -431,6 +431,12 @@ export const api = {
     create:  (data)    => post('/centros-costo', data),
     update:  (id, d)   => put(`/centros-costo/${id}`, d),
     remove:  (id)      => del(`/centros-costo/${id}`),
+    // Vincular a Cotización + Rename con propagación (mig 069)
+    cotizacionesDisponibles: () => get('/centros-costo/cotizaciones-disponibles'),
+    impactoRename:           (id, nombre) => get(`/centros-costo/${id}/impacto-rename?nombre=${encodeURIComponent(nombre)}`),
+    renombrar:               (id, nombre) => put(`/centros-costo/${id}/renombrar`, { nombre }),
+    huerfanos:               () => get('/centros-costo/huerfanos'),
+    regularizarHuerfano:     (data) => post('/centros-costo/regularizar-huerfano', data),
   },
   ordenesCompra: {
     list:       (filtros = {}) => {
@@ -447,6 +453,13 @@ export const api = {
     aprobarParaPago: (id)    => post(`/ordenes-compra/${id}/aprobar-para-pago`, {}),
     listoParaFacturar: (id)  => post(`/ordenes-compra/${id}/listo-para-facturar`, {}),
     recibir:    (id, lineas) => post(`/ordenes-compra/${id}/recibir`, { lineas }),
+    // Importaciones (landed cost) — mig 068
+    marcarEnTransito:    (id) => post(`/ordenes-compra/${id}/en-transito`, {}),
+    desmarcarTransito:   (id) => post(`/ordenes-compra/${id}/desmarcar-transito`, {}),
+    vincularMadre:       (id, id_oc_madre) => post(`/ordenes-compra/${id}/vincular-madre`, { id_oc_madre }),
+    desvincularMadre:    (id) => post(`/ordenes-compra/${id}/desvincular-madre`, {}),
+    importacionResumen:  (id) => get(`/ordenes-compra/${id}/importacion-resumen`),
+    cerrarImportacion:   (id, lineas) => post(`/ordenes-compra/${id}/cerrar-importacion`, { lineas }),
     asignarItems: (id, asignaciones) => post(`/ordenes-compra/${id}/asignar-items`, { asignaciones }),
     editarFecha: (id, fecha) => put(`/ordenes-compra/${id}/fecha`, { fecha }),
     editarMetadata: (id, data) => put(`/ordenes-compra/${id}/metadata`, data),

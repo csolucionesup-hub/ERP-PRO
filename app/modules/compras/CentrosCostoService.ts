@@ -8,34 +8,232 @@ import { db } from '../../../database/connection';
 class CentrosCostoService {
 
   async listar(soloActivos = false) {
-    const where = soloActivos ? "WHERE activo = TRUE" : '';
+    const where = soloActivos ? "WHERE cc.activo = TRUE" : '';
     const [rows] = await db.query(`
-      SELECT id_centro_costo, nombre, tipo, descripcion, activo, created_at, updated_at
-      FROM CentrosCosto
+      SELECT cc.id_centro_costo, cc.nombre, cc.tipo, cc.descripcion, cc.activo,
+             cc.created_at, cc.updated_at,
+             cc.id_cotizacion,
+             cot.nro_cotizacion AS cotizacion_nro,
+             cot.cliente         AS cotizacion_cliente,
+             cot.proyecto        AS cotizacion_proyecto,
+             cot.estado          AS cotizacion_estado
+      FROM CentrosCosto cc
+      LEFT JOIN Cotizaciones cot ON cot.id_cotizacion = cc.id_cotizacion
       ${where}
-      ORDER BY tipo, nombre
+      ORDER BY cc.tipo, cc.nombre
     `);
     return rows;
   }
 
-  async crear(data: { nombre: string; tipo?: string; descripcion?: string }) {
-    const nombre = data.nombre.trim().toUpperCase();
-    if (!nombre) throw new Error('Nombre de centro de costo requerido');
+  async crear(data: { nombre?: string; tipo?: string; descripcion?: string; id_cotizacion?: number | null }) {
     const tipo = (data.tipo || 'OTRO').toUpperCase();
     if (!['OFICINA', 'PROYECTO', 'ALMACEN', 'OTRO'].includes(tipo)) {
       throw new Error('Tipo inválido. Debe ser OFICINA, PROYECTO, ALMACEN u OTRO');
     }
+
+    let nombre = (data.nombre || '').trim().toUpperCase();
+    let id_cotizacion: number | null = data.id_cotizacion ? Number(data.id_cotizacion) : null;
+
+    // Si viene una cotización vinculada, auto-armar el nombre desde sus datos
+    // (formato: "<PROYECTO> · <CLIENTE>" o "<NRO_COT> · <CLIENTE>" si no hay proyecto).
+    if (id_cotizacion) {
+      const [c]: any = await db.query(
+        `SELECT nro_cotizacion, cliente, proyecto, estado FROM Cotizaciones WHERE id_cotizacion = ?`,
+        [id_cotizacion]
+      );
+      const cot = (c as any[])[0];
+      if (!cot) throw new Error('Cotización no encontrada');
+      if (!['APROBADA', 'TRABAJO_EN_RIESGO'].includes(cot.estado)) {
+        throw new Error('Solo se puede vincular cotizaciones APROBADAS o TRABAJO_EN_RIESGO');
+      }
+      // Si el usuario NO envió nombre, lo generamos. Si envió uno, respetamos su decisión.
+      if (!nombre) {
+        const cliente = (cot.cliente || '').trim();
+        const proyecto = (cot.proyecto || '').trim();
+        nombre = proyecto
+          ? `${proyecto} · ${cliente}`.toUpperCase()
+          : `${cot.nro_cotizacion} · ${cliente}`.toUpperCase();
+      }
+    }
+
+    if (!nombre) throw new Error('Nombre de centro de costo requerido (o vincular una cotización con proyecto definido)');
+
     const [res]: any = await db.query(
-      `INSERT INTO CentrosCosto (nombre, tipo, descripcion)
-       VALUES (?, ?, ?)
+      `INSERT INTO CentrosCosto (nombre, tipo, descripcion, id_cotizacion)
+       VALUES (?, ?, ?, ?)
        ON CONFLICT (nombre) DO UPDATE SET
-         tipo        = EXCLUDED.tipo,
-         descripcion = COALESCE(EXCLUDED.descripcion, CentrosCosto.descripcion),
-         updated_at  = NOW()
-       RETURNING id_centro_costo, nombre, tipo, descripcion, activo`,
-      [nombre, tipo, data.descripcion || null]
+         tipo          = EXCLUDED.tipo,
+         descripcion   = COALESCE(EXCLUDED.descripcion, CentrosCosto.descripcion),
+         id_cotizacion = COALESCE(EXCLUDED.id_cotizacion, CentrosCosto.id_cotizacion),
+         updated_at    = NOW()
+       RETURNING id_centro_costo, nombre, tipo, descripcion, id_cotizacion, activo`,
+      [nombre, tipo, data.descripcion || null, id_cotizacion]
     );
     return (res as any).rows?.[0] || { id_centro_costo: (res as any).insertId, nombre, tipo };
+  }
+
+  // ─── Picker: cotizaciones aprobadas no vinculadas a ningún centro ─────
+  async getCotizacionesDisponibles() {
+    const [rows] = await db.query(`
+      SELECT c.id_cotizacion, c.nro_cotizacion, c.cliente, c.proyecto,
+             c.estado, c.moneda, c.total, c.marca
+      FROM Cotizaciones c
+      WHERE c.estado IN ('APROBADA', 'TRABAJO_EN_RIESGO')
+        AND NOT EXISTS (
+          SELECT 1 FROM CentrosCosto cc WHERE cc.id_cotizacion = c.id_cotizacion
+        )
+      ORDER BY c.fecha DESC, c.id_cotizacion DESC
+    `);
+    return rows;
+  }
+
+  // ─── Rename con propagación a OCs/Gastos/Compras ──────────────────────
+  // Preview: cuántos registros se verían afectados si renombramos.
+  async getImpactoRename(id: number, nombreNuevo: string) {
+    const [info]: any = await db.query(
+      'SELECT nombre FROM CentrosCosto WHERE id_centro_costo = ?', [id]
+    );
+    const fila = (info as any[])[0];
+    if (!fila) throw new Error('Centro de costo no encontrado');
+    const nombreActual = fila.nombre;
+    const nombreFinal = (nombreNuevo || '').trim().toUpperCase();
+    if (!nombreFinal) throw new Error('El nombre nuevo no puede estar vacío');
+
+    // ¿Existe otro centro con el nombre destino? (Colisión)
+    const [col]: any = await db.query(
+      'SELECT id_centro_costo FROM CentrosCosto WHERE UPPER(nombre) = ? AND id_centro_costo <> ?',
+      [nombreFinal, id]
+    );
+    if ((col as any[]).length > 0) {
+      throw new Error(`Ya existe otro centro de costo con el nombre "${nombreFinal}". Elegí otro nombre.`);
+    }
+
+    const [oc]: any = await db.query(
+      'SELECT COUNT(*)::int AS n FROM OrdenesCompra WHERE UPPER(centro_costo) = ?', [nombreActual]
+    );
+    const [gs]: any = await db.query(
+      'SELECT COUNT(*)::int AS n FROM Gastos WHERE UPPER(centro_costo) = ?', [nombreActual]
+    );
+    const [co]: any = await db.query(
+      'SELECT COUNT(*)::int AS n FROM Compras WHERE UPPER(centro_costo) = ?', [nombreActual]
+    );
+
+    return {
+      nombre_actual: nombreActual,
+      nombre_nuevo: nombreFinal,
+      cambio: nombreActual !== nombreFinal,
+      afectados_oc:      (oc as any[])[0]?.n || 0,
+      afectados_gastos:  (gs as any[])[0]?.n || 0,
+      afectados_compras: (co as any[])[0]?.n || 0,
+    };
+  }
+
+  /**
+   * Renombra el centro y propaga a las 3 tablas que guardan el nombre como
+   * texto libre. Transacción atómica — todo o nada. Captura el estado previo
+   * en log para audit/rollback manual si hiciera falta.
+   */
+  async renombrarConPropagacion(id: number, nombreNuevo: string, id_usuario: number | null = null) {
+    const impacto = await this.getImpactoRename(id, nombreNuevo);
+    if (!impacto.cambio) {
+      return { success: true, sin_cambios: true, ...impacto };
+    }
+
+    const conn = await db.getConnection();
+    try {
+      await conn.beginTransaction();
+
+      // 1. Renombrar el centro en su propia tabla
+      await conn.query(
+        `UPDATE CentrosCosto SET nombre = ?, updated_at = NOW() WHERE id_centro_costo = ?`,
+        [impacto.nombre_nuevo, id]
+      );
+
+      // 2. Propagar a OrdenesCompra, Gastos y Compras
+      await conn.query(
+        `UPDATE OrdenesCompra SET centro_costo = ? WHERE UPPER(centro_costo) = ?`,
+        [impacto.nombre_nuevo, impacto.nombre_actual]
+      );
+      await conn.query(
+        `UPDATE Gastos SET centro_costo = ? WHERE UPPER(centro_costo) = ?`,
+        [impacto.nombre_nuevo, impacto.nombre_actual]
+      );
+      await conn.query(
+        `UPDATE Compras SET centro_costo = ? WHERE UPPER(centro_costo) = ?`,
+        [impacto.nombre_nuevo, impacto.nombre_actual]
+      );
+
+      // 3. Audit log (best-effort — si la tabla Auditoria no existe, no romper)
+      try {
+        await conn.query(
+          `INSERT INTO Auditoria (id_usuario, entidad, accion, descripcion)
+           VALUES (?, 'CentroCosto', 'UPDATE', ?)`,
+          [
+            id_usuario,
+            `Renombrar CC #${id}: "${impacto.nombre_actual}" → "${impacto.nombre_nuevo}". ` +
+            `Propagado a ${impacto.afectados_oc} OCs, ${impacto.afectados_gastos} gastos, ${impacto.afectados_compras} compras.`,
+          ]
+        );
+      } catch (_) { /* tabla puede no existir */ }
+
+      await conn.commit();
+      return { success: true, ...impacto };
+    } catch (e) {
+      await conn.rollback();
+      throw e;
+    } finally {
+      conn.release();
+    }
+  }
+
+  // ─── Huérfanos: centro_costo en OCs que NO existe en CentrosCosto ─────
+  async getHuerfanos() {
+    const [rows] = await db.query(`
+      SELECT centro_costo AS nombre, SUM(usos)::int AS usos, MIN(fuente) AS fuente_ejemplo
+      FROM (
+        SELECT centro_costo, COUNT(*)::int AS usos, 'OC'::text AS fuente FROM OrdenesCompra
+          WHERE centro_costo IS NOT NULL AND centro_costo <> ''
+            AND NOT EXISTS (SELECT 1 FROM CentrosCosto cc WHERE UPPER(cc.nombre) = UPPER(centro_costo))
+          GROUP BY centro_costo
+        UNION ALL
+        SELECT centro_costo, COUNT(*)::int, 'Gastos' FROM Gastos
+          WHERE centro_costo IS NOT NULL AND centro_costo <> ''
+            AND NOT EXISTS (SELECT 1 FROM CentrosCosto cc WHERE UPPER(cc.nombre) = UPPER(centro_costo))
+          GROUP BY centro_costo
+        UNION ALL
+        SELECT centro_costo, COUNT(*)::int, 'Compras' FROM Compras
+          WHERE centro_costo IS NOT NULL AND centro_costo <> ''
+            AND NOT EXISTS (SELECT 1 FROM CentrosCosto cc WHERE UPPER(cc.nombre) = UPPER(centro_costo))
+          GROUP BY centro_costo
+      ) x
+      GROUP BY centro_costo
+      ORDER BY usos DESC, centro_costo
+    `);
+    return rows;
+  }
+
+  /**
+   * Regulariza un huérfano: crea un registro formal en CentrosCosto con ese
+   * nombre. El tipo por defecto es PROYECTO (caso típico). Opcionalmente se
+   * puede vincular a una cotización al mismo tiempo.
+   */
+  async regularizarHuerfano(data: { nombre: string; tipo?: string; id_cotizacion?: number | null; descripcion?: string }) {
+    const nombre = (data.nombre || '').trim().toUpperCase();
+    if (!nombre) throw new Error('Nombre del huérfano requerido');
+    // Verificar que efectivamente sea huérfano
+    const [existe]: any = await db.query(
+      `SELECT id_centro_costo FROM CentrosCosto WHERE UPPER(nombre) = ?`, [nombre]
+    );
+    if ((existe as any[]).length > 0) {
+      throw new Error(`Ya existe un centro de costo con ese nombre. No es huérfano.`);
+    }
+    // Crear (reutiliza la lógica de crear, no auto-genera nombre)
+    return this.crear({
+      nombre,
+      tipo: data.tipo || 'PROYECTO',
+      descripcion: data.descripcion || 'Regularizado desde uso suelto en OCs',
+      id_cotizacion: data.id_cotizacion || null,
+    });
   }
 
   async actualizar(id: number, data: { nombre?: string; tipo?: string; descripcion?: string; activo?: boolean }) {

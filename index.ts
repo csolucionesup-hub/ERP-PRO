@@ -2128,8 +2128,41 @@ ocRouter.post('/:id/recibir', validateIdParam, auditLog('OrdenCompra', 'UPDATE')
         lineas_pendientes: e.lineas_pendientes,
       });
     }
+    if (e?.code === 'OC_EN_TRANSITO') {
+      return res.status(409).json({ error: e.message, code: e.code });
+    }
     throw e;
   }
+});
+
+// ─── Importaciones (landed cost) — mig 068 ────────────────────────────
+ocRouter.post('/:id/en-transito', validateIdParam, auditLog('OrdenCompra', 'UPDATE'), async (req: Request, res: Response) => {
+  res.json(await OrdenCompraService.marcarEnTransito(Number(req.params.id), req.user!.id_usuario));
+});
+
+ocRouter.post('/:id/desmarcar-transito', validateIdParam, auditLog('OrdenCompra', 'UPDATE'), async (req: Request, res: Response) => {
+  res.json(await OrdenCompraService.desmarcarEnTransito(Number(req.params.id), req.user!.id_usuario));
+});
+
+ocRouter.post('/:id/vincular-madre', validateIdParam, auditLog('OrdenCompra', 'UPDATE'), async (req: Request, res: Response) => {
+  const idMadre = Number(req.body?.id_oc_madre);
+  if (!Number.isFinite(idMadre) || idMadre <= 0) {
+    return res.status(400).json({ error: 'id_oc_madre inválido' });
+  }
+  res.json(await OrdenCompraService.vincularSatelite(Number(req.params.id), idMadre, req.user!.id_usuario));
+});
+
+ocRouter.post('/:id/desvincular-madre', validateIdParam, auditLog('OrdenCompra', 'UPDATE'), async (req: Request, res: Response) => {
+  res.json(await OrdenCompraService.desvincularSatelite(Number(req.params.id), req.user!.id_usuario));
+});
+
+ocRouter.get('/:id/importacion-resumen', validateIdParam, async (req: Request, res: Response) => {
+  res.json(await OrdenCompraService.getResumenImportacion(Number(req.params.id)));
+});
+
+ocRouter.post('/:id/cerrar-importacion', validateIdParam, auditLog('OrdenCompra', 'UPDATE'), async (req: Request, res: Response) => {
+  const lineas = Array.isArray(req.body?.lineas) ? req.body.lineas : [];
+  res.json(await OrdenCompraService.cerrarImportacion(Number(req.params.id), lineas, req.user!.id_usuario));
 });
 
 // Actualizar SOLO la fecha de emisión (corregir data histórica sin tocar nada más)
@@ -2292,6 +2325,36 @@ ccRouter.put('/:id', validateIdParam, auditLog('CentroCosto', 'UPDATE'), async (
 ccRouter.delete('/:id', validateIdParam, auditLog('CentroCosto', 'DELETE'), async (req: Request, res: Response) => {
   res.json(await CentrosCostoService.eliminar(Number(req.params.id)));
 });
+
+// ─── Vincular a Cotización + Rename con propagación (mig 069) ─────────
+// Picker: cotizaciones disponibles para vincular al crear centro.
+ccRouter.get('/cotizaciones-disponibles', async (_req: Request, res: Response) => {
+  res.json(await CentrosCostoService.getCotizacionesDisponibles());
+});
+// Preview de impacto antes de renombrar (modal de confirmación).
+ccRouter.get('/:id/impacto-rename', validateIdParam, async (req: Request, res: Response) => {
+  const nombre = String(req.query.nombre || '').trim();
+  if (!nombre) return res.status(400).json({ error: 'Parámetro nombre requerido' });
+  res.json(await CentrosCostoService.getImpactoRename(Number(req.params.id), nombre));
+});
+// Renombrar con propagación atómica a OCs/Gastos/Compras. Solo GERENTE.
+ccRouter.put('/:id/renombrar', validateIdParam, auditLog('CentroCosto', 'UPDATE'), async (req: Request, res: Response) => {
+  if (req.user?.rol !== 'GERENTE') {
+    return res.status(403).json({ error: 'Solo el GERENTE puede renombrar centros de costo con propagación' });
+  }
+  const nombre = String(req.body?.nombre || '').trim();
+  if (!nombre) return res.status(400).json({ error: 'nombre requerido' });
+  res.json(await CentrosCostoService.renombrarConPropagacion(Number(req.params.id), nombre, req.user!.id_usuario));
+});
+// Lista de huérfanos: strings en OCs/Gastos/Compras que NO están como CentroCosto formal.
+ccRouter.get('/huerfanos', async (_req: Request, res: Response) => {
+  res.json(await CentrosCostoService.getHuerfanos());
+});
+// Regularizar un huérfano: crearlo como CentroCosto formal.
+ccRouter.post('/regularizar-huerfano', auditLog('CentroCosto', 'CREATE'), async (req: Request, res: Response) => {
+  res.json(await CentrosCostoService.regularizarHuerfano(req.body));
+});
+
 app.use('/api/centros-costo', ccRouter);
 
 // Anidamos el API controlada bajo la rama estándar /api
