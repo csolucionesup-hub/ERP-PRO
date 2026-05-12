@@ -23,7 +23,7 @@ import { db, DEFAULT_ACCOUNT_ID } from '../../../database/connection';
 import ConfiguracionService from '../configuracion/ConfiguracionService';
 
 export type EstadoOC =
-  | 'BORRADOR' | 'APROBADA' | 'PAGO' | 'RECEPCION' | 'FACTURACION'
+  | 'BORRADOR' | 'APROBADA' | 'PAGO' | 'EN_TRANSITO' | 'RECEPCION' | 'FACTURACION'
   | 'TERMINADA' | 'CERRADA_SIN_FACTURA' | 'ANULADA';
 
 export type EstadoFactura = 'PENDIENTE' | 'FACTURADA' | 'SIN_FACTURA';
@@ -483,6 +483,18 @@ class OrdenCompraService {
       );
       const oc = ocRows[0];
       if (!oc) throw new Error('OC no encontrada');
+      if (oc.estado === 'EN_TRANSITO') {
+        // EN_TRANSITO requiere pasar por cerrarImportacion() — esa vía
+        // aplica landed cost. Si entráramos por recibir() directo el
+        // inventario quedaría con costo crudo (sin gastos asociados).
+        const err: any = new Error(
+          'Esta OC está EN_TRANSITO. Cerrá la importación desde la pantalla ' +
+          'de cierre para aplicar el landed cost (gastos asociados).'
+        );
+        err.code = 'OC_EN_TRANSITO';
+        err.status = 409;
+        throw err;
+      }
       if (!['PAGO', 'RECEPCION'].includes(oc.estado)) {
         throw new Error(`OC en estado ${oc.estado} no acepta recepción`);
       }
@@ -2252,6 +2264,384 @@ class OrdenCompraService {
     if (recibido <= 0.0001) return 'NO_RECIBIDO';
     if (recibido >= total - 0.0001) return 'RECIBIDO';
     return 'PARCIAL';
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // IMPORTACIONES — landed cost (Perfotools)
+  //
+  // Flujo:
+  //   1. OC ALMACEN al proveedor extranjero (Wuxi). Se aprueba, se paga.
+  //      Cuando está PAGADA → marcarEnTransito() la mueve a EN_TRANSITO.
+  //   2. OCs satélite (FICARGO servicio, FICARGO impuestos, comisión banco)
+  //      se crean como GENERAL y se vinculan a la madre con vincularSatelite().
+  //   3. Cuando llega el barco + se cierran todos los gastos, el usuario abre
+  //      la madre y dispara cerrarImportacion() — el sistema le propone el
+  //      costo landed por ítem (prorrateo por valor) y el usuario confirma
+  //      o ajusta. Recién ahí entra al inventario, con costo correcto.
+  //
+  // Mig 068. No hay tabla "Importacion" — la OC ALMACEN madre ES la
+  // importación; las satélite apuntan a ella vía oc_madre_id.
+  // ═══════════════════════════════════════════════════════════════════════
+
+  /**
+   * Mueve una OC ALMACEN de PAGO/APROBADA a EN_TRANSITO. Solo opt-in:
+   * para compras locales que llegan el mismo día se sigue usando RECEPCION
+   * directo. EN_TRANSITO indica "pagado pero la mercadería NO está acá".
+   */
+  async marcarEnTransito(id_oc: number, id_usuario: number | null = null) {
+    const [rows]: any = await db.query(
+      `SELECT estado, tipo_oc, estado_pago FROM OrdenesCompra WHERE id_oc = ?`,
+      [id_oc]
+    );
+    const oc = rows[0];
+    if (!oc) throw new Error('OC no encontrada');
+    if (oc.tipo_oc !== 'ALMACEN') {
+      throw new Error('Solo OCs tipo ALMACEN pueden marcarse en tránsito');
+    }
+    if (!['PAGO', 'APROBADA'].includes(oc.estado)) {
+      throw new Error(`No se puede marcar en tránsito desde estado ${oc.estado}`);
+    }
+    await db.query(
+      `UPDATE OrdenesCompra SET estado = 'EN_TRANSITO' WHERE id_oc = ?`,
+      [id_oc]
+    );
+    await this._registrarTransicion(
+      id_oc, oc.estado, 'EN_TRANSITO', id_usuario,
+      'Mercadería pagada, en tránsito a Perú'
+    );
+    return { success: true, estado: 'EN_TRANSITO' };
+  }
+
+  /**
+   * Devuelve la OC al flujo normal (saca de EN_TRANSITO). Útil si el usuario
+   * se equivocó al marcarla. No toca inventario porque EN_TRANSITO NUNCA
+   * genera movimiento de inventario.
+   */
+  async desmarcarEnTransito(id_oc: number, id_usuario: number | null = null) {
+    const [rows]: any = await db.query(
+      `SELECT estado, estado_pago FROM OrdenesCompra WHERE id_oc = ?`,
+      [id_oc]
+    );
+    const oc = rows[0];
+    if (!oc) throw new Error('OC no encontrada');
+    if (oc.estado !== 'EN_TRANSITO') {
+      throw new Error('Solo se puede desmarcar OCs en EN_TRANSITO');
+    }
+    // Vuelve a PAGO si está totalmente pagada, sino APROBADA
+    const nuevoEstado: EstadoOC = oc.estado_pago === 'PAGADO' ? 'PAGO' : 'APROBADA';
+    await db.query(`UPDATE OrdenesCompra SET estado = ? WHERE id_oc = ?`, [nuevoEstado, id_oc]);
+    await this._registrarTransicion(
+      id_oc, 'EN_TRANSITO', nuevoEstado, id_usuario,
+      'Desmarcada de tránsito'
+    );
+    return { success: true, estado: nuevoEstado };
+  }
+
+  /**
+   * Vincula una OC satélite (GENERAL típico: flete, desaduanaje, impuestos)
+   * a una OC ALMACEN madre. Los gastos de la satélite van a contar como
+   * landed al cerrar la importación.
+   */
+  async vincularSatelite(id_oc_satelite: number, id_oc_madre: number, id_usuario: number | null = null) {
+    if (id_oc_satelite === id_oc_madre) {
+      throw new Error('Una OC no puede ser su propia madre');
+    }
+    const [rowsSat]: any = await db.query(
+      `SELECT id_oc, tipo_oc, oc_madre_id FROM OrdenesCompra WHERE id_oc = ?`,
+      [id_oc_satelite]
+    );
+    const sat = rowsSat[0];
+    if (!sat) throw new Error('OC satélite no encontrada');
+    if (sat.tipo_oc === 'ALMACEN') {
+      throw new Error('Una OC ALMACEN no puede ser satélite (solo madre)');
+    }
+    const [rowsMadre]: any = await db.query(
+      `SELECT id_oc, tipo_oc, estado FROM OrdenesCompra WHERE id_oc = ?`,
+      [id_oc_madre]
+    );
+    const madre = rowsMadre[0];
+    if (!madre) throw new Error('OC madre no encontrada');
+    if (madre.tipo_oc !== 'ALMACEN') {
+      throw new Error('La madre debe ser tipo ALMACEN');
+    }
+    if (madre.estado === 'TERMINADA' || madre.estado === 'ANULADA') {
+      throw new Error('No se puede vincular a una OC madre cerrada/anulada');
+    }
+
+    await db.query(
+      `UPDATE OrdenesCompra SET oc_madre_id = ? WHERE id_oc = ?`,
+      [id_oc_madre, id_oc_satelite]
+    );
+    // Nota: no se registra en OrdenCompraHistorial porque no es transición
+    // de estado, solo metadata. El vínculo se ve en la columna oc_madre_id.
+    void id_usuario;
+    return { success: true };
+  }
+
+  /**
+   * Desvincula una OC satélite de su madre. Si la madre ya cerró la
+   * importación (landed_costed_at NOT NULL), no se puede desvincular —
+   * habría que reabrir el costeo, fuera de scope MVP.
+   */
+  async desvincularSatelite(id_oc_satelite: number, id_usuario: number | null = null) {
+    const [rows]: any = await db.query(
+      `SELECT s.oc_madre_id, m.landed_costed_at
+       FROM OrdenesCompra s
+       LEFT JOIN OrdenesCompra m ON m.id_oc = s.oc_madre_id
+       WHERE s.id_oc = ?`,
+      [id_oc_satelite]
+    );
+    const r = rows[0];
+    if (!r) throw new Error('OC no encontrada');
+    if (!r.oc_madre_id) throw new Error('Esta OC no tiene madre asignada');
+    if (r.landed_costed_at) {
+      throw new Error('La importación ya cerró con landed cost — no se puede desvincular');
+    }
+    await db.query(
+      `UPDATE OrdenesCompra SET oc_madre_id = NULL WHERE id_oc = ?`,
+      [id_oc_satelite]
+    );
+    // Nota: igual que vincular, no es transición de estado.
+    void id_usuario;
+    return { success: true };
+  }
+
+  /**
+   * Devuelve el resumen de una importación: OC madre + items + satélites
+   * con sus totales convertidos a PEN + el costo landed propuesto por ítem
+   * (prorrateo por valor — el ítem que vale más absorbe más gastos).
+   *
+   * El frontend usa este resumen para mostrar la tabla del modal de cierre,
+   * y el usuario puede ajustar manualmente cada precio_landed antes de
+   * confirmar.
+   */
+  async getResumenImportacion(id_oc_madre: number) {
+    const [rowsMadre]: any = await db.query(
+      `SELECT id_oc, nro_oc, tipo_oc, estado, moneda, tipo_cambio, total,
+              landed_costed_at, empresa
+       FROM OrdenesCompra WHERE id_oc = ?`,
+      [id_oc_madre]
+    );
+    const madre = rowsMadre[0];
+    if (!madre) throw new Error('OC madre no encontrada');
+    if (madre.tipo_oc !== 'ALMACEN') {
+      throw new Error('Solo OCs ALMACEN pueden ser madres de importación');
+    }
+    const tcMadre = Number(madre.tipo_cambio) || 1;
+
+    // Items de la madre (productos físicos)
+    const [items]: any = await db.query(
+      `SELECT id_detalle, id_item, descripcion, unidad, cantidad, precio_unitario
+       FROM DetalleOrdenCompra
+       WHERE id_oc = ? AND id_item IS NOT NULL
+       ORDER BY orden, id_detalle`,
+      [id_oc_madre]
+    );
+
+    // Satélites vinculadas (cualquier estado salvo ANULADA)
+    const [satelites]: any = await db.query(
+      `SELECT oc.id_oc, oc.nro_oc, oc.tipo_oc, oc.estado, oc.moneda, oc.tipo_cambio,
+              oc.total, oc.fecha_emision, p.razon_social AS proveedor
+       FROM OrdenesCompra oc
+       LEFT JOIN Proveedores p ON p.id_proveedor = oc.id_proveedor
+       WHERE oc.oc_madre_id = ? AND oc.estado <> 'ANULADA'
+       ORDER BY oc.fecha_emision, oc.id_oc`,
+      [id_oc_madre]
+    );
+
+    // Calcular total de gastos satélite EN PEN
+    let totalGastosPEN = 0;
+    const satelitesConPEN = satelites.map((s: any) => {
+      const tcSat = Number(s.tipo_cambio) || 1;
+      const totalPEN = s.moneda === 'USD' ? Number(s.total) * tcSat : Number(s.total);
+      totalGastosPEN += totalPEN;
+      return { ...s, total_pen: Number(totalPEN.toFixed(2)) };
+    });
+
+    // Total de la madre EN PEN (valor base sin gastos)
+    const totalMadrePEN = madre.moneda === 'USD'
+      ? Number(madre.total) * tcMadre
+      : Number(madre.total);
+
+    // Prorrateo por valor: cada ítem absorbe gastos en proporción a su valor
+    const itemsConLanded = items.map((it: any) => {
+      const valorBaseUnit = Number(it.precio_unitario);
+      const valorBaseUnitPEN = madre.moneda === 'USD' ? valorBaseUnit * tcMadre : valorBaseUnit;
+      const valorTotalLineaPEN = valorBaseUnitPEN * Number(it.cantidad);
+      const fraccion = totalMadrePEN > 0 ? valorTotalLineaPEN / totalMadrePEN : 0;
+      const gastoAsignadoLinea = totalGastosPEN * fraccion;
+      const gastoAsignadoUnit = Number(it.cantidad) > 0 ? gastoAsignadoLinea / Number(it.cantidad) : 0;
+      const landedUnitPEN = valorBaseUnitPEN + gastoAsignadoUnit;
+
+      return {
+        id_detalle: it.id_detalle,
+        id_item: it.id_item,
+        descripcion: it.descripcion,
+        unidad: it.unidad,
+        cantidad: Number(it.cantidad),
+        precio_unitario_orig: valorBaseUnit,
+        precio_unitario_orig_pen: Number(valorBaseUnitPEN.toFixed(4)),
+        precio_landed_unit_pen_sugerido: Number(landedUnitPEN.toFixed(4)),
+        gasto_asignado_linea_pen: Number(gastoAsignadoLinea.toFixed(2)),
+      };
+    });
+
+    return {
+      madre: {
+        id_oc: madre.id_oc,
+        nro_oc: madre.nro_oc,
+        estado: madre.estado,
+        moneda: madre.moneda,
+        tipo_cambio: tcMadre,
+        empresa: madre.empresa,
+        total: Number(madre.total),
+        total_pen: Number(totalMadrePEN.toFixed(2)),
+        landed_costed_at: madre.landed_costed_at,
+      },
+      satelites: satelitesConPEN,
+      total_gastos_pen: Number(totalGastosPEN.toFixed(2)),
+      total_landed_pen: Number((totalMadrePEN + totalGastosPEN).toFixed(2)),
+      items: itemsConLanded,
+    };
+  }
+
+  /**
+   * Cierra la importación: recibe la OC ALMACEN madre al inventario con
+   * el costo landed por ítem. EN_TRANSITO → RECEPCION (y auto-avance si
+   * corresponde). Snapshot de gastos vinculados queda congelado en
+   * ImportacionGastoSnapshot para auditoría.
+   *
+   * `lineas` es un array con el precio LANDED unitario EN PEN por línea.
+   * El frontend lo construye desde getResumenImportacion (sugeridos) o lo
+   * ajusta manualmente.
+   */
+  async cerrarImportacion(
+    id_oc_madre: number,
+    lineas: Array<{ id_detalle: number; precio_landed_unit_pen: number }>,
+    id_usuario: number | null = null
+  ) {
+    const conn = await db.getConnection();
+    try {
+      await conn.beginTransaction();
+
+      // Lock OC madre
+      const [rowsMadre]: any = await conn.query(
+        `SELECT id_oc, tipo_oc, estado, moneda, tipo_cambio, empresa, landed_costed_at
+         FROM OrdenesCompra WHERE id_oc = ? FOR UPDATE`,
+        [id_oc_madre]
+      );
+      const madre = rowsMadre[0];
+      if (!madre) throw new Error('OC madre no encontrada');
+      if (madre.tipo_oc !== 'ALMACEN') throw new Error('Solo ALMACEN');
+      if (madre.estado !== 'EN_TRANSITO') {
+        throw new Error(`Solo se puede cerrar desde EN_TRANSITO (actual: ${madre.estado})`);
+      }
+      if (madre.landed_costed_at) {
+        throw new Error('Esta importación ya fue cerrada con landed cost');
+      }
+
+      // Validar líneas — todas las del detalle con id_item deben venir en el payload
+      const [detalles]: any = await conn.query(
+        `SELECT id_detalle, id_item, cantidad, precio_unitario
+         FROM DetalleOrdenCompra
+         WHERE id_oc = ? AND id_item IS NOT NULL`,
+        [id_oc_madre]
+      );
+      if (detalles.length === 0) {
+        throw new Error('La OC madre no tiene ítems con id_item — no se puede recibir');
+      }
+      const mapLineas = new Map<number, number>();
+      for (const l of lineas) {
+        mapLineas.set(Number(l.id_detalle), Number(l.precio_landed_unit_pen));
+      }
+
+      // Aplicar recepción + movimiento inventario con costo LANDED
+      for (const det of detalles) {
+        const landedUnit = mapLineas.get(det.id_detalle);
+        if (landedUnit === undefined || landedUnit <= 0) {
+          throw new Error(`Falta precio landed para detalle id=${det.id_detalle}`);
+        }
+        const cant = Number(det.cantidad);
+
+        // Lock + recálculo de costo promedio inventario con landed
+        const [invRows]: any = await conn.query(
+          `SELECT stock_actual, costo_promedio_unitario FROM Inventario WHERE id_item = ? FOR UPDATE`,
+          [det.id_item]
+        );
+        const inv = invRows[0];
+        if (!inv) throw new Error(`Item id=${det.id_item} no existe en catálogo`);
+
+        const stockActual = Number(inv.stock_actual);
+        const cppActual = Number(inv.costo_promedio_unitario);
+        const stockNuevo = stockActual + cant;
+        const cppNuevo = stockNuevo > 0
+          ? (stockActual * cppActual + cant * landedUnit) / stockNuevo
+          : landedUnit;
+
+        await conn.query(
+          `UPDATE Inventario
+              SET stock_actual = ?, costo_promedio_unitario = ?, updated_at = NOW()
+            WHERE id_item = ?`,
+          [stockNuevo, cppNuevo.toFixed(4), det.id_item]
+        );
+
+        await conn.query(
+          `INSERT INTO MovimientosInventario
+            (id_item, referencia_tipo, referencia_id, tipo_movimiento, cantidad, saldo_posterior, fecha_movimiento)
+           VALUES (?, 'ORDEN_COMPRA', ?, 'ENTRADA', ?, ?, NOW())`,
+          [det.id_item, id_oc_madre, cant, stockNuevo]
+        );
+
+        // Actualizar cantidad_recibida de la línea
+        await conn.query(
+          `UPDATE DetalleOrdenCompra SET cantidad_recibida = ? WHERE id_detalle = ?`,
+          [cant, det.id_detalle]
+        );
+      }
+
+      // Snapshot de gastos vinculados — congelar para auditoría
+      const [satelites]: any = await conn.query(
+        `SELECT oc.id_oc, oc.nro_oc, oc.total, oc.moneda, oc.tipo_cambio,
+                p.razon_social AS proveedor
+         FROM OrdenesCompra oc
+         LEFT JOIN Proveedores p ON p.id_proveedor = oc.id_proveedor
+         WHERE oc.oc_madre_id = ? AND oc.estado <> 'ANULADA'`,
+        [id_oc_madre]
+      );
+      for (const s of satelites) {
+        const tc = Number(s.tipo_cambio) || 1;
+        const montoPEN = s.moneda === 'USD' ? Number(s.total) * tc : Number(s.total);
+        await conn.query(
+          `INSERT INTO ImportacionGastoSnapshot
+            (id_oc_madre, id_oc_satelite, concepto, monto_pen, monto_orig, moneda_orig, tipo_cambio)
+           VALUES (?, ?, ?, ?, ?, ?, ?)`,
+          [id_oc_madre, s.id_oc, `${s.nro_oc} — ${s.proveedor || 'Proveedor'}`,
+           montoPEN.toFixed(2), Number(s.total), s.moneda, tc]
+        );
+      }
+
+      // Marcar la OC madre como recibida + timestamp de landed
+      await conn.query(
+        `UPDATE OrdenesCompra
+            SET estado = 'RECEPCION', landed_costed_at = NOW()
+          WHERE id_oc = ?`,
+        [id_oc_madre]
+      );
+
+      await this._checkAutoAvance(conn, id_oc_madre);
+      await conn.commit();
+      await this._registrarTransicion(
+        id_oc_madre, 'EN_TRANSITO', 'RECEPCION', id_usuario,
+        `Importación cerrada con landed cost (${satelites.length} OCs satélite)`
+      );
+
+      return { success: true, estado: 'RECEPCION', satelites_snapshot: satelites.length };
+    } catch (e) {
+      await conn.rollback();
+      throw e;
+    } finally {
+      conn.release();
+    }
   }
 }
 

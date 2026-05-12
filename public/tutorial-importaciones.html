@@ -434,7 +434,7 @@
     <h1>🚢 Cómo registrar una importación</h1>
     <p class="subtitle">Tutorial paso a paso para Perfotools — desde que pagás al proveedor chino hasta que las picas entran al almacén con el costo real (landed cost) en el ERP.</p>
     <div class="meta">
-      <span>📅 Versión 09/05/2026</span>
+      <span>📅 Versión 12/05/2026 (rev 2)</span>
       <span>⏱️ Lectura: 12 min</span>
       <span>🎯 Nivel: principiante</span>
       <span>🏷️ Para: Perfotools (PT)</span>
@@ -534,13 +534,13 @@
       <div class="actor">
         <div class="avatar">⛴️</div>
         <h4>Naviera</h4>
-        <p>El barco que cruza el océano. (Generalmente lo gestiona FICARGO.)</p>
-        <span class="pill yellow" style="margin-top:8px">Dentro de FICARGO</span>
+        <p>El barco que cruza el océano (CMA CGM, MSC, etc.). <strong>No se carga como OC aparte</strong> — FICARGO la incluye en su factura como ítem "Ocean Freight".</p>
+        <span class="pill yellow" style="margin-top:8px">NO se carga sola</span>
       </div>
       <div class="actor">
         <div class="avatar">📋</div>
         <h4>FICARGO</h4>
-        <p>Agente aduanero. Se ocupa del flete + desaduanaje + impuestos.</p>
+        <p>Agente aduanero. Te factura <strong>todo</strong> el paquete logístico (incluyendo naviera, seguro, almacenaje, aduanas) en sus facturas electrónicas.</p>
         <span class="pill yellow" style="margin-top:8px">OC tipo: GENERAL</span>
       </div>
       <div class="actor">
@@ -554,6 +554,11 @@
     <div class="box tip">
       <span class="label">🧩 Idea importante</span>
       En el ERP, <strong>la OC ALMACEN del proveedor chino es la "madre"</strong>. Todas las demás (banco, FICARGO, SUNAT) son "satélites" que se vinculan a esa madre. Al cerrar la importación, los gastos de las satélites se "reparten" entre los productos de la madre.
+    </div>
+
+    <div class="box warn">
+      <span class="label">📦 OJO con la naviera</span>
+      En la práctica de Perfotools <strong>NO cargás la naviera como OC aparte</strong>. FICARGO actúa como agente integral y agrupa el "Ocean Freight" como un ítem más dentro de su factura del servicio logístico. Por eso solo terminás creando 3 OCs por importación: 1 al proveedor chino (madre) + 1 a FICARGO (todo el paquete logístico) + 1 para los impuestos SUNAT. El día que cambies de operador y contrates directo al naviero, ahí sí harías una OC GENERAL separada.
     </div>
   </div>
 </section>
@@ -815,7 +820,7 @@
         </div>
         <input type="checkbox" class="check">
       </div>
-      <p>FICARGO es el agente aduanero. Te emite varias facturas (una por concepto: flete, seguro, desconsolidación, etc.). Las podés cargar todas en una sola OC con varios ítems.</p>
+      <p>FICARGO es el agente aduanero. Te emite varias facturas electrónicas (F002-XXXX), <strong>una por concepto agrupado</strong>. Importante: el <strong>Ocean Freight de la naviera (CMA CGM, MSC, etc.) está incluido como un ítem dentro de esta OC</strong> — no se carga aparte. FICARGO actúa como intermediario integral. Las cargás todas en una sola OC con varios ítems:</p>
       <div class="mock">
         <div class="mock-bar">📋 OC GENERAL — FICARGO servicio</div>
         <div class="field"><span class="lbl">Empresa</span><span class="val">PT</span></div>
