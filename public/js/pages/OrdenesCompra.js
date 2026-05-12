@@ -20,6 +20,7 @@ const ESTADO_COLOR = {
   BORRADOR:           { bg: '#f3f4f6', fg: '#374151', icon: '📝', label: 'Borrador' },
   APROBADA:           { bg: '#dbeafe', fg: '#1e3a8a', icon: '✅', label: 'Aprobada' },
   PAGO:               { bg: '#fee2e2', fg: '#991b1b', icon: '💰', label: 'Pago' },
+  EN_TRANSITO:        { bg: '#e0f2fe', fg: '#075985', icon: '🚢', label: 'En tránsito' },
   RECEPCION:          { bg: '#fef9c3', fg: '#713f12', icon: '📦', label: 'Recepción' },
   FACTURACION:        { bg: '#fef3c7', fg: '#854d0e', icon: '🧾', label: 'Facturación / RH' },
   TERMINADA:          { bg: '#dcfce7', fg: '#166534', icon: '✓', label: 'Terminada' },
@@ -28,7 +29,7 @@ const ESTADO_COLOR = {
 };
 
 const COLUMNAS_KANBAN_PRINCIPALES = [
-  'BORRADOR','APROBADA','PAGO','RECEPCION','FACTURACION','TERMINADA'
+  'BORRADOR','APROBADA','PAGO','EN_TRANSITO','RECEPCION','FACTURACION','TERMINADA'
 ];
 const COLUMNAS_KANBAN_TERMINALES = ['CERRADA_SIN_FACTURA','ANULADA'];
 
@@ -416,7 +417,200 @@ window.ensureOCModal = ensureOCModal;
 // a OC.verOC sin haber montado el TabBar de OrdenesCompra). Las function
 // declarations se hoistean, así que las referencias funcionan aunque estén
 // definidas más abajo en el archivo.
-window.OC = { nuevaOC, verOC, aprobar, aprobarParaPago, listoParaFacturar, marcarCredito, subirFactura, eliminarFactura, subirVoucherPago, eliminarVoucherPago, firmar, desfirmar, agregarNota, borrarNota, recibir, facturar, registrarPago, cerrarSinFactura, cerrarPagaSinFactura, asociarFactura, anular, reactivar, eliminarOC, mandarABorrador, editar, editarFecha, editarMetadata: editarMetadataOC, descargarPDF, reporteROC, descargarExcel: () => api.ordenesCompra.descargarExcel().catch(e => showError(e.message || 'Error descargando Excel')) };
+window.OC = { nuevaOC, verOC, aprobar, aprobarParaPago, listoParaFacturar, marcarCredito, subirFactura, eliminarFactura, subirVoucherPago, eliminarVoucherPago, firmar, desfirmar, agregarNota, borrarNota, recibir, facturar, registrarPago, cerrarSinFactura, cerrarPagaSinFactura, asociarFactura, anular, reactivar, eliminarOC, mandarABorrador, editar, editarFecha, editarMetadata: editarMetadataOC, descargarPDF, reporteROC, marcarEnTransito, desmarcarTransito, cerrarImportacion, vincularMadre, desvincularMadre, descargarExcel: () => api.ordenesCompra.descargarExcel().catch(e => showError(e.message || 'Error descargando Excel')) };
+
+// ═════════════════════════════════════════════════════════════════════════
+// IMPORTACIONES — landed cost (mig 068)
+// ═════════════════════════════════════════════════════════════════════════
+
+async function marcarEnTransito(id_oc, nro) {
+  if (!confirm(`¿Marcar ${nro} como EN TRÁNSITO?\n\nLa mercadería NO va a entrar al inventario hasta que cierres la importación con todos los gastos asociados (flete, desaduanaje, impuestos).`)) return;
+  try {
+    await api.ordenesCompra.marcarEnTransito(id_oc);
+    showSuccess('OC marcada en tránsito');
+    if (document.getElementById('oc-modal')?.innerHTML) verOC(id_oc);
+    if (window.refreshModule) window.refreshModule();
+  } catch (e) { showError(e.message || 'Error'); }
+}
+
+async function desmarcarTransito(id_oc, nro) {
+  if (!confirm(`¿Desmarcar ${nro} del tránsito?\n\nVuelve al estado anterior (PAGO o APROBADA). No hubo ningún cambio en inventario.`)) return;
+  try {
+    await api.ordenesCompra.desmarcarTransito(id_oc);
+    showSuccess('OC desmarcada');
+    if (document.getElementById('oc-modal')?.innerHTML) verOC(id_oc);
+    if (window.refreshModule) window.refreshModule();
+  } catch (e) { showError(e.message || 'Error'); }
+}
+
+async function vincularMadre(id_oc, nro) {
+  // Pickeamos OCs ALMACEN en EN_TRANSITO de la misma empresa idealmente.
+  // Por simplicidad, listamos todas las EN_TRANSITO y el usuario elige.
+  try {
+    const madres = await api.ordenesCompra.list({ estado: 'EN_TRANSITO' });
+    const candidatas = (madres || []).filter(m => m.tipo_oc === 'ALMACEN');
+    if (!candidatas.length) {
+      showError('No hay OCs ALMACEN en tránsito para vincular. Marcá primero la OC madre como "🚢 En tránsito".');
+      return;
+    }
+    const opciones = candidatas.map(m => `${m.id_oc} — ${m.nro_oc} (${m.proveedor_nombre || 'sin proveedor'})`).join('\n');
+    const resp = prompt(`Vincular ${nro} a importación madre.\n\nOpciones disponibles:\n${opciones}\n\nIngresá el ID de la OC madre:`);
+    if (!resp) return;
+    const idMadre = Number(resp.trim());
+    if (!Number.isFinite(idMadre) || idMadre <= 0) { showError('ID inválido'); return; }
+    await api.ordenesCompra.vincularMadre(id_oc, idMadre);
+    showSuccess(`Vinculada a OC madre #${idMadre}`);
+    if (document.getElementById('oc-modal')?.innerHTML) verOC(id_oc);
+    if (window.refreshModule) window.refreshModule();
+  } catch (e) { showError(e.message || 'Error'); }
+}
+
+async function desvincularMadre(id_oc, nro) {
+  if (!confirm(`¿Desvincular ${nro} de su importación madre?\n\nSus gastos dejarán de formar parte del landed cost.`)) return;
+  try {
+    await api.ordenesCompra.desvincularMadre(id_oc);
+    showSuccess('Desvinculada');
+    if (document.getElementById('oc-modal')?.innerHTML) verOC(id_oc);
+    if (window.refreshModule) window.refreshModule();
+  } catch (e) { showError(e.message || 'Error'); }
+}
+
+async function cerrarImportacion(id_oc, nro) {
+  // Trae el resumen de la importación (madre + satélites + prorrateo sugerido).
+  let resumen;
+  try {
+    resumen = await api.ordenesCompra.importacionResumen(id_oc);
+  } catch (e) {
+    showError(e.message || 'Error obteniendo resumen de importación');
+    return;
+  }
+  if (!resumen?.items?.length) {
+    showError('Esta OC no tiene ítems con id_item asignado — no se puede recibir al inventario.');
+    return;
+  }
+
+  const ov = document.createElement('div');
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9999;display:flex;align-items:flex-start;justify-content:center;padding:30px 20px;overflow-y:auto';
+
+  const filasSat = resumen.satelites.length
+    ? resumen.satelites.map(s => `
+        <tr style="border-bottom:1px solid #e5e7eb">
+          <td style="padding:6px 8px;font-size:11px">${s.nro_oc}</td>
+          <td style="padding:6px 8px;font-size:11px">${s.proveedor || '—'}</td>
+          <td style="padding:6px 8px;font-size:11px;text-align:right">${s.moneda} ${Number(s.total).toFixed(2)}</td>
+          <td style="padding:6px 8px;font-size:11px;text-align:right;font-weight:600">S/ ${Number(s.total_pen).toFixed(2)}</td>
+        </tr>`).join('')
+    : '<tr><td colspan="4" style="padding:14px;text-align:center;color:#9ca3af;font-size:12px;font-style:italic">⚠️ No hay OCs satélite vinculadas. El cierre va a usar SOLO el costo del proveedor (sin gastos adicionales).</td></tr>';
+
+  const filasItems = resumen.items.map(it => `
+    <tr style="border-bottom:1px solid #e5e7eb" data-id-detalle="${it.id_detalle}">
+      <td style="padding:8px;font-size:12px">${it.descripcion}</td>
+      <td style="padding:8px;font-size:11px;text-align:center">${it.cantidad} ${it.unidad || ''}</td>
+      <td style="padding:8px;font-size:11px;text-align:right;color:#6b7280">S/ ${Number(it.precio_unitario_orig_pen).toFixed(4)}</td>
+      <td style="padding:6px 8px;text-align:right">
+        <input type="number" step="0.0001" min="0" value="${Number(it.precio_landed_unit_pen_sugerido).toFixed(4)}"
+               data-landed-input
+               style="width:110px;padding:5px;border:1px solid #d1d5db;border-radius:4px;font-size:12px;text-align:right;background:#ecfdf5">
+      </td>
+      <td style="padding:8px;font-size:11px;text-align:right;color:#6b7280" data-subtotal-cell>S/ ${(Number(it.precio_landed_unit_pen_sugerido) * Number(it.cantidad)).toFixed(2)}</td>
+    </tr>`).join('');
+
+  ov.innerHTML = `
+    <div style="background:#fff;border-radius:8px;width:min(900px,95vw);box-shadow:0 20px 60px rgba(0,0,0,.3);max-height:calc(100vh - 60px);overflow-y:auto;position:relative">
+      <button data-close type="button" title="Cerrar sin guardar" aria-label="Cerrar" style="position:absolute;top:14px;right:14px;background:#fff;border:1px solid #d1d5db;border-radius:50%;width:30px;height:30px;font-size:18px;cursor:pointer;color:#64748b;z-index:10;display:flex;align-items:center;justify-content:center;line-height:1">×</button>
+
+      <div style="padding:24px">
+        <h3 style="margin:0 0 8px;font-size:18px">🚛 Cerrar importación ${nro}</h3>
+        <p style="margin:0 0 16px;font-size:12px;color:#6b7280">El sistema sumó los gastos de las OCs satélite y los prorrateó por valor sobre los productos. Podés ajustar cada precio landed manualmente.</p>
+
+        <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px;padding:12px;margin-bottom:14px;font-size:12px">
+          <div style="font-weight:600;margin-bottom:8px">Resumen</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
+            <div>Proveedor (madre): <strong>${resumen.madre.moneda} ${Number(resumen.madre.total).toFixed(2)}</strong><br><span style="color:#6b7280;font-size:11px">≈ S/ ${Number(resumen.madre.total_pen).toFixed(2)}</span></div>
+            <div>Gastos satélite: <strong>S/ ${Number(resumen.total_gastos_pen).toFixed(2)}</strong><br><span style="color:#6b7280;font-size:11px">${resumen.satelites.length} OC(s) vinculadas</span></div>
+            <div>TOTAL LANDED: <strong style="color:#059669">S/ ${Number(resumen.total_landed_pen).toFixed(2)}</strong></div>
+          </div>
+        </div>
+
+        <details ${resumen.satelites.length ? '' : 'open'} style="margin-bottom:14px;border:1px solid #e5e7eb;border-radius:6px;padding:8px 12px">
+          <summary style="cursor:pointer;font-size:12px;font-weight:600">📋 Detalle de OCs satélite (${resumen.satelites.length})</summary>
+          <table style="width:100%;border-collapse:collapse;margin-top:8px">
+            <thead><tr style="background:#f3f4f6">
+              <th style="padding:6px 8px;text-align:left;font-size:10px;text-transform:uppercase">N° OC</th>
+              <th style="padding:6px 8px;text-align:left;font-size:10px;text-transform:uppercase">Proveedor</th>
+              <th style="padding:6px 8px;text-align:right;font-size:10px;text-transform:uppercase">Total original</th>
+              <th style="padding:6px 8px;text-align:right;font-size:10px;text-transform:uppercase">Total PEN</th>
+            </tr></thead>
+            <tbody>${filasSat}</tbody>
+          </table>
+        </details>
+
+        <table style="width:100%;border-collapse:collapse;margin-bottom:16px">
+          <thead><tr style="background:#f3f4f6">
+            <th style="padding:8px;text-align:left;font-size:11px;text-transform:uppercase">Ítem</th>
+            <th style="padding:8px;text-align:center;font-size:11px;text-transform:uppercase">Cantidad</th>
+            <th style="padding:8px;text-align:right;font-size:11px;text-transform:uppercase">P. Orig PEN</th>
+            <th style="padding:8px;text-align:right;font-size:11px;text-transform:uppercase">P. Landed PEN ✎</th>
+            <th style="padding:8px;text-align:right;font-size:11px;text-transform:uppercase">Subtotal</th>
+          </tr></thead>
+          <tbody id="imp-items-tbody">${filasItems}</tbody>
+          <tfoot>
+            <tr style="background:#f0fdf4;border-top:2px solid #16a34a">
+              <td colspan="4" style="padding:10px;text-align:right;font-weight:700;font-size:12px">TOTAL LANDED al inventario:</td>
+              <td style="padding:10px;text-align:right;font-weight:700;font-size:13px;color:#059669" id="imp-total-cell">S/ 0.00</td>
+            </tr>
+          </tfoot>
+        </table>
+
+        <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:6px;padding:10px 12px;margin-bottom:16px;font-size:11px;color:#78350f">
+          ⚠️ Al confirmar: los productos entran al inventario con el precio landed indicado, la OC madre pasa a RECEPCION, y se congela un snapshot de los gastos vinculados. <strong>Esta acción no se puede deshacer.</strong>
+        </div>
+
+        <div style="display:flex;justify-content:flex-end;gap:10px">
+          <button data-close type="button" style="padding:10px 18px;background:#fff;color:#374151;border:1px solid #d1d5db;border-radius:6px;cursor:pointer">Cancelar</button>
+          <button id="imp-confirmar" type="button" style="padding:10px 22px;background:#059669;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:700">✓ Confirmar y recibir al inventario</button>
+        </div>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(ov);
+  ov.querySelectorAll('[data-close]').forEach(b => b.onclick = () => ov.remove());
+
+  // Recalcular subtotales + total al editar cualquier input landed.
+  const recalcular = () => {
+    let total = 0;
+    ov.querySelectorAll('tbody#imp-items-tbody tr').forEach(tr => {
+      const input = tr.querySelector('[data-landed-input]');
+      const cantidad = Number(tr.querySelectorAll('td')[1].textContent.trim().split(' ')[0]) || 0;
+      const landed = Number(input.value) || 0;
+      const subtotal = cantidad * landed;
+      total += subtotal;
+      tr.querySelector('[data-subtotal-cell]').textContent = 'S/ ' + subtotal.toFixed(2);
+    });
+    ov.querySelector('#imp-total-cell').textContent = 'S/ ' + total.toFixed(2);
+  };
+  ov.querySelectorAll('[data-landed-input]').forEach(inp => inp.addEventListener('input', recalcular));
+  recalcular();
+
+  // Submit
+  ov.querySelector('#imp-confirmar').onclick = async () => {
+    const lineas = [];
+    ov.querySelectorAll('tbody#imp-items-tbody tr').forEach(tr => {
+      const id_detalle = Number(tr.dataset.idDetalle);
+      const precio_landed_unit_pen = Number(tr.querySelector('[data-landed-input]').value);
+      lineas.push({ id_detalle, precio_landed_unit_pen });
+    });
+    try {
+      await api.ordenesCompra.cerrarImportacion(id_oc, lineas);
+      showSuccess('Importación cerrada — productos en inventario con costo landed');
+      ov.remove();
+      if (document.getElementById('oc-modal')?.innerHTML) verOC(id_oc);
+      if (window.refreshModule) window.refreshModule();
+    } catch (e) {
+      showError(e.message || 'Error cerrando importación');
+    }
+  };
+}
 
 // Editar SOLO la fecha de emisión (corregir data histórica) — disponible en
 // cualquier estado salvo ANULADA. No toca estado/items/totales/correlativo.
@@ -656,6 +850,7 @@ function previewListadoOC() {
     BORRADOR:            { bg: '#fef3c7', fg: '#92400e' },
     APROBADA:            { bg: '#dbeafe', fg: '#1e40af' },
     PAGO:                { bg: '#fee2e2', fg: '#991b1b' },
+    EN_TRANSITO:         { bg: '#e0f2fe', fg: '#075985' },
     RECEPCION:           { bg: '#fef9c3', fg: '#854d0e' },
     FACTURACION:         { bg: '#fef3c7', fg: '#92400e' },
     TERMINADA:           { bg: '#d1fae5', fg: '#065f46' },
@@ -1204,6 +1399,19 @@ async function verOC(id_oc) {
             🔗 <strong>Vinculada a:</strong> ${oc.cotizacion_nro} — ${oc.cotizacion_cliente || ''}${oc.cotizacion_proyecto ? ' · ' + oc.cotizacion_proyecto : ''}
           </div>` : ''}
 
+          ${oc.oc_madre_id ? `
+          <div style="background:#f0f9ff;border:1px solid #bae6fd;color:#075985;padding:10px 14px;border-radius:6px;margin-bottom:16px;font-size:13px">
+            🚢 <strong>Satélite de importación:</strong> sus gastos forman parte del landed cost de la OC madre #${oc.oc_madre_id}.
+          </div>` : ''}
+          ${oc.estado === 'EN_TRANSITO' ? `
+          <div style="background:#f0f9ff;border:1px solid #bae6fd;color:#075985;padding:10px 14px;border-radius:6px;margin-bottom:16px;font-size:13px">
+            🚢 <strong>En tránsito:</strong> mercadería pagada al proveedor pero todavía NO entra al inventario. Vinculá las OCs satélite (flete, desaduanaje, impuestos) y después usá "Cerrar importación" para aplicar el landed cost.
+          </div>` : ''}
+          ${oc.landed_costed_at ? `
+          <div style="background:#ecfdf5;border:1px solid #a7f3d0;color:#065f46;padding:10px 14px;border-radius:6px;margin-bottom:16px;font-size:13px">
+            ✅ <strong>Recibida con landed cost:</strong> el inventario refleja proveedor + gastos asociados prorrateados. Cerrada el ${fmtDate(oc.landed_costed_at)}.
+          </div>` : ''}
+
           <h3 style="font-size:14px;margin-bottom:10px">Líneas</h3>
           <table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:16px">
             <thead><tr style="background:#f9fafb;border-bottom:2px solid #d9dad9">
@@ -1508,6 +1716,28 @@ function accionesSegunEstado(oc) {
   // Recepción NO va acá: vive en RECEPCION.
   if (oc.estado === 'PAGO') {
     btns.push(`<button onclick="OC.registrarPago(${oc.id_oc}, '${nroSafe}')" title="Registrar el pago al proveedor. Soporta pago total o parcial. Genera Tx EGRESO + movimiento bancario por el monto pagado. La OC pasa a RECEPCIÓN (con badge de saldo pendiente si fue parcial)." style="padding:10px 18px;background:#15803d;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">💰 Registrar pago</button>`);
+  }
+  // Importación: marcar OC ALMACEN como EN_TRANSITO (pagada pero la mercadería
+  // aún no llegó). Solo aparece en APROBADA o PAGO, y solo para ALMACEN.
+  // Recomendado para Perfotools cuando la mercadería viene de China — evita
+  // recibir al inventario con costo crudo del proveedor.
+  if (oc.tipo_oc === 'ALMACEN' && ['APROBADA', 'PAGO'].includes(oc.estado)) {
+    btns.push(`<button onclick="OC.marcarEnTransito(${oc.id_oc}, '${nroSafe}')" title="Marcar la mercadería como EN TRÁNSITO (importación pagada al proveedor, todavía no llegó al país). No entra al inventario hasta cerrar la importación con los gastos asociados (flete, desaduanaje, impuestos). Usá esto para importaciones de Perfotools." style="padding:10px 18px;background:#0ea5e9;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">🚢 Marcar en tránsito</button>`);
+  }
+  // EN_TRANSITO → 2 acciones: Cerrar importación (recibe al inventario con
+  // landed cost) o Desmarcar tránsito (volver a PAGO/APROBADA si fue error).
+  if (oc.estado === 'EN_TRANSITO') {
+    btns.push(`<button onclick="OC.cerrarImportacion(${oc.id_oc}, '${nroSafe}')" title="Cerrar la importación: suma los gastos satélite vinculados (flete, desaduanaje, impuestos), prorratea sobre los productos, y recibe al inventario con el costo landed correcto. Sólo se puede hacer una vez por importación." style="padding:10px 18px;background:#059669;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">🚛 Cerrar importación</button>`);
+    btns.push(`<button onclick="OC.desmarcarTransito(${oc.id_oc}, '${nroSafe}')" title="Volver al estado anterior (PAGO/APROBADA). Útil si marcaste por error." style="padding:10px 18px;background:#fff;color:#374151;border:1px solid #d1d5db;border-radius:6px;cursor:pointer;font-weight:600">↩️ Desmarcar tránsito</button>`);
+  }
+  // Vincular/desvincular a OC madre — solo para OCs satélite (GENERAL típico:
+  // flete, desaduanaje, impuestos). No para ALMACEN (esas son MADRES, no satélites).
+  if (oc.tipo_oc !== 'ALMACEN' && !['ANULADA', 'TERMINADA', 'CERRADA_SIN_FACTURA'].includes(oc.estado)) {
+    if (oc.oc_madre_id) {
+      btns.push(`<button onclick="OC.desvincularMadre(${oc.id_oc}, '${nroSafe}')" title="Desvincular esta OC de su importación madre. Sus gastos dejarán de prorratearse a productos. Sólo se puede hacer si la madre todavía no cerró la importación." style="padding:10px 18px;background:#fff;color:#374151;border:1px solid #d1d5db;border-radius:6px;cursor:pointer;font-weight:600">🔗 Desvincular (madre #${oc.oc_madre_id})</button>`);
+    } else {
+      btns.push(`<button onclick="OC.vincularMadre(${oc.id_oc}, '${nroSafe}')" title="Vincular esta OC como satélite de una importación (OC ALMACEN en tránsito). Sus gastos van a formar parte del landed cost del producto." style="padding:10px 18px;background:#fff;color:#374151;border:1px solid #d1d5db;border-radius:6px;cursor:pointer;font-weight:600">🔗 Vincular a importación</button>`);
+    }
   }
   // RECEPCION → permite registrar recepción de mercadería/servicio.
   // Solo si todavía hay algo pendiente de recibir (estado_recepcion !== RECIBIDO).
