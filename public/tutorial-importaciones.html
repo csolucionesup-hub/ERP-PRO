@@ -1,0 +1,1315 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tutorial: Cómo registrar una importación · Perfotools</title>
+<style>
+  :root {
+    --ink: #0f172a;
+    --ink-soft: #475569;
+    --muted: #94a3b8;
+    --paper: #ffffff;
+    --paper-2: #f8fafc;
+    --paper-3: #f1f5f9;
+    --line: #e2e8f0;
+    --brand: #0ea5e9;
+    --brand-2: #0284c7;
+    --ok: #16a34a;
+    --warn: #f59e0b;
+    --danger: #dc2626;
+    --gold: #eab308;
+    --violet: #7c3aed;
+    --radius: 14px;
+    --shadow: 0 1px 3px rgba(15,23,42,.06), 0 8px 24px rgba(15,23,42,.06);
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    color: var(--ink);
+    background: var(--paper-2);
+    line-height: 1.6;
+    font-size: 16px;
+  }
+  .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+
+  /* Header */
+  header.hero {
+    background: linear-gradient(135deg, #0f172a 0%, #1e293b 60%, #0c4a6e 100%);
+    color: white;
+    padding: 60px 24px 40px;
+    position: relative;
+    overflow: hidden;
+  }
+  header.hero::before {
+    content: '';
+    position: absolute; top: -100px; right: -100px;
+    width: 400px; height: 400px;
+    background: radial-gradient(circle, rgba(14,165,233,.3) 0%, transparent 70%);
+  }
+  header.hero h1 {
+    font-size: 42px;
+    margin: 0 0 10px;
+    line-height: 1.1;
+    font-weight: 800;
+    letter-spacing: -1px;
+    position: relative;
+  }
+  header.hero .subtitle {
+    font-size: 18px;
+    opacity: .85;
+    margin: 0 0 20px;
+    max-width: 720px;
+    position: relative;
+  }
+  header.hero .meta {
+    display: flex; flex-wrap: wrap; gap: 12px; position: relative;
+  }
+  header.hero .meta span {
+    background: rgba(255,255,255,.1);
+    padding: 6px 14px; border-radius: 20px;
+    font-size: 13px; backdrop-filter: blur(4px);
+  }
+
+  /* TOC */
+  nav.toc {
+    background: white;
+    padding: 18px 24px;
+    border-bottom: 1px solid var(--line);
+    position: sticky; top: 0; z-index: 100;
+    box-shadow: 0 1px 4px rgba(0,0,0,.04);
+  }
+  nav.toc ol {
+    list-style: none; padding: 0; margin: 0;
+    display: flex; flex-wrap: wrap; gap: 8px;
+    counter-reset: tocnum;
+  }
+  nav.toc a {
+    color: var(--ink-soft);
+    text-decoration: none;
+    font-size: 13px;
+    padding: 6px 12px;
+    border-radius: 20px;
+    background: var(--paper-3);
+    transition: all .15s;
+    font-weight: 500;
+    display: inline-flex; align-items: center; gap: 6px;
+  }
+  nav.toc a:hover { background: var(--ink); color: white; }
+  nav.toc li::before {
+    counter-increment: tocnum;
+  }
+
+  /* Sections */
+  section {
+    background: white;
+    padding: 50px 24px;
+    border-bottom: 1px solid var(--line);
+  }
+  section.alt { background: var(--paper-3); }
+  section h2 {
+    font-size: 30px;
+    margin: 0 0 12px;
+    letter-spacing: -.5px;
+    line-height: 1.2;
+    font-weight: 800;
+  }
+  section h2 .num {
+    display: inline-flex;
+    width: 44px; height: 44px;
+    border-radius: 12px;
+    background: var(--ink); color: white;
+    align-items: center; justify-content: center;
+    font-size: 22px; font-weight: 800;
+    margin-right: 12px;
+    vertical-align: middle;
+  }
+  section .lead {
+    font-size: 17px;
+    color: var(--ink-soft);
+    max-width: 760px;
+    margin: 0 0 30px;
+  }
+
+  /* Cards */
+  .grid { display: grid; gap: 18px; }
+  .grid-2 { grid-template-columns: repeat(2, 1fr); }
+  .grid-3 { grid-template-columns: repeat(3, 1fr); }
+  .grid-4 { grid-template-columns: repeat(4, 1fr); }
+  @media (max-width: 800px) {
+    .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; }
+    header.hero h1 { font-size: 30px; }
+    section h2 { font-size: 24px; }
+  }
+
+  .card {
+    background: white;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 24px;
+    box-shadow: var(--shadow);
+  }
+  .card h3 { margin: 0 0 8px; font-size: 18px; font-weight: 700; }
+  .card .icon-circle {
+    width: 48px; height: 48px;
+    border-radius: 50%;
+    background: var(--paper-3);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 24px; margin-bottom: 12px;
+  }
+
+  /* Tip / Warning boxes */
+  .box {
+    border-radius: 10px;
+    padding: 16px 20px;
+    margin: 16px 0;
+    border-left: 4px solid;
+    font-size: 14px;
+  }
+  .box.tip { background: #ecfeff; border-color: #06b6d4; color: #155e75; }
+  .box.warn { background: #fffbeb; border-color: var(--warn); color: #78350f; }
+  .box.danger { background: #fef2f2; border-color: var(--danger); color: #7f1d1d; }
+  .box.ok { background: #f0fdf4; border-color: var(--ok); color: #14532d; }
+  .box strong { font-weight: 700; }
+  .box .label { font-weight: 800; text-transform: uppercase; font-size: 11px; letter-spacing: 1px; margin-bottom: 4px; display: block; }
+
+  /* Step card */
+  .step {
+    background: white;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 28px;
+    margin-bottom: 20px;
+    box-shadow: var(--shadow);
+    position: relative;
+  }
+  .step .step-head {
+    display: flex; align-items: center; gap: 16px;
+    margin-bottom: 18px;
+  }
+  .step .step-num {
+    width: 56px; height: 56px;
+    border-radius: 16px;
+    background: linear-gradient(135deg, var(--brand), var(--brand-2));
+    color: white;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 26px; font-weight: 800;
+    box-shadow: 0 4px 12px rgba(14,165,233,.3);
+    flex-shrink: 0;
+  }
+  .step .step-title { flex: 1; }
+  .step h3 { margin: 0 0 4px; font-size: 22px; font-weight: 800; letter-spacing: -.3px; }
+  .step .when { font-size: 13px; color: var(--ink-soft); }
+  .step .when::before { content: '⏰  '; }
+  details summary { cursor: pointer; }
+  .step input.check {
+    width: 22px; height: 22px;
+    cursor: pointer;
+    accent-color: var(--ok);
+  }
+
+  /* Mock UI */
+  .mock {
+    background: var(--paper-3);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 18px;
+    margin: 14px 0;
+    font-family: 'SF Mono', Monaco, monospace;
+    font-size: 12px;
+  }
+  .mock .mock-bar {
+    background: var(--ink);
+    color: white;
+    padding: 6px 10px;
+    border-radius: 4px 4px 0 0;
+    margin: -18px -18px 14px;
+    font-size: 11px;
+    font-family: -apple-system, system-ui, sans-serif;
+    font-weight: 600;
+  }
+  .mock .field {
+    display: grid;
+    grid-template-columns: 130px 1fr;
+    gap: 8px;
+    padding: 6px 0;
+    border-bottom: 1px dashed #cbd5e1;
+    align-items: center;
+  }
+  .mock .field:last-child { border-bottom: none; }
+  .mock .field .lbl { color: var(--ink-soft); font-size: 11px; text-transform: uppercase; letter-spacing: .5px; }
+  .mock .field .val { font-weight: 600; }
+  .mock .field .val.input { background: white; padding: 4px 8px; border-radius: 4px; border: 1px solid var(--line); }
+  .mock .btn-mock {
+    display: inline-block; background: var(--ok); color: white;
+    padding: 8px 16px; border-radius: 6px; font-weight: 600; margin-top: 12px;
+    font-family: -apple-system, system-ui, sans-serif; font-size: 12px;
+  }
+  .mock .btn-mock.brand { background: var(--brand); }
+
+  /* Cast / characters */
+  .cast {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 14px;
+  }
+  .actor {
+    background: white;
+    border: 2px solid var(--line);
+    border-radius: var(--radius);
+    padding: 18px;
+    text-align: center;
+    transition: all .2s;
+  }
+  .actor:hover {
+    border-color: var(--brand);
+    transform: translateY(-4px);
+    box-shadow: 0 10px 30px rgba(14,165,233,.15);
+  }
+  .actor .avatar {
+    width: 64px; height: 64px;
+    border-radius: 50%;
+    background: var(--paper-3);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 32px; margin: 0 auto 10px;
+  }
+  .actor h4 { margin: 0 0 4px; font-size: 14px; }
+  .actor p { margin: 0; font-size: 12px; color: var(--ink-soft); }
+
+  /* Timeline SVG container */
+  .timeline-wrap {
+    background: white;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 30px 20px;
+    overflow-x: auto;
+  }
+
+  /* Math comparison */
+  .math-vs {
+    display: grid; grid-template-columns: 1fr auto 1fr;
+    gap: 18px; align-items: stretch;
+    margin: 18px 0;
+  }
+  @media (max-width: 800px) {
+    .math-vs { grid-template-columns: 1fr; }
+  }
+  .math-vs .side {
+    border-radius: var(--radius);
+    padding: 20px;
+    border: 2px solid;
+  }
+  .math-vs .wrong { background: #fef2f2; border-color: #fecaca; }
+  .math-vs .right { background: #f0fdf4; border-color: #a7f3d0; }
+  .math-vs .vs {
+    display: flex; align-items: center; justify-content: center;
+    font-size: 24px; font-weight: 800; color: var(--muted);
+  }
+  .math-vs h4 { margin: 0 0 10px; font-size: 14px; text-transform: uppercase; letter-spacing: 1px; }
+  .math-vs .wrong h4 { color: var(--danger); }
+  .math-vs .right h4 { color: var(--ok); }
+  .math-vs ul { margin: 10px 0 0; padding-left: 20px; font-size: 13px; }
+
+  /* Calculator */
+  .calc {
+    background: linear-gradient(135deg, #0f172a, #1e293b);
+    color: white;
+    border-radius: var(--radius);
+    padding: 30px;
+    box-shadow: var(--shadow);
+  }
+  .calc h3 { color: white; margin: 0 0 4px; font-size: 22px; }
+  .calc .calc-sub { color: rgba(255,255,255,.7); font-size: 13px; margin-bottom: 24px; }
+  .calc-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+  @media (max-width: 700px) { .calc-grid { grid-template-columns: 1fr; } }
+  .calc-inputs label { display: block; font-size: 12px; color: rgba(255,255,255,.7); margin-bottom: 4px; text-transform: uppercase; letter-spacing: 1px; }
+  .calc-inputs input {
+    width: 100%; padding: 10px 12px;
+    border-radius: 8px; border: 1px solid rgba(255,255,255,.2);
+    background: rgba(255,255,255,.05); color: white;
+    font-size: 16px; font-weight: 600; margin-bottom: 16px;
+    font-family: inherit;
+  }
+  .calc-inputs input:focus { outline: 2px solid var(--brand); }
+  .calc-output {
+    background: rgba(255,255,255,.05);
+    border-radius: 10px;
+    padding: 20px;
+    backdrop-filter: blur(8px);
+  }
+  .calc-output .row {
+    display: flex; justify-content: space-between;
+    padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,.08);
+    font-size: 14px;
+  }
+  .calc-output .row:last-of-type { border-bottom: none; }
+  .calc-output .row strong { color: white; }
+  .calc-output .row span { color: rgba(255,255,255,.6); }
+  .calc-output .total {
+    margin-top: 14px; padding-top: 14px;
+    border-top: 2px solid rgba(255,255,255,.2);
+    font-size: 22px; font-weight: 800;
+    display: flex; justify-content: space-between;
+    color: var(--brand);
+  }
+  .calc-output .badge {
+    display: inline-block; background: var(--ok); color: white;
+    padding: 3px 10px; border-radius: 12px;
+    font-size: 11px; margin-top: 10px; font-weight: 700;
+  }
+  .calc-output .badge.warn { background: var(--warn); }
+
+  /* Glossary */
+  .glossary { display: grid; gap: 10px; }
+  .gloss-item {
+    background: white;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 14px 18px;
+  }
+  .gloss-item strong {
+    color: var(--brand);
+    font-size: 15px;
+    font-weight: 700;
+  }
+  .gloss-item p { margin: 4px 0 0; font-size: 14px; color: var(--ink-soft); }
+
+  /* Cheat sheet */
+  .cheat {
+    background: linear-gradient(135deg, #fffbeb, #fef3c7);
+    border: 2px dashed #fbbf24;
+    border-radius: var(--radius);
+    padding: 24px;
+    margin-top: 20px;
+  }
+  .cheat h3 { margin-top: 0; color: #78350f; }
+  .cheat ol { padding-left: 24px; margin: 0; }
+  .cheat ol li { padding: 6px 0; font-size: 14px; color: #78350f; }
+  .cheat code {
+    background: rgba(0,0,0,.1); padding: 2px 6px;
+    border-radius: 4px; font-size: 12px;
+  }
+
+  /* Footer */
+  footer.foot {
+    background: var(--ink); color: rgba(255,255,255,.7);
+    padding: 30px 24px; text-align: center; font-size: 13px;
+  }
+  footer.foot p { margin: 4px 0; }
+
+  /* Utilities */
+  .pill { display: inline-block; padding: 3px 10px; border-radius: 12px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; }
+  .pill.blue { background: #dbeafe; color: #1e40af; }
+  .pill.green { background: #dcfce7; color: #166534; }
+  .pill.red { background: #fee2e2; color: #991b1b; }
+  .pill.yellow { background: #fef3c7; color: #854d0e; }
+  .pill.cyan { background: #cffafe; color: #155e75; }
+
+  hr.fancy {
+    border: none; height: 2px;
+    background: linear-gradient(to right, transparent, var(--line), transparent);
+    margin: 30px 0;
+  }
+
+  table.simple { width: 100%; border-collapse: collapse; margin: 14px 0; font-size: 14px; }
+  table.simple th, table.simple td { padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--line); }
+  table.simple th { background: var(--paper-3); font-weight: 700; font-size: 12px; text-transform: uppercase; }
+  table.simple tr:hover td { background: var(--paper-3); }
+
+  .num-big { font-size: 32px; font-weight: 800; color: var(--brand); }
+
+  /* Print */
+  @media print {
+    nav.toc, .calc { display: none; }
+    section { page-break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="container">
+    <h1>🚢 Cómo registrar una importación</h1>
+    <p class="subtitle">Tutorial paso a paso para Perfotools — desde que pagás al proveedor chino hasta que las picas entran al almacén con el costo real (landed cost) en el ERP.</p>
+    <div class="meta">
+      <span>📅 Versión 09/05/2026</span>
+      <span>⏱️ Lectura: 12 min</span>
+      <span>🎯 Nivel: principiante</span>
+      <span>🏷️ Para: Perfotools (PT)</span>
+    </div>
+  </div>
+</header>
+
+<nav class="toc">
+  <div class="container">
+    <ol>
+      <li><a href="#intro">📖 ¿Qué es esto?</a></li>
+      <li><a href="#actores">👥 Los actores</a></li>
+      <li><a href="#timeline">⏰ La línea de tiempo</a></li>
+      <li><a href="#problema">🤔 ¿Por qué es difícil?</a></li>
+      <li><a href="#pasos">🪜 Los 8 pasos</a></li>
+      <li><a href="#calculadora">🧮 Calculadora landed</a></li>
+      <li><a href="#errores">⚠️ Errores comunes</a></li>
+      <li><a href="#glosario">📚 Glosario</a></li>
+      <li><a href="#cheatsheet">🎯 Resumen 1 min</a></li>
+    </ol>
+  </div>
+</nav>
+
+<!-- INTRO -->
+<section id="intro">
+  <div class="container">
+    <h2><span class="num">📖</span>¿Qué es una importación?</h2>
+    <p class="lead">Imaginá que tu papá te manda a comprar un celular a una tienda en otro país. El celular cuesta $200 — pero al final terminás pagando $260: porque tuviste taxi al aeropuerto, equipaje, impuesto en aduana, y café mientras esperabas. <strong>El "costo real" del celular para vos no son $200 — son $260.</strong></p>
+
+    <p class="lead">Una importación de Perfotools funciona exactamente igual. Le compramos a una fábrica china unos productos (picas, holders, etc.) a un precio. Pero ese precio NO es lo que realmente nos cuestan. Hay que sumar muchos otros gastos:</p>
+
+    <div class="grid grid-3" style="margin-top: 30px;">
+      <div class="card">
+        <div class="icon-circle" style="background:#fee2e2">🏭</div>
+        <h3>Lo que paga al proveedor</h3>
+        <p style="color:var(--ink-soft);font-size:14px;margin:0">El precio de los productos en la fábrica de China. <strong>Esto es solo una parte.</strong></p>
+      </div>
+      <div class="card">
+        <div class="icon-circle" style="background:#dbeafe">🚢</div>
+        <h3>El traslado</h3>
+        <p style="color:var(--ink-soft);font-size:14px;margin:0">El barco que trae la mercadería de China a Perú. Toma ~3 meses y cuesta mucho.</p>
+      </div>
+      <div class="card">
+        <div class="icon-circle" style="background:#dcfce7">🛂</div>
+        <h3>La aduana</h3>
+        <p style="color:var(--ink-soft);font-size:14px;margin:0">Cuando llega al Callao, hay que "desaduanar" (pagar impuestos SUNAT, comisiones, almacenaje).</p>
+      </div>
+      <div class="card">
+        <div class="icon-circle" style="background:#fef3c7">🏦</div>
+        <h3>El banco</h3>
+        <p style="color:var(--ink-soft);font-size:14px;margin:0">Para pagarle al chino, el banco cobra comisión por la transferencia internacional.</p>
+      </div>
+      <div class="card">
+        <div class="icon-circle" style="background:#f3e8ff">📋</div>
+        <h3>El agente logístico</h3>
+        <p style="color:var(--ink-soft);font-size:14px;margin:0">Es una empresa peruana (FICARGO) que se encarga de toda la parte aduanera por nosotros.</p>
+      </div>
+      <div class="card">
+        <div class="icon-circle" style="background:#fce7f3">🚚</div>
+        <h3>El transporte local</h3>
+        <p style="color:var(--ink-soft);font-size:14px;margin:0">Llevar la mercadería desde el puerto del Callao hasta nuestro almacén.</p>
+      </div>
+    </div>
+
+    <div class="box tip">
+      <span class="label">💡 La analogía clave</span>
+      Si una pica cuesta <strong>$10 en China</strong>, en realidad nos cuesta <strong>~$15 cuando llega a nuestro almacén</strong>. Si la vendemos a $24 pensando que su costo fue $10, creemos que ganamos $14. Pero ganamos $9. <strong>El ERP nuevo nos ayuda a saber el costo real (los $15) en lugar del crudo ($10).</strong>
+    </div>
+  </div>
+</section>
+
+<!-- ACTORES -->
+<section id="actores" class="alt">
+  <div class="container">
+    <h2><span class="num">👥</span>Los 6 actores de una importación</h2>
+    <p class="lead">Cada importación involucra estos personajes. Cada uno emite una factura/cobra plata, y cada uno se va a representar como una <strong>Orden de Compra (OC)</strong> diferente en el ERP.</p>
+
+    <div class="cast">
+      <div class="actor">
+        <div class="avatar">🇵🇪</div>
+        <h4>Perfotools</h4>
+        <p>Nosotros — la empresa que importa y paga.</p>
+        <span class="pill cyan" style="margin-top:8px">Empresa: PT</span>
+      </div>
+      <div class="actor">
+        <div class="avatar">🇨🇳</div>
+        <h4>Wuxi Ikesan</h4>
+        <p>La fábrica china. Nos vende picas y holders.</p>
+        <span class="pill blue" style="margin-top:8px">OC tipo: ALMACEN</span>
+      </div>
+      <div class="actor">
+        <div class="avatar">🏦</div>
+        <h4>Interbank</h4>
+        <p>Hace la transferencia al chino. Cobra comisión.</p>
+        <span class="pill yellow" style="margin-top:8px">OC tipo: GENERAL</span>
+      </div>
+      <div class="actor">
+        <div class="avatar">⛴️</div>
+        <h4>Naviera</h4>
+        <p>El barco que cruza el océano. (Generalmente lo gestiona FICARGO.)</p>
+        <span class="pill yellow" style="margin-top:8px">Dentro de FICARGO</span>
+      </div>
+      <div class="actor">
+        <div class="avatar">📋</div>
+        <h4>FICARGO</h4>
+        <p>Agente aduanero. Se ocupa del flete + desaduanaje + impuestos.</p>
+        <span class="pill yellow" style="margin-top:8px">OC tipo: GENERAL</span>
+      </div>
+      <div class="actor">
+        <div class="avatar">🏛️</div>
+        <h4>SUNAT</h4>
+        <p>El Estado peruano. Cobra IGV de importación y Promoción Municipal.</p>
+        <span class="pill yellow" style="margin-top:8px">OC tipo: GENERAL</span>
+      </div>
+    </div>
+
+    <div class="box tip">
+      <span class="label">🧩 Idea importante</span>
+      En el ERP, <strong>la OC ALMACEN del proveedor chino es la "madre"</strong>. Todas las demás (banco, FICARGO, SUNAT) son "satélites" que se vinculan a esa madre. Al cerrar la importación, los gastos de las satélites se "reparten" entre los productos de la madre.
+    </div>
+  </div>
+</section>
+
+<!-- TIMELINE -->
+<section id="timeline">
+  <div class="container">
+    <h2><span class="num">⏰</span>La línea de tiempo: 3 meses entre el pago y el inventario</h2>
+    <p class="lead">Una importación NO es algo que pasa en un día. Va desde ~Noviembre (pagás al chino) hasta ~Febrero (recibís la mercadería en almacén). Durante esos 3 meses, las picas <strong>están en un barco</strong> — no las tenemos.</p>
+
+    <div class="timeline-wrap">
+      <svg viewBox="0 0 1000 280" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto;">
+        <!-- Línea principal -->
+        <line x1="50" y1="140" x2="950" y2="140" stroke="#cbd5e1" stroke-width="3"/>
+
+        <!-- Hitos -->
+        <g>
+          <circle cx="120" cy="140" r="22" fill="#0ea5e9" stroke="white" stroke-width="4"/>
+          <text x="120" y="146" text-anchor="middle" fill="white" font-weight="700" font-size="14">1</text>
+          <text x="120" y="100" text-anchor="middle" font-weight="700" font-size="13">4 Nov</text>
+          <text x="120" y="180" text-anchor="middle" font-size="11" fill="#475569">Pago a Wuxi</text>
+          <text x="120" y="195" text-anchor="middle" font-size="11" fill="#475569">$3,442</text>
+          <text x="120" y="220" text-anchor="middle" font-size="22">💸</text>
+        </g>
+
+        <g>
+          <circle cx="300" cy="140" r="22" fill="#f59e0b" stroke="white" stroke-width="4"/>
+          <text x="300" y="146" text-anchor="middle" fill="white" font-weight="700" font-size="14">2</text>
+          <text x="300" y="100" text-anchor="middle" font-weight="700" font-size="13">22 Nov</text>
+          <text x="300" y="180" text-anchor="middle" font-size="11" fill="#475569">OC formal</text>
+          <text x="300" y="195" text-anchor="middle" font-size="11" fill="#475569">cargada</text>
+          <text x="300" y="220" text-anchor="middle" font-size="22">📄</text>
+        </g>
+
+        <g>
+          <circle cx="480" cy="140" r="22" fill="#7c3aed" stroke="white" stroke-width="4"/>
+          <text x="480" y="146" text-anchor="middle" fill="white" font-weight="700" font-size="14">3</text>
+          <text x="480" y="100" text-anchor="middle" font-weight="700" font-size="13">25 Dic</text>
+          <text x="480" y="180" text-anchor="middle" font-size="11" fill="#475569">Zarpa</text>
+          <text x="480" y="195" text-anchor="middle" font-size="11" fill="#475569">Shanghái</text>
+          <text x="480" y="220" text-anchor="middle" font-size="22">🚢</text>
+        </g>
+
+        <g>
+          <circle cx="660" cy="140" r="22" fill="#0891b2" stroke="white" stroke-width="4"/>
+          <text x="660" y="146" text-anchor="middle" fill="white" font-weight="700" font-size="14">4</text>
+          <text x="660" y="100" text-anchor="middle" font-weight="700" font-size="13">26 Ene</text>
+          <text x="660" y="180" text-anchor="middle" font-size="11" fill="#475569">Llega al</text>
+          <text x="660" y="195" text-anchor="middle" font-size="11" fill="#475569">Callao</text>
+          <text x="660" y="220" text-anchor="middle" font-size="22">⚓</text>
+        </g>
+
+        <g>
+          <circle cx="840" cy="140" r="22" fill="#16a34a" stroke="white" stroke-width="4"/>
+          <text x="840" y="146" text-anchor="middle" fill="white" font-weight="700" font-size="14">5</text>
+          <text x="840" y="100" text-anchor="middle" font-weight="700" font-size="13">27 Ene</text>
+          <text x="840" y="180" text-anchor="middle" font-size="11" fill="#475569">Pago FICARGO</text>
+          <text x="840" y="195" text-anchor="middle" font-size="11" fill="#475569">+ SUNAT</text>
+          <text x="840" y="220" text-anchor="middle" font-size="22">📦</text>
+        </g>
+
+        <!-- Anotaciones (transit period) -->
+        <rect x="320" y="240" width="320" height="28" rx="6" fill="#dbeafe"/>
+        <text x="480" y="259" text-anchor="middle" font-size="12" fill="#1e40af" font-weight="700">⏳ 3 meses en tránsito · sin stock en ERP</text>
+
+        <!-- Anotaciones (estado ERP) -->
+        <rect x="80" y="50" width="280" height="34" rx="6" fill="#f0f9ff" stroke="#0ea5e9"/>
+        <text x="220" y="70" text-anchor="middle" font-size="11" fill="#075985" font-weight="700">Estado en ERP: 🚢 EN TRÁNSITO</text>
+
+        <rect x="700" y="50" width="280" height="34" rx="6" fill="#f0fdf4" stroke="#16a34a"/>
+        <text x="840" y="70" text-anchor="middle" font-size="11" fill="#14532d" font-weight="700">Estado: 📦 RECEPCIÓN (cerrada)</text>
+      </svg>
+    </div>
+
+    <div class="box warn">
+      <span class="label">⚠️ Detalle clave</span>
+      Durante esos 3 meses entre pago y recepción, <strong>en el ERP la OC queda en estado EN_TRANSITO</strong> — no genera stock todavía. La caja sí refleja que pagaste (se descontó del banco), pero el inventario aún no tiene picas nuevas. Eso es CONTABLEMENTE correcto — la mercadería está en barco, no es nuestra "para vender" hasta que llegue.
+    </div>
+  </div>
+</section>
+
+<!-- PROBLEMA -->
+<section id="problema" class="alt">
+  <div class="container">
+    <h2><span class="num">🤔</span>¿Por qué esto es difícil?</h2>
+    <p class="lead">Lo difícil es que el "costo real" no se conoce el día que pagás al chino. Va apareciendo de a poco, durante 3 meses.</p>
+
+    <h3 style="margin-top:30px;font-size:20px">Ejemplo concreto con tu importación de Nov 2025</h3>
+
+    <div class="math-vs" style="margin-top: 20px;">
+      <div class="side wrong">
+        <h4>❌ Forma vieja</h4>
+        <p style="margin: 0 0 10px;font-size:13px"><strong>Cargabas la OC del chino y la "recibías" inmediato.</strong></p>
+        <table class="simple" style="font-size:12px;background:white;border-radius:6px;overflow:hidden">
+          <tr><td>Pica BK 47</td><td style="text-align:right"><strong>$10.00</strong></td></tr>
+          <tr><td>Costo en inventario</td><td style="text-align:right;color:var(--danger)"><strong>$10.00 ❌</strong></td></tr>
+        </table>
+        <ul>
+          <li>Gastos del banco ($87): perdidos</li>
+          <li>Gastos FICARGO ($878): perdidos</li>
+          <li>Impuestos SUNAT ($659): perdidos</li>
+          <li>Margen reportado: <strong>inflado ~50%</strong></li>
+        </ul>
+      </div>
+
+      <div class="vs">VS</div>
+
+      <div class="side right">
+        <h4>✅ Forma nueva</h4>
+        <p style="margin: 0 0 10px;font-size:13px"><strong>Marcás EN TRÁNSITO, vinculás las OCs satélite, y cerrás con landed.</strong></p>
+        <table class="simple" style="font-size:12px;background:white;border-radius:6px;overflow:hidden">
+          <tr><td>Pica BK 47 (chino)</td><td style="text-align:right">$10.00</td></tr>
+          <tr><td>+ Banco prorrateado</td><td style="text-align:right">+$0.24</td></tr>
+          <tr><td>+ FICARGO prorrateado</td><td style="text-align:right">+$2.40</td></tr>
+          <tr><td>+ SUNAT prorrateado</td><td style="text-align:right">+$1.80</td></tr>
+          <tr><td>Costo en inventario</td><td style="text-align:right;color:var(--ok)"><strong>$14.44 ✓</strong></td></tr>
+        </table>
+        <ul>
+          <li>Todos los gastos están "horneados" en el costo del producto</li>
+          <li>Margen reportado: <strong>real</strong></li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="box ok">
+      <span class="label">✅ La magia del landed cost</span>
+      "Landed cost" = "costo aterrizado" en inglés. Significa <strong>el costo de un producto YA puesto en tu almacén</strong> — con todos los gastos sumados. Es el costo de verdad, no el de la factura del chino solamente.
+    </div>
+  </div>
+</section>
+
+<!-- PASOS -->
+<section id="pasos">
+  <div class="container">
+    <h2><span class="num">🪜</span>Los 8 pasos del proceso</h2>
+    <p class="lead">Marcá los pasos a medida que los vayas haciendo. La checklist se guarda en tu navegador.</p>
+
+    <div class="step" data-step="1">
+      <div class="step-head">
+        <div class="step-num">1</div>
+        <div class="step-title">
+          <h3>Crear la OC del proveedor chino (la "madre")</h3>
+          <div class="when">Día 0 — cuando confirmás el pedido, antes de transferir</div>
+        </div>
+        <input type="checkbox" class="check" title="Marcar como hecho">
+      </div>
+
+      <p><strong>¿Dónde?</strong> Logística → tab Órdenes de Compra → botón "<strong>+ Nueva OC</strong>".</p>
+
+      <div class="mock">
+        <div class="mock-bar">📋 Crear OC nueva</div>
+        <div class="field"><span class="lbl">Empresa</span><span class="val">PT (Perfotools)</span></div>
+        <div class="field"><span class="lbl">Tipo OC</span><span class="val" style="color:var(--brand)">ALMACEN ← clave</span></div>
+        <div class="field"><span class="lbl">Proveedor</span><span class="val">Wuxi Ikesan Machinery Co.</span></div>
+        <div class="field"><span class="lbl">Moneda</span><span class="val">USD</span></div>
+        <div class="field"><span class="lbl">Tipo de cambio</span><span class="val">3.65 (del día)</span></div>
+        <div class="field"><span class="lbl">Centro de costo</span><span class="val">ALMACEN o PERFOTOOLS</span></div>
+        <div class="field"><span class="lbl">Forma de pago</span><span class="val">Contado</span></div>
+        <hr style="margin:14px -18px;border:none;border-top:2px dashed #cbd5e1;">
+        <div style="font-weight:700;margin-bottom:8px;color:var(--ink-soft);font-size:11px;text-transform:uppercase">Ítems</div>
+        <div class="field"><span class="lbl">Teeth B47K22H</span><span class="val">300 und × $10.00 = $3,000</span></div>
+        <div class="field"><span class="lbl">Holder B43</span><span class="val">100 und × $3.55 = $355</span></div>
+        <div class="field"><span class="lbl">TOTAL</span><span class="val" style="color:var(--ok);font-size:14px">$3,355.00</span></div>
+        <span class="btn-mock">Crear OC</span>
+      </div>
+
+      <div class="box danger">
+        <span class="label">🚫 No metas las comisiones acá</span>
+        Las comisiones bancarias ($42 + $45 = $87) <strong>NO</strong> van como ítems de la OC del chino. Eso es lo que ensucia el costo del producto. Las cargás aparte después como OC satélite del banco.
+      </div>
+
+      <div class="box tip">
+        <span class="label">💡 Tip</span>
+        Si la moneda del proveedor es USD, asegurate de poner el <strong>tipo de cambio del día</strong>. Si no, el costo en PEN va a salir mal calculado. Si no sabés el TC, en Google buscás "tipo de cambio venta SBS hoy".
+      </div>
+    </div>
+
+    <div class="step" data-step="2">
+      <div class="step-head">
+        <div class="step-num">2</div>
+        <div class="step-title">
+          <h3>Aprobar y pagar al proveedor</h3>
+          <div class="when">Día 0 a Día 5 — apenas tengas la proforma firmada</div>
+        </div>
+        <input type="checkbox" class="check">
+      </div>
+      <p>Tres clicks consecutivos en la OC recién creada:</p>
+      <ol>
+        <li><strong>✓ Lista para aprobación</strong> → la OC pasa de BORRADOR a APROBADA</li>
+        <li><strong>✅ Aprobado para pago</strong> → pasa a PAGO (bandeja Finanzas)</li>
+        <li><strong>💰 Registrar pago</strong> → cargás la transferencia internacional. Subí el voucher del banco (PDF de la SWIFT).</li>
+      </ol>
+      <div class="box tip">
+        <span class="label">💡 Voucher</span>
+        Sumá el PDF/foto de la "Solicitud de Transferencia al Exterior" de Interbank. Eso te queda como respaldo en la nube (Cloudinary) y nadie lo puede perder.
+      </div>
+    </div>
+
+    <div class="step" data-step="3">
+      <div class="step-head">
+        <div class="step-num">3</div>
+        <div class="step-title">
+          <h3>🚢 Marcar la OC como EN TRÁNSITO</h3>
+          <div class="when">Día 0 a Día 5 — justo después de pagar al chino</div>
+        </div>
+        <input type="checkbox" class="check">
+      </div>
+      <p>Este paso es <strong>la clave de todo</strong>. Click en el botón <strong>🚢 Marcar en tránsito</strong>.</p>
+      <p>Aparece un mensaje de confirmación: <em>"La mercadería NO va a entrar al inventario hasta que cierres la importación con todos los gastos asociados"</em>. Confirmá.</p>
+
+      <div class="box ok">
+        <span class="label">✓ Qué pasa al confirmar</span>
+        <ul style="margin: 6px 0 0; padding-left: 18px">
+          <li>La OC se mueve a la columna <strong>🚢 En tránsito</strong> del kanban</li>
+          <li>Aparece un banner azul en la OC informándote del estado</li>
+          <li><strong>El stock NO se ve afectado todavía</strong> — las picas no están en tu Inventario aún</li>
+          <li>La plata SÍ está descontada de tu cuenta USD (eso es real)</li>
+        </ul>
+      </div>
+
+      <div class="box warn">
+        <span class="label">⚠️ Si te confundiste</span>
+        Podés usar <strong>↩️ Desmarcar tránsito</strong> para volver al estado anterior. No hay riesgo porque EN_TRANSITO nunca genera movimiento de inventario.
+      </div>
+    </div>
+
+    <div class="step" data-step="4">
+      <div class="step-head">
+        <div class="step-num">4</div>
+        <div class="step-title">
+          <h3>(Opcional) Crear OC satélite: comisión bancaria</h3>
+          <div class="when">Mismo día del pago — cuando el banco te debita la comisión</div>
+        </div>
+        <input type="checkbox" class="check">
+      </div>
+      <p>El banco te cobra ~$87 (comisión + corresponsal) por la transferencia internacional. Si querés contabilidad fina, cargás esto como OC GENERAL:</p>
+      <div class="mock">
+        <div class="mock-bar">📋 OC GENERAL — Banco</div>
+        <div class="field"><span class="lbl">Empresa</span><span class="val">PT</span></div>
+        <div class="field"><span class="lbl">Tipo OC</span><span class="val">GENERAL</span></div>
+        <div class="field"><span class="lbl">Proveedor</span><span class="val">Banco Interbank</span></div>
+        <div class="field"><span class="lbl">Moneda</span><span class="val">USD</span></div>
+        <div class="field"><span class="lbl">Ítem</span><span class="val">Comisión transferencia internacional + corresponsal</span></div>
+        <div class="field"><span class="lbl">Total</span><span class="val">$87.00</span></div>
+      </div>
+      <p>Después de aprobar y pagar (o marcar la salida en caja), click <strong>🔗 Vincular a importación</strong> y elegí la OC madre (la de Wuxi).</p>
+      <div class="box tip">
+        <span class="label">💡 ¿Vale la pena este paso?</span>
+        Si te da fiaca, podés saltearlo — solo perdés ~3% de precisión en el landed. Pero recordá que <strong>en tu Excel histórico siempre lo mezclabas dentro del costo del chino</strong>. Mejor tenerlo aparte y limpio.
+      </div>
+    </div>
+
+    <div class="step" data-step="5">
+      <div class="step-head">
+        <div class="step-num">5</div>
+        <div class="step-title">
+          <h3>Crear OC satélite: FICARGO (servicio logístico)</h3>
+          <div class="when">Día +30 a +60 — cuando llegan las facturas de FICARGO</div>
+        </div>
+        <input type="checkbox" class="check">
+      </div>
+      <p>FICARGO es el agente aduanero. Te emite varias facturas (una por concepto: flete, seguro, desconsolidación, etc.). Las podés cargar todas en una sola OC con varios ítems.</p>
+      <div class="mock">
+        <div class="mock-bar">📋 OC GENERAL — FICARGO servicio</div>
+        <div class="field"><span class="lbl">Empresa</span><span class="val">PT</span></div>
+        <div class="field"><span class="lbl">Tipo OC</span><span class="val">GENERAL</span></div>
+        <div class="field"><span class="lbl">Proveedor</span><span class="val">Freight International Cargo S.A.C.</span></div>
+        <div class="field"><span class="lbl">Moneda</span><span class="val">USD</span></div>
+        <div class="field"><span class="lbl">Centro costo</span><span class="val">PERFOTOOLS</span></div>
+        <hr style="margin:14px -18px;border:none;border-top:2px dashed #cbd5e1;">
+        <div class="field"><span class="lbl">Ocean Freight</span><span class="val">$25</span></div>
+        <div class="field"><span class="lbl">FCA Charges</span><span class="val">$60</span></div>
+        <div class="field"><span class="lbl">Seguro de carga</span><span class="val">$50</span></div>
+        <div class="field"><span class="lbl">Visto bueno</span><span class="val">$110 (+IGV)</span></div>
+        <div class="field"><span class="lbl">Desconsolidación</span><span class="val">$30 (+IGV)</span></div>
+        <div class="field"><span class="lbl">Comisión aduanas</span><span class="val">$110 (+IGV)</span></div>
+        <div class="field"><span class="lbl">Gastos operativos</span><span class="val">$30 (+IGV)</span></div>
+        <div class="field"><span class="lbl">Gestión transporte</span><span class="val">$90 (+IGV)</span></div>
+        <div class="field"><span class="lbl">Almacenaje IMUPESA</span><span class="val">$260 (+IGV)</span></div>
+        <div class="field"><span class="lbl">TOTAL</span><span class="val" style="color:var(--ok)">$878.40</span></div>
+      </div>
+      <p>Después de cargar y pagar la OC, click <strong>🔗 Vincular a importación</strong>. Te pide el ID numérico de la OC madre. Lo ves en el kanban EN_TRANSITO → tarjeta de la OC de Wuxi → ID.</p>
+
+      <div class="box ok">
+        <span class="label">✓ Resultado de vincular</span>
+        Aparece un banner azul en la OC: "🚢 Satélite de importación: sus gastos forman parte del landed cost de la OC madre #XX".
+      </div>
+    </div>
+
+    <div class="step" data-step="6">
+      <div class="step-head">
+        <div class="step-num">6</div>
+        <div class="step-title">
+          <h3>Crear OC satélite: SUNAT (impuestos)</h3>
+          <div class="when">Día +85 a +90 — el día del desaduanaje</div>
+        </div>
+        <input type="checkbox" class="check">
+      </div>
+      <p>Cuando llega el barco al Callao, FICARGO paga los impuestos a SUNAT por nosotros (IGV de importación + Impuesto Promoción Municipal). Te emite el "Pago de impuestos" en SOLES.</p>
+      <div class="mock">
+        <div class="mock-bar">📋 OC GENERAL — Impuestos SUNAT</div>
+        <div class="field"><span class="lbl">Empresa</span><span class="val">PT</span></div>
+        <div class="field"><span class="lbl">Tipo OC</span><span class="val">GENERAL</span></div>
+        <div class="field"><span class="lbl">Proveedor</span><span class="val">Freight International Cargo (paga a SUNAT)</span></div>
+        <div class="field"><span class="lbl">Moneda</span><span class="val" style="color:var(--warn)">PEN ← ojo!</span></div>
+        <div class="field"><span class="lbl">Ítem</span><span class="val">Pago impuestos importación DUA 118-2026-10-041177</span></div>
+        <div class="field"><span class="lbl">Total</span><span class="val">S/ 2,227.42</span></div>
+      </div>
+      <p>Aprobar → pagar → <strong>🔗 Vincular a importación</strong> con el ID de la madre.</p>
+
+      <div class="box warn">
+        <span class="label">⚠️ Moneda PEN, no USD</span>
+        Esta OC va en SOLES porque así te lo cobra el banco (no en dólares). El sistema convertirá los soles al landed en USD automáticamente al cerrar.
+      </div>
+    </div>
+
+    <div class="step" data-step="7">
+      <div class="step-head">
+        <div class="step-num">7</div>
+        <div class="step-title">
+          <h3>🚛 Cerrar la importación (el momento mágico)</h3>
+          <div class="when">Día +90 — cuando el barco llegó Y cargaste todas las OCs satélite</div>
+        </div>
+        <input type="checkbox" class="check">
+      </div>
+      <p>Abrí la OC madre (la de Wuxi en EN_TRANSITO). Click <strong>🚛 Cerrar importación</strong>.</p>
+      <p>Se abre un modal con 3 secciones:</p>
+
+      <div style="border:2px solid var(--ok);border-radius:10px;padding:16px;margin:14px 0;background:#f0fdf4">
+        <div style="font-weight:700;font-size:14px;margin-bottom:8px">📊 Sección 1: Resumen</div>
+        <table class="simple" style="font-size:13px;background:white">
+          <tr><td>Proveedor (madre)</td><td style="text-align:right"><strong>USD 3,355.00</strong></td></tr>
+          <tr><td>Gastos satélite</td><td style="text-align:right"><strong>S/ 5,178.00</strong></td></tr>
+          <tr><td style="color:var(--ok);font-weight:700">TOTAL LANDED PEN</td><td style="text-align:right;color:var(--ok);font-weight:700">S/ 16,495.00</td></tr>
+        </table>
+      </div>
+
+      <div style="border:2px solid #cbd5e1;border-radius:10px;padding:16px;margin:14px 0">
+        <div style="font-weight:700;font-size:14px;margin-bottom:8px">📋 Sección 2: Detalle de satélites (desplegable)</div>
+        <p style="margin:0;font-size:13px;color:var(--ink-soft)">Lista cada OC satélite vinculada, proveedor, total original, total en PEN.</p>
+      </div>
+
+      <div style="border:2px solid var(--brand);border-radius:10px;padding:16px;margin:14px 0;background:#f0f9ff">
+        <div style="font-weight:700;font-size:14px;margin-bottom:8px">🧮 Sección 3: Tabla de ítems con landed</div>
+        <table class="simple" style="font-size:12px;background:white">
+          <tr><th>Ítem</th><th>Cant</th><th>P. Orig</th><th>P. Landed ✎</th><th>Subtotal</th></tr>
+          <tr><td>Teeth</td><td>300</td><td>S/ 36.50</td><td style="background:#ecfdf5;font-weight:700">S/ 49.16</td><td>S/ 14,748</td></tr>
+          <tr><td>Holder</td><td>100</td><td>S/ 12.96</td><td style="background:#ecfdf5;font-weight:700">S/ 17.47</td><td>S/ 1,747</td></tr>
+        </table>
+        <p style="margin:8px 0 0;font-size:12px;color:var(--ink-soft)">Los precios landed se sugieren con prorrateo automático. <strong>Podés editar cada uno y el subtotal se recalcula en vivo.</strong></p>
+      </div>
+
+      <p>Click final: <strong>✓ Confirmar y recibir al inventario</strong>.</p>
+
+      <div class="box ok">
+        <span class="label">✓ Qué pasa al confirmar</span>
+        <ul style="margin:6px 0 0;padding-left:18px">
+          <li>Los productos ENTRAN al inventario con el costo landed</li>
+          <li>Se actualiza el costo promedio del ítem (si ya había stock previo, hace promedio ponderado)</li>
+          <li>Se guarda un snapshot de los gastos satélite — auditoría permanente</li>
+          <li>La OC madre pasa a RECEPCIÓN con timestamp</li>
+        </ul>
+      </div>
+
+      <div class="box danger">
+        <span class="label">⚠️ Esta acción NO se puede deshacer</span>
+        Una vez cerrada, no se puede "des-cerrar" sin tocar la BD manualmente. Asegurate de que todas las satélite estén cargadas antes de confirmar.
+      </div>
+    </div>
+
+    <div class="step" data-step="8">
+      <div class="step-head">
+        <div class="step-num">8</div>
+        <div class="step-title">
+          <h3>Verificar que todo quedó bien</h3>
+          <div class="when">Día +90 — inmediatamente después de cerrar</div>
+        </div>
+        <input type="checkbox" class="check">
+      </div>
+      <p>Andá al módulo <strong>Inventario</strong> y buscá uno de los productos importados. Verificá:</p>
+      <table class="simple">
+        <tr><td>✓ Stock actual</td><td>Aumentó por la cantidad importada</td></tr>
+        <tr><td>✓ Costo unitario</td><td>Es el landed (~$15), <strong>no el crudo ($10)</strong></td></tr>
+        <tr><td>✓ Última entrada (kárdex)</td><td>Muestra la fecha del cierre y referencia a la OC madre</td></tr>
+      </table>
+      <p>Volvé a la OC madre (ahora en RECEPCIÓN o TERMINADA): deberías ver un banner verde:</p>
+      <div class="box ok" style="margin-top:0">
+        ✅ <strong>Recibida con landed cost:</strong> el inventario refleja proveedor + gastos asociados prorrateados. Cerrada el 27/01/2026.
+      </div>
+
+      <div class="box tip">
+        <span class="label">💡 Bonus para auditoría</span>
+        En la tabla <code>ImportacionGastoSnapshot</code> de la BD quedaron grabados los gastos exactos que se prorratearon, con fecha. Si después modificás o anulás una OC satélite, el snapshot original NO se pierde — tenés el rastro.
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<!-- CALCULADORA -->
+<section id="calculadora" class="alt">
+  <div class="container">
+    <h2><span class="num">🧮</span>Calculadora landed cost interactiva</h2>
+    <p class="lead">Jugá con los números antes de hacer la importación real. Cambiá los valores y mirá cómo varía el costo unitario landed.</p>
+
+    <div class="calc">
+      <h3>Simulador de costeo</h3>
+      <p class="calc-sub">Caso base: tu importación de Nov 2025 (300 picas + 100 holders + gastos reales).</p>
+
+      <div class="calc-grid">
+        <div class="calc-inputs">
+          <label>Cantidad picas</label>
+          <input type="number" id="cant1" value="300" min="0">
+          <label>Precio chino picas (USD)</label>
+          <input type="number" id="prc1" value="10.00" step="0.01" min="0">
+
+          <label>Cantidad holders</label>
+          <input type="number" id="cant2" value="100" min="0">
+          <label>Precio chino holders (USD)</label>
+          <input type="number" id="prc2" value="3.55" step="0.01" min="0">
+
+          <label>Gastos FICARGO (USD)</label>
+          <input type="number" id="ficargo" value="878" step="1" min="0">
+
+          <label>Comisión banco (USD)</label>
+          <input type="number" id="banco" value="87" step="1" min="0">
+
+          <label>Impuestos SUNAT (USD equiv)</label>
+          <input type="number" id="sunat" value="659" step="1" min="0">
+
+          <label>Tipo de cambio</label>
+          <input type="number" id="tc" value="3.65" step="0.01" min="0">
+        </div>
+
+        <div class="calc-output">
+          <div class="row"><span>Costo proveedor (USD)</span><strong id="o_proveedor">$3,355.00</strong></div>
+          <div class="row"><span>Total gastos asociados (USD)</span><strong id="o_gastos">$1,624.00</strong></div>
+          <div class="row"><span>% gastos / proveedor</span><strong id="o_pct">48.4%</strong></div>
+          <hr style="border:none;border-top:1px solid rgba(255,255,255,.1);margin:14px 0">
+          <div class="row"><span>📌 Pica unitario crudo</span><strong id="o_crudoP">$10.00</strong></div>
+          <div class="row"><span>📌 Pica unitario LANDED</span><strong id="o_landedP" style="color:#7dd3fc">$14.84</strong></div>
+          <div class="row"><span>📌 Pica landed en PEN</span><strong id="o_landedPpen">S/ 54.17</strong></div>
+          <hr style="border:none;border-top:1px solid rgba(255,255,255,.1);margin:14px 0">
+          <div class="row"><span>📌 Holder unitario crudo</span><strong id="o_crudoH">$3.55</strong></div>
+          <div class="row"><span>📌 Holder unitario LANDED</span><strong id="o_landedH" style="color:#7dd3fc">$5.27</strong></div>
+          <div class="row"><span>📌 Holder landed en PEN</span><strong id="o_landedHpen">S/ 19.24</strong></div>
+          <div class="total"><span>TOTAL importación PEN:</span><span id="o_total">S/ 18,170.96</span></div>
+          <div id="o_badge"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="box tip">
+      <span class="label">💡 Probá esto</span>
+      ¿Qué pasa si el flete sube a $1,500? ¿Y si en lugar de 300 picas traés 600? El costo landed unitario cambia. Esta calculadora te ayuda a <strong>simular antes de cerrar la importación</strong>.
+    </div>
+  </div>
+</section>
+
+<!-- ERRORES -->
+<section id="errores">
+  <div class="container">
+    <h2><span class="num">⚠️</span>Errores comunes (y cómo evitarlos)</h2>
+    <p class="lead">Estos son los errores que más rápido arruinan una importación bien cargada.</p>
+
+    <div class="grid grid-2">
+      <div class="card" style="border-left:4px solid var(--danger)">
+        <h3>❌ Meter comisiones bancarias como ítems</h3>
+        <p style="font-size:13px;color:var(--ink-soft)"><strong>Qué pasa:</strong> El sistema crea "ítems de inventario" con código vacío para las comisiones. Tu Inventario se llena de basura.</p>
+        <p style="font-size:13px;color:var(--ok)"><strong>Cómo evitarlo:</strong> Cargá comisiones como OC GENERAL aparte y vinculá como satélite.</p>
+      </div>
+
+      <div class="card" style="border-left:4px solid var(--danger)">
+        <h3>❌ Olvidar marcar "En tránsito"</h3>
+        <p style="font-size:13px;color:var(--ink-soft)"><strong>Qué pasa:</strong> Le das "Recibir" directo desde PAGO, y las picas entran a inventario al precio crudo del chino. Margen reportado: inflado 50%.</p>
+        <p style="font-size:13px;color:var(--ok)"><strong>Cómo evitarlo:</strong> Después de pagar al chino, SIEMPRE 🚢 Marcar en tránsito. No hay excepciones para importaciones.</p>
+      </div>
+
+      <div class="card" style="border-left:4px solid var(--danger)">
+        <h3>❌ Cerrar sin todas las satélite</h3>
+        <p style="font-size:13px;color:var(--ink-soft)"><strong>Qué pasa:</strong> El landed sale incompleto. Por ejemplo, FICARGO te factura en Febrero pero vos cerraste en Enero — esos $878 no entran al costo.</p>
+        <p style="font-size:13px;color:var(--ok)"><strong>Cómo evitarlo:</strong> Antes de "Cerrar importación", verificá el resumen del modal. Si esperás algo más, cancelá, esperá la factura, y cerrá después.</p>
+      </div>
+
+      <div class="card" style="border-left:4px solid var(--danger)">
+        <h3>❌ Vincular OC ALMACEN como satélite</h3>
+        <p style="font-size:13px;color:var(--ink-soft)"><strong>Qué pasa:</strong> El sistema lo rechaza con error. ALMACEN son MADRES, no satélite.</p>
+        <p style="font-size:13px;color:var(--ok)"><strong>Cómo evitarlo:</strong> Solo OCs GENERAL/SERVICIO pueden ser satélite. La madre siempre es ALMACEN.</p>
+      </div>
+
+      <div class="card" style="border-left:4px solid var(--warn)">
+        <h3>⚠️ TC equivocado en satélite USD</h3>
+        <p style="font-size:13px;color:var(--ink-soft)"><strong>Qué pasa:</strong> Si la OC satélite es en USD con un TC inventado, el prorrateo en PEN sale torcido.</p>
+        <p style="font-size:13px;color:var(--ok)"><strong>Cómo evitarlo:</strong> Cada OC USD debe tener el TC del día en que se emitió/pagó.</p>
+      </div>
+
+      <div class="card" style="border-left:4px solid var(--warn)">
+        <h3>⚠️ Productos sin id_item en la OC madre</h3>
+        <p style="font-size:13px;color:var(--ink-soft)"><strong>Qué pasa:</strong> Al cerrar, el sistema dice "líneas sin item" y no te deja recibir.</p>
+        <p style="font-size:13px;color:var(--ok)"><strong>Cómo evitarlo:</strong> En la OC madre, cada línea debe estar vinculada a un ítem del catálogo de Inventario. Si es un producto nuevo, créalo en Inventario primero.</p>
+      </div>
+    </div>
+
+    <hr class="fancy">
+
+    <h3 style="font-size:20px">🧠 Tips extras (cosas que el tutorial básico no decía)</h3>
+
+    <div class="grid grid-2">
+      <div class="card">
+        <h3>🧪 Probá primero con una importación chica</h3>
+        <p style="font-size:13px;color:var(--ink-soft)">Antes de usar este flujo con una importación de $10,000, hacé un "ensayo" con una OC ficticia de $100. Marcala en tránsito, vinculá una satélite ficticia, cerrala. Familiarizate con el modal de cierre.</p>
+      </div>
+
+      <div class="card">
+        <h3>📅 No cerrés el mismo día que llega el barco</h3>
+        <p style="font-size:13px;color:var(--ink-soft)">Esperá ~3-5 días después del arribo. Por experiencia, siempre aparece una factura tardía de FICARGO o un cobro de almacenaje extra. Si cerrás muy rápido te perdés esos costos.</p>
+      </div>
+
+      <div class="card">
+        <h3>📝 Usá la descripción para audit</h3>
+        <p style="font-size:13px;color:var(--ink-soft)">En la OC madre, en "Observaciones", ponés algo como: <code>Importación 2026-01 · Wuxi · DUA 118-2026-10-041177 · BL SHCLA25250942</code>. Eso te ayuda a buscarla después y a auditorías.</p>
+      </div>
+
+      <div class="card">
+        <h3>💰 Multi-moneda mixta funciona</h3>
+        <p style="font-size:13px;color:var(--ink-soft)">La OC madre puede estar en USD, las satélites pueden ser unas en USD (flete) y otras en PEN (impuestos). El sistema convierte todo a PEN al calcular el landed usando los TC de cada OC.</p>
+      </div>
+
+      <div class="card">
+        <h3>📦 Si vendiste algo antes del cierre</h3>
+        <p style="font-size:13px;color:var(--ink-soft)">Imposible — porque el stock no estaba disponible hasta cerrar. Pero si vos sobreescribiste y vendiste igual (mala práctica), después de cerrar el costo promedio se "corrige" pero las ventas pasadas quedan con margen viejo en históricos.</p>
+      </div>
+
+      <div class="card">
+        <h3>🔄 Si llega una factura DESPUÉS de cerrar</h3>
+        <p style="font-size:13px;color:var(--ink-soft)">No podés re-cerrar. Pero podés cargar esa OC como GENERAL "Gastos PERFOTOOLS" (sin vincular) y reflejarla en el resultado del mes. El costo del producto no se ajusta retroactivo.</p>
+      </div>
+
+      <div class="card">
+        <h3>📸 Subí TODOS los PDFs como voucher</h3>
+        <p style="font-size:13px;color:var(--ink-soft)">Por cada OC (madre y satélite), subí el PDF de la factura del proveedor y el voucher del banco. Eso queda en Cloudinary y es la evidencia legal/tributaria. El día que SUNAT te fiscalice, vas a agradecerte a vos mismo.</p>
+      </div>
+
+      <div class="card">
+        <h3>🏷️ Productos nuevos: créalos antes</h3>
+        <p style="font-size:13px;color:var(--ink-soft)">Si en esta importación traés un producto nuevo (ej: "Plier manual Pick"), créalo primero en Inventario con stock 0. Después agregalo a la OC madre. Si lo creás "sobre la marcha" en la OC, puede quedar sin id_item.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- GLOSARIO -->
+<section id="glosario" class="alt">
+  <div class="container">
+    <h2><span class="num">📚</span>Glosario para que nadie quede colgado</h2>
+    <p class="lead">Términos que aparecen en este tutorial, explicados con palabras simples.</p>
+
+    <div class="glossary">
+      <div class="gloss-item">
+        <strong>Landed cost</strong>
+        <p>"Costo aterrizado". Es el costo total que te cuesta un producto importado YA puesto en tu almacén — incluyendo proveedor + flete + aduana + impuestos. No es solo lo que pagaste al chino.</p>
+      </div>
+      <div class="gloss-item">
+        <strong>OC madre</strong>
+        <p>La Orden de Compra principal de una importación. Siempre es de tipo ALMACEN y le pagamos al proveedor extranjero (en nuestro caso, Wuxi). Contiene los productos físicos.</p>
+      </div>
+      <div class="gloss-item">
+        <strong>OC satélite</strong>
+        <p>Las OCs "secundarias" de una importación: banco, FICARGO, SUNAT. Son de tipo GENERAL y se "enganchan" a la madre. Sus gastos se prorratean a los productos al cerrar.</p>
+      </div>
+      <div class="gloss-item">
+        <strong>Prorrateo</strong>
+        <p>Repartir un gasto entre varios productos en proporción a algo. Por defecto el sistema reparte por valor: el ítem que vale más absorbe más gastos.</p>
+      </div>
+      <div class="gloss-item">
+        <strong>EN_TRANSITO</strong>
+        <p>Estado de una OC ALMACEN que ya fue pagada pero la mercadería todavía no llegó al país. No genera stock — el producto está en barco.</p>
+      </div>
+      <div class="gloss-item">
+        <strong>Proveedor extranjero</strong>
+        <p>La fábrica/empresa de afuera que nos vende los productos. En Perfotools generalmente China (Wuxi Ikesan).</p>
+      </div>
+      <div class="gloss-item">
+        <strong>FICARGO</strong>
+        <p>Freight International Cargo S.A.C., un agente aduanero peruano. Se ocupa de todo el lío de traer la mercadería desde China hasta nuestra puerta.</p>
+      </div>
+      <div class="gloss-item">
+        <strong>DUA</strong>
+        <p>Declaración Única de Aduanas. El documento oficial que SUNAT te da cuando importás. Tiene un número único (ej: 118-2026-10-041177).</p>
+      </div>
+      <div class="gloss-item">
+        <strong>BL (Bill of Lading)</strong>
+        <p>El "ticket" del barco — confirma que tu mercadería está embarcada. Lo emite la naviera. Tiene un número único.</p>
+      </div>
+      <div class="gloss-item">
+        <strong>IGV de importación</strong>
+        <p>Impuesto que SUNAT cobra al traer productos del extranjero. Hoy es 18% sobre el valor CIF (costo + flete + seguro). Lo pagás al desaduanar.</p>
+      </div>
+      <div class="gloss-item">
+        <strong>FOB / CIF / FCA</strong>
+        <p>Tipos de "incoterm" (acuerdo de a quién le toca pagar qué hasta dónde). FCA = el proveedor entrega en su muelle de origen, vos pagás flete. CIF = el proveedor incluye flete + seguro hasta tu puerto.</p>
+      </div>
+      <div class="gloss-item">
+        <strong>Desaduanaje</strong>
+        <p>El proceso de "sacar" la mercadería de la aduana en el Callao. Implica pagar impuestos, presentar documentos, y firmas. FICARGO lo hace por nosotros.</p>
+      </div>
+      <div class="gloss-item">
+        <strong>SWIFT</strong>
+        <p>El sistema bancario internacional para transferir plata entre países. Cuando le pagás al chino, el banco te genera una "MT103" — el comprobante de la SWIFT.</p>
+      </div>
+      <div class="gloss-item">
+        <strong>Costo promedio ponderado</strong>
+        <p>Si ya tenías 100 picas a $12 y entran 300 picas a $15, el sistema NO mantiene 2 precios. Hace promedio: (100×12 + 300×15) / 400 = $14.25. Ese es el nuevo costo.</p>
+      </div>
+      <div class="gloss-item">
+        <strong>Kárdex</strong>
+        <p>El historial de entradas y salidas de un producto del inventario. Cada vez que entra (importación) o sale (venta), queda registrado.</p>
+      </div>
+      <div class="gloss-item">
+        <strong>Cloudinary</strong>
+        <p>El servicio en la nube donde subimos los PDFs (vouchers, facturas, comprobantes). Cuando subís algo en el ERP, en realidad se guarda ahí.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- CHEATSHEET -->
+<section id="cheatsheet">
+  <div class="container">
+    <h2><span class="num">🎯</span>Resumen 1 minuto</h2>
+    <p class="lead">La hoja de chuleta. Imprimila o ponela como fondo de pantalla.</p>
+
+    <div class="cheat">
+      <h3>📋 Checklist completo de una importación</h3>
+      <ol>
+        <li>✏️ Crear <strong>OC ALMACEN al proveedor chino</strong> (solo productos, sin comisiones)</li>
+        <li>✅ Aprobar → Aprobado para pago → <strong>Registrar pago</strong> (con voucher SWIFT)</li>
+        <li>🚢 Click <strong>"Marcar en tránsito"</strong></li>
+        <li>📋 Crear OC GENERAL al banco (comisión transferencia) → vincular a madre</li>
+        <li>⏳ Esperar ~2-3 meses que llegue el barco</li>
+        <li>📋 Crear OC GENERAL a FICARGO (servicio logístico) → vincular a madre</li>
+        <li>📋 Crear OC GENERAL para impuestos SUNAT (en PEN) → vincular a madre</li>
+        <li>🚛 En la OC madre, click <strong>"Cerrar importación"</strong></li>
+        <li>🧮 Revisar el prorrateo sugerido, ajustar si querés</li>
+        <li>✓ Confirmar y recibir → productos entran a Inventario con costo landed</li>
+        <li>👀 Verificar en Inventario que el costo unitario es el landed (no el crudo)</li>
+      </ol>
+    </div>
+
+    <hr class="fancy">
+
+    <div class="grid grid-3">
+      <div class="card" style="text-align:center;background:linear-gradient(135deg,#dbeafe,#bfdbfe)">
+        <div class="num-big">🚢</div>
+        <h3>Marcar en tránsito</h3>
+        <p style="font-size:13px;color:var(--ink-soft)">El paso clave que evita que el inventario tenga costo crudo.</p>
+      </div>
+      <div class="card" style="text-align:center;background:linear-gradient(135deg,#fef3c7,#fde68a)">
+        <div class="num-big">🔗</div>
+        <h3>Vincular satélites</h3>
+        <p style="font-size:13px;color:var(--ink-soft)">Cada gasto de la importación va a su OC GENERAL y se vincula a la madre.</p>
+      </div>
+      <div class="card" style="text-align:center;background:linear-gradient(135deg,#dcfce7,#bbf7d0)">
+        <div class="num-big">🚛</div>
+        <h3>Cerrar importación</h3>
+        <p style="font-size:13px;color:var(--ink-soft)">El sistema prorratea y recibe al inventario con costo real.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer class="foot">
+  <div class="container">
+    <p><strong>Tutorial Importaciones · Perfotools / Metal Engineers</strong></p>
+    <p>ERP-PRO · Versión 09/05/2026 · Migración 068</p>
+    <p style="margin-top:14px;opacity:.6;font-size:11px">Dudas, mejoras, o casos especiales: hablar con Julio o el equipo de desarrollo.</p>
+  </div>
+</footer>
+
+<script>
+  // ─── Calculadora landed cost ─────────────────────────────────────────
+  function recalcular() {
+    const cant1 = +document.getElementById('cant1').value || 0;
+    const prc1  = +document.getElementById('prc1').value  || 0;
+    const cant2 = +document.getElementById('cant2').value || 0;
+    const prc2  = +document.getElementById('prc2').value  || 0;
+    const ficargo = +document.getElementById('ficargo').value || 0;
+    const banco   = +document.getElementById('banco').value   || 0;
+    const sunat   = +document.getElementById('sunat').value   || 0;
+    const tc      = +document.getElementById('tc').value      || 1;
+
+    const valor1 = cant1 * prc1;
+    const valor2 = cant2 * prc2;
+    const proveedor = valor1 + valor2;
+    const gastos = ficargo + banco + sunat;
+
+    const fraccion1 = proveedor > 0 ? valor1 / proveedor : 0;
+    const fraccion2 = proveedor > 0 ? valor2 / proveedor : 0;
+    const gastoLinea1 = gastos * fraccion1;
+    const gastoLinea2 = gastos * fraccion2;
+    const landedUnit1 = cant1 > 0 ? prc1 + gastoLinea1 / cant1 : 0;
+    const landedUnit2 = cant2 > 0 ? prc2 + gastoLinea2 / cant2 : 0;
+
+    const fmt = (n) => '$' + n.toFixed(2);
+    const fmtPEN = (n) => 'S/ ' + n.toFixed(2);
+    const pct = proveedor > 0 ? (gastos / proveedor * 100) : 0;
+
+    document.getElementById('o_proveedor').textContent = fmt(proveedor);
+    document.getElementById('o_gastos').textContent = fmt(gastos);
+    document.getElementById('o_pct').textContent = pct.toFixed(1) + '%';
+    document.getElementById('o_crudoP').textContent = fmt(prc1);
+    document.getElementById('o_landedP').textContent = fmt(landedUnit1);
+    document.getElementById('o_landedPpen').textContent = fmtPEN(landedUnit1 * tc);
+    document.getElementById('o_crudoH').textContent = fmt(prc2);
+    document.getElementById('o_landedH').textContent = fmt(landedUnit2);
+    document.getElementById('o_landedHpen').textContent = fmtPEN(landedUnit2 * tc);
+    document.getElementById('o_total').textContent = fmtPEN((proveedor + gastos) * tc);
+
+    const badgeEl = document.getElementById('o_badge');
+    if (pct < 20) {
+      badgeEl.innerHTML = '<span class="badge">✓ Gastos bajos — importación eficiente</span>';
+    } else if (pct < 50) {
+      badgeEl.innerHTML = '<span class="badge warn">⚠️ Gastos altos — revisá si podés optimizar flete o aduana</span>';
+    } else {
+      badgeEl.innerHTML = '<span class="badge warn" style="background:#dc2626">🚨 Gastos > 50% del producto — algo está mal o es producto chico/pesado</span>';
+    }
+  }
+  document.querySelectorAll('.calc-inputs input').forEach(i => i.addEventListener('input', recalcular));
+  recalcular();
+
+  // ─── Persistir checklist de pasos en localStorage ────────────────────
+  const STORAGE_KEY = 'tutorial-imp-checklist';
+  const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
+  document.querySelectorAll('.step input.check').forEach(c => {
+    const step = c.closest('.step').dataset.step;
+    if (saved[step]) c.checked = true;
+    c.addEventListener('change', () => {
+      saved[step] = c.checked;
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(saved));
+    });
+  });
+
+  // ─── Smooth scroll en TOC con highlight de sección activa ────────────
+  const sections = document.querySelectorAll('section[id]');
+  const obs = new IntersectionObserver((entries) => {
+    entries.forEach(e => {
+      if (e.isIntersecting) {
+        document.querySelectorAll('nav.toc a').forEach(a => {
+          a.style.background = a.getAttribute('href') === '#' + e.target.id ? '#0f172a' : '';
+          a.style.color = a.getAttribute('href') === '#' + e.target.id ? 'white' : '';
+        });
+      }
+    });
+  }, { rootMargin: '-30% 0px -60% 0px' });
+  sections.forEach(s => obs.observe(s));
+</script>
+
+</body>
+</html>
