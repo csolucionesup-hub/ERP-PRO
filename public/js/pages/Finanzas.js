@@ -50,6 +50,11 @@ const estadoBadge = (estado) => {
 const badgeEnRiesgo = () =>
   `<span style="display:inline-block;padding:3px 9px;border-radius:20px;font-size:11px;font-weight:600;background:#9a3412;color:#fff" title="Trabajo en riesgo: gastos sin pago confirmado del cliente">EN RIESGO</span>`;
 
+// Badge déficit (compromiso > cotizado). Rojo, prioridad máxima — gana sobre
+// EN RIESGO y sobre el estado financiero.
+const badgeDeficit = (montoDeficit) =>
+  `<span style="display:inline-block;padding:3px 9px;border-radius:20px;font-size:11px;font-weight:600;background:#dc2626;color:#fff" title="OCs comprometidas superan lo cotizado al cliente${montoDeficit ? ` por ${montoDeficit}` : ''}">🔻 DÉFICIT</span>`;
+
 const semaforoDias = (dias) => {
   const d = Number(dias) || 0;
   const color = d <= 3 ? '#22c55e' : d <= 10 ? '#f59e0b' : '#dc2626';
@@ -124,7 +129,13 @@ function rowCotizacion(c, marca) {
           <div style="font-size:10px;color:#9ca3af">${Number(c.retencion_porcentaje)}% agente</div>` : '<span style="color:#9ca3af">—</span>'}
       </td>
       <td style="text-align:center">${semaforoDias(c.dias_esperando)}</td>
-      <td>${c.estado_comercial === 'TRABAJO_EN_RIESGO' ? badgeEnRiesgo() : estadoBadge(c.estado_financiero)}</td>
+      <td>${
+        c.en_deficit
+          ? badgeDeficit(c.deficit_monto != null ? fMoney(Math.abs(c.deficit_monto), 'PEN') : '')
+          : c.estado_comercial === 'TRABAJO_EN_RIESGO'
+            ? badgeEnRiesgo()
+            : estadoBadge(c.estado_financiero)
+      }</td>
       <td style="text-align:right;white-space:nowrap">
         <button class="btn-registrar" data-id="${c.id_cotizacion}"
           style="padding:6px 12px;background:${cfg.color};color:#fff;border:none;border-radius:5px;cursor:pointer;font-size:11px;font-weight:600">
@@ -135,6 +146,18 @@ function rowCotizacion(c, marca) {
           title="Editar movimiento (si hay uno solo abre directo, sino lleva al detalle)"
           style="padding:6px 9px;background:#fff;color:#374151;border:1px solid #d1d5db;border-radius:5px;cursor:pointer;font-size:11px;margin-left:4px">
           ✎
+        </button>` : ''}
+        ${c.estado_comercial === 'TRABAJO_EN_RIESGO' ? `
+        <button class="btn-promover" data-id="${c.id_cotizacion}" data-nro="${c.nro_cotizacion}"
+          title="Promover a Aprobada (el cliente confirmó el trabajo). Recalcula estado financiero según cobranzas registradas."
+          style="padding:6px 10px;background:#16a34a;color:#fff;border:none;border-radius:5px;cursor:pointer;font-size:11px;margin-left:4px;font-weight:600">
+          ↑ Promover
+        </button>` : ''}
+        ${['APROBADA','TRABAJO_EN_RIESGO'].includes(c.estado_comercial) ? `
+        <button class="btn-terminar" data-id="${c.id_cotizacion}" data-nro="${c.nro_cotizacion}"
+          title="Marcar proyecto como Terminado. Cierra el ciclo: no se podrán crear nuevas OCs vinculadas. Las históricas quedan intactas."
+          style="padding:6px 10px;background:#1e40af;color:#fff;border:none;border-radius:5px;cursor:pointer;font-size:11px;margin-left:4px;font-weight:600">
+          ✓ Terminar
         </button>` : ''}
         <button class="btn-detalle" data-id="${c.id_cotizacion}"
           style="padding:6px 10px;background:#fff;color:#374151;border:1px solid #d1d5db;border-radius:5px;cursor:pointer;font-size:11px;margin-left:4px">
@@ -216,7 +239,7 @@ function renderTabMarca(marca, data) {
           🔄 Refrescar
         </button>
       </div>
-      <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px">
+      <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:10px">
         <div style="padding:10px;background:#f9fafb;border-radius:6px">
           <div style="font-size:11px;color:var(--text-secondary)">Esperando pago</div>
           <div style="font-size:20px;font-weight:700;color:#6b7280">${data.esperando_pago.length}</div>
@@ -233,6 +256,10 @@ function renderTabMarca(marca, data) {
           <div style="font-size:11px;color:#9a3412">🧡 Trabajo en riesgo</div>
           <div style="font-size:20px;font-weight:700;color:#9a3412">${(data.trabajo_en_riesgo || []).length}</div>
         </div>
+        <div style="padding:10px;background:#fee2e2;border-radius:6px" title="Proyectos donde las OCs comprometidas superan lo cotizado. Vas a gastar caja general.">
+          <div style="font-size:11px;color:#991b1b">🔻 En déficit</div>
+          <div style="font-size:20px;font-weight:700;color:#991b1b">${(data.en_deficit || []).length}</div>
+        </div>
         <div style="padding:10px;background:#dbeafe;border-radius:6px">
           <div style="font-size:11px;color:#1e40af">Pipeline activo</div>
           <div style="font-size:16px;font-weight:700;color:#1e40af">${fMoney(totalPipeline, cfg.moneda)}</div>
@@ -245,6 +272,8 @@ function renderTabMarca(marca, data) {
 
     <!-- Bandejas -->
     <div style="display:flex;flex-direction:column;gap:14px">
+      ${renderBandeja('🔻 En déficit (comprometido > cotizado)', data.en_deficit || [], marca,
+        { mensajeVacio: 'Sin proyectos en déficit ✅' })}
       ${renderBandeja('🔴 Esperando depósito principal', data.esperando_pago, marca,
         { mensajeVacio: 'Sin cotizaciones esperando pago — todo al día ✅' })}
       ${!esUSD ? renderBandeja('🟡 Esperando detracción en Banco de la Nación', data.esperando_detraccion, marca,
@@ -2846,12 +2875,12 @@ export const Finanzas = async () => {
       <button class="tab-fin tab-fin-active" data-tab="metal"
         style="padding:10px 18px;border:none;background:none;cursor:pointer;font-weight:600;font-size:13px;border-bottom:3px solid transparent">
         Soles · Metal Engineers
-        <span style="background:#000;color:#fff;padding:1px 7px;border-radius:10px;font-size:10px;margin-left:6px">${dataMetal.esperando_pago.length + dataMetal.esperando_detraccion.length + (dataMetal.trabajo_en_riesgo || []).length}</span>
+        <span style="background:#000;color:#fff;padding:1px 7px;border-radius:10px;font-size:10px;margin-left:6px">${dataMetal.esperando_pago.length + dataMetal.esperando_detraccion.length + (dataMetal.trabajo_en_riesgo || []).length + (dataMetal.en_deficit || []).length}</span>
       </button>
       <button class="tab-fin" data-tab="perfo"
         style="padding:10px 18px;border:none;background:none;cursor:pointer;font-weight:600;font-size:13px;border-bottom:3px solid transparent">
         Dólares · Perfotools
-        <span style="background:#dc2626;color:#fff;padding:1px 7px;border-radius:10px;font-size:10px;margin-left:6px">${dataPerfo.esperando_pago.length + dataPerfo.esperando_detraccion.length + (dataPerfo.trabajo_en_riesgo || []).length}</span>
+        <span style="background:#dc2626;color:#fff;padding:1px 7px;border-radius:10px;font-size:10px;margin-left:6px">${dataPerfo.esperando_pago.length + dataPerfo.esperando_detraccion.length + (dataPerfo.trabajo_en_riesgo || []).length + (dataPerfo.en_deficit || []).length}</span>
       </button>
     </div>
 
@@ -2985,6 +3014,47 @@ function bindHandlers(cuentas, dashboard) {
   // Detalle
   document.querySelectorAll('.btn-detalle').forEach(btn => {
     btn.onclick = () => modalDetalle(Number(btn.dataset.id));
+  });
+
+  // Promover TRABAJO_EN_RIESGO → APROBADA (manual, decisión del usuario).
+  // Recalcula estado_financiero según las cobranzas registradas — si no hay
+  // cobranza queda PENDIENTE_DEPOSITO, si está cobrada total pasa a FONDEADA.
+  document.querySelectorAll('.btn-promover').forEach(btn => {
+    btn.onclick = async () => {
+      const id  = Number(btn.dataset.id);
+      const nro = btn.dataset.nro;
+      if (!confirm(
+        `¿Promover ${nro} a APROBADA?\n\n` +
+        `El cliente confirmó/pagó el trabajo. La cotización pasa de TRABAJO_EN_RIESGO a APROBADA.\n` +
+        `El estado financiero se recalcula automático según las cobranzas registradas.`
+      )) return;
+      try {
+        const r = await api.cotizaciones.promoverFondeada(id);
+        showSuccess(`${nro} promovida a APROBADA · ${r.estado_financiero}`);
+        window.refreshModule?.();
+      } catch (e) { showError(e.message); }
+    };
+  });
+
+  // Marcar TERMINADA (cierre del proyecto). Tras esto, el form de Nueva OC
+  // SERVICIO ya no va a mostrar este proyecto en el dropdown (el filtro de
+  // CCs activos en getCotizacionesDisponibles excluye TERMINADA).
+  document.querySelectorAll('.btn-terminar').forEach(btn => {
+    btn.onclick = async () => {
+      const id  = Number(btn.dataset.id);
+      const nro = btn.dataset.nro;
+      if (!confirm(
+        `¿Marcar ${nro} como TERMINADA?\n\n` +
+        `Esto cierra el proyecto. No vas a poder crear NUEVAS OCs vinculadas, ` +
+        `pero las históricas (cobranzas, OCs, gastos) quedan intactas.\n\n` +
+        `Reversible: desde Comercial se puede volver a APROBADA si hace falta.`
+      )) return;
+      try {
+        await api.cotizaciones.marcarTerminada(id);
+        showSuccess(`${nro} marcada como TERMINADA`);
+        window.refreshModule?.();
+      } catch (e) { showError(e.message); }
+    };
   });
 
   // Atajo ✎: si hay 1 solo movimiento abre el editor directo; si hay más,

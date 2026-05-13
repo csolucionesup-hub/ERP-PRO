@@ -66,7 +66,12 @@ class CobranzasService {
         c.fecha_aprobacion_finanzas,
         c.created_at,
         c.updated_at,
-        DATEDIFF(CURDATE(), DATE(c.updated_at)) AS dias_esperando
+        DATEDIFF(CURDATE(), DATE(c.updated_at)) AS dias_esperando,
+        COALESCE((
+          SELECT SUM(o.total::numeric)
+            FROM OrdenesCompra o
+           WHERE o.id_cotizacion = c.id_cotizacion AND o.estado <> 'ANULADA'
+        ), 0)::numeric AS comprometido_oc
       FROM Cotizaciones c
       WHERE c.estado <> 'ANULADA'
         AND (c.estado_financiero <> 'NA' OR c.estado = 'TRABAJO_EN_RIESGO')
@@ -76,14 +81,27 @@ class CobranzasService {
 
     const all = rows as any[];
 
+    // Anotar déficit por compromiso (suma OCs vinculadas > total cotizado).
+    // Esto es la vista de negocio: ¿el proyecto va a ser rentable?
+    for (const c of all) {
+      c.comprometido_oc = Number(c.comprometido_oc) || 0;
+      c.en_deficit      = c.comprometido_oc > Number(c.total);
+      c.deficit_monto   = Number((Number(c.total) - c.comprometido_oc).toFixed(2));
+    }
+
     // Clasificación por bandeja
-    // TRABAJO_EN_RIESGO es bandeja independiente: NO se mezcla con las otras
-    // aunque por algún motivo tuviera estado_financiero distinto de NA.
-    const trabajo_en_riesgo = all.filter(c =>
+    // - en_deficit  : tiene precedencia sobre el resto (es señal de alerta operativa)
+    // - trabajo_en_riesgo: el resto de los en TRABAJO_EN_RIESGO
+    // - esperando_pago / detraccion / cobradas: clasificación financiera estándar
+    const en_deficit = all.filter(c => c.en_deficit);
+
+    const noDeficit = all.filter(c => !c.en_deficit);
+
+    const trabajo_en_riesgo = noDeficit.filter(c =>
       c.estado_comercial === 'TRABAJO_EN_RIESGO'
     );
 
-    const noEnRiesgo = all.filter(c => c.estado_comercial !== 'TRABAJO_EN_RIESGO');
+    const noEnRiesgo = noDeficit.filter(c => c.estado_comercial !== 'TRABAJO_EN_RIESGO');
 
     const esperando_pago = noEnRiesgo.filter(c =>
       c.estado_financiero === 'PENDIENTE_DEPOSITO' ||
@@ -106,11 +124,13 @@ class CobranzasService {
       esperando_detraccion,
       cobradas,
       trabajo_en_riesgo,
+      en_deficit,
       totales: {
         esperando_pago_count:       esperando_pago.length,
         esperando_detraccion_count: esperando_detraccion.length,
         cobradas_count:             cobradas.length,
         trabajo_en_riesgo_count:    trabajo_en_riesgo.length,
+        en_deficit_count:           en_deficit.length,
       },
     };
   }

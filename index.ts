@@ -707,6 +707,24 @@ apiRouter.post('/cotizaciones/:id/anular', validateIdParam, auditLog('Cotizacion
   res.json({ success: true });
 });
 
+// Balance económico (cotizado/cobrado/comprometido/pagado/imputado/déficit).
+// Sesión 13/05/2026: usado por Producción, Finanzas (bandeja déficit) y form
+// Nueva OC (banner aviso).
+apiRouter.get('/cotizaciones/:id/balance', validateIdParam, async (req: Request, res: Response) => {
+  res.json(await CotizacionService.getBalance(parseInt(req.params.id as string)));
+});
+
+// Promover TRABAJO_EN_RIESGO → APROBADA. Manual desde Finanzas. Recalcula
+// estado_financiero según las cobranzas registradas.
+apiRouter.post('/cotizaciones/:id/promover-fondeada', validateIdParam, auditLog('Cotizacion', 'UPDATE'), async (req: Request, res: Response) => {
+  res.json(await CotizacionService.promoverFondeada(parseInt(req.params.id as string)));
+});
+
+// Marcar TERMINADA (cierre del proyecto). Manual desde Finanzas.
+apiRouter.post('/cotizaciones/:id/marcar-terminada', validateIdParam, auditLog('Cotizacion', 'UPDATE'), async (req: Request, res: Response) => {
+  res.json(await CotizacionService.marcarTerminada(parseInt(req.params.id as string)));
+});
+
 // Editar metadata "segura" (cliente, atencion, contactos, condiciones, etc.)
 // en CUALQUIER estado salvo ANULADA. No toca números/correlativo/estado.
 apiRouter.put('/cotizaciones/:id/metadata', validateIdParam, auditLog('Cotizacion', 'UPDATE'), async (req: Request, res: Response) => {
