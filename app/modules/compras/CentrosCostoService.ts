@@ -16,7 +16,10 @@ class CentrosCostoService {
              cot.nro_cotizacion AS cotizacion_nro,
              cot.cliente         AS cotizacion_cliente,
              cot.proyecto        AS cotizacion_proyecto,
-             cot.estado          AS cotizacion_estado
+             cot.estado          AS cotizacion_estado,
+             cot.marca           AS cotizacion_marca,
+             cot.moneda          AS cotizacion_moneda,
+             cot.tipo_cambio     AS cotizacion_tc
       FROM CentrosCosto cc
       LEFT JOIN Cotizaciones cot ON cot.id_cotizacion = cc.id_cotizacion
       ${where}
@@ -72,13 +75,27 @@ class CentrosCostoService {
     return (res as any).rows?.[0] || { id_centro_costo: (res as any).insertId, nombre, tipo };
   }
 
-  // ─── Picker: cotizaciones aprobadas no vinculadas a ningún centro ─────
+  // ─── Picker: cotizaciones aptas para vincular a un centro de costo ────
+  // Regla de negocio (sesión 13/05/2026):
+  //   - Las APROBADAS solo aparecen si YA tienen cobranza > 0 (fondeada
+  //     parcial o total). Sin cobranza = todavía no es "trabajo real".
+  //   - Las TRABAJO_EN_RIESGO siempre aparecen (asumimos costos sin tener
+  //     pago confirmado del cliente).
+  //   - Excluye TERMINADA, ANULADA, RECHAZADA, NO_APROBADA y las ya
+  //     vinculadas a otro centro de costo.
+  // Fuente de la regla: Finanzas dicta qué proyectos están "activos para
+  // gastar". Logística solo crea CCs sobre proyectos validados acá.
   async getCotizacionesDisponibles() {
     const [rows] = await db.query(`
       SELECT c.id_cotizacion, c.nro_cotizacion, c.cliente, c.proyecto,
-             c.estado, c.moneda, c.total, c.marca
+             c.estado, c.moneda, c.total, c.marca,
+             COALESCE(c.monto_cobrado_banco, 0) + COALESCE(c.monto_cobrado_detraccion, 0) AS cobrado_total
       FROM Cotizaciones c
-      WHERE c.estado IN ('APROBADA', 'TRABAJO_EN_RIESGO')
+      WHERE c.estado NOT IN ('ANULADA', 'RECHAZADA', 'NO_APROBADA', 'TERMINADA')
+        AND (
+          c.estado = 'TRABAJO_EN_RIESGO'
+          OR (COALESCE(c.monto_cobrado_banco, 0) + COALESCE(c.monto_cobrado_detraccion, 0)) > 0
+        )
         AND NOT EXISTS (
           SELECT 1 FROM CentrosCosto cc WHERE cc.id_cotizacion = c.id_cotizacion
         )

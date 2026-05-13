@@ -506,34 +506,47 @@ class CotizacionService {
     anio?: number;
     search?: string;
     todos?: boolean;
+    solo_con_cc?: boolean;
   } = {}) {
-    const where: string[] = [`estado IN ('APROBADA','TERMINADA','TRABAJO_EN_RIESGO')`];
+    const where: string[] = [`c.estado IN ('APROBADA','TERMINADA','TRABAJO_EN_RIESGO')`];
     const params: any[] = [];
 
     if (filtros.moneda) {
-      where.push(`moneda = ?`);
+      where.push(`c.moneda = ?`);
       params.push(filtros.moneda);
     }
     if (filtros.anio) {
-      where.push(`YEAR(fecha) = ?`);
+      where.push(`YEAR(c.fecha) = ?`);
       params.push(filtros.anio);
     } else if (!filtros.todos) {
       // Default: últimos 12 meses + año actual completo
-      where.push(`fecha >= DATE_SUB(CURDATE(), INTERVAL 12 MONTH)`);
+      where.push(`c.fecha >= DATE_SUB(CURDATE(), INTERVAL 12 MONTH)`);
     }
     if (filtros.search && filtros.search.trim()) {
-      where.push(`(LOWER(cliente) LIKE LOWER(?) OR LOWER(COALESCE(proyecto,'')) LIKE LOWER(?))`);
+      where.push(`(LOWER(c.cliente) LIKE LOWER(?) OR LOWER(COALESCE(c.proyecto,'')) LIKE LOWER(?))`);
       const term = `%${filtros.search.trim()}%`;
       params.push(term, term);
     }
+    // Cuando el caller solo necesita proyectos "ya gobernados" por un CC
+    // (típicamente: form de OC SERVICIO con Opción B, que pivota sobre el
+    // CC y derivar la cotización es lectura), filtramos por la existencia
+    // del vínculo en CentrosCosto.
+    if (filtros.solo_con_cc) {
+      where.push(`cc.id_centro_costo IS NOT NULL`);
+    }
 
     const [rows] = await db.query(
-      `SELECT id_cotizacion, nro_cotizacion, marca, fecha,
-              cliente, proyecto, moneda, total, estado,
-              tipo_cambio
-         FROM Cotizaciones
+      `SELECT c.id_cotizacion, c.nro_cotizacion, c.marca, c.fecha,
+              c.cliente, c.proyecto, c.moneda, c.total, c.estado,
+              c.tipo_cambio,
+              cc.id_centro_costo,
+              cc.nombre AS cc_nombre,
+              cc.tipo   AS cc_tipo,
+              cc.activo AS cc_activo
+         FROM Cotizaciones c
+         LEFT JOIN CentrosCosto cc ON cc.id_cotizacion = c.id_cotizacion
         WHERE ${where.join(' AND ')}
-        ORDER BY fecha DESC, id_cotizacion DESC`,
+        ORDER BY c.fecha DESC, c.id_cotizacion DESC`,
       params
     );
     return rows;

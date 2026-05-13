@@ -624,7 +624,8 @@ apiRouter.get('/cotizaciones/proyectos-activos', async (req: Request, res: Respo
   const anio = req.query.anio ? Number(req.query.anio) : undefined;
   const search = req.query.search as string | undefined;
   const todos = req.query.todos === '1' || req.query.todos === 'true';
-  res.json(await CotizacionService.getProyectosActivos({ moneda, anio, search, todos }));
+  const solo_con_cc = req.query.solo_con_cc === '1' || req.query.solo_con_cc === 'true';
+  res.json(await CotizacionService.getProyectosActivos({ moneda, anio, search, todos, solo_con_cc }));
 });
 
 apiRouter.get('/cotizaciones', async (req: Request, res: Response) => {
