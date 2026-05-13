@@ -155,10 +155,11 @@ export const api = {
     editarMetadata:   (id, d)  => put(`/cotizaciones/${id}/metadata`, d),
     proyectosActivos: (filtros = {}) => {
       const p = new URLSearchParams();
-      if (filtros.moneda) p.append('moneda', filtros.moneda);
-      if (filtros.anio)   p.append('anio',   String(filtros.anio));
-      if (filtros.search) p.append('search', filtros.search);
-      if (filtros.todos)  p.append('todos',  '1');
+      if (filtros.moneda)      p.append('moneda', filtros.moneda);
+      if (filtros.anio)        p.append('anio',   String(filtros.anio));
+      if (filtros.search)      p.append('search', filtros.search);
+      if (filtros.todos)       p.append('todos',  '1');
+      if (filtros.solo_con_cc) p.append('solo_con_cc', '1');
       const q = p.toString();
       return get(`/cotizaciones/proyectos-activos${q ? '?' + q : ''}`);
     },

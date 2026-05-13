@@ -68,8 +68,8 @@ class CobranzasService {
         c.updated_at,
         DATEDIFF(CURDATE(), DATE(c.updated_at)) AS dias_esperando
       FROM Cotizaciones c
-      WHERE c.estado_financiero <> 'NA'
-        AND c.estado <> 'ANULADA'
+      WHERE c.estado <> 'ANULADA'
+        AND (c.estado_financiero <> 'NA' OR c.estado = 'TRABAJO_EN_RIESGO')
         ${whereMarca}
       ORDER BY c.updated_at DESC
     `, params);
@@ -77,16 +77,24 @@ class CobranzasService {
     const all = rows as any[];
 
     // Clasificación por bandeja
-    const esperando_pago = all.filter(c =>
+    // TRABAJO_EN_RIESGO es bandeja independiente: NO se mezcla con las otras
+    // aunque por algún motivo tuviera estado_financiero distinto de NA.
+    const trabajo_en_riesgo = all.filter(c =>
+      c.estado_comercial === 'TRABAJO_EN_RIESGO'
+    );
+
+    const noEnRiesgo = all.filter(c => c.estado_comercial !== 'TRABAJO_EN_RIESGO');
+
+    const esperando_pago = noEnRiesgo.filter(c =>
       c.estado_financiero === 'PENDIENTE_DEPOSITO' ||
       c.estado_financiero === 'BANCO_PARCIAL'
     );
 
-    const esperando_detraccion = all.filter(c =>
+    const esperando_detraccion = noEnRiesgo.filter(c =>
       c.estado_financiero === 'BANCO_OK_DETRACCION_PENDIENTE'
     );
 
-    const cobradas = all.filter(c =>
+    const cobradas = noEnRiesgo.filter(c =>
       c.estado_financiero === 'FONDEADA_TOTAL' ||
       c.estado_financiero === 'SIN_DETRACCION_FONDEADA' ||
       c.estado_financiero === 'FACTURADA' ||
@@ -97,10 +105,12 @@ class CobranzasService {
       esperando_pago,
       esperando_detraccion,
       cobradas,
+      trabajo_en_riesgo,
       totales: {
         esperando_pago_count:       esperando_pago.length,
         esperando_detraccion_count: esperando_detraccion.length,
         cobradas_count:             cobradas.length,
+        trabajo_en_riesgo_count:    trabajo_en_riesgo.length,
       },
     };
   }

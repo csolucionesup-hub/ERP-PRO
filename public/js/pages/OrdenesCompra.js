@@ -319,6 +319,7 @@ let _ocs = [];
 let _proveedores = [];
 let _servicios = [];
 let _cfg = null;
+let _centrosCosto = []; // activos, con info de cotización vinculada (mig 069)
 
 // Helper: refresca el listado de OC en su sitio. Si la OC está embebida
 // dentro del hub de Logística (#logi-panel-oc), re-renderiza ese panel
@@ -342,11 +343,12 @@ async function refreshOC() {
 
 export const OrdenesCompra = async () => {
   try {
-    [_ocs, _proveedores, _servicios, _cfg] = await Promise.all([
+    [_ocs, _proveedores, _servicios, _cfg, _centrosCosto] = await Promise.all([
       api.ordenesCompra.list().catch(() => []),
       api.purchases.getProveedores().catch(() => []),
       api.services.getServiciosActivos().catch(() => []),
       api.config.get().catch(() => ({ aplica_igv: 1, tasa_igv: 18, monto_limite_sin_aprobacion: 5000, permitir_correlativo_manual: false })),
+      api.centrosCosto.list(true).catch(() => []),
     ]);
   } catch (e) { console.error('[OC] error:', e); }
 
@@ -3103,11 +3105,25 @@ async function editarMetadataOC(id, nro) {
         <div style="display:grid;gap:10px">
           <div>
             <label style="font-size:11px;color:#374151;font-weight:600;display:block;margin-bottom:4px">Centro de Costo</label>
-            <input id="em-cc" list="em-cc-list" value="${v(oc.centro_costo)}"
-              style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:5px;font-size:13px">
-            <datalist id="em-cc-list">
-              ${centros.map(c => `<option value="${v(c.nombre)}">${c.tipo}</option>`).join('')}
-            </datalist>
+            ${(() => {
+              // Select real: el datalist viejo le pasaba al browser un dropdown
+              // "filter as you type" que con un valor pre-cargado solo muestra
+              // las opciones que matchean — confunde porque parece que hay 1
+              // sola opción. Acá ofrecemos la lista completa siempre, y si el
+              // CC actual no está en el maestro activo lo pinneamos arriba.
+              const ccActualEnLista = (centros || []).some(c => c.nombre === oc.centro_costo);
+              const pinHTML = oc.centro_costo && !ccActualEnLista
+                ? `<option value="${v(oc.centro_costo)}" selected>${v(oc.centro_costo)} (no activo)</option>`
+                : '';
+              const opts = (centros || []).map(c =>
+                `<option value="${v(c.nombre)}" ${c.nombre === oc.centro_costo ? 'selected' : ''}>${v(c.nombre)} · ${v(c.tipo)}</option>`
+              ).join('');
+              return `<select id="em-cc" style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:5px;font-size:13px;background:#fff">
+                ${pinHTML}
+                <option value="">— Sin centro de costo —</option>
+                ${opts}
+              </select>`;
+            })()}
           </div>
           <div>
             <label style="font-size:11px;color:#374151;font-weight:600;display:block;margin-bottom:4px">Concepto / Observaciones</label>
@@ -3162,18 +3178,21 @@ async function nuevaOC(editData) {
   // que se abre en otros módulos como Logística → kanban), las variables
   // _proveedores/_servicios/_cfg quedaron vacías. Cargamos en demanda.
   try {
-    const necesitaProv = !_proveedores || _proveedores.length === 0;
-    const necesitaSrv  = !_servicios   || _servicios.length === 0;
-    const necesitaCfg  = !_cfg         || Object.keys(_cfg).length === 0;
-    if (necesitaProv || necesitaSrv || necesitaCfg) {
-      const [provs, srvs, cfg] = await Promise.all([
+    const necesitaProv = !_proveedores  || _proveedores.length === 0;
+    const necesitaSrv  = !_servicios    || _servicios.length === 0;
+    const necesitaCfg  = !_cfg          || Object.keys(_cfg).length === 0;
+    const necesitaCC   = !_centrosCosto || _centrosCosto.length === 0;
+    if (necesitaProv || necesitaSrv || necesitaCfg || necesitaCC) {
+      const [provs, srvs, cfg, ccs] = await Promise.all([
         necesitaProv ? api.purchases.getProveedores().catch(() => []) : Promise.resolve(_proveedores),
         necesitaSrv  ? api.services.getServiciosActivos().catch(() => []) : Promise.resolve(_servicios),
         necesitaCfg  ? api.config.get().catch(() => ({ aplica_igv: 1, tasa_igv: 18, monto_limite_sin_aprobacion: 5000, permitir_correlativo_manual: false })) : Promise.resolve(_cfg),
+        necesitaCC   ? api.centrosCosto.list(true).catch(() => []) : Promise.resolve(_centrosCosto),
       ]);
-      _proveedores = provs;
-      _servicios   = srvs;
-      _cfg         = cfg;
+      _proveedores  = provs;
+      _servicios    = srvs;
+      _cfg          = cfg;
+      _centrosCosto = ccs;
     }
   } catch (e) { console.error('[OC] lazy-load falló:', e); }
 
@@ -3264,7 +3283,25 @@ async function nuevaOC(editData) {
             <select name="forma_pago"><option value="CONTADO" ${sel(formaPago,'CONTADO')}>Contado</option><option value="CREDITO" ${sel(formaPago,'CREDITO')}>Crédito</option></select>
           </div>
           <div><label>Días crédito ${tip('Solo aplica si Forma pago = CRÉDITO. Cantidad de días para pagar después de recibir la factura del proveedor.')}</label><input type="number" name="dias_credito" value="${diasCredito}"></div>
-          <div style="grid-column:span 2"><label>Centro de costo ${tip('Categoría contable del gasto. Ej: OFICINA CENTRAL para gastos generales, ALMACEN METAL para insumos, o el nombre del proyecto para gastos de servicio.')}</label><input name="centro_costo" value="${v(centroCosto)}"></div>
+          <div style="grid-column:span 2"><label>Centro de costo * ${tip('Categoría contable del gasto. Elegí uno de la lista — para crear uno nuevo andá a Logística → Centros de Costo.')}</label>
+            ${(() => {
+              // El select sólo lista CCs activos del maestro. En modo edit, si
+              // el CC de la OC original no está en la lista (ej: CC desactivado
+              // después o un huérfano histórico), lo agregamos como option
+              // "pinneada" para no romper la edición.
+              const opts = (_centrosCosto || []).map(c =>
+                `<option value="${v(c.nombre)}" ${sel(centroCosto, c.nombre)}>${v(c.nombre)} · ${v(c.tipo)}</option>`
+              );
+              const ccActualEnLista = (_centrosCosto || []).some(c => c.nombre === centroCosto);
+              if (esEdit && centroCosto && !ccActualEnLista) {
+                opts.unshift(`<option value="${v(centroCosto)}" selected>${v(centroCosto)} (no activo)</option>`);
+              }
+              return `<select name="centro_costo" required>
+                <option value="">— Selecciona centro de costo —</option>
+                ${opts.join('')}
+              </select>`;
+            })()}
+          </div>
           <div style="grid-column:span 3"><label>Observaciones ${tip('Comentario libre para el proveedor o nota interna. Aparece en el PDF de la OC.')}</label><input name="observaciones" placeholder="Ej: Urgente, entrega en obra Toromocho" value="${v(observaciones)}"></div>
           <div style="grid-column:span 3">
             <label style="font-size:13px;font-weight:700;margin-top:10px;display:block">Líneas</label>

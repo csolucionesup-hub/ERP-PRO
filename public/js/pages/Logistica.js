@@ -1233,14 +1233,10 @@ function renderFormOC(tipoOC) {
     const doc = p.ruc || p.dni || '';
     return `<option value="${p.id_proveedor}">${p.razon_social}${doc ? ' · ' + doc : ''}</option>`;
   }).join('');
-  const servOpts = _servicios.map(s =>
-    `<option value="${s.id_servicio}">${s.nro_servicio || ('SRV-' + s.id_servicio)} · ${s.cliente || s.descripcion || '—'}</option>`
-  ).join('');
 
   const titulo = esServicio ? 'Nueva OC de Servicio'
               : esAlmacen  ? 'Nueva OC Almacén'
               : 'Nueva OC General';
-  const ccDefault = esAlmacen ? 'ALMACEN METAL' : esServicio ? '' : 'OFICINA CENTRAL';
   const undDefault = esAlmacen ? 'NIU' : esServicio ? 'DIAS' : 'UND';
   const formaPagoDefault = esAlmacen ? 'CREDITO' : 'CONTADO';
   const ayuda = esServicio
@@ -1248,25 +1244,68 @@ function renderFormOC(tipoOC) {
     : 'Cada gasto genera OC con correlativo (NNN-YYYY-CC) y PDF formal.'
       + ` Auto-aprueba si total ≤ S/ ${_cfg?.monto_limite_sin_aprobacion || 5000}.`;
 
+  // ── Opción B (sesión 13/05/2026): el CC es el pivote del form ─────────
+  // Filtramos los CCs disponibles según el tipo de OC:
+  //   - SERVICIO: solo tipo=PROYECTO con id_cotizacion vinculado (el form
+  //     deriva id_cotizacion + empresa + moneda + TC desde el CC).
+  //   - ALMACEN:  solo tipo=ALMACEN.
+  //   - GENERAL:  tipo OFICINA u OTRO (gastos no vinculados a proyecto).
+  // Si la lista queda vacía, mostramos aviso con call-to-action en vez del
+  // select. El usuario debe ir a "Centros de Costo" a crear/vincular primero.
+  const ccActivos = (_centrosCosto || []).filter(c => c.activo !== false);
+  const ccsFiltrados = esServicio
+    ? ccActivos.filter(c => c.tipo === 'PROYECTO' && c.id_cotizacion)
+    : esAlmacen
+      ? ccActivos.filter(c => c.tipo === 'ALMACEN')
+      : ccActivos.filter(c => c.tipo === 'OFICINA' || c.tipo === 'OTRO');
+
+  const ccOptions = ccsFiltrados.map(c => {
+    const extra = esServicio && c.cotizacion_nro
+      ? ` · ${c.cotizacion_nro}${c.cotizacion_cliente ? ' · ' + c.cotizacion_cliente : ''}`
+      : '';
+    return `<option value="${c.id_centro_costo}"
+              data-nombre="${(c.nombre || '').replace(/"/g, '&quot;')}"
+              data-id-cot="${c.id_cotizacion || ''}"
+              data-cliente="${(c.cotizacion_cliente || '').replace(/"/g, '&quot;')}"
+              data-marca="${c.cotizacion_marca || ''}">${c.nombre}${extra}</option>`;
+  }).join('');
+
+  // Pre-seleccionar el único candidato natural para ALMACEN (típicamente
+  // "ALMACEN METAL"). Para SERVICIO y GENERAL dejamos al usuario elegir.
+  const ccDefaultId = esAlmacen && ccsFiltrados.length === 1
+    ? ccsFiltrados[0].id_centro_costo
+    : '';
+
+  const avisoSinCC = esServicio
+    ? `<div style="background:#fef3c7;border:1px solid #fbbf24;color:#92400e;padding:10px 12px;border-radius:6px;font-size:12px;line-height:1.5">
+        <strong>⚠ No hay proyectos con centro de costo vinculado.</strong><br>
+        Andá a la pestaña <strong>🎯 Centros de Costo</strong> → <strong>+ Nuevo Centro de Costo</strong> tipo PROYECTO,
+        y vinculálo a una cotización <strong>fondeada</strong> (con cobranza registrada) o en <strong>Trabajo en Riesgo</strong>.
+        Solo entonces vas a poder cargar esta OC.
+      </div>`
+    : `<div style="background:#fef3c7;border:1px solid #fbbf24;color:#92400e;padding:10px 12px;border-radius:6px;font-size:12px;line-height:1.5">
+        <strong>⚠ No hay centros de costo del tipo adecuado.</strong><br>
+        Creá uno en la pestaña <strong>🎯 Centros de Costo</strong> antes de cargar esta OC.
+      </div>`;
+
   return `
     <div class="card">
       <h3 style="margin-bottom:6px;font-size:15px">➕ ${titulo}</h3>
       <p style="font-size:11px;color:var(--text-secondary);margin-bottom:12px">${ayuda}</p>
       <form id="${formId}" data-tipo-oc="${tipoOC}" style="display:flex;flex-direction:column;gap:10px">
         <input type="hidden" name="tipo_oc" value="${tipoOC}">
+        <input type="hidden" name="id_cotizacion" id="oc-idcot-${tipoOC}" value="">
 
-        ${esServicio ? `
         <div>
-          <label>Proyecto / Cotización *</label>
-          <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px">
-            <input type="text" id="srv-search-${tipoOC}" placeholder="🔍 Buscar por cliente o proyecto..."
-              style="flex:1;padding:7px 10px;border:1px solid #d9dad9;border-radius:6px;font-size:12px">
-          </div>
-          <select name="id_cotizacion" id="srv-select-${tipoOC}" required>
-            <option value="">— Selecciona proyecto —</option>
+          <label>Centro de Costo *</label>
+          ${ccsFiltrados.length === 0 ? avisoSinCC : `
+          <select name="id_centro_costo" id="oc-cc-${tipoOC}" required style="width:100%">
+            <option value="">— Seleccioná un centro de costo —</option>
+            ${ccOptions}
           </select>
-          <div id="srv-info-${tipoOC}" style="font-size:10px;color:var(--text-secondary);margin-top:4px"></div>
-        </div>` : ''}
+          <div id="oc-cc-info-${tipoOC}" style="font-size:11px;color:var(--text-secondary);margin-top:6px;line-height:1.5"></div>
+          `}
+        </div>
 
         <div>
           <label>Proveedor * ${_proveedores.length === 0 ? '<span style="color:#e65100">(crea uno en pestaña Proveedores)</span>' : ''}</label>
@@ -1284,17 +1323,17 @@ function renderFormOC(tipoOC) {
           <div><label>Lugar entrega</label><input name="lugar_entrega" value="Lima"></div>
         </div>
 
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-          <div><label>Centro de Costo *</label>
-            <input name="centro_costo" list="cc-list-${tipoOC}" value="${ccDefault}" placeholder="${esServicio ? 'Auto-rellena con proyecto' : 'OFICINA CENTRAL, MARKETING…'}" required autocomplete="off">
-            <datalist id="cc-list-${tipoOC}">
-              ${_centrosCosto.filter(c => c.activo !== false).map(c => `<option value="${c.nombre}">${c.tipo}</option>`).join('')}
-            </datalist>
-            <span style="font-size:10px;color:var(--text-secondary)">↳ Si escribís un nuevo nombre, se crea al guardar la OC</span>
-          </div>
+        <div style="display:grid;grid-template-columns:1fr;gap:8px">
           <div><label>Fecha emisión *</label><input type="date" name="fecha_emision" value="${hoy}" required></div>
         </div>
 
+        ${esServicio ? `
+          <!-- SERVICIO: empresa/moneda/TC se derivan del CC elegido (vinculado a cotización).
+               Los dejamos hidden para mantener compatibilidad con el resto del binding y el payload. -->
+          <input type="hidden" name="empresa" value="ME">
+          <input type="hidden" name="moneda"  value="PEN">
+          <input type="hidden" name="tipo_cambio" value="1.0000">
+        ` : `
         <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
           <div><label>Empresa</label>
             <select name="empresa">
@@ -1306,7 +1345,7 @@ function renderFormOC(tipoOC) {
             <select name="moneda"><option value="PEN">PEN</option><option value="USD">USD</option></select>
           </div>
           <div><label>TC</label><input type="number" step="0.0001" name="tipo_cambio" value="1.0000"></div>
-        </div>
+        </div>`}
 
         <div style="border:1px solid #e5e7eb;border-radius:6px;padding:10px">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
@@ -1362,64 +1401,69 @@ function bindFormOCMulti(panel, tipoOC) {
   const btnAddLinea  = form.querySelector('.btn-add-linea');
   const provInfoDiv  = form.querySelector(`#prov-info-${tipoOC}`);
   const provSelect   = form.querySelector('[name=id_proveedor]');
-  const servSelect   = form.querySelector('[name=id_cotizacion]');
-  const srvSearch    = form.querySelector(`#srv-search-${tipoOC}`);
-  const srvInfo      = form.querySelector(`#srv-info-${tipoOC}`);
+  const esServicio   = tipoOC === 'SERVICIO';
 
-  // ── Picker de Proyecto/Cotización (solo en form de Servicio) ──
-  // Reemplaza el dropdown viejo de Servicios (tabla orfanada) por una lista
-  // de cotizaciones APROBADAS/TERMINADAS/TRABAJO_EN_RIESGO. Filtra cliente-side
-  // según moneda actual de la OC + searchbox.
-  const renderProyectoOpts = () => {
-    if (!servSelect) return;
-    const monedaSel = form.querySelector('[name=moneda]')?.value || 'PEN';
-    const f = (srvSearch?.value || '').trim().toLowerCase();
-    const lista = _proyectos
-      .filter(p => p.moneda === monedaSel)
-      .filter(p => !f
-        || String(p.cliente || '').toLowerCase().includes(f)
-        || String(p.proyecto || '').toLowerCase().includes(f)
-        || String(p.nro_cotizacion || '').toLowerCase().includes(f));
-    const fmtMoney = (n, m) => (m === 'USD' ? '$ ' : 'S/ ') +
-      Number(n || 0).toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    servSelect.innerHTML =
-      `<option value="">— Selecciona proyecto —</option>` +
-      lista.map(p => `
-        <option value="${p.id_cotizacion}">
-          ${p.nro_cotizacion} · ${p.cliente}${p.proyecto ? ' — ' + p.proyecto : ''} · ${fmtMoney(p.total, p.moneda)} (${p.estado})
-        </option>
-      `).join('');
-    if (srvInfo) {
-      srvInfo.textContent = lista.length === 0
-        ? `Sin cotizaciones ${monedaSel} disponibles. Aprobá alguna en Comercial primero.`
-        : `${lista.length} proyecto(s) ${monedaSel} disponible(s).`;
-    }
-  };
-  // Auto-sync Empresa → Moneda + TC. Cambiar Empresa a Perfotools también
-  // cambia Moneda a USD (con TC del día) y recarga la lista de proyectos.
-  // Pensado para que "Empresa: Perfotools" muestre cotizaciones USD sin que
-  // el usuario tenga que cambiar manualmente el select de Moneda.
-  const empresaSel = form.querySelector('[name=empresa]');
-  const monedaSel  = form.querySelector('[name=moneda]');
-  const tcInput    = form.querySelector('[name=tipo_cambio]');
-  if (empresaSel && monedaSel) {
-    empresaSel.addEventListener('change', () => {
-      const nueva = empresaSel.value === 'PT' ? 'USD' : 'PEN';
-      if (monedaSel.value !== nueva) {
-        monedaSel.value = nueva;
-        if (tcInput && nueva === 'PEN') tcInput.value = '1.0000';
-        monedaSel.dispatchEvent(new Event('change')); // dispara renderProyectoOpts
+  // ── Opción B (sesión 13/05/2026): el CC es el pivote ─────────────────
+  // El select muestra solo los CCs activos del tipo apropiado. Al elegir,
+  // si es SERVICIO se derivan id_cotizacion, empresa, moneda y TC a los
+  // hidden inputs. Para GENERAL/ALMACEN solo se usa el nombre del CC.
+  const ccSelect     = form.querySelector('[name=id_centro_costo]');
+  const ccInfoDiv    = form.querySelector(`#oc-cc-info-${tipoOC}`);
+  const idCotHidden  = form.querySelector(`#oc-idcot-${tipoOC}`);
+  const empresaInput = form.querySelector('[name=empresa]');
+  const monedaInput  = form.querySelector('[name=moneda]');
+  const tcInput      = form.querySelector('[name=tipo_cambio]');
+
+  // Si no hay CCs disponibles, no hay select que bindear (el render mostró
+  // el aviso amarillo). El submit ya falla por required="true" en otros campos.
+  if (ccSelect) {
+    ccSelect.addEventListener('change', () => {
+      const opt = ccSelect.selectedOptions[0];
+      if (!opt || !opt.value) {
+        if (ccInfoDiv) ccInfoDiv.innerHTML = '';
+        if (idCotHidden) idCotHidden.value = '';
+        return;
+      }
+      const idCot   = opt.dataset.idCot || '';
+      const cliente = opt.dataset.cliente || '';
+      const marca   = opt.dataset.marca || '';
+      // Recuperamos la fila completa de _centrosCosto para sacar moneda/TC
+      // (los datasets serializan poco; el array tiene todo).
+      const cc = _centrosCosto.find(c =>
+        String(c.id_centro_costo) === String(opt.value)
+      );
+
+      if (esServicio) {
+        if (idCotHidden) idCotHidden.value = idCot;
+        // Derivar empresa/moneda/TC de la cotización vinculada
+        if (cc && empresaInput) {
+          empresaInput.value = cc.cotizacion_marca === 'PERFOTOOLS' ? 'PT' : 'ME';
+        }
+        if (cc && monedaInput) {
+          monedaInput.value = cc.cotizacion_moneda || 'PEN';
+        }
+        if (cc && tcInput) {
+          tcInput.value = Number(cc.cotizacion_tc || 1).toFixed(4);
+        }
+        // Info visual del proyecto
+        if (ccInfoDiv) {
+          const monedaTxt = (cc?.cotizacion_moneda === 'USD') ? 'USD' : 'PEN';
+          const tcTxt = monedaTxt === 'USD' ? ` · TC ${Number(cc?.cotizacion_tc || 0).toFixed(4)}` : '';
+          ccInfoDiv.innerHTML =
+            `<div style="background:#f0f9ff;border:1px solid #bae6fd;padding:8px 10px;border-radius:6px;color:#0c4a6e">
+               <strong>Proyecto:</strong> ${cc?.cotizacion_nro || '—'} · ${cliente || '—'}<br>
+               <strong>Marca:</strong> ${marca || cc?.cotizacion_marca || '—'} · <strong>Moneda:</strong> ${monedaTxt}${tcTxt}
+             </div>`;
+        }
+      } else {
+        if (ccInfoDiv) ccInfoDiv.innerHTML = '';
       }
     });
+    // Si vino preseleccionado (caso ALMACEN con un solo CC), disparar el change
+    // para que el bloque info y los hidden queden inicializados.
+    if (ccSelect.value) ccSelect.dispatchEvent(new Event('change'));
   }
 
-  if (servSelect) {
-    srvSearch?.addEventListener('input', renderProyectoOpts);
-    monedaSel?.addEventListener('change', renderProyectoOpts);
-    renderProyectoOpts();
-  }
-
-  const ccInput      = form.querySelector('[name=centro_costo]');
   const igvCheckbox  = form.querySelector('[name=aplica_igv]');
   const formaPagoSel = form.querySelector('[name=forma_pago]');
   const dcWrap       = form.querySelector('.dc-wrap');
@@ -1525,21 +1569,6 @@ function bindFormOCMulti(panel, tipoOC) {
     if (atInput && !atInput.value && p.contacto) atInput.value = p.contacto;
   };
 
-  // ── Auto-fill centro costo al elegir servicio ──
-  if (servSelect) {
-    // Auto-rellenar Centro de Costo con el cliente de la cotización elegida.
-    servSelect.onchange = () => {
-      const idCot = Number(servSelect.value) || null;
-      if (!idCot) return;
-      const proy = _proyectos.find(p => p.id_cotizacion === idCot);
-      if (proy && ccInput && !ccInput.dataset.userTouched) {
-        ccInput.value = String(proy.cliente || `PROYECTO-${idCot}`).toUpperCase();
-      }
-    };
-    // Si el usuario tipea manualmente en CC, no lo sobreescribimos al cambiar proyecto
-    ccInput?.addEventListener('input', () => { ccInput.dataset.userTouched = '1'; });
-  }
-
   // ── Show/hide días crédito según forma pago ──
   formaPagoSel.onchange = () => {
     dcWrap.style.display = formaPagoSel.value === 'CREDITO' ? 'block' : 'none';
@@ -1573,14 +1602,27 @@ function bindFormOCMulti(panel, tipoOC) {
     });
     if (lineas.length === 0) { showError('Agregá al menos un ítem con descripción y precio'); return; }
 
+    // ── Resolver centro_costo (nombre) desde el id_centro_costo del select ──
+    // Opción B: el form maneja id_centro_costo, pero el backend espera el
+    // string `centro_costo`. Lo derivamos del array _centrosCosto. Si el CC
+    // no existe en el array (no debería pasar — el select solo lista activos),
+    // bloqueamos con error explícito en vez de auto-crear como antes.
+    const idCC = fd.get('id_centro_costo');
+    const ccRow = idCC ? _centrosCosto.find(c => String(c.id_centro_costo) === String(idCC)) : null;
+    if (!ccRow) {
+      showError('Elegí un centro de costo del desplegable. Si no aparece el que necesitás, creálo primero en la pestaña "Centros de Costo".');
+      return;
+    }
+    const ccNombre = String(ccRow.nombre || '').trim().toUpperCase();
+
     const payload = {
       tipo_oc:        fd.get('tipo_oc'),
       empresa:        fd.get('empresa') || 'ME',
       fecha_emision:  fd.get('fecha_emision'),
       id_proveedor:   Number(fd.get('id_proveedor')),
       id_cotizacion:  fd.get('id_cotizacion') ? Number(fd.get('id_cotizacion')) : null,
-      id_servicio:    null, // Camino A: el dropdown viejo de Servicios fue reemplazado por id_cotizacion
-      centro_costo:   fd.get('centro_costo'),
+      id_servicio:    null,
+      centro_costo:   ccNombre,
       moneda:         fd.get('moneda') || 'PEN',
       tipo_cambio:    Number(fd.get('tipo_cambio')) || 1,
       aplica_igv:     fd.get('aplica_igv') === 'on',
@@ -1594,18 +1636,6 @@ function bindFormOCMulti(panel, tipoOC) {
 
     const btn = form.querySelector('button[type=submit]');
     if (btn) { btn.disabled = true; btn.textContent = 'Creando OC…'; }
-
-    // Auto-crear centro de costo si es nuevo (no existe en _centrosCosto)
-    const ccNombre = (payload.centro_costo || '').trim().toUpperCase();
-    const ccExiste = _centrosCosto.some(c => c.nombre.toUpperCase() === ccNombre);
-    if (ccNombre && !ccExiste) {
-      // Inferir tipo según contexto
-      const tipoCC = tipoOC === 'ALMACEN' ? 'ALMACEN' : tipoOC === 'SERVICIO' ? 'PROYECTO' : 'OFICINA';
-      try {
-        await api.centrosCosto.create({ nombre: ccNombre, tipo: tipoCC, descripcion: `Auto-creado desde OC ${tipoOC}` });
-      } catch (_) { /* si falla por race condition, lo ignoramos */ }
-    }
-    payload.centro_costo = ccNombre;
 
     try {
       const r = await api.ordenesCompra.create(payload);

@@ -44,6 +44,12 @@ const estadoBadge = (estado) => {
   return `<span style="display:inline-block;padding:3px 9px;border-radius:20px;font-size:11px;font-weight:600;background:${c.bg};color:#fff">${c.label}</span>`;
 };
 
+// Badge especial para cotizaciones en TRABAJO_EN_RIESGO: el estado financiero
+// real es 'NA' (mig 047 lo resetea al marcar la cotización en riesgo), así que
+// si lo muestro tal cual sale un "NA" gris sin contexto. Naranja explícito.
+const badgeEnRiesgo = () =>
+  `<span style="display:inline-block;padding:3px 9px;border-radius:20px;font-size:11px;font-weight:600;background:#9a3412;color:#fff" title="Trabajo en riesgo: gastos sin pago confirmado del cliente">EN RIESGO</span>`;
+
 const semaforoDias = (dias) => {
   const d = Number(dias) || 0;
   const color = d <= 3 ? '#22c55e' : d <= 10 ? '#f59e0b' : '#dc2626';
@@ -118,7 +124,7 @@ function rowCotizacion(c, marca) {
           <div style="font-size:10px;color:#9ca3af">${Number(c.retencion_porcentaje)}% agente</div>` : '<span style="color:#9ca3af">—</span>'}
       </td>
       <td style="text-align:center">${semaforoDias(c.dias_esperando)}</td>
-      <td>${estadoBadge(c.estado_financiero)}</td>
+      <td>${c.estado_comercial === 'TRABAJO_EN_RIESGO' ? badgeEnRiesgo() : estadoBadge(c.estado_financiero)}</td>
       <td style="text-align:right;white-space:nowrap">
         <button class="btn-registrar" data-id="${c.id_cotizacion}"
           style="padding:6px 12px;background:${cfg.color};color:#fff;border:none;border-radius:5px;cursor:pointer;font-size:11px;font-weight:600">
@@ -210,7 +216,7 @@ function renderTabMarca(marca, data) {
           🔄 Refrescar
         </button>
       </div>
-      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px">
+      <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px">
         <div style="padding:10px;background:#f9fafb;border-radius:6px">
           <div style="font-size:11px;color:var(--text-secondary)">Esperando pago</div>
           <div style="font-size:20px;font-weight:700;color:#6b7280">${data.esperando_pago.length}</div>
@@ -222,6 +228,10 @@ function renderTabMarca(marca, data) {
         <div style="padding:10px;background:#dcfce7;border-radius:6px">
           <div style="font-size:11px;color:#166534">Cobradas (período)</div>
           <div style="font-size:20px;font-weight:700;color:#166534">${data.cobradas.length}</div>
+        </div>
+        <div style="padding:10px;background:#ffedd5;border-radius:6px" title="Cotizaciones donde el trabajo se está haciendo sin pago confirmado del cliente. Las OCs se pueden cargar igual.">
+          <div style="font-size:11px;color:#9a3412">🧡 Trabajo en riesgo</div>
+          <div style="font-size:20px;font-weight:700;color:#9a3412">${(data.trabajo_en_riesgo || []).length}</div>
         </div>
         <div style="padding:10px;background:#dbeafe;border-radius:6px">
           <div style="font-size:11px;color:#1e40af">Pipeline activo</div>
@@ -239,6 +249,8 @@ function renderTabMarca(marca, data) {
         { mensajeVacio: 'Sin cotizaciones esperando pago — todo al día ✅' })}
       ${!esUSD ? renderBandeja('🟡 Esperando detracción en Banco de la Nación', data.esperando_detraccion, marca,
         { mensajeVacio: 'No hay detracciones pendientes' }) : ''}
+      ${renderBandeja('🧡 Trabajo en riesgo (sin pago confirmado)', data.trabajo_en_riesgo || [], marca,
+        { mensajeVacio: 'No hay proyectos en riesgo' })}
       ${renderBandeja('🟢 Cobradas', data.cobradas, marca,
         { mensajeVacio: 'Aún no hay cobros completos en este período' })}
     </div>
@@ -2834,12 +2846,12 @@ export const Finanzas = async () => {
       <button class="tab-fin tab-fin-active" data-tab="metal"
         style="padding:10px 18px;border:none;background:none;cursor:pointer;font-weight:600;font-size:13px;border-bottom:3px solid transparent">
         Soles · Metal Engineers
-        <span style="background:#000;color:#fff;padding:1px 7px;border-radius:10px;font-size:10px;margin-left:6px">${dataMetal.esperando_pago.length + dataMetal.esperando_detraccion.length}</span>
+        <span style="background:#000;color:#fff;padding:1px 7px;border-radius:10px;font-size:10px;margin-left:6px">${dataMetal.esperando_pago.length + dataMetal.esperando_detraccion.length + (dataMetal.trabajo_en_riesgo || []).length}</span>
       </button>
       <button class="tab-fin" data-tab="perfo"
         style="padding:10px 18px;border:none;background:none;cursor:pointer;font-weight:600;font-size:13px;border-bottom:3px solid transparent">
         Dólares · Perfotools
-        <span style="background:#dc2626;color:#fff;padding:1px 7px;border-radius:10px;font-size:10px;margin-left:6px">${dataPerfo.esperando_pago.length + dataPerfo.esperando_detraccion.length}</span>
+        <span style="background:#dc2626;color:#fff;padding:1px 7px;border-radius:10px;font-size:10px;margin-left:6px">${dataPerfo.esperando_pago.length + dataPerfo.esperando_detraccion.length + (dataPerfo.trabajo_en_riesgo || []).length}</span>
       </button>
     </div>
 
