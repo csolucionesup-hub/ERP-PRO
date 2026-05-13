@@ -3105,11 +3105,25 @@ async function editarMetadataOC(id, nro) {
         <div style="display:grid;gap:10px">
           <div>
             <label style="font-size:11px;color:#374151;font-weight:600;display:block;margin-bottom:4px">Centro de Costo</label>
-            <input id="em-cc" list="em-cc-list" value="${v(oc.centro_costo)}"
-              style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:5px;font-size:13px">
-            <datalist id="em-cc-list">
-              ${centros.map(c => `<option value="${v(c.nombre)}">${c.tipo}</option>`).join('')}
-            </datalist>
+            ${(() => {
+              // Select real: el datalist viejo le pasaba al browser un dropdown
+              // "filter as you type" que con un valor pre-cargado solo muestra
+              // las opciones que matchean — confunde porque parece que hay 1
+              // sola opción. Acá ofrecemos la lista completa siempre, y si el
+              // CC actual no está en el maestro activo lo pinneamos arriba.
+              const ccActualEnLista = (centros || []).some(c => c.nombre === oc.centro_costo);
+              const pinHTML = oc.centro_costo && !ccActualEnLista
+                ? `<option value="${v(oc.centro_costo)}" selected>${v(oc.centro_costo)} (no activo)</option>`
+                : '';
+              const opts = (centros || []).map(c =>
+                `<option value="${v(c.nombre)}" ${c.nombre === oc.centro_costo ? 'selected' : ''}>${v(c.nombre)} · ${v(c.tipo)}</option>`
+              ).join('');
+              return `<select id="em-cc" style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:5px;font-size:13px;background:#fff">
+                ${pinHTML}
+                <option value="">— Sin centro de costo —</option>
+                ${opts}
+              </select>`;
+            })()}
           </div>
           <div>
             <label style="font-size:11px;color:#374151;font-weight:600;display:block;margin-bottom:4px">Concepto / Observaciones</label>
