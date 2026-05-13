@@ -6,7 +6,7 @@ import { lineChart, barChart, donutChart, chartColors, destroyChart } from '../c
 export const Dashboard = async () => {
   try {
     const [dataMaster, dataOperativa, dataBN, dataIGV, prestamosTotales, prestamosTomados, prestamosOtorgados, tcHoy,
-           hist_cotizaciones, hist_gastos, hist_compras] = await Promise.all([
+           hist_cotizaciones, hist_gastos, hist_compras, ocs_aprobadas] = await Promise.all([
       api.finances.getDashboard(),
       api.finances.getResumenOperativo(),
       api.tributario.getCuentaBN(),
@@ -18,7 +18,9 @@ export const Dashboard = async () => {
       // Para gráficas análisis
       api.cotizaciones.getCotizaciones().catch(() => []),
       api.finances.getGastos().catch(() => []),
-      api.purchases.getCompras().catch(() => [])
+      api.purchases.getCompras().catch(() => []),
+      // Compromiso futuro de caja: OCs aprobadas (en revisión, pendientes de pago)
+      api.ordenesCompra.list({ estado: 'APROBADA' }).catch(() => [])
     ]);
 
     const formatCurrency = (val) => new Intl.NumberFormat('es-PE', { style: 'currency', currency: 'PEN' }).format(val);
@@ -421,6 +423,97 @@ export const Dashboard = async () => {
                   : `<div style="padding:40px;text-align:center;color:var(--text-secondary);font-size:12px">Aún no hay cotizaciones aprobadas en este rango.</div>`}
               </div>
             </div>
+
+            ${(() => {
+              // ─── Panel Compromiso futuro de caja ──────────────────────
+              // Sólo OCs en estado APROBADA (en revisión para pago). No BORRADOR
+              // (todavía sin revisar) ni PAGO/RECEPCION/FACTURACION (ya con
+              // pagos parciales/totales que aparecen en otros lados).
+              // Empresa: ambas (Metal + Perfotools).
+              const tcRef = Number(tcHoy?.valor_venta) || 3.7;
+              const ocs = (ocs_aprobadas || []).filter(o => o.estado === 'APROBADA');
+              const toPEN = (o) => o.moneda === 'USD' ? Number(o.total) * (Number(o.tipo_cambio) || tcRef) : Number(o.total);
+              const totalComp = ocs.reduce((s, o) => s + toPEN(o), 0);
+              const porTipo = {
+                GENERAL:  { count: 0, monto: 0, icon: '🏢', label: 'General (Oficina)' },
+                SERVICIO: { count: 0, monto: 0, icon: '🔧', label: 'Servicio / Proyecto' },
+                ALMACEN:  { count: 0, monto: 0, icon: '📦', label: 'Almacén (Insumos)' },
+              };
+              ocs.forEach(o => {
+                const t = porTipo[o.tipo_oc];
+                if (t) { t.count++; t.monto += toPEN(o); }
+              });
+              const top5 = ocs.slice().sort((a, b) => toPEN(b) - toPEN(a)).slice(0, 5);
+              const fmtFecha = (d) => d ? String(d).split('T')[0] : '—';
+              const diasDesde = (d) => {
+                if (!d) return null;
+                const ms = Date.now() - new Date(String(d).slice(0, 10)).getTime();
+                return Math.max(0, Math.floor(ms / 86400000));
+              };
+
+              if (ocs.length === 0) return `
+                <div class="card" style="margin-top:16px;padding:24px;text-align:center;color:var(--text-secondary);font-size:13px;border-left:4px solid var(--ok)">
+                  ✅ <strong>Sin compromisos pendientes de revisión.</strong> No hay OCs en estado APROBADA esperando aprobación de pago.
+                </div>`;
+
+              return `
+                <div class="card" style="margin-top:16px;border-left:4px solid #f59e0b">
+                  <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px;flex-wrap:wrap;gap:8px">
+                    <div>
+                      <h3 style="margin:0 0 4px;font-size:14px">🔔 Compromiso futuro de caja</h3>
+                      <p style="font-size:11px;color:var(--text-secondary);margin:0">${ocs.length} OC(s) en estado APROBADA (en revisión para pago) · plata comprometida que va a salir cuando se aprueben para pago</p>
+                    </div>
+                    <div style="text-align:right">
+                      <div style="font-size:11px;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.5px">Total comprometido</div>
+                      <div style="font-size:24px;font-weight:800;color:#b45309;font-variant-numeric:tabular-nums">${formatCurrency(totalComp)}</div>
+                    </div>
+                  </div>
+
+                  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:14px">
+                    ${Object.entries(porTipo).map(([k, t]) => `
+                      <div style="padding:12px;background:#fffbeb;border:1px solid #fde68a;border-radius:8px">
+                        <div style="font-size:11px;color:#78350f;font-weight:600">${t.icon} ${t.label}</div>
+                        <div style="font-size:18px;font-weight:800;color:#92400e;margin-top:4px;font-variant-numeric:tabular-nums">${formatCurrency(t.monto)}</div>
+                        <div style="font-size:11px;color:#92400e;margin-top:2px">${t.count} OC(s)</div>
+                      </div>`).join('')}
+                  </div>
+
+                  ${top5.length ? `
+                  <div style="margin-top:16px">
+                    <h4 style="margin:0 0 8px;font-size:12px;font-weight:700;color:#78350f">📋 Top 5 OCs comprometidas (mayor a menor)</h4>
+                    <table style="width:100%;border-collapse:collapse;font-size:12px">
+                      <thead><tr style="background:#fffbeb;color:#78350f">
+                        <th style="padding:6px 8px;text-align:left;font-size:10px;text-transform:uppercase">Nº OC</th>
+                        <th style="padding:6px 8px;text-align:left;font-size:10px;text-transform:uppercase">Proveedor</th>
+                        <th style="padding:6px 8px;text-align:left;font-size:10px;text-transform:uppercase">Centro</th>
+                        <th style="padding:6px 8px;text-align:left;font-size:10px;text-transform:uppercase">Empresa</th>
+                        <th style="padding:6px 8px;text-align:right;font-size:10px;text-transform:uppercase">Monto PEN</th>
+                        <th style="padding:6px 8px;text-align:right;font-size:10px;text-transform:uppercase">Aprobada hace</th>
+                      </tr></thead>
+                      <tbody>
+                        ${top5.map(o => {
+                          const dias = diasDesde(o.fecha_aprobacion || o.fecha_emision);
+                          const colorDias = dias && dias > 15 ? 'color:#b91c1c;font-weight:700' : 'color:#78350f';
+                          return `
+                          <tr style="border-bottom:1px solid #fde68a">
+                            <td style="padding:8px;font-weight:600"><a href="#" onclick="event.preventDefault();window.OC&&window.OC.verOC(${o.id_oc})" style="color:#b45309;text-decoration:none">${o.nro_oc}</a></td>
+                            <td style="padding:8px">${o.proveedor_nombre || '—'}</td>
+                            <td style="padding:8px;font-size:11px;color:var(--text-secondary)">${o.centro_costo || '—'}</td>
+                            <td style="padding:8px"><span style="font-size:10px;padding:2px 6px;border-radius:8px;background:${o.empresa === 'PT' ? '#dcfce7' : '#dbeafe'};color:${o.empresa === 'PT' ? '#166534' : '#1e40af'};font-weight:700">${o.empresa}</span></td>
+                            <td style="padding:8px;text-align:right;font-weight:700;font-variant-numeric:tabular-nums">${formatCurrency(toPEN(o))}</td>
+                            <td style="padding:8px;text-align:right;${colorDias};font-variant-numeric:tabular-nums">${dias !== null ? dias + 'd' : '—'}</td>
+                          </tr>`;
+                        }).join('')}
+                      </tbody>
+                    </table>
+                    ${ocs.length > 5 ? `<p style="margin:8px 0 0;font-size:11px;color:var(--text-secondary);text-align:right">… y ${ocs.length - 5} OC(s) aprobadas más. Ver todas en <a href="#logistica/oc" style="color:#b45309">Logística → Órdenes de Compra</a></p>` : ''}
+                  </div>` : ''}
+
+                  <div style="margin-top:12px;padding:8px 10px;background:#fef3c7;border-radius:6px;font-size:11px;color:#78350f">
+                    💡 Estas OCs <strong>no afectan caja todavía</strong> — están en revisión. Cuando pasan a estado PAGO y se registra el pago, recién ahí aparecen en "Egresos" del gráfico de arriba.
+                  </div>
+                </div>`;
+            })()}
 
             ${comparativa.anios.length >= 2 ? `
               <div class="card" style="margin-top:16px">
