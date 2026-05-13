@@ -2,19 +2,97 @@
 
 > **LEER PRIMERO.** Este documento es la fuente de verdad sobre qué está hecho, qué falta y dónde estamos parados. Se actualiza al cierre de cada sesión de trabajo.
 
-**Última actualización:** 2026-05-08 (sesión corta — fix cosmético USD/PEN en Finanzas + descubrimiento bug arquitectural cobranzas)
-**Rama activa:** `main`
-**Último commit pusheado:** `a09369c Merge: fix display USD/PEN en Finanzas (08/05/2026)` (incluye `278a73b` con el fix cosmético de Finanzas.js)
+**Última actualización:** 2026-05-12 (sesión maratón — importaciones landed cost, centros costo vinculados a cotización, panel compromiso futuro caja, pase responsive 2026, merge manual PDI→Auger)
+**Rama activa:** `main` (worktree activo para features: `D:/proyectos/ERP-PRO/.claude/worktrees/busy-brown-829244` branch `claude/busy-brown-829244`)
+**Último commit pusheado:** `65fdd35 Merge: responsive pass + Prestamos consistente (12/05/2026)`
 **Servidor dev:** `npx ts-node index.ts` en `D:\proyectos\ERP-PRO` → `http://localhost:3000`
 **Producción:** `erp-pro-production-e4c0.up.railway.app` — Railway (deploy automático desde main, ACTIVE confirmado)
-**Cache buster JS actual:** `v=20260508r1` (app.js + 19 imports + index.html) — bumpeado en esta sesión.
-**Migraciones BD:** 001 → 037 + 042 → 063 aplicadas (Supabase Postgres project `fhlrxlsscerfiuuyiejw`). Sin migraciones nuevas en esta sesión.
+**Cache buster JS actual:** `v=20260512r5` (app.js + 19 imports + index.html + main.css) — bumpeado 5 veces en sesión 12/05.
+**Migraciones BD:** 001 → 069 aplicadas (Supabase Postgres project `fhlrxlsscerfiuuyiejw`). Migraciones nuevas hoy: **068_importaciones_landed_cost** + **069_centrocosto_cotizacion_link** (ambas ADD-only, verificadas con snapshot antes/después — cero data perdida).
+**Permisos Claude:** desde 12/05 yo (Claude) hago commit+push a feature branches `claude/*` automáticamente vía `.claude/settings.local.json`. Push a main lo sigue haciendo Julio manualmente (gate de release).
 
-## 🚨 Bug ACTIVO — Cobranzas USD/PEN (detectado 08/05, parcialmente arreglado)
+## 🚨 Bug RESUELTO — Cobranzas USD/PEN (cerrado 08/05 noche, antes era ACTIVO)
 
-Detectado por Julio: cotizaciones USD se mostraban con `$` delante de valor PEN (ej. `$8,347.20` cuando debe ser `S/ 8,347.20` o `$2,400 USD`). **Fix cosmético en producción** (`278a73b`/`a09369c`). **Bug arquitectural raíz NO arreglado** — `cobranzascotizacion.monto` se guarda en moneda original pero `recomputeEstado` suma sin convertir, y el modal "Registrar cobranza" prellena con valor PEN bajo label "Monto (USD)". Resultado: 2 cobranzas Venturo Capillo guardaron `8347.20 USD` en vez de `2400 USD`. KPI Caja Dólares infla `+$11,894.40`, Dashboard Gerencial INGRESO PEN infla `+S/41,415.92`.
+Bug detectado 08/05 mañana, **cerrado 08/05 noche** en 1 sesión: A (UPDATE de 6 filas en Supabase) + B (commit `7a7983d` / merge `81e023d`: fix `recomputeEstado` SUM*tipo_cambio + modal USD prefill+hint, cache buster r2) + C (recompute matemático verificado 2400×3.478=8347.20). Caja Dólares y Dashboard Gerencial volvieron a su valor real. Ver `memory/project_bug_cobranzas_usd_pen.md` para detalle.
 
-**Plan de fix en 3 partes acordado con Julio (NO ejecutado), retomar en próximo chat:** ver `C:\Users\Asus\.claude\projects\D--proyectos-ERP-PRO\memory\project_bug_cobranzas_usd_pen.md` con queries SQL listas + IDs de referencia + archivos a tocar.
+---
+
+## 🚀 Sesión 12/05/2026 — Maratón Importaciones + Responsive
+
+Sesión densa con 12+ commits a `claude/busy-brown-829244` y 6 merges a `main`. Todo desplegado y verificado en producción. Las 4 features principales:
+
+### 1. Importaciones con landed cost (Perfotools) — **Migración 068**
+Construido el flujo completo para que Perfotools cargue sus 5 importaciones/año desde China con costo real (proveedor + flete + desaduanaje + impuestos SUNAT + comisión banco), NO el crudo del proveedor.
+
+**Nuevo estado `EN_TRANSITO`** en `OrdenesCompra.estado` (entre PAGO y RECEPCION). Solo aplica a ALMACEN. La OC se paga al proveedor extranjero pero NO entra al inventario hasta cerrar la importación.
+
+**Nueva columna `oc_madre_id`** (FK self-reference en OrdenesCompra) — permite vincular OCs satélite (FICARGO, SUNAT, banco) a una OC ALMACEN madre. Las satélite son GENERAL.
+
+**Nueva columna `landed_costed_at`** (timestamp) marca cuándo se cerró con landed.
+
+**Nueva tabla `ImportacionGastoSnapshot`** — congela el desglose al cierre para auditoría.
+
+**6 métodos nuevos en `OrdenCompraService`**: `marcarEnTransito`, `desmarcarEnTransito`, `vincularSatelite`, `desvincularSatelite`, `getResumenImportacion`, `cerrarImportacion`. Más 6 endpoints REST en `index.ts` (POST `/en-transito`, `/vincular-madre`, etc.).
+
+**UI**: nueva columna 🚢 EN TRANSITO en kanban OC, botones contextuales `Marcar en tránsito` / `Vincular a importación` / `Cerrar importación`, modal de cierre con prorrateo por valor en vivo + ajuste manual. CSS responsive del kanban actualizado a 7 cols (4/2/1 según viewport).
+
+**Tutorial HTML interactivo** en `public/tutorial-importaciones.html` (1315 líneas, self-contained) accesible en `https://erp-pro-production-e4c0.up.railway.app/tutorial-importaciones.html`. Calculadora landed interactiva + checklist persistente + glosario + cheat sheet. Versión rev 2 aclara que la naviera va DENTRO de la OC FICARGO (no se carga aparte).
+
+**Fase 2 pendiente**: Rondas con inversionistas + reparto utilidades (Julio/Jorge/Alex 16.67% c/u, Perfotools 50%) — pausada, ver memoria.
+
+### 2. Centros de Costo vinculados a Cotización — **Migración 069**
+Antes el nombre del centro de costo era texto libre → terminaba con inconsistencia (mezcla cliente vs proyecto, "PDI S.A.C." vs "FABRICACION AUGER" para el MISMO proyecto).
+
+**Nueva columna `id_cotizacion`** en CentrosCosto (FK a Cotizaciones, nullable). Al crear un centro tipo PROYECTO, picker condicional muestra cotizaciones APROBADA/TRABAJO_EN_RIESGO disponibles → el nombre se autocompleta `"<PROYECTO> · <CLIENTE>"`.
+
+**Rename con propagación atómica**: cambiar nombre del centro propaga UPDATE a `OrdenesCompra`, `Gastos`, `Compras` que lo referencian (texto libre). Preview de impacto antes de confirmar. Solo GERENTE. Snapshot before/after en `Auditoria` (jsonb).
+
+**Detección de huérfanos**: strings de `centro_costo` en OCs/Gastos/Compras que NO existen como registro formal en CentrosCosto. Botón "Regularizar" crea el registro formal sin tocar las referencias existentes.
+
+**Hoy regularizados 3 huérfanos** que Julio tenía: VENTA DE AUGER PARA FUNDAS DE 1000 (6 OCs), PROYECTO DOBLADORAS (2 OCs), VENTA DE CORE ROLLER PARA FUNDAS DE 800 MM (1 OC). Total: 4 centros → 7 centros formales.
+
+**Merge manual PDI → Auger ejecutado vía MCP**: las 5 OCs en BORRADOR de "PDI S.A.C." (correlativos 001-005 del 2026) se renumeraron a 007-011 y se movieron al centro "VENTA DE AUGER PARA FUNDAS DE 1000". Razón: las 5 eran de la cotización COT 2026-010-MN (proyecto Auger - cliente PDI). Verificación pre/post: cero data perdida (oc_total_bd = 86 antes y después). Audit log persistido en `Auditoria` con before/after en jsonb. La transacción atómica intentó 3 veces y rolló back 2 veces por constraints de seguridad antes de cuadrar: (a) UNIQUE compuesta `(nro_oc, empresa, centro_costo)` — fix renumerar primero, (b) columna `descripcion` no existe en Auditoria — fix usar `datos_antes/datos_despues`, (c) CHECK constraint `auditoria_accion_check` no acepta `'MERGE_MANUAL'` — fix usar `'UPDATE'`. **Lección: las constraints existentes funcionan como red de seguridad.**
+
+### 3. Panel "Compromiso futuro de caja" en Dashboard
+Card amarillo en tab Análisis del Dashboard. Muestra **solo OCs en estado APROBADA** (en revisión para pago, NO incluye BORRADOR ni PAGO en curso). Hoy son 17 OCs por S/ 4,980. Desglose por tipo_oc (GENERAL/SERVICIO/ALMACEN) en 3 tarjetas + top 5 OCs comprometidas mayor→menor + columna "aprobada hace X días" (rojo si >15d). Click en nro_oc abre modal de detalle. Convierte USD→PEN con tipo_cambio propio de cada OC (fallback a TC del día).
+
+### 4. Pase responsive 2026 + consistencia tipográfica
+Aplicadas best practices 2026 (UXPin, Scrimba, Eleken):
+- **Fluid typography** con `clamp(18px, 2.2vw + 12px, 28px)` en h1/h2/títulos (sin saltos)
+- **Container queries** en `.kpi-grid` → reacciona al ancho del contenedor, no solo viewport
+- **Safe area insets** (iPhone notch, Android nav bar)
+- **Touch targets 38px+** en mobile, inputs 16px (evita zoom iOS)
+- **Kanban OC: 7 cols → 4 → 2 → 1** según breakpoint (1400/1100/900/600px) + scroll horizontal cuando no entra
+- **Indicador visual de scroll lateral en tablas** (gradient ::after) + JS que activa `.has-scroll` solo cuando hay overflow real (ResizeObserver + MutationObserver)
+- **Override de min-widths hardcoded** en filtros del listado OC (5 selects con min-width fijo total 660px)
+- **Tabbar 3 cols** en celular para tabs largos (Logística tiene 8)
+- **`overflow-x:hidden` global** en html/body para prevenir scroll horizontal accidental
+
+**Préstamos refactorizado** para usar `kpiGrid` en vez de tarjetas inline con `font-size:28px` hardcoded → ahora consistente con Logística y Dashboard (26px desktop / 20px tablet / 16px mobile).
+
+### Permisos Claude actualizados
+`.claude/settings.local.json` extendido. Yo (Claude) ahora puedo hacer `git add/commit/push` a feature branches `claude/*` sin pedir permiso. **NO autorizado**: push directo a main, ni merge a main, ni reset/force. Eso queda como gate humano.
+
+### Commits + merges de la sesión (12/05/2026)
+- `b4a675e` fix(importaciones): completar metodos service + UI OC + mig 068 que faltaron en commit anterior
+- `6eed035` Merge: completar importaciones que faltaban en main
+- `ca1b1d6` feat(dashboard): panel compromiso futuro de caja (OCs aprobadas)
+- `11082db` Merge: panel compromiso futuro de caja en Dashboard
+- `c411821` feat(responsive): pase 2026 + kanban EN_TRANSITO + Prestamos usa kpiGrid
+- `65fdd35` Merge: responsive pass + Prestamos consistente
+
+Más algunos commits intermedios del flujo importaciones / centros costo / tutorial rev 2 que vinieron antes.
+
+### Bugs encontrados durante la sesión (resueltos)
+1. **Mojibake en `public/js/app.js` e `index.html`** — bytes UTF-8 grabados literal como Win1252 (`â˜°`, `Cargando mÃ³dulo...`). Fix manual + protección anti-mojibake en build (3 capas: `.editorconfig` + `.gitattributes` + `scripts/check_mojibake.js` corriendo como `prebuild`).
+2. **Tendencia comercial chart** — línea verde "aprobado" invisible porque eje Y único compartido con cotizado (100x mayor). Fix: eje Y dual + incluir USD convertido a PEN.
+3. **Préstamos form lateral montaba sobre tabla** — fix con modal (patrón de Logística).
+4. **Kanban OC columna EN_TRANSITO no se mostraba** — había DOS arrays hardcoded de estados, actualicé `COLUMNAS_KANBAN_PRINCIPALES` pero olvidé `estadosOrden` (línea 962). Fix al sync ambos.
+5. **Railway deploy fallido por archivos huérfanos** — al hacer commit del feature centros costo, el `OrdenCompraService.ts` modificado para importaciones quedó sin commitear. Railway buildea desde main, donde `index.ts` llamaba a métodos que el service en main NO tenía → 6 errores TS2339. Fix: commit faltante. **Lección guardada en memoria**: SIEMPRE verificar `git status` antes de armar `git add` cuando index.ts llama métodos nuevos de un service.
+
+---
+
+
 
 ---
 
@@ -978,6 +1056,11 @@ Si Julio dice "sigamos con cotizaciones" o reporta un bug del módulo Comercial:
 17. **CostosServicio se llena automático desde 3 lugares**. (1) `InventoryService.registrarConsumoServicio()` cuando se retira material → `tipo_costo='MATERIAL_CONSUMO'`. (2) `OrdenCompraService.crear()` cuando es honorario con id_cotizacion → `tipo_costo='MANO_OBRA_OC'` (snapshot inmediato, NO espera a facturar). (3) `OrdenCompraService.facturar()` cuando es SERVICIO no-honorario → `tipo_costo='GASTO_OC'`. Los 3 vinculan por `id_cotizacion`. La tabla 'Servicios' legacy (vacía en producción) ya NO se usa para nada de esto.
 18. **Producción Fase E v0 = visor sólo de lectura**. Cada cotización APROBADA / TRABAJO_EN_RIESGO / TERMINADA es una OT implícita. NO hay tabla `OrdenesTrabajo` formal todavía. Costos vienen de `CostosServicio` filtrado por id_cotizacion. El módulo full (BOM, work centers, partes, QC, trazabilidad heat numbers, remanentes, PDFs con QR) queda para cuando arranquemos las 5 semanas reales (Plan Maestro Fase E).
 19. **Convención: dev server desde D:/proyectos/ERP-PRO, NO desde worktree**. `npx ts-node index.ts` en el directorio principal. Worktrees son solo para edición. Si Claude propone "preview server", recordar que la convención del proyecto es ejecutar el comando en otro shell.
+20. **Importaciones (mig 068, sesión 12/05) — flujo en 3 OCs por importación Perfotools**. (1) OC ALMACEN al proveedor extranjero (productos) → `marcarEnTransito` (estado EN_TRANSITO). (2) OC GENERAL a FICARGO (servicio logístico incluye Ocean Freight) → `vincularSatelite(id_oc_madre)`. (3) OC GENERAL para impuestos SUNAT (en PEN) → `vincularSatelite`. Cuando llega el barco + todas las satélite cargadas → `cerrarImportacion` desde el detalle de la OC madre. Modal muestra el resumen + prorrateo por valor (editable) y al confirmar entra al inventario con landed cost + snapshot en `ImportacionGastoSnapshot`. La naviera NO se carga como OC aparte (FICARGO la incluye). Ver tutorial en `public/tutorial-importaciones.html` o URL producción para detalle.
+21. **Centros de Costo vinculados a Cotización (mig 069, sesión 12/05)**. Al crear CC tipo PROYECTO en Logística → picker condicional muestra cotizaciones APROBADA/TRABAJO_EN_RIESGO disponibles (no asignadas a otro CC). Nombre se autocompleta `"<PROYECTO> · <CLIENTE>"`. Renombrar un CC dispara propagación atómica a OrdenesCompra+Gastos+Compras (preview de impacto). Solo GERENTE. Audit log en `Auditoria` (datos_antes / datos_despues en jsonb). Si Julio reporta "centros con nombres inconsistentes", el flujo es: (a) crear nuevo desde cotización, (b) regularizar huérfanos detectados (cuadro amarillo arriba de la tabla), (c) hacer rename del centro viejo con propagación. Para casos especiales de **merge entre centros** (cuando 2 centros existentes son el mismo proyecto): no se puede vía UI por la constraint UNIQUE `(nro_oc, empresa, centro_costo)`. Hay que hacerlo vía SQL en Supabase (renumerar correlativos primero + UPDATE centro_costo + audit log). Ver memoria `project_centros_costo_merge_pdi_auger.md` para precedente.
+22. **Permission rules en `.claude/settings.local.json`** — desde 12/05 puedo hacer `git add/commit/push` a feature branches sin pedir permiso. Reglas exactas: `Bash(git push)`, `Bash(git push -u origin claude/*)`, `Bash(git push origin claude/*)`, `Bash(git push origin HEAD:*)`. Pero NO `git push origin main` ni `git push` desde el main worktree (la sandbox de Claude detecta default branch y bloquea). El push final a main lo hace Julio manualmente. Si Julio pregunta "puedes hacerlo tú", la respuesta es: yo hago commit+push al branch claude/*, después le paso comandos para merge+push main (3 comandos). Para cambiar esto: el user habilita más reglas explícitas, pero la convención actual es que main = release deliberado por humano.
+23. **Constraints de Supabase como red de seguridad** (sesión 12/05). Los UPDATE/INSERT directos vía MCP pueden fallar por constraints existentes: UNIQUE compuesta (`ordenescompra_uk_oc_nro_uk` = nro_oc+empresa+centro_costo), CHECK (ej. `auditoria_accion_check` solo acepta CREATE/UPDATE/DELETE/ANULAR/LOGIN/LOGOUT/CONFIG/EXPORT/EMIT), columnas que no existen (ej. Auditoria NO tiene `descripcion`, usa `datos_antes/datos_despues` en jsonb). Cuando una transacción falla, hace rollback automático y NADA cambia. Si vas a hacer un UPDATE masivo, mejor envolverlo en `BEGIN; ... COMMIT;` explícito para garantizar atomicidad. Y siempre hacer snapshot ANTES (SELECT COUNT) y DESPUÉS para verificar que no se perdió data.
+24. **Convención cache buster CSS** (desde 12/05) — además de `app.js?v=YYYYMMDDr#` y todos los imports, también `main.css?v=YYYYMMDDr#` en el `<link>` de `index.html`. Si solo tocás CSS no JS, NO olvidar bumpear el de CSS también, sino el browser carga el CSS viejo. Esto pasó al final de la sesión 12/05 — agregué un block "Pase Responsive 2026" al final de main.css y al inicio nadie lo veía hasta que bumpé el `?v=`.
 
 ### Estado del filesystem (worktree principal)
 - Working tree limpio en este worktree (`elegant-herschel-050bb4`).
