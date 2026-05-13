@@ -681,19 +681,27 @@ export const Prestamos = async () => {
       </div>
     </header>
 
-    <!-- Tarjetas resumen -->
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:20px">
-      <div class="card" style="border-left:4px solid var(--danger);text-align:center">
-        <p style="font-size:12px;color:var(--text-secondary);margin-bottom:6px;text-transform:uppercase;letter-spacing:1px">Total que Debo</p>
-        <p style="font-size:28px;font-weight:700;color:var(--danger)">${formatCurrency(totales.total_debo)}</p>
-        <p style="font-size:11px;color:var(--text-secondary)">Saldo pendiente préstamos tomados</p>
-      </div>
-      <div class="card" style="border-left:4px solid var(--primary-color);text-align:center">
-        <p style="font-size:12px;color:var(--text-secondary);margin-bottom:6px;text-transform:uppercase;letter-spacing:1px">Total que Me Deben</p>
-        <p style="font-size:28px;font-weight:700;color:var(--primary-color)">${formatCurrency(totales.total_me_deben)}</p>
-        <p style="font-size:11px;color:var(--text-secondary)">Saldo pendiente préstamos otorgados</p>
-      </div>
-    </div>
+    <!-- Tarjetas resumen — usa kpiGrid para consistencia con Logística / Dashboard.
+         Antes tenía font-size:28px hardcoded que rompía la consistencia visual
+         con el resto del ERP. Ahora hereda los tamaños responsive del kpi system. -->
+    ${kpiGrid([
+      {
+        label: 'Total que Debo',
+        value: formatCurrency(totales.total_debo),
+        change: 'Saldo pendiente préstamos tomados',
+        changeType: 'neutral',
+        icon: '🔴',
+        accent: Number(totales.total_debo) > 0 ? 'danger' : '',
+      },
+      {
+        label: 'Total que Me Deben',
+        value: formatCurrency(totales.total_me_deben),
+        change: 'Saldo pendiente préstamos otorgados',
+        changeType: 'neutral',
+        icon: '🟢',
+        accent: Number(totales.total_me_deben) > 0 ? 'success' : '',
+      },
+    ], 2)}
 
     <!-- Tabs -->
     <div style="display:flex;gap:10px;margin-top:24px;margin-bottom:0;flex-wrap:wrap">

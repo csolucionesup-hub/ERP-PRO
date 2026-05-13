@@ -1,29 +1,29 @@
 ﻿// Cache busting para imports ES module: cada path lleva su ?v=YYYYMMDDr#
 // hardcodeado. Si se cambia CUALQUIER archivo de pages/components/services
 // hay que bumpear el sufijo en TODAS las líneas (Find/Replace de v=2026...).
-import { renderSidebar } from './components/Sidebar.js?v=20260512r2';
-import { Dashboard }   from './pages/Dashboard.js?v=20260512r2';
-import { Finanzas }    from './pages/Finanzas.js?v=20260512r2';
-import { Inventario }  from './pages/Inventario.js?v=20260512r2';
-import { Usuarios }    from './pages/Usuarios.js?v=20260512r2';
-import { Compras }       from './pages/Compras.js?v=20260512r2';
+import { renderSidebar } from './components/Sidebar.js?v=20260512r5';
+import { Dashboard }   from './pages/Dashboard.js?v=20260512r5';
+import { Finanzas }    from './pages/Finanzas.js?v=20260512r5';
+import { Inventario }  from './pages/Inventario.js?v=20260512r5';
+import { Usuarios }    from './pages/Usuarios.js?v=20260512r5';
+import { Compras }       from './pages/Compras.js?v=20260512r5';
 // Servicios — módulo deprecado al cierre 03/05/2026 (Camino A vació la tabla
 // en producción; flujo migrado a Cotizaciones APROBADAS + OCs). El backend
 // sigue vivo porque Logística/OC consumen api.services.getServiciosActivos()
 // para popular dropdowns, pero la página ya no se navega.
-import { Proveedores }   from './pages/Proveedores.js?v=20260512r2';
-import { Prestamos }     from './pages/Prestamos.js?v=20260512r2';
-import { Comercial }     from './pages/Comercial.js?v=20260512r2';
-import { ConfiguracionComercial } from './pages/ConfiguracionComercial.js?v=20260512r2';
-import { Logistica }     from './pages/Logistica.js?v=20260512r2';
-import { Administracion } from './pages/Administracion.js?v=20260512r2';
-import { Configuracion }  from './pages/Configuracion.js?v=20260512r2';
-import { Contabilidad }   from './pages/Contabilidad.js?v=20260512r2';
-import { Importador }     from './pages/Importador.js?v=20260512r2';
-import { OrdenesCompra }  from './pages/OrdenesCompra.js?v=20260512r2';
-import { Produccion }     from './pages/Produccion.js?v=20260512r2';
-import { Alertas }        from './pages/Alertas.js?v=20260512r2';
-import { showSuccess, showError, showToast } from './services/ui.js?v=20260512r2';
+import { Proveedores }   from './pages/Proveedores.js?v=20260512r5';
+import { Prestamos }     from './pages/Prestamos.js?v=20260512r5';
+import { Comercial }     from './pages/Comercial.js?v=20260512r5';
+import { ConfiguracionComercial } from './pages/ConfiguracionComercial.js?v=20260512r5';
+import { Logistica }     from './pages/Logistica.js?v=20260512r5';
+import { Administracion } from './pages/Administracion.js?v=20260512r5';
+import { Configuracion }  from './pages/Configuracion.js?v=20260512r5';
+import { Contabilidad }   from './pages/Contabilidad.js?v=20260512r5';
+import { Importador }     from './pages/Importador.js?v=20260512r5';
+import { OrdenesCompra }  from './pages/OrdenesCompra.js?v=20260512r5';
+import { Produccion }     from './pages/Produccion.js?v=20260512r5';
+import { Alertas }        from './pages/Alertas.js?v=20260512r5';
+import { showSuccess, showError, showToast } from './services/ui.js?v=20260512r5';
 
 // Exponer helpers de toast globalmente (los modules ES no tienen acceso
 // directo desde otros modules sin import; varios usan window.showSuccess?.()
@@ -513,4 +513,32 @@ document.addEventListener('click', (e) => {
     }
   });
   obs.observe(document.body, { childList: true });
+})();
+
+// ─── Indicador visual de scroll horizontal en tablas ─────────────────
+// Cuando una .table-container tiene contenido que se desborda lateralmente,
+// agregamos la clase .has-scroll → activa el gradient ::after definido en CSS.
+// Útil en mobile para que el usuario sepa que puede deslizar la tabla.
+(function setupTableScrollIndicator() {
+  const checkScroll = (el) => {
+    if (!el || !el.classList) return;
+    const tieneScroll = el.scrollWidth > el.clientWidth + 2;
+    el.classList.toggle('has-scroll', tieneScroll);
+  };
+  const checkAll = () => document.querySelectorAll('.table-container').forEach(checkScroll);
+
+  // Re-check al cargar, al cambiar tamaño de ventana, y cuando se agreguen tablas
+  window.addEventListener('resize', checkAll, { passive: true });
+  // Observar mutaciones del DOM para tablas que aparecen dinámicamente
+  const mo = new MutationObserver(() => requestAnimationFrame(checkAll));
+  mo.observe(document.body, { childList: true, subtree: true });
+  // Al hacer scroll lateral, oculta el gradient si llegó al final
+  document.addEventListener('scroll', (e) => {
+    if (e.target?.classList?.contains('table-container')) {
+      const llegoAlFinal = e.target.scrollLeft + e.target.clientWidth >= e.target.scrollWidth - 2;
+      e.target.classList.toggle('has-scroll', !llegoAlFinal);
+    }
+  }, { capture: true, passive: true });
+  // Primera evaluación
+  requestAnimationFrame(checkAll);
 })();

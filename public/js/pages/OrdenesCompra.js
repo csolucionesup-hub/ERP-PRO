@@ -959,7 +959,10 @@ function pintarColumnasKanban() {
     return true;
   });
 
-  const estadosOrden = ['BORRADOR', 'APROBADA', 'PAGO', 'RECEPCION', 'FACTURACION', 'TERMINADA'];
+  // Mismo array que COLUMNAS_KANBAN_PRINCIPALES — incluye EN_TRANSITO para
+  // que la columna sea siempre visible (aunque esté vacía cuando no hay
+  // importaciones en curso). EN_TRANSITO va entre PAGO y RECEPCION.
+  const estadosOrden = ['BORRADOR', 'APROBADA', 'PAGO', 'EN_TRANSITO', 'RECEPCION', 'FACTURACION', 'TERMINADA'];
   const porEstado = {};
   estadosOrden.forEach(e => porEstado[e] = []);
   filtradas.forEach(oc => {
