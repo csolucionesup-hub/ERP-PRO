@@ -20,10 +20,13 @@ const SKIP_DIRS = new Set([
   'sunat-golden-files', 'uploads', 'tmp',
 ]);
 
-// Archivos a saltar por path relativo (este script se contiene a sí mismo
-// como ejemplos en comentarios y patterns, así que no se auto-escanea).
+// Archivos a saltar por path relativo. Algunos documentan los patrones
+// como evidencia (historial de bugs / cita literal), no como uso real.
 const SKIP_FILES = new Set([
   'scripts/check_mojibake.js',
+  // ESTADO.md cita los patrones del bug 08/05/2026 en su bitácora de
+  // sesiones (línea ~87) — son evidencia histórica, no mojibake activo.
+  'ESTADO.md',
 ]);
 
 // Extensiones a escanear
