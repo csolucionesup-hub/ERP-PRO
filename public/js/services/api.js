@@ -125,6 +125,19 @@ export const api = {
     anularOtorgado: (id)      => post(`/prestamos/otorgados/${id}/anular`),
     deleteTomado:   (id)      => del(`/prestamos/tomados/${id}`),
     deleteOtorgado: (id)      => del(`/prestamos/otorgados/${id}`),
+    // Mig 071 — maestro de contrapartes + dashboard consolidado
+    getContrapartes:       (activos = false) => get(`/prestamos/contrapartes${activos ? '?activos=1' : ''}`),
+    getResumenContrapartes: (filtros = {}) => {
+      const p = new URLSearchParams();
+      if (filtros.empresa) p.append('empresa', filtros.empresa);
+      if (filtros.tipo)    p.append('tipo',    filtros.tipo);
+      const q = p.toString();
+      return get(`/prestamos/contrapartes/resumen${q ? '?' + q : ''}`);
+    },
+    getContraparte:        (id)       => get(`/prestamos/contrapartes/${id}`),
+    createContraparte:     (data)     => post('/prestamos/contrapartes', data),
+    updateContraparte:     (id, data) => put(`/prestamos/contrapartes/${id}`, data),
+    deleteContraparte:     (id)       => del(`/prestamos/contrapartes/${id}`),
   },
   tipoCambio: {
     getHoy:       (m = 'USD')           => get(`/tipo-cambio/hoy?moneda=${m}`),
