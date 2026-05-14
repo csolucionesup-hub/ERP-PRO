@@ -2,6 +2,7 @@ import { api } from '../services/api.js';
 import { showSuccess, showError } from '../services/ui.js';
 import { pill } from '../components/Pill.js';
 import { kpiCard as kpiCardEnt } from '../components/KpiCard.js';
+import { lineChart, barChart, donutChart, stackedBarChart, destroyChart, chartColors } from '../components/charts.js';
 
 // ── Config visual (paralelo a Comercial.js) ──────────────────────
 const MARCAS = {
@@ -2838,6 +2839,10 @@ export const Finanzas = async () => {
         </div>
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button id="btn-analisis" title="Página de análisis: tendencia de cobranzas, distribución, top clientes, flujo proyectado, balance por proyecto y vencimientos"
+          style="padding:8px 14px;border:1px solid #7c3aed;background:#7c3aed;color:#fff;border-radius:5px;cursor:pointer;font-size:12px;font-weight:600">
+          📊 Análisis
+        </button>
         <button id="btn-libro-bancos" style="padding:8px 14px;border:1px solid #111827;background:#111827;color:#fff;border-radius:5px;cursor:pointer;font-size:12px;font-weight:600">
           📖 Libro Bancos
         </button>
@@ -2978,6 +2983,10 @@ function bindHandlers(cuentas, dashboard) {
   const btnLB = document.getElementById('btn-libro-bancos');
   if (btnLB) btnLB.onclick = () => modalLibroBancos();
 
+  // Análisis Financiero (página dedicada con 6 gráficos)
+  const btnAna = document.getElementById('btn-analisis');
+  if (btnAna) btnAna.onclick = () => mostrarAnaliticaFinanzas();
+
   // Facturas Emitidas
   const btnFE = document.getElementById('btn-facturas-emitidas');
   if (btnFE) btnFE.onclick = () => modalFacturasEmitidas();
@@ -3085,4 +3094,223 @@ function bindHandlers(cuentas, dashboard) {
       } catch (e) { showError(e.message); }
     };
   });
+}
+
+// ─── Página de Análisis Financiero (6 gráficos) ───────────────────────
+// Reemplaza el contenido del módulo Finanzas con una vista de análisis.
+// El botón "← Volver" reactiva refreshModule() para regresar a la operativa.
+
+let _analiticaCharts = {};
+
+function destruirAnaliticaCharts() {
+  Object.values(_analiticaCharts).forEach(destroyChart);
+  _analiticaCharts = {};
+}
+
+async function mostrarAnaliticaFinanzas() {
+  const main = document.getElementById('main-content');
+  if (!main) return;
+
+  // Esqueleto + spinner mientras carga
+  main.innerHTML = `
+    <header class="header" style="margin-bottom:14px">
+      <div>
+        <h2 style="margin:0;font-size:20px">📊 Análisis Financiero</h2>
+        <div style="font-size:12px;color:var(--text-secondary)">
+          Tendencias, distribución y proyección. Datos en tiempo real.
+        </div>
+      </div>
+      <button id="btn-volver-finanzas" style="padding:8px 14px;border:1px solid #d1d5db;background:#fff;border-radius:5px;cursor:pointer;font-size:12px;font-weight:600">
+        ← Volver a Finanzas operativa
+      </button>
+    </header>
+    <div id="analitica-body" style="text-align:center;padding:60px;color:#6b7280">
+      <div style="font-size:32px;margin-bottom:10px">⏳</div>
+      <div>Cargando datos analíticos…</div>
+    </div>
+  `;
+
+  document.getElementById('btn-volver-finanzas').onclick = () => {
+    destruirAnaliticaCharts();
+    window.refreshModule?.();
+  };
+
+  let data;
+  try { data = await api.cobranzas.getAnalitica(); }
+  catch (e) {
+    document.getElementById('analitica-body').innerHTML =
+      `<div style="color:#dc2626;padding:20px">Error: ${e.message}</div>`;
+    return;
+  }
+
+  // Render del grid de gráficos
+  document.getElementById('analitica-body').innerHTML = `
+    <style>
+      .ana-grid { display:grid; grid-template-columns:repeat(2, 1fr); gap:14px; }
+      @media (max-width: 900px) { .ana-grid { grid-template-columns:1fr; } }
+      .ana-card { background:#fff; border:1px solid #e5e7eb; border-radius:8px; padding:14px; }
+      .ana-card h3 { margin:0 0 10px; font-size:13px; font-weight:600; color:#374151; }
+      .ana-card .ana-sub { font-size:11px; color:#9ca3af; margin-bottom:8px; }
+      .ana-canvas-wrap { height:260px; position:relative; }
+      .ana-full { grid-column: 1 / -1; }
+    </style>
+    <div class="ana-grid">
+      <div class="ana-card">
+        <h3>📈 Tendencia mensual de cobranzas (12 meses)</h3>
+        <div class="ana-sub">Monto cobrado por marca, en PEN equivalente.</div>
+        <div class="ana-canvas-wrap"><canvas id="ana-c1"></canvas></div>
+      </div>
+      <div class="ana-card">
+        <h3>🥧 Distribución de cobranzas (año actual)</h3>
+        <div class="ana-sub">% banco vs detracción vs retención.</div>
+        <div class="ana-canvas-wrap"><canvas id="ana-c2"></canvas></div>
+      </div>
+      <div class="ana-card">
+        <h3>🏆 Top 5 clientes (acumulado histórico)</h3>
+        <div class="ana-sub">Mayores pagadores por monto total cobrado.</div>
+        <div class="ana-canvas-wrap"><canvas id="ana-c3"></canvas></div>
+      </div>
+      <div class="ana-card">
+        <h3>💰 Flujo proyectado (pipeline activo)</h3>
+        <div class="ana-sub">Cotizaciones esperando pago — neto al banco pendiente.</div>
+        <div class="ana-canvas-wrap"><canvas id="ana-c4"></canvas></div>
+      </div>
+      <div class="ana-card ana-full">
+        <h3>📊 Balance por proyecto activo</h3>
+        <div class="ana-sub">Cotizado vs Cobrado vs Comprometido vs Pagado real (PEN).</div>
+        <div class="ana-canvas-wrap" style="height:340px"><canvas id="ana-c5"></canvas></div>
+      </div>
+      <div class="ana-card ana-full">
+        <h3>📅 Vencimientos del mes</h3>
+        <div class="ana-sub">Detracciones SUNAT pendientes — vencen el día 15.</div>
+        <div id="ana-c6-info" style="padding:14px;background:#fef3c7;border:1px solid #fbbf24;border-radius:6px;color:#92400e"></div>
+      </div>
+    </div>
+  `;
+
+  // Esperamos un tick para que los <canvas> tengan tamaño antes de Chart.js
+  setTimeout(() => renderizarAnaliticaCharts(data), 30);
+}
+
+function renderizarAnaliticaCharts(data) {
+  destruirAnaliticaCharts();
+
+  // 1. Tendencia mensual — multi-serie por marca. Usa Chart.js directo
+  // porque charts.lineChart() es single-serie.
+  try {
+    // Construir grid completo de meses (últimos 12) para que no falten huecos.
+    const meses = [];
+    const ahora = new Date();
+    for (let i = 11; i >= 0; i--) {
+      const d = new Date(ahora.getFullYear(), ahora.getMonth() - i, 1);
+      meses.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
+    }
+    const serie = (marca) => meses.map(m => {
+      const row = (data.tendencia_mensual || []).find(r => r.mes === m && r.marca === marca);
+      return row ? Number(row.monto_pen) : 0;
+    });
+    if (window.Chart) {
+      const ctx = document.getElementById('ana-c1');
+      _analiticaCharts.tendencia = new window.Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: meses,
+          datasets: [
+            { label: 'Metal Engineers (PEN)', data: serie('METAL'),
+              borderColor: chartColors.primary, backgroundColor: chartColors.primary + '33',
+              tension: 0.3, fill: true },
+            { label: 'Perfotools (USD→PEN)', data: serie('PERFOTOOLS'),
+              borderColor: chartColors.danger, backgroundColor: chartColors.danger + '33',
+              tension: 0.3, fill: true },
+          ],
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          plugins: { legend: { position: 'top' } },
+          scales: { y: { beginAtZero: true } },
+        },
+      });
+    }
+  } catch (e) { console.error('[ana c1]', e); }
+
+  // 2. Distribución de cobranzas (donut)
+  try {
+    const labelMap = { DEPOSITO_BANCO: 'Banco', DETRACCION_BN: 'Detracción BN', RETENCION: 'Retención' };
+    const datos = (data.distribucion_cobros || []).map(r => ({
+      label: labelMap[r.tipo] || r.tipo,
+      valor: Number(r.monto_pen),
+    }));
+    _analiticaCharts.dist = donutChart('#ana-c2', datos.length ? datos : [{ label: 'Sin datos', valor: 1 }]);
+  } catch (e) { console.error('[ana c2]', e); }
+
+  // 3. Top 5 clientes (barras)
+  try {
+    const datos = (data.top_clientes || []).map(r => ({
+      label: r.cliente,
+      valor: Number(r.monto_pen),
+    }));
+    _analiticaCharts.topCli = barChart('#ana-c3', datos.length ? datos : [{ label: '—', valor: 0 }], {
+      label: 'Monto cobrado (PEN)',
+      colors: datos.map((_, i) => [chartColors.success, chartColors.info, chartColors.warning, chartColors.primary, chartColors.neutral][i] || chartColors.primary),
+    });
+  } catch (e) { console.error('[ana c3]', e); }
+
+  // 4. Flujo proyectado — barras de neto al banco pendiente por cotización
+  try {
+    const flujo = (data.flujo_proyectado || []).slice(0, 10).map(r => {
+      const total = Number(r.total) || 0;
+      const det   = Number(r.detraccion) || 0;
+      const ret   = Number(r.retencion) || 0;
+      const esperado = total - det - ret;
+      const cobrado  = Number(r.cobrado_banco) || 0;
+      const falta = Math.max(0, esperado - cobrado);
+      return { label: `${r.nro_cotizacion} · ${(r.cliente || '').slice(0, 18)}`, valor: falta };
+    }).filter(d => d.valor > 0);
+    _analiticaCharts.flujo = barChart('#ana-c4', flujo.length ? flujo : [{ label: 'Sin pipeline pendiente', valor: 0 }], {
+      label: 'Pendiente de cobro (PEN)',
+      colors: flujo.map(() => chartColors.warning),
+    });
+  } catch (e) { console.error('[ana c4]', e); }
+
+  // 5. Balance por proyecto — barras agrupadas (Cotizado/Cobrado/Comprometido/Pagado)
+  try {
+    const proyectos = data.balance_proyectos || [];
+    const labels = proyectos.map(p => `${p.nro_cotizacion}`);
+    const series = [
+      { label: 'Cotizado',     datos: proyectos.map(p => Number(p.cotizado))     || 0, color: chartColors.info },
+      { label: 'Cobrado',      datos: proyectos.map(p => Number(p.cobrado))      || 0, color: chartColors.success },
+      { label: 'Comprometido', datos: proyectos.map(p => Number(p.comprometido)) || 0, color: chartColors.warning },
+      { label: 'Pagado real',  datos: proyectos.map(p => Number(p.pagado))       || 0, color: chartColors.danger },
+    ];
+    if (window.Chart) {
+      const ctx = document.getElementById('ana-c5');
+      _analiticaCharts.balance = new window.Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels,
+          datasets: series.map(s => ({
+            label: s.label, data: s.datos, backgroundColor: s.color, borderRadius: 3,
+          })),
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          plugins: { legend: { position: 'top' } },
+          scales: { y: { beginAtZero: true } },
+        },
+      });
+    }
+  } catch (e) { console.error('[ana c5]', e); }
+
+  // 6. Vencimientos del mes — info simple (no chart, una sola fecha clave)
+  try {
+    const v = (data.vencimientos_mes || [])[0] || { dia_mes: 15, n_pendientes: 0, monto_pen: 0 };
+    const infoEl = document.getElementById('ana-c6-info');
+    if (infoEl) {
+      const monto = Number(v.monto_pen) || 0;
+      const fmt = new Intl.NumberFormat('es-PE', { style: 'currency', currency: 'PEN' }).format(monto);
+      infoEl.innerHTML = v.n_pendientes > 0
+        ? `📅 <strong>Día ${v.dia_mes} de este mes</strong>: ${v.n_pendientes} detracción${v.n_pendientes !== 1 ? 'es' : ''} pendiente${v.n_pendientes !== 1 ? 's' : ''} de depositar a Banco de la Nación. Monto: <strong>${fmt}</strong>.`
+        : `✅ Sin detracciones pendientes para el día 15 — todo al día.`;
+    }
+  } catch (e) { console.error('[ana c6]', e); }
 }

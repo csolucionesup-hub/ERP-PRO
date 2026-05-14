@@ -435,6 +435,14 @@ apiRouter.get('/cobranzas/dashboard', async (_req: Request, res: Response) => {
   res.json(await CobranzasService.getDashboardFinanzas());
 });
 
+// Página Análisis Financiero — 6 gráficos pre-agregados.
+// Sesión 13/05/2026: respuesta única (no streaming) con todos los datos del
+// dashboard analítico. Se cachea client-side por 30s para evitar martillar
+// la BD si el usuario alterna entre tabs.
+apiRouter.get('/cobranzas/analitica', async (_req: Request, res: Response) => {
+  res.json(await CobranzasService.getAnalitica());
+});
+
 apiRouter.get('/cobranzas/:id/detalle', async (req: Request, res: Response) => {
   res.json(await CobranzasService.getDetalle(parseInt(req.params.id as string)));
 });

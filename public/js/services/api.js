@@ -191,6 +191,8 @@ export const api = {
   cobranzas: {
     getBandejas:   (marca)         => get(marca ? `/cobranzas/bandejas?marca=${marca}` : '/cobranzas/bandejas'),
     getDashboard:  ()              => get('/cobranzas/dashboard'),
+    // Página Análisis Financiero (6 gráficos pre-agregados).
+    getAnalitica:  ()              => get('/cobranzas/analitica'),
     getCuentas:    ()              => get('/cobranzas/cuentas'),
     getDetalle:    (id)            => get(`/cobranzas/${id}/detalle`),
     registrar:     (data)          => post('/cobranzas', data),
