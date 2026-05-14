@@ -209,24 +209,6 @@ export const api = {
     getDashboard:  ()              => get('/cobranzas/dashboard'),
     // Página Análisis Financiero (6 gráficos pre-agregados).
     getAnalitica:  ()              => get('/cobranzas/analitica'),
-  },
-  transferenciasInternas: {
-    // Mig 072 — Transferencias Metal ↔ Perfotools
-    listar: (filtros = {}) => {
-      const p = new URLSearchParams();
-      if (filtros.desde)   p.append('desde',   filtros.desde);
-      if (filtros.hasta)   p.append('hasta',   filtros.hasta);
-      if (filtros.empresa) p.append('empresa', filtros.empresa);
-      if (filtros.estado)  p.append('estado',  filtros.estado);
-      if (filtros.tipo)    p.append('tipo',    filtros.tipo);
-      const q = p.toString();
-      return get(`/transferencias-internas${q ? '?' + q : ''}`);
-    },
-    getBalance: ()        => get('/transferencias-internas/balance'),
-    obtener:    (id)      => get(`/transferencias-internas/${id}`),
-    crear:      (data)    => post('/transferencias-internas', data),
-    actualizar: (id, d)   => put(`/transferencias-internas/${id}`, d),
-    anular:     (id, m)   => post(`/transferencias-internas/${id}/anular`, { motivo: m || null }),
     getCuentas:    ()              => get('/cobranzas/cuentas'),
     getDetalle:    (id)            => get(`/cobranzas/${id}/detalle`),
     registrar:     (data)          => post('/cobranzas', data),
@@ -263,6 +245,24 @@ export const api = {
       return get(`/cobranzas/libro-bancos?${p}`);
     },
     importarEECC: (idCuenta, texto) => post('/cobranzas/libro-bancos/importar-eecc', { id_cuenta: idCuenta, texto }),
+  },
+  transferenciasInternas: {
+    // Mig 072 — Transferencias Metal ↔ Perfotools con conciliación de TC banco.
+    listar: (filtros = {}) => {
+      const p = new URLSearchParams();
+      if (filtros.desde)   p.append('desde',   filtros.desde);
+      if (filtros.hasta)   p.append('hasta',   filtros.hasta);
+      if (filtros.empresa) p.append('empresa', filtros.empresa);
+      if (filtros.estado)  p.append('estado',  filtros.estado);
+      if (filtros.tipo)    p.append('tipo',    filtros.tipo);
+      const q = p.toString();
+      return get(`/transferencias-internas${q ? '?' + q : ''}`);
+    },
+    getBalance: ()        => get('/transferencias-internas/balance'),
+    obtener:    (id)      => get(`/transferencias-internas/${id}`),
+    crear:      (data)    => post('/transferencias-internas', data),
+    actualizar: (id, d)   => put(`/transferencias-internas/${id}`, d),
+    anular:     (id, m)   => post(`/transferencias-internas/${id}/anular`, { motivo: m || null }),
   },
   configuracionMarca: {
     getAll:        ()              => get('/configuracion-marca'),
