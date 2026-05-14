@@ -1567,6 +1567,394 @@ class CobranzasService {
       duplicados,
     };
   }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  //   HERRAMIENTAS DE CONCILIACIÓN AVANZADA (sesión 14/05/2026)
+  // ═══════════════════════════════════════════════════════════════════════
+  // Resuelven el caso real reportado por Julio al cargar el extracto enero:
+  //
+  // 1. splitMovimientoNDBundle: el banco mete pago+comisión en una sola
+  //    línea "N/D I-BANC + COM.O/CI-BANC" de S/ 4,625. La línea se divide
+  //    en 2 movimientos (pago + comisión) con auto-vinculación a OC.
+  //
+  // 2. sugerirMatchPagoOC: busca pagos AUTO existentes que coincidan en
+  //    monto y fecha para sugerir conciliación del movimiento del extracto.
+  //
+  // 3. conciliarComoServicio: convierte un movimiento del extracto en un
+  //    GastoBancario con categoría y concepto custom (luz/agua/internet…).
+  //
+  // 4. conciliarComoTransferenciaInterna: linkea el movimiento del extracto
+  //    con una TransferenciaInterna existente (módulo mig 072).
+
+  /**
+   * #1 — Split de movimiento N/D bundle (pago + comisión en una sola línea).
+   *
+   * Caso: el extracto trae una línea "N/D I-BANC + COM.O/CI-BANC" de S/ 4,625
+   * que en realidad es S/ 4,620 de pago a un proveedor (transferencia
+   * interbancaria) + S/ 5 de comisión por CCI.
+   *
+   * Operación atómica:
+   *  1. Crea un GastoBancario por la comisión (categoría COMISION_TC default).
+   *  2. Reduce el monto del movimiento original al monto_pago.
+   *  3. Cambia el tipo_movimiento_banco para que ya no se vea como "comisión".
+   *  4. Si se vinculó a un id_pago_oc, marca como CONCILIADO con ref OC_PAGO.
+   *     Si no, queda POR_CONCILIAR para que se matchee después con la OC.
+   *  5. Audit log.
+   */
+  async splitMovimientoNDBundle(params: {
+    id_movimiento:    number;
+    monto_pago:       number;
+    monto_comision:   number;
+    categoria_com?:   'ITF' | 'COMISION_MANT' | 'COMISION_TC' | 'PORTES' | 'OTROS';
+    concepto_com?:    string;
+    id_pago_oc?:      number | null;
+    nombre_usuario?:  string;
+  }) {
+    const {
+      id_movimiento, monto_pago, monto_comision,
+      categoria_com = 'COMISION_TC',
+      concepto_com  = 'Comisión transferencia interbancaria',
+      id_pago_oc    = null,
+      nombre_usuario = 'sistema',
+    } = params;
+
+    if (monto_pago <= 0) throw new Error('monto_pago debe ser > 0');
+    if (monto_comision <= 0) throw new Error('monto_comision debe ser > 0');
+
+    const conn = await db.getConnection();
+    await conn.beginTransaction();
+    try {
+      // Cargar el movimiento original con lock
+      const [rows]: any = await conn.query(
+        `SELECT * FROM MovimientoBancario
+          WHERE id_movimiento = ? FOR UPDATE`,
+        [id_movimiento]
+      );
+      const mov = (rows as any[])[0];
+      if (!mov) throw new Error('Movimiento no encontrado');
+      if (mov.tipo !== 'CARGO') {
+        throw new Error('Solo se pueden splittear movimientos de tipo CARGO (egresos)');
+      }
+      // Tolerancia de 1 céntimo por redondeos
+      const total = Number(monto_pago) + Number(monto_comision);
+      const orig  = Number(mov.monto);
+      if (Math.abs(total - orig) > 0.01) {
+        throw new Error(
+          `La suma de pago (${monto_pago}) + comisión (${monto_comision}) = ${total.toFixed(2)} ` +
+          `no coincide con el monto original (${orig.toFixed(2)})`
+        );
+      }
+
+      // 1. Crear GastoBancario por la comisión
+      const [gbIns]: any = await conn.query(
+        `INSERT INTO GastoBancario
+           (id_cuenta, fecha, categoria, concepto, monto, moneda, tipo_cambio, comentario)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+         RETURNING id_gasto_bancario`,
+        [
+          mov.id_cuenta, mov.fecha, categoria_com, concepto_com,
+          Number(monto_comision), 'PEN', 1,
+          `Split de movimiento bancario #${id_movimiento} (${mov.descripcion_banco || ''}). Pago: S/ ${monto_pago.toFixed(2)} + Comisión: S/ ${monto_comision.toFixed(2)}`,
+        ]
+      );
+      const idGB = (gbIns as any).rows?.[0]?.id_gasto_bancario || (gbIns as any).insertId;
+
+      // 2. Crear movimiento bancario AUTO para la comisión (vinculado al GastoBancario)
+      //    para que se vea como línea separada en el Libro Bancos.
+      await conn.query(
+        `INSERT INTO MovimientoBancario
+           (id_cuenta, fecha, fecha_proceso, nro_operacion, canal, tipo_movimiento_banco,
+            descripcion_banco, monto, tipo, saldo_contable, fuente, estado_conciliacion,
+            ref_tipo, ref_id, comentario, conciliado_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
+        [
+          mov.id_cuenta, mov.fecha, mov.fecha_proceso || mov.fecha,
+          mov.nro_operacion, mov.canal, mov.tipo_movimiento_banco,
+          `${concepto_com} (split de mov #${id_movimiento})`,
+          Number(monto_comision), 'CARGO', mov.saldo_contable, 'AUTO', 'CONCILIADO',
+          'GASTO_BANCARIO', idGB,
+          `Comisión bancaria extraída del split de ${mov.descripcion_banco}`,
+        ]
+      );
+
+      // 3. Reducir el movimiento original al monto del pago y reclasificarlo
+      //    como pago efectivo (ya no comisión).
+      const refTipo = id_pago_oc ? 'OC_PAGO' : null;
+      const estadoNuevo = id_pago_oc ? 'CONCILIADO' : 'POR_CONCILIAR';
+      await conn.query(
+        `UPDATE MovimientoBancario
+            SET monto = ?,
+                tipo_movimiento_banco = 'PAGO',
+                descripcion_banco = ?,
+                ref_tipo = ?,
+                ref_id   = ?,
+                estado_conciliacion = ?,
+                conciliado_at = CASE WHEN ? = 'CONCILIADO' THEN NOW() ELSE conciliado_at END,
+                comentario = COALESCE(comentario,'') || ?
+          WHERE id_movimiento = ?`,
+        [
+          Number(monto_pago),
+          `Pago (split de ${mov.descripcion_banco || 'N/D bundle'})`,
+          refTipo, id_pago_oc, estadoNuevo, estadoNuevo,
+          `\n[SPLIT 14/05/2026 por ${nombre_usuario}] Pago: S/ ${monto_pago.toFixed(2)}, Comisión extraída a GastoBancario #${idGB} (S/ ${monto_comision.toFixed(2)})`,
+          id_movimiento,
+        ]
+      );
+
+      // 4. Audit log
+      await conn.query(
+        `INSERT INTO Auditoria
+           (fecha, nombre_usuario, accion, entidad, entidad_id, datos_antes, datos_despues)
+         VALUES (NOW(), ?, 'UPDATE', 'MovimientoBancario', ?, ?, ?)`,
+        [
+          nombre_usuario, String(id_movimiento),
+          JSON.stringify({ monto_original: orig, descripcion: mov.descripcion_banco, tipo: mov.tipo_movimiento_banco }),
+          JSON.stringify({
+            split: true,
+            monto_pago, monto_comision,
+            categoria_com, concepto_com,
+            id_gasto_bancario_creado: idGB,
+            id_pago_oc: id_pago_oc || null,
+            nuevo_estado: estadoNuevo,
+          }),
+        ]
+      );
+
+      await conn.commit();
+      return {
+        success: true,
+        id_gasto_bancario: idGB,
+        monto_pago,
+        monto_comision,
+        estado: estadoNuevo,
+      };
+    } catch (e) {
+      await conn.rollback();
+      throw e;
+    } finally {
+      conn.release();
+    }
+  }
+
+  /**
+   * #2 — Sugiere matches para conciliar un movimiento bancario pendiente
+   * contra pagos de OC ya registrados (ya hay un AUTO con ese monto).
+   *
+   * Busca:
+   *   - OrdenCompraPago.monto_pen cercano (±tolerancia o ±% configurable)
+   *   - Fecha del pago dentro de ±5 días
+   *   - Que el pago no esté ya conciliado con otro movimiento bancario
+   *
+   * Útil para los 23+ cargos del extracto con solo nro operación (típicamente
+   * pagos Interbank→Interbank sin comisión visible).
+   */
+  async sugerirMatchPagoOC(id_movimiento: number, tolerancia = 5) {
+    const [movRows]: any = await db.query(
+      `SELECT * FROM MovimientoBancario WHERE id_movimiento = ?`,
+      [id_movimiento]
+    );
+    const mov = (movRows as any[])[0];
+    if (!mov) throw new Error('Movimiento no encontrado');
+    if (mov.tipo !== 'CARGO') return { sugerencias: [] };
+
+    const monto = Number(mov.monto);
+    const fecha = mov.fecha;
+    const min = Math.max(0, monto - tolerancia);
+    const max = monto + tolerancia;
+
+    // Buscar pagos de OC en el rango de fechas/monto que no estén
+    // ya vinculados a algún movimiento bancario.
+    const [pagos]: any = await db.query(
+      `SELECT p.id_pago, p.id_oc, p.fecha_pago, p.monto, p.monto_pen,
+              p.nro_operacion, o.nro_oc, o.razon_social,
+              ABS(p.monto_pen::numeric - ?) AS dif_monto,
+              ABS(DATEDIFF(p.fecha_pago, ?)) AS dif_dias
+         FROM OrdenCompraPago p
+         JOIN OrdenesCompra o ON o.id_oc = p.id_oc
+        WHERE p.monto_pen::numeric BETWEEN ? AND ?
+          AND ABS(DATEDIFF(p.fecha_pago, ?)) <= 5
+          AND NOT EXISTS (
+            SELECT 1 FROM MovimientoBancario mb
+             WHERE mb.ref_tipo = 'OC_PAGO' AND mb.ref_id = p.id_pago
+          )
+        ORDER BY dif_monto ASC, dif_dias ASC
+        LIMIT 10`,
+      [monto, fecha, min, max, fecha]
+    );
+
+    return {
+      movimiento: {
+        id: mov.id_movimiento, fecha: mov.fecha, monto, descripcion: mov.descripcion_banco,
+      },
+      sugerencias: (pagos as any[]).map(p => ({
+        id_pago:        p.id_pago,
+        id_oc:          p.id_oc,
+        nro_oc:         p.nro_oc,
+        proveedor:      p.razon_social,
+        fecha_pago:     p.fecha_pago,
+        monto_pago:     Number(p.monto),
+        monto_pago_pen: Number(p.monto_pen),
+        nro_operacion:  p.nro_operacion,
+        dif_monto:      Number(p.dif_monto),
+        dif_dias:       Number(p.dif_dias),
+      })),
+    };
+  }
+
+  /**
+   * #3 — Convierte un movimiento bancario del extracto en un GastoBancario
+   * con concepto custom. Útil para "PAGO DE SERVICIOS" (luz, agua, internet)
+   * que no son OCs formales y deben quedar como gasto bancario operativo.
+   */
+  async conciliarComoServicio(params: {
+    id_movimiento:   number;
+    categoria:       'ITF' | 'COMISION_MANT' | 'COMISION_TC' | 'PORTES' | 'OTROS';
+    concepto:        string;
+    nombre_usuario?: string;
+  }) {
+    const { id_movimiento, categoria, concepto, nombre_usuario = 'sistema' } = params;
+    if (!concepto || !concepto.trim()) throw new Error('concepto requerido');
+
+    const conn = await db.getConnection();
+    await conn.beginTransaction();
+    try {
+      const [rows]: any = await conn.query(
+        `SELECT * FROM MovimientoBancario WHERE id_movimiento = ? FOR UPDATE`,
+        [id_movimiento]
+      );
+      const mov = (rows as any[])[0];
+      if (!mov) throw new Error('Movimiento no encontrado');
+      if (mov.estado_conciliacion === 'CONCILIADO') {
+        throw new Error('Movimiento ya está conciliado');
+      }
+
+      // Crear GastoBancario
+      const [gbIns]: any = await conn.query(
+        `INSERT INTO GastoBancario
+           (id_cuenta, fecha, categoria, concepto, monto, moneda, tipo_cambio, comentario)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+         RETURNING id_gasto_bancario`,
+        [
+          mov.id_cuenta, mov.fecha, categoria, concepto.trim(),
+          Number(mov.monto), 'PEN', 1,
+          `Conciliación de movimiento bancario #${id_movimiento} como ${categoria}`,
+        ]
+      );
+      const idGB = (gbIns as any).rows?.[0]?.id_gasto_bancario || (gbIns as any).insertId;
+
+      // Marcar movimiento como conciliado contra el gasto
+      await conn.query(
+        `UPDATE MovimientoBancario
+            SET ref_tipo = 'GASTO_BANCARIO',
+                ref_id   = ?,
+                estado_conciliacion = 'CONCILIADO',
+                conciliado_at = NOW(),
+                comentario = COALESCE(comentario,'') || ?
+          WHERE id_movimiento = ?`,
+        [idGB, `\n[CONCILIADO como ${categoria}: ${concepto.trim()}] por ${nombre_usuario}`, id_movimiento]
+      );
+
+      await conn.query(
+        `INSERT INTO Auditoria (fecha, nombre_usuario, accion, entidad, entidad_id, datos_antes, datos_despues)
+         VALUES (NOW(), ?, 'UPDATE', 'MovimientoBancario', ?, ?, ?)`,
+        [
+          nombre_usuario, String(id_movimiento),
+          JSON.stringify({ estado: mov.estado_conciliacion }),
+          JSON.stringify({ conciliado_como: categoria, concepto: concepto.trim(), id_gasto_bancario: idGB }),
+        ]
+      );
+
+      await conn.commit();
+      return { success: true, id_gasto_bancario: idGB };
+    } catch (e) {
+      await conn.rollback();
+      throw e;
+    } finally {
+      conn.release();
+    }
+  }
+
+  /**
+   * #4 — Linkea un movimiento bancario del extracto a una TransferenciaInterna
+   * existente. Caso: las líneas "METAL ENGINEERS" del extracto (CARGO o ABONO)
+   * que representan transferencias entre las cajas Metal/Perfo.
+   *
+   * El usuario debe primero registrar la transferencia desde el módulo
+   * Transferencias Internas, después usa esto para conciliar.
+   */
+  async conciliarComoTransferenciaInterna(params: {
+    id_movimiento:    number;
+    id_transferencia: number;
+    lado:             'origen' | 'destino';
+    nombre_usuario?:  string;
+  }) {
+    const { id_movimiento, id_transferencia, lado, nombre_usuario = 'sistema' } = params;
+    if (!['origen', 'destino'].includes(lado)) {
+      throw new Error("lado debe ser 'origen' o 'destino'");
+    }
+    const conn = await db.getConnection();
+    await conn.beginTransaction();
+    try {
+      const [movRows]: any = await conn.query(
+        `SELECT * FROM MovimientoBancario WHERE id_movimiento = ? FOR UPDATE`,
+        [id_movimiento]
+      );
+      const mov = (movRows as any[])[0];
+      if (!mov) throw new Error('Movimiento no encontrado');
+      if (mov.estado_conciliacion === 'CONCILIADO') {
+        throw new Error('Movimiento ya está conciliado');
+      }
+
+      const [tiRows]: any = await conn.query(
+        `SELECT * FROM TransferenciasInternas WHERE id_transferencia = ? FOR UPDATE`,
+        [id_transferencia]
+      );
+      const ti = (tiRows as any[])[0];
+      if (!ti) throw new Error('Transferencia interna no encontrada');
+
+      // Linkear ambos lados
+      const campoFK = lado === 'origen' ? 'id_mov_bancario_origen' : 'id_mov_bancario_destino';
+      await conn.query(
+        `UPDATE TransferenciasInternas
+            SET ${campoFK} = ?, updated_at = NOW()
+          WHERE id_transferencia = ?`,
+        [id_movimiento, id_transferencia]
+      );
+      await conn.query(
+        `UPDATE MovimientoBancario
+            SET id_transferencia_interna = ?,
+                ref_tipo = 'TRANSFERENCIA_INTERNA',
+                ref_id   = ?,
+                estado_conciliacion = 'CONCILIADO',
+                conciliado_at = NOW(),
+                comentario = COALESCE(comentario,'') || ?
+          WHERE id_movimiento = ?`,
+        [
+          id_transferencia, id_transferencia,
+          `\n[Conciliado con Transferencia Interna #${id_transferencia} (${lado})] por ${nombre_usuario}`,
+          id_movimiento,
+        ]
+      );
+
+      await conn.query(
+        `INSERT INTO Auditoria (fecha, nombre_usuario, accion, entidad, entidad_id, datos_antes, datos_despues)
+         VALUES (NOW(), ?, 'UPDATE', 'MovimientoBancario', ?, ?, ?)`,
+        [
+          nombre_usuario, String(id_movimiento),
+          JSON.stringify({ estado: mov.estado_conciliacion }),
+          JSON.stringify({ conciliado_con_transferencia: id_transferencia, lado }),
+        ]
+      );
+
+      await conn.commit();
+      return { success: true };
+    } catch (e) {
+      await conn.rollback();
+      throw e;
+    } finally {
+      conn.release();
+    }
+  }
 }
 
 export default new CobranzasService();
