@@ -112,29 +112,42 @@ function pintarTabla(body, ots) {
     return;
   }
 
-  // Totales agregados
-  const totalCotizado = ots.reduce((s, o) => s + Number(o.cotizado_pen || 0), 0);
-  const totalCosto    = ots.reduce((s, o) => s + Number(o.costo_imputado || 0), 0);
-  const totalMargen   = totalCotizado - totalCosto;
-  const totalMargenPct = totalCotizado > 0 ? (totalMargen / totalCotizado * 100) : 0;
+  // Totales agregados — ahora con 3 lentes:
+  //   - Cotizado     (lo que el cliente acordó pagar)
+  //   - Comprometido (OCs SERVICIO autorizadas, incluye BORRADOR/APROBADA)
+  //   - Pagado real  (OrdenCompraPago + CostosServicio: caja que ya salió)
+  // El margen de gestión es Cotizado − Comprometido (vista negocio, conservadora).
+  const totalCotizado     = ots.reduce((s, o) => s + Number(o.cotizado_pen || 0), 0);
+  const totalComprometido = ots.reduce((s, o) => s + Number(o.comprometido_oc || 0), 0);
+  const totalPagado       = ots.reduce((s, o) => s + Number(o.pagado_oc || 0), 0);
+  const totalImputado     = ots.reduce((s, o) => s + Number(o.costo_imputado || 0), 0);
+  const totalGastoReal    = totalPagado + totalImputado;
+  const totalMargenComp   = totalCotizado - totalComprometido;
+  const totalMargenCompPct = totalCotizado > 0 ? (totalMargenComp / totalCotizado * 100) : 0;
+  const nDeficit = ots.filter(o => o.en_deficit).length;
 
   const filas = ots.map(o => {
     const e = ESTADO_COLOR[o.estado] || { bg: '#f3f4f6', fg: '#374151', icon: '?', label: o.estado };
-    const margenColor = o.margen_pen >= 0 ? '#16a34a' : '#dc2626';
-    const pctColor    = o.margen_pct >= 30 ? '#16a34a' : (o.margen_pct >= 15 ? '#ca8a04' : '#dc2626');
-    const sinCostos   = o.cant_movimientos === 0;
+    const margenComp   = Number(o.margen_compromiso || 0);
+    const margenColor  = margenComp >= 0 ? '#16a34a' : '#dc2626';
+    const margenCompPct = Number(o.margen_compromiso_pct || 0);
+    const pctColor    = margenCompPct >= 30 ? '#16a34a' : (margenCompPct >= 15 ? '#ca8a04' : '#dc2626');
+    const sinOcs      = !o.n_ocs;
+    const gastoReal   = Number(o.pagado_oc || 0) + Number(o.costo_imputado || 0);
+    // Estilo de fila: rojo claro si en déficit, gris si todavía no tiene OCs
+    const rowBg = o.en_deficit ? 'background:#fef2f2' : (sinOcs ? 'background:#fafafa' : '');
     return `
-      <tr style="border-bottom:1px solid #f3f4f6;${sinCostos ? 'background:#fafafa' : ''}">
-        <td style="padding:8px;font-size:11px;font-weight:600">${escapeHtml(o.nro_cotizacion)}</td>
+      <tr style="border-bottom:1px solid #f3f4f6;${rowBg}">
+        <td style="padding:8px;font-size:11px;font-weight:600">${escapeHtml(o.nro_cotizacion)}${o.en_deficit ? ' <span title="Comprometido supera lo cotizado" style="color:#dc2626">🔻</span>' : ''}</td>
         <td style="padding:8px;font-size:11px">${fmtFecha(o.fecha)}</td>
         <td style="padding:8px;font-size:11px">${escapeHtml(o.cliente || '—')}</td>
         <td style="padding:8px;font-size:11px;color:#6b7280">${escapeHtml(o.proyecto || '—')}</td>
         <td style="padding:8px;text-align:center"><span style="background:${e.bg};color:${e.fg};padding:2px 7px;border-radius:8px;font-size:10px;font-weight:600">${e.icon} ${e.label}</span></td>
         <td style="padding:8px;font-size:11px;text-align:right;font-variant-numeric:tabular-nums" title="Cotizado en moneda original: ${fMON(o.cotizado_original, o.moneda)}${o.moneda === 'USD' ? ' (TC ' + Number(o.tipo_cambio).toFixed(4) + ')' : ''}">${fPEN(o.cotizado_pen)}</td>
-        <td style="padding:8px;font-size:11px;text-align:right;font-variant-numeric:tabular-nums">${sinCostos ? '<span style="color:#9ca3af">—</span>' : fPEN(o.costo_imputado)}</td>
-        <td style="padding:8px;font-size:11px;text-align:right;font-variant-numeric:tabular-nums;font-weight:600;color:${margenColor}">${sinCostos ? '<span style="color:#9ca3af">—</span>' : fPEN(o.margen_pen)}</td>
-        <td style="padding:8px;font-size:11px;text-align:right;font-variant-numeric:tabular-nums;font-weight:600;color:${pctColor}">${sinCostos ? '<span style="color:#9ca3af">—</span>' : (o.margen_pct.toFixed(1) + '%')}</td>
-        <td style="padding:8px;font-size:11px;text-align:center;color:#6b7280">${o.cant_movimientos}</td>
+        <td style="padding:8px;font-size:11px;text-align:right;font-variant-numeric:tabular-nums${o.en_deficit ? ';color:#dc2626;font-weight:600' : ''}" title="Suma de OCs SERVICIO vinculadas a este proyecto (no anuladas, incluye BORRADOR/APROBADA)">${sinOcs ? '<span style="color:#9ca3af">—</span>' : fPEN(o.comprometido_oc) + (o.n_ocs ? ` <span style="font-size:9px;color:#6b7280">(${o.n_ocs} OC${o.n_ocs > 1 ? 's' : ''})</span>` : '')}</td>
+        <td style="padding:8px;font-size:11px;text-align:right;font-variant-numeric:tabular-nums" title="Caja efectiva: OrdenCompraPago.monto_pen + retiros de almacén imputados">${gastoReal > 0 ? fPEN(gastoReal) : '<span style="color:#9ca3af">—</span>'}</td>
+        <td style="padding:8px;font-size:11px;text-align:right;font-variant-numeric:tabular-nums;font-weight:600;color:${margenColor}" title="Cotizado − Comprometido (margen conservador de gestión)">${sinOcs ? '<span style="color:#9ca3af">—</span>' : fPEN(margenComp)}</td>
+        <td style="padding:8px;font-size:11px;text-align:right;font-variant-numeric:tabular-nums;font-weight:600;color:${pctColor}">${sinOcs ? '<span style="color:#9ca3af">—</span>' : (margenCompPct.toFixed(1) + '%')}</td>
         <td style="padding:8px;text-align:right;white-space:nowrap">
           <button data-ver-ot="${o.id_cotizacion}" title="Ver detalle de costos imputados a esta OT"
             style="padding:4px 10px;background:#111827;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:11px">👁 Ver</button>
@@ -144,23 +157,28 @@ function pintarTabla(body, ots) {
   }).join('');
 
   body.innerHTML = `
-    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px">
+    <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:14px">
       <div class="card" style="padding:12px">
         <div style="font-size:10px;color:#6b7280;font-weight:600">OTs ACTIVAS</div>
         <div style="font-size:22px;font-weight:700;margin-top:3px;font-variant-numeric:tabular-nums">${ots.length}</div>
+        ${nDeficit > 0 ? `<div style="font-size:10px;color:#dc2626;font-weight:600;margin-top:2px">🔻 ${nDeficit} en déficit</div>` : ''}
       </div>
       <div class="card" style="padding:12px;border-left:3px solid #1e40af">
         <div style="font-size:10px;color:#6b7280;font-weight:600">COTIZADO TOTAL</div>
         <div style="font-size:18px;font-weight:700;color:#1e40af;margin-top:3px;font-variant-numeric:tabular-nums">${fPEN(totalCotizado)}</div>
       </div>
-      <div class="card" style="padding:12px;border-left:3px solid #9a3412">
-        <div style="font-size:10px;color:#6b7280;font-weight:600">COSTO IMPUTADO</div>
-        <div style="font-size:18px;font-weight:700;color:#9a3412;margin-top:3px;font-variant-numeric:tabular-nums">${fPEN(totalCosto)}</div>
+      <div class="card" style="padding:12px;border-left:3px solid #ca8a04" title="Suma de OCs SERVICIO no-anuladas vinculadas a estos proyectos (incluye BORRADOR/APROBADA)">
+        <div style="font-size:10px;color:#6b7280;font-weight:600">COMPROMETIDO</div>
+        <div style="font-size:18px;font-weight:700;color:#ca8a04;margin-top:3px;font-variant-numeric:tabular-nums">${fPEN(totalComprometido)}</div>
       </div>
-      <div class="card" style="padding:12px;border-left:3px solid ${totalMargen >= 0 ? '#16a34a' : '#dc2626'}">
-        <div style="font-size:10px;color:#6b7280;font-weight:600">MARGEN AGREGADO</div>
-        <div style="font-size:18px;font-weight:700;color:${totalMargen >= 0 ? '#16a34a' : '#dc2626'};margin-top:3px;font-variant-numeric:tabular-nums">${fPEN(totalMargen)}</div>
-        <div style="font-size:11px;color:#6b7280">${totalMargenPct.toFixed(1)}%</div>
+      <div class="card" style="padding:12px;border-left:3px solid #9a3412" title="Caja efectiva: pagos a proveedores + retiros de almacén imputados">
+        <div style="font-size:10px;color:#6b7280;font-weight:600">PAGADO REAL</div>
+        <div style="font-size:18px;font-weight:700;color:#9a3412;margin-top:3px;font-variant-numeric:tabular-nums">${fPEN(totalGastoReal)}</div>
+      </div>
+      <div class="card" style="padding:12px;border-left:3px solid ${totalMargenComp >= 0 ? '#16a34a' : '#dc2626'}" title="Cotizado − Comprometido (margen conservador de gestión)">
+        <div style="font-size:10px;color:#6b7280;font-weight:600">MARGEN GESTIÓN</div>
+        <div style="font-size:18px;font-weight:700;color:${totalMargenComp >= 0 ? '#16a34a' : '#dc2626'};margin-top:3px;font-variant-numeric:tabular-nums">${fPEN(totalMargenComp)}</div>
+        <div style="font-size:11px;color:#6b7280">${totalMargenCompPct.toFixed(1)}%</div>
       </div>
     </div>
 
@@ -174,10 +192,10 @@ function pintarTabla(body, ots) {
             <th style="padding:8px;text-align:left;font-size:10px;color:#6b7280;font-weight:600">Proyecto</th>
             <th style="padding:8px;text-align:center;font-size:10px;color:#6b7280;font-weight:600">Estado</th>
             <th style="padding:8px;text-align:right;font-size:10px;color:#6b7280;font-weight:600">Cotizado (S/)</th>
-            <th style="padding:8px;text-align:right;font-size:10px;color:#6b7280;font-weight:600">Costo real</th>
-            <th style="padding:8px;text-align:right;font-size:10px;color:#6b7280;font-weight:600">Margen</th>
+            <th style="padding:8px;text-align:right;font-size:10px;color:#6b7280;font-weight:600" title="OCs SERVICIO autorizadas (incluye BORRADOR/APROBADA)">Comprometido</th>
+            <th style="padding:8px;text-align:right;font-size:10px;color:#6b7280;font-weight:600" title="Caja efectiva: pagos a proveedores + retiros de almacén">Pagado real</th>
+            <th style="padding:8px;text-align:right;font-size:10px;color:#6b7280;font-weight:600" title="Cotizado − Comprometido">Margen</th>
             <th style="padding:8px;text-align:right;font-size:10px;color:#6b7280;font-weight:600">%</th>
-            <th style="padding:8px;text-align:center;font-size:10px;color:#6b7280;font-weight:600">Mov.</th>
             <th style="padding:8px;text-align:right;font-size:10px;color:#6b7280;font-weight:600">Acciones</th>
           </tr>
         </thead>
@@ -186,7 +204,9 @@ function pintarTabla(body, ots) {
     </div>
 
     <div style="font-size:11px;color:#6b7280;margin-top:8px;line-height:1.5">
-      💡 Las filas grises no tienen aún costos imputados. Para que una OT muestre costos, registrá retiros de almacén (Inventario → "Retirar Insumos") o creá OCs de honorario en Administración → Personal seleccionando esa cotización.
+      💡 <strong>Comprometido</strong> = suma de OCs SERVICIO autorizadas (no anuladas), incluye BORRADOR y APROBADA. Es la deuda futura del proyecto.<br>
+      💡 <strong>Pagado real</strong> = caja que ya salió: pagos a proveedores (OrdenCompraPago) + retiros de almacén imputados al proyecto.<br>
+      🔻 Las filas rojas tienen comprometido > cotizado — el proyecto va a gastar caja general.
     </div>
   `;
 

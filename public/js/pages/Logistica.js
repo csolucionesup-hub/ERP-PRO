@@ -1304,6 +1304,7 @@ function renderFormOC(tipoOC) {
             ${ccOptions}
           </select>
           <div id="oc-cc-info-${tipoOC}" style="font-size:11px;color:var(--text-secondary);margin-top:6px;line-height:1.5"></div>
+          <div id="oc-cc-balance-${tipoOC}" style="font-size:12px;margin-top:6px;line-height:1.5"></div>
           `}
         </div>
 
@@ -1409,19 +1410,89 @@ function bindFormOCMulti(panel, tipoOC) {
   // hidden inputs. Para GENERAL/ALMACEN solo se usa el nombre del CC.
   const ccSelect     = form.querySelector('[name=id_centro_costo]');
   const ccInfoDiv    = form.querySelector(`#oc-cc-info-${tipoOC}`);
+  const ccBalanceDiv = form.querySelector(`#oc-cc-balance-${tipoOC}`);
   const idCotHidden  = form.querySelector(`#oc-idcot-${tipoOC}`);
   const empresaInput = form.querySelector('[name=empresa]');
   const monedaInput  = form.querySelector('[name=moneda]');
   const tcInput      = form.querySelector('[name=tipo_cambio]');
 
+  // Balance del proyecto seleccionado (cache local del último fetch).
+  // Se vuelve a calcular si: cambia el CC, cambian las líneas, o cambia IGV.
+  let _balanceActual = null;
+
   // Si no hay CCs disponibles, no hay select que bindear (el render mostró
   // el aviso amarillo). El submit ya falla por required="true" en otros campos.
+  // Render del banner de balance/déficit. Lee _balanceActual + el total
+  // tipeado en las líneas para decidir si esta OC va a llevar al proyecto
+  // a déficit. No bloquea; solo informa (la decisión final es del usuario).
+  function renderBalanceBanner() {
+    if (!ccBalanceDiv) return;
+    if (!esServicio || !_balanceActual) { ccBalanceDiv.innerHTML = ''; return; }
+    const b = _balanceActual;
+    // Total actual del form (en moneda del proyecto → multiplico por TC para PEN)
+    const tc = Number(tcInput?.value) || 1;
+    const totalNuevoOriginal = currentFormTotalPEN(); // este helper ya convierte
+    const cotizado    = Number(b.cotizado)     || 0;
+    const comprometido = Number(b.comprometido) || 0;
+    const cobrado     = Number(b.cobrado)      || 0;
+    const margenAhora = cotizado - comprometido;
+    const margenPost  = cotizado - (comprometido + totalNuevoOriginal);
+    const yaEnDeficit   = margenAhora < 0;
+    const quedaEnDeficit = margenPost < 0 && !yaEnDeficit;
+    if (yaEnDeficit) {
+      ccBalanceDiv.innerHTML =
+        `<div style="background:#fee2e2;border:1px solid #fca5a5;color:#991b1b;padding:9px 12px;border-radius:6px">
+           🔻 <strong>Proyecto ya en déficit por ${fPEN(Math.abs(margenAhora))}.</strong>
+           Comprometido: ${fPEN(comprometido)} · Cotizado: ${fPEN(cotizado)} · Cobrado: ${fPEN(cobrado)}.
+           Esta OC suma ${fPEN(totalNuevoOriginal)} más al déficit. Vas a gastar caja general — avisá al jefe.
+         </div>`;
+    } else if (quedaEnDeficit) {
+      ccBalanceDiv.innerHTML =
+        `<div style="background:#fef3c7;border:1px solid #fbbf24;color:#92400e;padding:9px 12px;border-radius:6px">
+           ⚠️ <strong>Esta OC va a dejar el proyecto en déficit por ${fPEN(Math.abs(margenPost))}.</strong>
+           Cotizado: ${fPEN(cotizado)} · Comprometido (con esta OC): ${fPEN(comprometido + totalNuevoOriginal)}.
+           Confirmá con el jefe — vas a gastar caja general.
+         </div>`;
+    } else if (totalNuevoOriginal > 0) {
+      const restante = margenPost;
+      ccBalanceDiv.innerHTML =
+        `<div style="background:#ecfdf5;border:1px solid #6ee7b7;color:#065f46;padding:9px 12px;border-radius:6px;font-size:11px">
+           ✓ Después de esta OC, margen restante del proyecto: <strong>${fPEN(restante)}</strong>
+           (cotizado ${fPEN(cotizado)} − comprometido ${fPEN(comprometido + totalNuevoOriginal)}).
+         </div>`;
+    } else {
+      const restante = margenAhora;
+      ccBalanceDiv.innerHTML =
+        `<div style="background:#f0fdf4;border:1px solid #86efac;color:#166534;padding:9px 12px;border-radius:6px;font-size:11px">
+           Margen actual del proyecto: <strong>${fPEN(restante)}</strong>
+           (cotizado ${fPEN(cotizado)} − comprometido ${fPEN(comprometido)}).
+         </div>`;
+    }
+  }
+
+  // Total del form actual convertido a PEN (porque el balance del backend
+  // está en PEN). Suma cant × pu × tc + IGV si aplica.
+  function currentFormTotalPEN() {
+    let sub = 0;
+    [...lineasWrap.children].forEach(row => {
+      const c = Number(row.querySelector('.l-cant')?.value) || 0;
+      const p = Number(row.querySelector('.l-pu')?.value)   || 0;
+      sub += c * p;
+    });
+    const tc = Number(tcInput?.value) || 1;
+    const aplicaIgv = !!form.querySelector('[name=aplica_igv]')?.checked;
+    const subPen = sub * tc;
+    return aplicaIgv ? subPen * 1.18 : subPen;
+  }
+
   if (ccSelect) {
-    ccSelect.addEventListener('change', () => {
+    ccSelect.addEventListener('change', async () => {
       const opt = ccSelect.selectedOptions[0];
       if (!opt || !opt.value) {
         if (ccInfoDiv) ccInfoDiv.innerHTML = '';
+        if (ccBalanceDiv) ccBalanceDiv.innerHTML = '';
         if (idCotHidden) idCotHidden.value = '';
+        _balanceActual = null;
         return;
       }
       const idCot   = opt.dataset.idCot || '';
@@ -1455,8 +1526,21 @@ function bindFormOCMulti(panel, tipoOC) {
                <strong>Marca:</strong> ${marca || cc?.cotizacion_marca || '—'} · <strong>Moneda:</strong> ${monedaTxt}${tcTxt}
              </div>`;
         }
+        // Fetch del balance — se hace una sola vez por cambio de CC
+        if (idCot) {
+          try {
+            _balanceActual = await api.cotizaciones.getBalance(Number(idCot));
+            renderBalanceBanner();
+          } catch (e) {
+            console.warn('[OC form] no se pudo cargar balance:', e?.message);
+            _balanceActual = null;
+            if (ccBalanceDiv) ccBalanceDiv.innerHTML = '';
+          }
+        }
       } else {
         if (ccInfoDiv) ccInfoDiv.innerHTML = '';
+        if (ccBalanceDiv) ccBalanceDiv.innerHTML = '';
+        _balanceActual = null;
       }
     });
     // Si vino preseleccionado (caso ALMACEN con un solo CC), disparar el change
@@ -1521,6 +1605,9 @@ function bindFormOCMulti(panel, tipoOC) {
     tSubtotal.textContent = fPEN(subtotal);
     tIGV.textContent = fPEN(igv);
     tTotal.textContent = fPEN(total);
+    // Sesión 13/05/2026: si hay un proyecto elegido, actualizar el banner
+    // de balance/déficit con el total nuevo (suma comprometido_actual + esta OC).
+    try { renderBalanceBanner?.(); } catch {}
   }
 
   btnAddLinea.onclick = () => addLinea();

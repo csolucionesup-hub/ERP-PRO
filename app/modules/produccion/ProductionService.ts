@@ -44,16 +44,27 @@ class ProductionService {
     if (filtros.desde) { where.push('c.fecha >= ?'); vals.push(filtros.desde); }
     if (filtros.hasta) { where.push('c.fecha <= ?'); vals.push(filtros.hasta); }
 
+    // El módulo Producción mostraba S/ 0.00 en "Costo Real" para todas las
+    // OTs porque CostosServicio solo se popula en recibir/facturar/cerrar y
+    // las OCs típicamente viven en BORRADOR/APROBADA. Sesión 13/05/2026
+    // agregamos dos columnas que SÍ están pobladas:
+    //   - comprometido_oc: suma OCs SERVICIO no anuladas (deuda futura)
+    //   - pagado_oc:       suma OrdenCompraPago.monto_pen (caja efectiva)
+    // El "imputado" sigue calculado desde CostosServicio (para cuando el
+    // flujo recibir/facturar se complete en producción).
     const sql = `
       SELECT c.id_cotizacion, c.nro_cotizacion, c.cliente, c.proyecto, c.marca,
              c.moneda, c.tipo_cambio, c.total, c.estado, c.fecha,
              c.estado_financiero,
-             COALESCE(cs.costo_total, 0) AS costo_imputado,
+             COALESCE(cs.costo_total, 0)     AS costo_imputado,
              COALESCE(cs.cant_movimientos, 0) AS cant_movimientos,
-             COALESCE(cs.costo_material, 0) AS costo_material,
+             COALESCE(cs.costo_material, 0)  AS costo_material,
              COALESCE(cs.costo_mano_obra, 0) AS costo_mano_obra,
-             COALESCE(cs.costo_gasto_oc, 0) AS costo_gasto_oc,
-             COALESCE(cs.costo_otros, 0) AS costo_otros
+             COALESCE(cs.costo_gasto_oc, 0)  AS costo_gasto_oc,
+             COALESCE(cs.costo_otros, 0)     AS costo_otros,
+             COALESCE(oc_sum.comprometido, 0) AS comprometido_oc,
+             COALESCE(oc_sum.n_ocs, 0)        AS n_ocs,
+             COALESCE(pag_sum.pagado, 0)      AS pagado_oc
       FROM Cotizaciones c
       LEFT JOIN (
         SELECT id_cotizacion,
@@ -68,15 +79,35 @@ class ProductionService {
          WHERE id_cotizacion IS NOT NULL
          GROUP BY id_cotizacion
       ) cs ON cs.id_cotizacion = c.id_cotizacion
+      LEFT JOIN (
+        SELECT id_cotizacion,
+               SUM(total::numeric) AS comprometido,
+               COUNT(*)            AS n_ocs
+          FROM OrdenesCompra
+         WHERE id_cotizacion IS NOT NULL AND estado <> 'ANULADA'
+         GROUP BY id_cotizacion
+      ) oc_sum ON oc_sum.id_cotizacion = c.id_cotizacion
+      LEFT JOIN (
+        SELECT o.id_cotizacion,
+               SUM(p.monto_pen::numeric) AS pagado
+          FROM OrdenCompraPago p
+          JOIN OrdenesCompra o ON o.id_oc = p.id_oc
+         WHERE o.id_cotizacion IS NOT NULL AND o.estado <> 'ANULADA'
+         GROUP BY o.id_cotizacion
+      ) pag_sum ON pag_sum.id_cotizacion = c.id_cotizacion
       ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
       ORDER BY c.fecha DESC, c.id_cotizacion DESC`;
     const [rows]: any = await db.query(sql, vals);
 
     return (rows as any[]).map(r => {
-      const cotizadoPEN = this.totalCotizadoPEN(r);
-      const costo = Number(r.costo_imputado);
-      const margen = Number((cotizadoPEN - costo).toFixed(2));
-      const margenPct = cotizadoPEN > 0 ? Number(((margen / cotizadoPEN) * 100).toFixed(1)) : 0;
+      const cotizadoPEN  = this.totalCotizadoPEN(r);
+      const costo        = Number(r.costo_imputado) || 0;
+      const comprometido = Number(r.comprometido_oc) || 0;
+      const pagado       = Number(r.pagado_oc) || 0;
+      const margen       = Number((cotizadoPEN - costo).toFixed(2));
+      const margenPct    = cotizadoPEN > 0 ? Number(((margen / cotizadoPEN) * 100).toFixed(1)) : 0;
+      const margenComp   = Number((cotizadoPEN - comprometido).toFixed(2));
+      const margenCompPct = cotizadoPEN > 0 ? Number(((margenComp / cotizadoPEN) * 100).toFixed(1)) : 0;
       return {
         id_cotizacion:    r.id_cotizacion,
         nro_cotizacion:   r.nro_cotizacion,
@@ -90,14 +121,24 @@ class ProductionService {
         fecha:            r.fecha,
         cotizado_original: Number(r.total) || 0,
         cotizado_pen:     cotizadoPEN,
+        // Imputado: lo que ya pasó por CostosServicio (recibir/facturar/cerrar)
         costo_imputado:   costo,
-        costo_material:   Number(r.costo_material),
-        costo_mano_obra:  Number(r.costo_mano_obra),
-        costo_gasto_oc:   Number(r.costo_gasto_oc),
-        costo_otros:      Number(r.costo_otros),
+        costo_material:   Number(r.costo_material)  || 0,
+        costo_mano_obra:  Number(r.costo_mano_obra) || 0,
+        costo_gasto_oc:   Number(r.costo_gasto_oc)  || 0,
+        costo_otros:      Number(r.costo_otros)     || 0,
         margen_pen:       margen,
         margen_pct:       margenPct,
-        cant_movimientos: Number(r.cant_movimientos),
+        cant_movimientos: Number(r.cant_movimientos) || 0,
+        // Comprometido: suma OCs SERVICIO no anuladas (deuda futura del proyecto)
+        comprometido_oc:  comprometido,
+        n_ocs:            Number(r.n_ocs) || 0,
+        margen_compromiso: margenComp,
+        margen_compromiso_pct: margenCompPct,
+        // Pagado: caja que efectivamente salió (suma OrdenCompraPago)
+        pagado_oc:        pagado,
+        // Alerta visual: si lo autorizado supera lo cotizado
+        en_deficit:       comprometido > cotizadoPEN,
       };
     });
   }

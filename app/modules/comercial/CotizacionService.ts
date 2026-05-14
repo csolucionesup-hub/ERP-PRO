@@ -561,6 +561,179 @@ class CotizacionService {
     return cots as any[];
   }
 
+  /**
+   * Balance económico de una cotización (sesión 13/05/2026).
+   * Distingue 3 conceptos que la operación maneja mal mezclados:
+   *   - cotizado:     lo que el cliente acordó pagar (PEN)
+   *   - cobrado:      lo que entró efectivamente (banco + detracción)
+   *   - comprometido: suma de OCs SERVICIO no-anuladas (deuda futura, incluye BORRADOR/APROBADA)
+   *   - pagado:       OrdenCompraPago.monto_pen sobre OCs vinculadas (caja que ya salió)
+   *   - imputado_almacen: salidas de stock al proyecto (cantidad × precio_unitario)
+   * Y dos lecturas de "déficit":
+   *   - deficit_compromiso (cotizado − comprometido): negocio (¿es rentable?)
+   *   - saldo_caja          (cobrado − pagado − imputado_almacen): tesorería (¿bancamos?)
+   */
+  async getBalance(id_cotizacion: number) {
+    const [rows]: any = await db.query(
+      `SELECT
+         c.id_cotizacion,
+         c.nro_cotizacion,
+         c.cliente,
+         c.proyecto,
+         c.marca,
+         c.moneda,
+         c.estado,
+         c.estado_financiero,
+         c.total::numeric                                                    AS cotizado,
+         (COALESCE(c.monto_cobrado_banco,0)
+          + COALESCE(c.monto_cobrado_detraccion,0))::numeric                 AS cobrado,
+         COALESCE((
+           SELECT SUM(o.total::numeric)
+             FROM OrdenesCompra o
+            WHERE o.id_cotizacion = c.id_cotizacion
+              AND o.estado <> 'ANULADA'
+         ), 0)::numeric                                                      AS comprometido,
+         COALESCE((
+           SELECT SUM(p.monto_pen::numeric)
+             FROM OrdenCompraPago p
+             JOIN OrdenesCompra o ON o.id_oc = p.id_oc
+            WHERE o.id_cotizacion = c.id_cotizacion
+              AND o.estado <> 'ANULADA'
+         ), 0)::numeric                                                      AS pagado,
+         COALESCE((
+           SELECT SUM(ABS(mi.cantidad) * COALESCE(i.precio_promedio, 0))::numeric
+             FROM MovimientosInventario mi
+             JOIN Inventario i ON i.id_item = mi.id_item
+            WHERE mi.referencia_tipo = 'COTIZACION'
+              AND mi.referencia_id   = c.id_cotizacion
+              AND mi.cantidad        < 0
+         ), 0)::numeric                                                      AS imputado_almacen
+       FROM Cotizaciones c
+      WHERE c.id_cotizacion = ?`,
+      [id_cotizacion]
+    );
+    const r = (rows as any[])[0];
+    if (!r) throw new Error('Cotización no encontrada');
+
+    const cotizado         = Number(r.cotizado)         || 0;
+    const cobrado          = Number(r.cobrado)          || 0;
+    const comprometido     = Number(r.comprometido)     || 0;
+    const pagado           = Number(r.pagado)           || 0;
+    const imputado_almacen = Number(r.imputado_almacen) || 0;
+    const imputado_total   = pagado + imputado_almacen;
+
+    return {
+      id_cotizacion:      r.id_cotizacion,
+      nro_cotizacion:     r.nro_cotizacion,
+      cliente:            r.cliente,
+      proyecto:           r.proyecto,
+      marca:              r.marca,
+      moneda:             r.moneda,
+      estado:             r.estado,
+      estado_financiero:  r.estado_financiero,
+      cotizado,
+      cobrado,
+      comprometido,
+      pagado,
+      imputado_almacen,
+      imputado_total,
+      // Negocio: ¿el proyecto es/va a ser rentable? (negativo = déficit)
+      deficit_compromiso: Number((cotizado - comprometido).toFixed(2)),
+      // Tesorería: ¿estamos bancando este proyecto con caja propia?
+      saldo_caja:         Number((cobrado - imputado_total).toFixed(2)),
+      en_deficit:         comprometido > cotizado,
+    };
+  }
+
+  /**
+   * Promover una cotización TRABAJO_EN_RIESGO → APROBADA.
+   * Se usa cuando el cliente confirma el trabajo y/o paga después de que ya
+   * arrancamos a riesgo. Recalcula estado_financiero según las cobranzas
+   * registradas (NA → PENDIENTE_DEPOSITO si no hay cobranza, o el estado
+   * adecuado si ya hay alguna).
+   */
+  async promoverFondeada(id_cotizacion: number) {
+    const conn = await db.getConnection();
+    await conn.beginTransaction();
+    try {
+      const [rows]: any = await conn.query(
+        `SELECT estado, total, monto_detraccion, monto_retencion,
+                monto_cobrado_banco, monto_cobrado_detraccion
+           FROM Cotizaciones WHERE id_cotizacion = ? FOR UPDATE`,
+        [id_cotizacion]
+      );
+      const cot = (rows as any[])[0];
+      if (!cot) throw new Error('Cotización no encontrada');
+      if (cot.estado !== 'TRABAJO_EN_RIESGO') {
+        throw new Error(`Solo se puede promover desde TRABAJO_EN_RIESGO (estado actual: ${cot.estado})`);
+      }
+
+      // Recalcular estado_financiero según cobranzas (mismo criterio que CobranzasService)
+      const total       = Number(cot.total) || 0;
+      const detraccion  = Number(cot.monto_detraccion) || 0;
+      const retencion   = Number(cot.monto_retencion) || 0;
+      const esperadoBanco = total - detraccion - retencion;
+      const cobradoBanco  = Number(cot.monto_cobrado_banco) || 0;
+      const cobradoDet    = Number(cot.monto_cobrado_detraccion) || 0;
+
+      let nuevoEstadoFin = 'PENDIENTE_DEPOSITO';
+      if (cobradoBanco + 0.01 >= esperadoBanco && esperadoBanco > 0) {
+        if (detraccion > 0) {
+          nuevoEstadoFin = cobradoDet + 0.01 >= detraccion
+            ? 'FONDEADA_TOTAL'
+            : 'BANCO_OK_DETRACCION_PENDIENTE';
+        } else {
+          nuevoEstadoFin = 'SIN_DETRACCION_FONDEADA';
+        }
+      } else if (cobradoBanco > 0) {
+        nuevoEstadoFin = 'BANCO_PARCIAL';
+      }
+
+      await conn.query(
+        `UPDATE Cotizaciones
+            SET estado = 'APROBADA',
+                estado_financiero = ?,
+                fecha_aprobacion_finanzas = COALESCE(fecha_aprobacion_finanzas, NOW()),
+                updated_at = NOW()
+          WHERE id_cotizacion = ?`,
+        [nuevoEstadoFin, id_cotizacion]
+      );
+
+      await conn.commit();
+      return { ok: true, nuevo_estado: 'APROBADA', estado_financiero: nuevoEstadoFin };
+    } catch (err) {
+      await conn.rollback();
+      throw err;
+    } finally {
+      conn.release();
+    }
+  }
+
+  /**
+   * Marcar una cotización como TERMINADA (cierra el proyecto para nuevas OCs).
+   * Permitido desde APROBADA / TRABAJO_EN_RIESGO. Los CCs vinculados y las
+   * OCs históricas quedan intactos; solo se desactiva la posibilidad de
+   * crear nuevas OCs vinculadas porque el form filtra por estado activo.
+   */
+  async marcarTerminada(id_cotizacion: number) {
+    const [rows]: any = await db.query(
+      `SELECT estado FROM Cotizaciones WHERE id_cotizacion = ?`,
+      [id_cotizacion]
+    );
+    const cot = (rows as any[])[0];
+    if (!cot) throw new Error('Cotización no encontrada');
+    if (!['APROBADA', 'TRABAJO_EN_RIESGO'].includes(cot.estado)) {
+      throw new Error(`Solo se puede terminar desde APROBADA o TRABAJO_EN_RIESGO (estado actual: ${cot.estado})`);
+    }
+    await db.query(
+      `UPDATE Cotizaciones
+          SET estado = 'TERMINADA', updated_at = NOW()
+        WHERE id_cotizacion = ?`,
+      [id_cotizacion]
+    );
+    return { ok: true, nuevo_estado: 'TERMINADA' };
+  }
+
   async guardarDriveInfo(id: number, fileId: string, url: string) {
     await db.query(
       `UPDATE Cotizaciones SET drive_file_id = ?, drive_url = ? WHERE id_cotizacion = ?`,

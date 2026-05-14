@@ -435,6 +435,14 @@ apiRouter.get('/cobranzas/dashboard', async (_req: Request, res: Response) => {
   res.json(await CobranzasService.getDashboardFinanzas());
 });
 
+// Página Análisis Financiero — 6 gráficos pre-agregados.
+// Sesión 13/05/2026: respuesta única (no streaming) con todos los datos del
+// dashboard analítico. Se cachea client-side por 30s para evitar martillar
+// la BD si el usuario alterna entre tabs.
+apiRouter.get('/cobranzas/analitica', async (_req: Request, res: Response) => {
+  res.json(await CobranzasService.getAnalitica());
+});
+
 apiRouter.get('/cobranzas/:id/detalle', async (req: Request, res: Response) => {
   res.json(await CobranzasService.getDetalle(parseInt(req.params.id as string)));
 });
@@ -705,6 +713,24 @@ apiRouter.put('/cotizaciones/:id/fecha-aprobacion', validateIdParam, auditLog('C
 apiRouter.post('/cotizaciones/:id/anular', validateIdParam, auditLog('Cotizacion', 'ANULAR'), async (req: Request, res: Response) => {
   await CotizacionService.anularCotizacion(parseInt(req.params.id as string));
   res.json({ success: true });
+});
+
+// Balance económico (cotizado/cobrado/comprometido/pagado/imputado/déficit).
+// Sesión 13/05/2026: usado por Producción, Finanzas (bandeja déficit) y form
+// Nueva OC (banner aviso).
+apiRouter.get('/cotizaciones/:id/balance', validateIdParam, async (req: Request, res: Response) => {
+  res.json(await CotizacionService.getBalance(parseInt(req.params.id as string)));
+});
+
+// Promover TRABAJO_EN_RIESGO → APROBADA. Manual desde Finanzas. Recalcula
+// estado_financiero según las cobranzas registradas.
+apiRouter.post('/cotizaciones/:id/promover-fondeada', validateIdParam, auditLog('Cotizacion', 'UPDATE'), async (req: Request, res: Response) => {
+  res.json(await CotizacionService.promoverFondeada(parseInt(req.params.id as string)));
+});
+
+// Marcar TERMINADA (cierre del proyecto). Manual desde Finanzas.
+apiRouter.post('/cotizaciones/:id/marcar-terminada', validateIdParam, auditLog('Cotizacion', 'UPDATE'), async (req: Request, res: Response) => {
+  res.json(await CotizacionService.marcarTerminada(parseInt(req.params.id as string)));
 });
 
 // Editar metadata "segura" (cliente, atencion, contactos, condiciones, etc.)

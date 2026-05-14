@@ -66,7 +66,12 @@ class CobranzasService {
         c.fecha_aprobacion_finanzas,
         c.created_at,
         c.updated_at,
-        DATEDIFF(CURDATE(), DATE(c.updated_at)) AS dias_esperando
+        DATEDIFF(CURDATE(), DATE(c.updated_at)) AS dias_esperando,
+        COALESCE((
+          SELECT SUM(o.total::numeric)
+            FROM OrdenesCompra o
+           WHERE o.id_cotizacion = c.id_cotizacion AND o.estado <> 'ANULADA'
+        ), 0)::numeric AS comprometido_oc
       FROM Cotizaciones c
       WHERE c.estado <> 'ANULADA'
         AND (c.estado_financiero <> 'NA' OR c.estado = 'TRABAJO_EN_RIESGO')
@@ -76,14 +81,27 @@ class CobranzasService {
 
     const all = rows as any[];
 
+    // Anotar déficit por compromiso (suma OCs vinculadas > total cotizado).
+    // Esto es la vista de negocio: ¿el proyecto va a ser rentable?
+    for (const c of all) {
+      c.comprometido_oc = Number(c.comprometido_oc) || 0;
+      c.en_deficit      = c.comprometido_oc > Number(c.total);
+      c.deficit_monto   = Number((Number(c.total) - c.comprometido_oc).toFixed(2));
+    }
+
     // Clasificación por bandeja
-    // TRABAJO_EN_RIESGO es bandeja independiente: NO se mezcla con las otras
-    // aunque por algún motivo tuviera estado_financiero distinto de NA.
-    const trabajo_en_riesgo = all.filter(c =>
+    // - en_deficit  : tiene precedencia sobre el resto (es señal de alerta operativa)
+    // - trabajo_en_riesgo: el resto de los en TRABAJO_EN_RIESGO
+    // - esperando_pago / detraccion / cobradas: clasificación financiera estándar
+    const en_deficit = all.filter(c => c.en_deficit);
+
+    const noDeficit = all.filter(c => !c.en_deficit);
+
+    const trabajo_en_riesgo = noDeficit.filter(c =>
       c.estado_comercial === 'TRABAJO_EN_RIESGO'
     );
 
-    const noEnRiesgo = all.filter(c => c.estado_comercial !== 'TRABAJO_EN_RIESGO');
+    const noEnRiesgo = noDeficit.filter(c => c.estado_comercial !== 'TRABAJO_EN_RIESGO');
 
     const esperando_pago = noEnRiesgo.filter(c =>
       c.estado_financiero === 'PENDIENTE_DEPOSITO' ||
@@ -106,11 +124,13 @@ class CobranzasService {
       esperando_detraccion,
       cobradas,
       trabajo_en_riesgo,
+      en_deficit,
       totales: {
         esperando_pago_count:       esperando_pago.length,
         esperando_detraccion_count: esperando_detraccion.length,
         cobradas_count:             cobradas.length,
         trabajo_en_riesgo_count:    trabajo_en_riesgo.length,
+        en_deficit_count:           en_deficit.length,
       },
     };
   }
@@ -680,6 +700,136 @@ class CobranzasService {
         cantidad: Number(depPendRow.cantidad) || 0,
       },
       top_vencidas: topVencidas,
+    };
+  }
+
+  /**
+   * Analítica de Finanzas — sesión 13/05/2026.
+   * Devuelve datos pre-agregados para que el frontend renderice 6 gráficos
+   * sin tener que hacer queries adicionales:
+   *
+   *   1. tendencia_mensual  : últimos 12 meses, cobranzas por marca
+   *   2. distribucion_cobros: % banco / detracción / retención (del período actual)
+   *   3. top_clientes       : top 5 por monto cobrado histórico
+   *   4. flujo_proyectado   : próximos 3 meses, cobranzas esperadas (pipeline activo)
+   *   5. balance_proyectos  : cotizado / cobrado / comprometido / pagado por cot activa
+   *   6. vencimientos_mes   : detracciones SUNAT pendientes agrupadas por día del mes
+   *
+   * Todo lectura (read-only). No usa JOINs caros — la mayoría son agregados por mes.
+   */
+  async getAnalitica() {
+    // 1. Tendencia mensual de cobranzas (últimos 12 meses).
+    // Agregamos por (mes, marca) sumando los montos cobrados en PEN equivalente.
+    const [tendenciaRows]: any = await db.query(`
+      SELECT TO_CHAR(cb.fecha_movimiento, 'YYYY-MM') AS mes,
+             c.marca,
+             SUM(
+               CASE WHEN cb.moneda = 'USD'
+                    THEN cb.monto::numeric * COALESCE(cb.tipo_cambio, 1)
+                    ELSE cb.monto::numeric
+               END
+             )::numeric(14,2) AS monto_pen
+        FROM CobranzasCotizacion cb
+        JOIN Cotizaciones c ON c.id_cotizacion = cb.id_cotizacion
+       WHERE cb.fecha_movimiento >= (CURRENT_DATE - INTERVAL '12 months')
+       GROUP BY 1, 2
+       ORDER BY 1, 2
+    `);
+
+    // 2. Distribución por tipo de cobranza (este año).
+    const [distribRows]: any = await db.query(`
+      SELECT tipo,
+             SUM(
+               CASE WHEN moneda = 'USD'
+                    THEN monto::numeric * COALESCE(tipo_cambio, 1)
+                    ELSE monto::numeric
+               END
+             )::numeric(14,2) AS monto_pen,
+             COUNT(*)::int AS n
+        FROM CobranzasCotizacion
+       WHERE EXTRACT(YEAR FROM fecha_movimiento) = EXTRACT(YEAR FROM CURRENT_DATE)
+       GROUP BY tipo
+       ORDER BY monto_pen DESC
+    `);
+
+    // 3. Top 5 clientes por monto cobrado histórico (acumulado).
+    const [topClientesRows]: any = await db.query(`
+      SELECT c.cliente,
+             SUM(
+               CASE WHEN cb.moneda = 'USD'
+                    THEN cb.monto::numeric * COALESCE(cb.tipo_cambio, 1)
+                    ELSE cb.monto::numeric
+               END
+             )::numeric(14,2) AS monto_pen,
+             COUNT(DISTINCT cb.id_cotizacion)::int AS n_cotizaciones
+        FROM CobranzasCotizacion cb
+        JOIN Cotizaciones c ON c.id_cotizacion = cb.id_cotizacion
+       GROUP BY c.cliente
+       ORDER BY monto_pen DESC
+       LIMIT 5
+    `);
+
+    // 4. Flujo proyectado: pipeline activo. Cotizaciones APROBADAS sin
+    // cobranza completa, monto esperado al banco (total - cobrado - detraccion - retencion).
+    const [flujoRows]: any = await db.query(`
+      SELECT c.id_cotizacion, c.nro_cotizacion, c.cliente, c.proyecto, c.marca,
+             c.total::numeric AS total,
+             COALESCE(c.monto_cobrado_banco,0)::numeric        AS cobrado_banco,
+             COALESCE(c.monto_cobrado_detraccion,0)::numeric   AS cobrado_det,
+             COALESCE(c.monto_detraccion,0)::numeric           AS detraccion,
+             COALESCE(c.monto_retencion,0)::numeric            AS retencion,
+             c.estado_financiero,
+             c.fecha
+        FROM Cotizaciones c
+       WHERE c.estado IN ('APROBADA','TRABAJO_EN_RIESGO')
+         AND c.estado_financiero IN ('PENDIENTE_DEPOSITO','BANCO_PARCIAL','BANCO_OK_DETRACCION_PENDIENTE')
+       ORDER BY c.updated_at DESC
+       LIMIT 20
+    `);
+
+    // 5. Balance por proyecto activo (cotizado/cobrado/comprometido/pagado).
+    // Reutiliza la lógica del CotizacionService.getBalance pero en lote.
+    const [balanceRows]: any = await db.query(`
+      SELECT c.id_cotizacion, c.nro_cotizacion, c.cliente, c.proyecto, c.marca,
+             c.estado, c.estado_financiero,
+             c.total::numeric AS cotizado,
+             (COALESCE(c.monto_cobrado_banco,0) + COALESCE(c.monto_cobrado_detraccion,0))::numeric AS cobrado,
+             COALESCE((
+               SELECT SUM(o.total::numeric)
+                 FROM OrdenesCompra o
+                WHERE o.id_cotizacion = c.id_cotizacion AND o.estado <> 'ANULADA'
+             ), 0)::numeric AS comprometido,
+             COALESCE((
+               SELECT SUM(p.monto_pen::numeric)
+                 FROM OrdenCompraPago p
+                 JOIN OrdenesCompra o ON o.id_oc = p.id_oc
+                WHERE o.id_cotizacion = c.id_cotizacion AND o.estado <> 'ANULADA'
+             ), 0)::numeric AS pagado
+        FROM Cotizaciones c
+       WHERE c.estado IN ('APROBADA','TRABAJO_EN_RIESGO')
+       ORDER BY c.fecha DESC
+       LIMIT 12
+    `);
+
+    // 6. Vencimientos del mes: detracciones SUNAT pendientes por día del mes
+    // (vencen el día 15). Simple — solo cotizaciones con detracción pendiente.
+    const [vencRows]: any = await db.query(`
+      SELECT 15 AS dia_mes,
+             COUNT(*)::int AS n_pendientes,
+             SUM(COALESCE(monto_detraccion,0) - COALESCE(monto_cobrado_detraccion,0))::numeric(14,2) AS monto_pen
+        FROM Cotizaciones
+       WHERE estado_financiero IN ('PENDIENTE_DEPOSITO','BANCO_PARCIAL','BANCO_OK_DETRACCION_PENDIENTE')
+         AND COALESCE(monto_detraccion,0) > COALESCE(monto_cobrado_detraccion,0)
+    `);
+
+    return {
+      tendencia_mensual:    tendenciaRows,
+      distribucion_cobros:  distribRows,
+      top_clientes:         topClientesRows,
+      flujo_proyectado:     flujoRows,
+      balance_proyectos:    balanceRows,
+      vencimientos_mes:     vencRows,
+      generado_en:          new Date().toISOString(),
     };
   }
 

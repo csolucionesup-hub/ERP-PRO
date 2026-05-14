@@ -166,6 +166,12 @@ export const api = {
     anularCotizacion: (id)     => post(`/cotizaciones/${id}/anular`),
     deleteCotizacion: (id)     => del(`/cotizaciones/${id}`),
     resetTodo:        ()       => del('/cotizaciones/reset'),
+    // Balance económico (cotizado/cobrado/comprometido/pagado/imputado/déficit).
+    getBalance:       (id)     => get(`/cotizaciones/${id}/balance`),
+    // Promover TRABAJO_EN_RIESGO → APROBADA (Finanzas).
+    promoverFondeada: (id)     => post(`/cotizaciones/${id}/promover-fondeada`),
+    // Cerrar proyecto: cualquier estado activo → TERMINADA (Finanzas).
+    marcarTerminada:  (id)     => post(`/cotizaciones/${id}/marcar-terminada`),
     uploadFoto: async (file) => {
       const token = localStorage.getItem('erp_token');
       const fd = new FormData();
@@ -185,6 +191,8 @@ export const api = {
   cobranzas: {
     getBandejas:   (marca)         => get(marca ? `/cobranzas/bandejas?marca=${marca}` : '/cobranzas/bandejas'),
     getDashboard:  ()              => get('/cobranzas/dashboard'),
+    // Página Análisis Financiero (6 gráficos pre-agregados).
+    getAnalitica:  ()              => get('/cobranzas/analitica'),
     getCuentas:    ()              => get('/cobranzas/cuentas'),
     getDetalle:    (id)            => get(`/cobranzas/${id}/detalle`),
     registrar:     (data)          => post('/cobranzas', data),
