@@ -628,6 +628,56 @@ apiRouter.delete('/cobranzas/movimientos/:id', async (req: Request, res: Respons
   res.json(await CobranzasService.deleteMovimientoBancario(parseInt(req.params.id as string)));
 });
 
+// ── Herramientas de conciliación avanzada (sesión 14/05/2026) ──
+// 4 herramientas para resolver casos típicos al importar extracto bancario:
+// split N/D bundle, match a OC, conciliar como servicio, conciliar como TI.
+
+// #1: Split de movimiento N/D bundle (pago + comisión en una línea).
+apiRouter.post('/cobranzas/movimientos/:id/split-comision', validateIdParam, auditLog('MovimientoBancario', 'UPDATE'), async (req: any, res: Response) => {
+  const id = parseInt(req.params.id as string);
+  const { monto_pago, monto_comision, categoria_com, concepto_com, id_pago_oc } = req.body || {};
+  res.json(await CobranzasService.splitMovimientoNDBundle({
+    id_movimiento:  id,
+    monto_pago:     Number(monto_pago),
+    monto_comision: Number(monto_comision),
+    categoria_com,
+    concepto_com,
+    id_pago_oc:     id_pago_oc ? Number(id_pago_oc) : null,
+    nombre_usuario: req.user?.nombre || 'sistema',
+  }));
+});
+
+// #2: Sugerencias de pago de OC para conciliar (devuelve top matches).
+apiRouter.get('/cobranzas/movimientos/:id/sugerir-oc', validateIdParam, async (req: Request, res: Response) => {
+  const id = parseInt(req.params.id as string);
+  const tolerancia = req.query.tolerancia ? Number(req.query.tolerancia) : 5;
+  res.json(await CobranzasService.sugerirMatchPagoOC(id, tolerancia));
+});
+
+// #3: Conciliar como pago de servicio (luz/agua/internet/otros).
+apiRouter.post('/cobranzas/movimientos/:id/conciliar-servicio', validateIdParam, auditLog('MovimientoBancario', 'UPDATE'), async (req: any, res: Response) => {
+  const id = parseInt(req.params.id as string);
+  res.json(await CobranzasService.conciliarComoServicio({
+    id_movimiento:  id,
+    categoria:      req.body?.categoria || 'OTROS',
+    concepto:       String(req.body?.concepto || '').trim(),
+    nombre_usuario: req.user?.nombre || 'sistema',
+  }));
+});
+
+// #4: Conciliar como transferencia interna existente.
+apiRouter.post('/cobranzas/movimientos/:id/conciliar-transferencia', validateIdParam, auditLog('MovimientoBancario', 'UPDATE'), async (req: any, res: Response) => {
+  const id = parseInt(req.params.id as string);
+  const { id_transferencia, lado } = req.body || {};
+  if (!id_transferencia) return res.status(400).json({ error: 'id_transferencia requerido' });
+  res.json(await CobranzasService.conciliarComoTransferenciaInterna({
+    id_movimiento:    id,
+    id_transferencia: Number(id_transferencia),
+    lado:             lado || 'destino',
+    nombre_usuario:   req.user?.nombre || 'sistema',
+  }));
+});
+
 // Facturación
 apiRouter.post('/cobranzas/:id/facturar', async (req: Request, res: Response) => {
   res.json(await CobranzasService.marcarFacturada(parseInt(req.params.id as string), req.body));

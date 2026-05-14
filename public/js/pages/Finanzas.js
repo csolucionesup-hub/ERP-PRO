@@ -845,7 +845,23 @@ async function modalLibroBancos() {
           <td style="padding:6px;text-align:center;white-space:nowrap">
             ${m.estado_conciliacion === 'POR_CONCILIAR'
               ? `<button class="btn-conc-m" data-id="${m.id_movimiento}" title="Marcar este movimiento como conciliado contra el extracto bancario" aria-label="Conciliar" style="color:#16a34a;background:none;border:none;cursor:pointer">✓</button>
-                 <button class="btn-ign-m" data-id="${m.id_movimiento}" title="Ignorar este movimiento (no aparecerá en pendientes pero sigue en el libro)" aria-label="Ignorar" style="color:#6b7280;background:none;border:none;cursor:pointer">⊘</button>` : ''}
+                 <button class="btn-ign-m" data-id="${m.id_movimiento}" title="Ignorar este movimiento (no aparecerá en pendientes pero sigue en el libro)" aria-label="Ignorar" style="color:#6b7280;background:none;border:none;cursor:pointer">⊘</button>
+                 ${m.tipo === 'CARGO' ? `
+                 <button class="btn-split-m" data-id="${m.id_movimiento}" data-monto="${m.monto}" data-desc="${(m.descripcion_banco || '').replace(/"/g,'&quot;')}"
+                   title="💱 Split N/D bundle: separar este movimiento en Pago + Comisión bancaria. Útil para líneas 'I-BANC + COM.O/CI-BANC' donde el banco junta el pago y la comisión interbancaria en una sola línea."
+                   aria-label="Split pago + comisión" style="color:#7c3aed;background:none;border:none;cursor:pointer;font-size:14px">💱</button>
+                 <button class="btn-match-oc-m" data-id="${m.id_movimiento}" data-monto="${m.monto}"
+                   title="🔗 Buscar pagos de OC ya registrados que coincidan con este movimiento por monto y fecha"
+                   aria-label="Match a OC" style="color:#0891b2;background:none;border:none;cursor:pointer;font-size:14px">🔗</button>
+                 <button class="btn-servicio-m" data-id="${m.id_movimiento}" data-monto="${m.monto}" data-desc="${(m.descripcion_banco || '').replace(/"/g,'&quot;')}"
+                   title="💡 Registrar como Pago de Servicio (luz / agua / internet / portes) — se crea un GastoBancario con concepto custom"
+                   aria-label="Pago servicio" style="color:#ca8a04;background:none;border:none;cursor:pointer;font-size:14px">💡</button>
+                 ` : ''}
+                 ${m.tipo_movimiento_banco && (m.tipo_movimiento_banco === 'METAL' || (m.descripcion_banco || '').toUpperCase().includes('METAL ENGINEERS')) ? `
+                 <button class="btn-trf-interna-m" data-id="${m.id_movimiento}" data-tipo="${m.tipo}" data-monto="${m.monto}"
+                   title="🔄 Vincular con una Transferencia Interna Metal ↔ Perfotools ya registrada"
+                   aria-label="Transferencia interna" style="color:#9a3412;background:none;border:none;cursor:pointer;font-size:14px">🔄</button>` : ''}
+                ` : ''}
             ${m.fuente !== 'AUTO'
               ? `<button class="btn-del-m" data-id="${m.id_movimiento}" title="Eliminar este movimiento manual / importado del libro bancos (no se puede eliminar movimientos AUTO generados desde cobranzas/gastos)" aria-label="Eliminar movimiento" style="color:#dc2626;background:none;border:none;cursor:pointer">🗑</button>` : ''}
           </td>
@@ -980,6 +996,71 @@ async function modalLibroBancos() {
         if (!confirm('¿Eliminar este movimiento?')) return;
         try { await api.cobranzas.deleteMovimiento(Number(btn.dataset.id)); showSuccess('Eliminado'); render(); }
         catch (e) { showError('Error: ' + e.message); }
+      };
+    });
+
+    // ───── 4 herramientas nuevas de conciliación avanzada (14/05/2026) ─────
+
+    // 💱 Split N/D bundle: separar pago + comisión.
+    box.querySelectorAll('.btn-split-m').forEach(btn => {
+      btn.onclick = async () => {
+        const id = Number(btn.dataset.id);
+        const monto = Number(btn.dataset.monto);
+        const desc = btn.dataset.desc || '';
+        const data = await modalSplitComision({ id, monto, desc });
+        if (!data) return;
+        try {
+          const r = await api.cobranzas.splitMovimientoComision(id, data);
+          showSuccess(`Split aplicado: Pago S/ ${data.monto_pago.toFixed(2)} + Comisión S/ ${data.monto_comision.toFixed(2)} (GastoBancario #${r.id_gasto_bancario})`);
+          render();
+        } catch (e) { showError(e.error || e.message); }
+      };
+    });
+
+    // 🔗 Match con OC: buscar pagos AUTO existentes.
+    box.querySelectorAll('.btn-match-oc-m').forEach(btn => {
+      btn.onclick = async () => {
+        const id = Number(btn.dataset.id);
+        try {
+          const r = await api.cobranzas.sugerirMatchPagoOC(id, 5);
+          const elegido = await modalSugerenciasPagoOC(r);
+          if (!elegido) return;
+          // Conciliar usando endpoint existente
+          await api.cobranzas.conciliarMovimiento(id, { ref_tipo: 'OC_PAGO', ref_id: elegido.id_pago });
+          showSuccess(`Conciliado con OC ${elegido.nro_oc}`);
+          render();
+        } catch (e) { showError(e.error || e.message); }
+      };
+    });
+
+    // 💡 Pago de Servicio: convertir en GastoBancario con concepto.
+    box.querySelectorAll('.btn-servicio-m').forEach(btn => {
+      btn.onclick = async () => {
+        const id = Number(btn.dataset.id);
+        const monto = Number(btn.dataset.monto);
+        const desc = btn.dataset.desc || '';
+        const data = await modalConciliarServicio({ id, monto, desc });
+        if (!data) return;
+        try {
+          await api.cobranzas.conciliarComoServicio(id, data);
+          showSuccess('Conciliado como pago de servicio');
+          render();
+        } catch (e) { showError(e.error || e.message); }
+      };
+    });
+
+    // 🔄 Vincular Transferencia Interna existente.
+    box.querySelectorAll('.btn-trf-interna-m').forEach(btn => {
+      btn.onclick = async () => {
+        const id = Number(btn.dataset.id);
+        const tipo = btn.dataset.tipo;
+        const data = await modalConciliarTransferenciaInterna({ id, tipo });
+        if (!data) return;
+        try {
+          await api.cobranzas.conciliarComoTransferenciaInterna(id, data);
+          showSuccess(`Vinculado a Transferencia Interna #${data.id_transferencia}`);
+          render();
+        } catch (e) { showError(e.error || e.message); }
       };
     });
   };
@@ -3804,5 +3885,257 @@ function modalNuevaTransferenciaInterna(opts = {}) {
     };
 
     recalcEstimado();
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 4 modales de conciliación avanzada en Libro Bancos (sesión 14/05/2026)
+// ═══════════════════════════════════════════════════════════════════════════
+
+const fmtPENlocal = (v) => new Intl.NumberFormat('es-PE', { style: 'currency', currency: 'PEN' }).format(Number(v) || 0);
+
+/**
+ * Modal #1 — Split N/D bundle (pago + comisión).
+ * Usuario ingresa monto del pago real al proveedor; la comisión se calcula
+ * automáticamente como (total - pago). También opcionalmente puede linkear
+ * el pago a una OC existente (por id_pago).
+ */
+function modalSplitComision({ id, monto, desc }) {
+  return new Promise((resolve) => {
+    const ov = document.createElement('div');
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.65);z-index:10001;display:flex;align-items:center;justify-content:center;padding:20px';
+    ov.innerHTML = `
+      <div style="background:#fff;border-radius:10px;width:min(540px,96vw);box-shadow:0 20px 60px rgba(0,0,0,.3);padding:22px">
+        <h3 style="margin:0 0 6px;font-size:16px">💱 Split: separar pago + comisión</h3>
+        <p style="margin:0 0 14px;font-size:12px;color:#6b7280;line-height:1.5">
+          El banco juntó el pago y la comisión interbancaria en una sola línea.
+          Ingresá cuánto fue el <strong>pago real al proveedor</strong> — la comisión se calcula automática.
+        </p>
+        <div style="background:#f9fafb;padding:10px;border-radius:6px;margin-bottom:14px;font-size:12px">
+          <strong>Movimiento original:</strong> ${desc || '(sin descripción)'}<br>
+          <strong>Monto total:</strong> ${fmtPENlocal(monto)} (id #${id})
+        </div>
+        <div style="display:grid;gap:10px">
+          <div>
+            <label style="font-size:11px;color:#374151;font-weight:600;display:block;margin-bottom:4px">Monto del pago al proveedor *</label>
+            <input id="sp-pago" type="number" step="0.01" min="0.01" placeholder="0.00" style="${inputStyle}">
+          </div>
+          <div>
+            <label style="font-size:11px;color:#92400e;font-weight:600;display:block;margin-bottom:4px">Comisión bancaria (calculado)</label>
+            <input id="sp-comision" type="number" step="0.01" readonly style="${inputStyle};background:#fef3c7;font-weight:700">
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+            <div>
+              <label style="font-size:11px;color:#374151;font-weight:600;display:block;margin-bottom:4px">Categoría comisión</label>
+              <select id="sp-cat" style="${inputStyle}">
+                <option value="COMISION_TC" selected>Comisión transf. interbancaria</option>
+                <option value="ITF">ITF</option>
+                <option value="COMISION_MANT">Comisión mantenimiento</option>
+                <option value="PORTES">Portes</option>
+                <option value="OTROS">Otros</option>
+              </select>
+            </div>
+            <div>
+              <label style="font-size:11px;color:#374151;font-weight:600;display:block;margin-bottom:4px">id Pago de OC (opcional)</label>
+              <input id="sp-idpago" type="number" min="1" placeholder="ej: 42" style="${inputStyle}">
+            </div>
+          </div>
+          <div>
+            <label style="font-size:11px;color:#374151;font-weight:600;display:block;margin-bottom:4px">Concepto comisión</label>
+            <input id="sp-concepto" placeholder="Comisión transferencia interbancaria" value="Comisión transferencia interbancaria" style="${inputStyle}">
+          </div>
+        </div>
+        <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:18px">
+          <button id="sp-cancel" style="padding:8px 16px;background:#fff;border:1px solid #d1d5db;border-radius:5px;cursor:pointer">Cancelar</button>
+          <button id="sp-ok" style="padding:8px 22px;background:#7c3aed;color:#fff;border:none;border-radius:5px;cursor:pointer;font-weight:600">Aplicar split</button>
+        </div>
+      </div>`;
+    document.body.appendChild(ov);
+    const close = (v) => { ov.remove(); resolve(v); };
+    const pago = ov.querySelector('#sp-pago');
+    const comi = ov.querySelector('#sp-comision');
+    pago.addEventListener('input', () => {
+      const p = Number(pago.value) || 0;
+      const c = Math.max(0, monto - p);
+      comi.value = c.toFixed(2);
+    });
+    ov.querySelector('#sp-cancel').onclick = () => close(null);
+    ov.querySelector('#sp-ok').onclick = () => {
+      const mp = Number(pago.value);
+      const mc = Number(comi.value);
+      if (!mp || mp <= 0) return showError('Monto del pago debe ser > 0');
+      if (!mc || mc <= 0) return showError('La comisión calculada es 0 — verificá el monto del pago');
+      if (Math.abs((mp + mc) - monto) > 0.01) return showError('La suma no coincide con el total');
+      const idPago = ov.querySelector('#sp-idpago').value;
+      close({
+        monto_pago:     mp,
+        monto_comision: mc,
+        categoria_com:  ov.querySelector('#sp-cat').value,
+        concepto_com:   ov.querySelector('#sp-concepto').value.trim() || 'Comisión bancaria',
+        id_pago_oc:     idPago ? Number(idPago) : null,
+      });
+    };
+  });
+}
+
+/**
+ * Modal #2 — Sugerencias de match con Pago de OC.
+ * Muestra una lista de pagos ya registrados con monto/fecha similares y
+ * deja al usuario elegir cuál es. Devuelve la selección al caller.
+ */
+function modalSugerenciasPagoOC(res) {
+  return new Promise((resolve) => {
+    const sugs = res?.sugerencias || [];
+    const ov = document.createElement('div');
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.65);z-index:10001;display:flex;align-items:center;justify-content:center;padding:20px';
+    const filas = sugs.length === 0
+      ? `<div style="padding:30px;text-align:center;color:#6b7280">Sin pagos similares encontrados. Tal vez no haya OC cargada con ese monto/fecha.</div>`
+      : `<table style="width:100%;border-collapse:collapse;font-size:12px">
+           <thead><tr style="background:#f9fafb">
+             <th style="padding:6px;text-align:left">OC</th>
+             <th style="padding:6px;text-align:left">Proveedor</th>
+             <th style="padding:6px;text-align:left">Fecha pago</th>
+             <th style="padding:6px;text-align:right">Monto</th>
+             <th style="padding:6px;text-align:right">Δ monto</th>
+             <th style="padding:6px;text-align:right">Δ días</th>
+             <th></th>
+           </tr></thead>
+           <tbody>${sugs.map(s => `
+             <tr style="border-bottom:1px solid #f3f4f6">
+               <td style="padding:6px"><strong>${s.nro_oc}</strong></td>
+               <td style="padding:6px">${(s.proveedor || '').slice(0, 32)}</td>
+               <td style="padding:6px">${String(s.fecha_pago).split('T')[0]}</td>
+               <td style="padding:6px;text-align:right">${fmtPENlocal(s.monto_pago_pen)}</td>
+               <td style="padding:6px;text-align:right;color:${s.dif_monto < 1 ? '#16a34a' : '#92400e'}">${s.dif_monto.toFixed(2)}</td>
+               <td style="padding:6px;text-align:right">${s.dif_dias}d</td>
+               <td style="padding:6px;text-align:right">
+                 <button data-pick="${s.id_pago}" data-nro="${s.nro_oc}" style="padding:4px 10px;background:#16a34a;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:11px;font-weight:600">Conciliar</button>
+               </td>
+             </tr>
+           `).join('')}</tbody>
+         </table>`;
+    ov.innerHTML = `
+      <div style="background:#fff;border-radius:10px;width:min(820px,96vw);max-height:80vh;overflow:auto;padding:22px">
+        <h3 style="margin:0 0 6px;font-size:16px">🔗 Buscar pagos similares para conciliar</h3>
+        <p style="margin:0 0 12px;font-size:12px;color:#6b7280">
+          Movimiento: <strong>${fmtPENlocal(res.movimiento.monto)}</strong> · ${res.movimiento.fecha} · ${res.movimiento.descripcion || ''}
+        </p>
+        ${filas}
+        <div style="display:flex;justify-content:flex-end;margin-top:14px">
+          <button id="mp-cancel" style="padding:8px 16px;background:#fff;border:1px solid #d1d5db;border-radius:5px;cursor:pointer">Cerrar</button>
+        </div>
+      </div>`;
+    document.body.appendChild(ov);
+    const close = (v) => { ov.remove(); resolve(v); };
+    ov.querySelector('#mp-cancel').onclick = () => close(null);
+    ov.querySelectorAll('[data-pick]').forEach(b => {
+      b.onclick = () => close({ id_pago: Number(b.dataset.pick), nro_oc: b.dataset.nro });
+    });
+  });
+}
+
+/**
+ * Modal #3 — Conciliar como pago de servicio (luz/agua/internet/etc).
+ */
+function modalConciliarServicio({ id, monto, desc }) {
+  return new Promise((resolve) => {
+    const ov = document.createElement('div');
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.65);z-index:10001;display:flex;align-items:center;justify-content:center;padding:20px';
+    ov.innerHTML = `
+      <div style="background:#fff;border-radius:10px;width:min(480px,96vw);padding:22px">
+        <h3 style="margin:0 0 6px;font-size:16px">💡 Conciliar como pago de servicio</h3>
+        <p style="margin:0 0 14px;font-size:12px;color:#6b7280;line-height:1.5">
+          Convierte este movimiento en un GastoBancario con concepto custom (luz, agua, internet, mantenimiento, etc).
+        </p>
+        <div style="background:#f9fafb;padding:10px;border-radius:6px;margin-bottom:14px;font-size:12px">
+          <strong>Monto:</strong> ${fmtPENlocal(monto)} · ${desc || ''}
+        </div>
+        <div style="display:grid;gap:10px">
+          <div>
+            <label style="font-size:11px;color:#374151;font-weight:600;display:block;margin-bottom:4px">Concepto / servicio *</label>
+            <input id="cs-concepto" placeholder="Luz, Agua, Internet, Telefonía…" style="${inputStyle}">
+          </div>
+          <div>
+            <label style="font-size:11px;color:#374151;font-weight:600;display:block;margin-bottom:4px">Categoría</label>
+            <select id="cs-cat" style="${inputStyle}">
+              <option value="OTROS" selected>Otros (pago servicios)</option>
+              <option value="PORTES">Portes</option>
+              <option value="COMISION_MANT">Comisión mantenimiento</option>
+              <option value="ITF">ITF</option>
+              <option value="COMISION_TC">Comisión TC</option>
+            </select>
+          </div>
+        </div>
+        <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:18px">
+          <button id="cs-cancel" style="padding:8px 16px;background:#fff;border:1px solid #d1d5db;border-radius:5px;cursor:pointer">Cancelar</button>
+          <button id="cs-ok" style="padding:8px 22px;background:#ca8a04;color:#fff;border:none;border-radius:5px;cursor:pointer;font-weight:600">Conciliar</button>
+        </div>
+      </div>`;
+    document.body.appendChild(ov);
+    const close = (v) => { ov.remove(); resolve(v); };
+    ov.querySelector('#cs-cancel').onclick = () => close(null);
+    ov.querySelector('#cs-ok').onclick = () => {
+      const concepto = ov.querySelector('#cs-concepto').value.trim();
+      if (!concepto) return showError('Concepto requerido');
+      close({ concepto, categoria: ov.querySelector('#cs-cat').value });
+    };
+  });
+}
+
+/**
+ * Modal #4 — Vincular movimiento a una Transferencia Interna existente.
+ * Carga la lista de transferencias internas activas y deja elegir cuál.
+ */
+async function modalConciliarTransferenciaInterna({ id, tipo }) {
+  let transfs = [];
+  try { transfs = await api.transferenciasInternas.listar({}); }
+  catch (e) { showError('No se pudieron cargar transferencias internas: ' + e.message); return null; }
+
+  return new Promise((resolve) => {
+    const ov = document.createElement('div');
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.65);z-index:10001;display:flex;align-items:center;justify-content:center;padding:20px';
+    // Si el movimiento bancario es CARGO (egreso), buscamos transferencias
+    // donde esta cuenta sea ORIGEN. Si es ABONO (ingreso), donde sea DESTINO.
+    const ladoDefault = tipo === 'CARGO' ? 'origen' : 'destino';
+    const opts = (transfs || []).map(t => {
+      const lbl = `#${t.id_transferencia} · ${String(t.fecha).split('T')[0]} · ${t.empresa_origen} → ${t.empresa_destino} · ${fmtPENlocal(t.monto_origen)} (${t.moneda_origen}) · ${t.estado}`;
+      return `<option value="${t.id_transferencia}">${lbl}</option>`;
+    }).join('');
+    ov.innerHTML = `
+      <div style="background:#fff;border-radius:10px;width:min(640px,96vw);padding:22px">
+        <h3 style="margin:0 0 6px;font-size:16px">🔄 Vincular con Transferencia Interna</h3>
+        <p style="margin:0 0 14px;font-size:12px;color:#6b7280;line-height:1.5">
+          Este movimiento (${tipo === 'CARGO' ? 'egreso' : 'ingreso'} "METAL ENGINEERS") es probablemente la pata bancaria de una transferencia Metal ↔ Perfotools que ya registraste.
+          Elegí cuál corresponde. Si no existe, creala primero desde el botón "🔄 Transferencias Internas".
+        </p>
+        <div style="display:grid;gap:10px">
+          <div>
+            <label style="font-size:11px;color:#374151;font-weight:600;display:block;margin-bottom:4px">Transferencia Interna *</label>
+            <select id="cti-sel" style="${inputStyle}">
+              <option value="">— Seleccionar —</option>
+              ${opts}
+            </select>
+          </div>
+          <div>
+            <label style="font-size:11px;color:#374151;font-weight:600;display:block;margin-bottom:4px">Lado</label>
+            <select id="cti-lado" style="${inputStyle}">
+              <option value="origen" ${ladoDefault === 'origen' ? 'selected' : ''}>Origen (caja que sale)</option>
+              <option value="destino" ${ladoDefault === 'destino' ? 'selected' : ''}>Destino (caja que entra)</option>
+            </select>
+          </div>
+        </div>
+        <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:18px">
+          <button id="cti-cancel" style="padding:8px 16px;background:#fff;border:1px solid #d1d5db;border-radius:5px;cursor:pointer">Cancelar</button>
+          <button id="cti-ok" style="padding:8px 22px;background:#9a3412;color:#fff;border:none;border-radius:5px;cursor:pointer;font-weight:600">Vincular</button>
+        </div>
+      </div>`;
+    document.body.appendChild(ov);
+    const close = (v) => { ov.remove(); resolve(v); };
+    ov.querySelector('#cti-cancel').onclick = () => close(null);
+    ov.querySelector('#cti-ok').onclick = () => {
+      const idT = Number(ov.querySelector('#cti-sel').value);
+      if (!idT) return showError('Elegí una transferencia');
+      close({ id_transferencia: idT, lado: ov.querySelector('#cti-lado').value });
+    };
   });
 }

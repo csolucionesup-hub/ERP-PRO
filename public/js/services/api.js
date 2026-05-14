@@ -234,6 +234,11 @@ export const api = {
     createMovimiento:   (data)     => post('/cobranzas/movimientos', data),
     sugerirConciliacion:(id)       => get(`/cobranzas/movimientos/${id}/sugerencias`),
     conciliarMovimiento:(id, data) => post(`/cobranzas/movimientos/${id}/conciliar`, data),
+    // Sesión 14/05/2026 — Herramientas de conciliación avanzada.
+    splitMovimientoComision: (id, data) => post(`/cobranzas/movimientos/${id}/split-comision`, data),
+    sugerirMatchPagoOC:      (id, tolerancia) => get(`/cobranzas/movimientos/${id}/sugerir-oc${tolerancia ? '?tolerancia=' + tolerancia : ''}`),
+    conciliarComoServicio:   (id, data) => post(`/cobranzas/movimientos/${id}/conciliar-servicio`, data),
+    conciliarComoTransferenciaInterna: (id, data) => post(`/cobranzas/movimientos/${id}/conciliar-transferencia`, data),
     ignorarMovimiento:  (id)       => post(`/cobranzas/movimientos/${id}/ignorar`),
     deleteMovimiento:   (id)       => del(`/cobranzas/movimientos/${id}`),
     facturar:           (id, data) => post(`/cobranzas/${id}/facturar`, data),
