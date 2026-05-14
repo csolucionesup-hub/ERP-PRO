@@ -336,6 +336,38 @@ apiRouter.delete('/inventario/:id', validateIdParam, auditLog('Inventario', 'DEL
   res.json(await InventoryService.deleteItem(idItem, { force }));
 });
 
+// ── Familia + marca (mig 070, sesión 13/05/2026) ────────────────────────
+
+// Items de la misma familia (para advertencia al recibir OC ALMACÉN —
+// evita confundir variantes visualmente similares como MIG/FCAW).
+apiRouter.get('/inventario/:id/familia-similares', validateIdParam, async (req: Request, res: Response) => {
+  res.json(await InventoryService.getFamiliaSimilares(parseInt(req.params.id as string)));
+});
+
+// Corrección de entrada mal asignada — solo GERENTE.
+// Revierte el movimiento original, re-aplica al item correcto, recalcula
+// costo promedio en ambos items y audita. Operación atómica.
+apiRouter.post('/inventario/movimientos/:idMov/corregir', validateIdParam, auditLog('MovimientoInventario', 'UPDATE'), async (req: any, res: Response) => {
+  if (req.user?.rol !== 'GERENTE') {
+    return res.status(403).json({ error: 'Solo el GERENTE puede corregir movimientos de inventario' });
+  }
+  const idMov = parseInt(req.params.idMov as string);
+  const { id_item_correcto, motivo } = req.body || {};
+  if (!id_item_correcto || isNaN(Number(id_item_correcto))) {
+    return res.status(400).json({ error: 'id_item_correcto requerido' });
+  }
+  if (!motivo || !String(motivo).trim()) {
+    return res.status(400).json({ error: 'motivo de corrección requerido (auditable)' });
+  }
+  res.json(await InventoryService.corregirRecepcion({
+    id_movimiento:    idMov,
+    id_item_correcto: Number(id_item_correcto),
+    motivo:           String(motivo).trim(),
+    id_usuario:       req.user?.id_usuario || null,
+    nombre_usuario:   req.user?.nombre || 'sistema',
+  }));
+});
+
 // ===== PRÉSTAMOS =====
 apiRouter.use('/prestamos', requireModulo('FINANZAS'));
 apiRouter.get('/prestamos/totales', async (req: Request, res: Response) => {
