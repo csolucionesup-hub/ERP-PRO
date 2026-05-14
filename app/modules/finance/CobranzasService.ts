@@ -1429,7 +1429,13 @@ class CobranzasService {
     };
 
     // Estrategia: buscar cada segmento que empieza con DD/MM/YYYY DD/MM/YYYY
-    // y contiene S/ MONTO S/ SALDO al final
+    // y contiene SIMBOLO MONTO SIMBOLO SALDO al final.
+    //
+    // El símbolo puede ser:
+    //   - "S/" para Soles (cuenta Metal Engineers PEN)
+    //   - "$"  para Dólares (cuenta Perfotools USD)
+    // Sesión 14/05/2026: Julio intentó subir el EECC USD y falló porque
+    // el parser estaba hardcoded a S/. Ahora acepta cualquiera.
     const reFechaPar = /(\d{2}\/\d{2}\/\d{4})\s+(\d{2}\/\d{2}\/\d{4})/g;
     const fechaPairs: { idx: number; fOp: string; fProc: string }[] = [];
     let fm;
@@ -1450,11 +1456,13 @@ class CobranzasService {
       const endIdx = i + 1 < fechaPairs.length ? fechaPairs[i + 1].idx : fullText.length;
       const segment = fullText.slice(startAfterDates, endIdx).trim();
 
-      // Buscar los últimos dos S/ MONTO en el segmento (importe + saldo)
-      const reSoles = /S\s*\/\s*(-?[\d,]+\.\d{2})/g;
+      // Buscar los últimos dos SIMBOLO MONTO en el segmento (importe + saldo).
+      // El símbolo es "S/" o "$" según la moneda de la cuenta del extracto.
+      // Una sola regex que captura ambos.
+      const reMoneda = /(?:S\s*\/|\$)\s*(-?[\d,]+\.\d{2})/g;
       const montos: { val: string; end: number }[] = [];
       let sm;
-      while ((sm = reSoles.exec(segment)) !== null) {
+      while ((sm = reMoneda.exec(segment)) !== null) {
         montos.push({ val: sm[1], end: sm.index + sm[0].length });
       }
       if (montos.length < 2) {
@@ -1464,9 +1472,9 @@ class CobranzasService {
 
       const saldoStr = montos[montos.length - 1].val;
       const impStr   = montos[montos.length - 2].val;
-      // Texto antes del primer S/ monto = nro_op + movimiento + descripción + canal
-      const firstMontoIdx = segment.indexOf('S');
-      let middle = segment.slice(0, segment.search(/S\s*\//)).trim();
+      // Texto antes del primer monto = nro_op + movimiento + descripción + canal.
+      // Busca el primer símbolo de moneda (S/ o $) para cortar ahí.
+      let middle = segment.slice(0, segment.search(/(?:S\s*\/|\$)/)).trim();
 
       // Extraer nro_operacion (primer token: número o -)
       const tokMatch = middle.match(/^(\S+)\s+([\s\S]*)/);
