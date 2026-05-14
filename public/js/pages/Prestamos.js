@@ -78,10 +78,23 @@ const modalEditar = () => `
 </div>`;
 
 // ─── FORMULARIO DE CREACIÓN ────────────────────────────────────────────────────
-const formCrear = (tipo, tcVenta = 1, tcFecha = '') => {
+// Mig 071 (14/05/2026): el form pivota sobre el maestro Contrapartes en vez
+// de texto libre. Tres campos nuevos visibles:
+//   1. Contraparte (select del maestro + botón "+ Nueva" inline)
+//   2. Empresa (METAL / PERFOTOOLS — qué empresa toma o da el préstamo)
+//   3. Medio de pago (texto libre con autocomplete: banco/cuenta usada)
+// `contrapartesCache` se llena al abrir el modal; se refresca después de
+// crear una contraparte nueva sin cerrar el modal.
+const formCrear = (tipo, tcVenta = 1, tcFecha = '', contrapartes = [], mediosPago = []) => {
   const esTomado = tipo === 'tomado';
   const labelContraparte = esTomado ? 'Acreedor (quién me presta)' : 'Deudor (a quién le presto)';
   const idForm = `form-crear-${tipo}`;
+  const opcionesContraparte = (contrapartes || []).filter(c => c.activo !== false).map(c => {
+    const doc = c.documento_numero ? ` · ${c.documento_tipo || 'DOC'} ${c.documento_numero}` : '';
+    return `<option value="${c.id_contraparte}">${c.nombre}${doc}</option>`;
+  }).join('');
+  const opcionesMedio = [...new Set((mediosPago || []).filter(Boolean))].sort()
+    .map(m => `<option value="${m}"></option>`).join('');
   return `
   <div class="card" style="margin-top:0">
     <h3 style="margin-bottom:15px;font-weight:600;font-size:14px">Registrar Préstamo ${esTomado ? 'Tomado' : 'Otorgado'}</h3>
@@ -94,8 +107,32 @@ const formCrear = (tipo, tcVenta = 1, tcFecha = '') => {
             style="${inputStyle};background:#f3f4f6;color:#6b7280;cursor:not-allowed">
         </div>
         <div>
-          <label style="font-size:11px;color:var(--text-secondary)">${labelContraparte}</label>
-          <input name="contraparte" placeholder="${esTomado ? 'Banco / Socio / Empresa' : 'Trabajador / Cliente / Tercero'}" required style="${inputStyle}">
+          <label style="font-size:11px;color:var(--text-secondary)">Empresa ${tip('Qué empresa ' + (esTomado ? 'toma' : 'otorga') + ' el préstamo. METAL = Metal Engineers (PEN). PERFOTOOLS = Perfotools (USD). Sirve para consolidar saldos por empresa en el dashboard.')}</label>
+          <select name="empresa" required style="${inputStyle}">
+            <option value="METAL">Metal Engineers</option>
+            <option value="PERFOTOOLS">Perfotools</option>
+          </select>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:2fr 1fr;gap:10px">
+        <div>
+          <label style="font-size:11px;color:var(--text-secondary)">${labelContraparte} ${tip('Persona, empresa o banco real. Si tiene varios préstamos, todos se consolidan bajo la misma contraparte. Si no aparece en la lista, hacé click en "+ Nueva".')}</label>
+          <div style="display:flex;gap:6px">
+            <select name="id_contraparte" required style="${inputStyle};flex:1">
+              <option value="">— Seleccionar ${esTomado ? 'acreedor' : 'deudor'} —</option>
+              ${opcionesContraparte}
+            </select>
+            <button type="button" data-act="nueva-contraparte" data-tipo="${tipo}"
+              title="Crear nueva contraparte (persona / empresa / banco) sin salir del form"
+              style="padding:0 12px;background:#7c3aed;color:#fff;border:none;border-radius:5px;cursor:pointer;font-size:13px;font-weight:600;white-space:nowrap">+ Nueva</button>
+          </div>
+        </div>
+        <div>
+          <label style="font-size:11px;color:var(--text-secondary)">Medio / Banco ${tip('Por dónde ' + (esTomado ? 'entró' : 'salió') + ' la plata. Ej: Interbank, BCP, Falabella, Efectivo. Es texto libre — escribí lo que corresponda.')}</label>
+          <input name="medio_pago" list="medios-${tipo}" placeholder="Interbank, BCP, Efectivo…" style="${inputStyle}">
+          <datalist id="medios-${tipo}">
+            ${opcionesMedio}
+          </datalist>
         </div>
       </div>
       <div>
@@ -171,22 +208,142 @@ const formCrear = (tipo, tcVenta = 1, tcFecha = '') => {
 // Se cierra solo con el botón × (no por backdrop click — gotcha #28 CLAUDE.md).
 let _tcCache = { valor_venta: 1, es_hoy: false, fecha: '' };
 
-function abrirModalNuevoPrestamo(tipo) {
+async function abrirModalNuevoPrestamo(tipo) {
   const tcVenta = _tcCache.valor_venta || 1;
   const tcFecha = _tcCache.es_hoy ? 'hoy' : (_tcCache.fecha || '');
+
+  // Cargar contrapartes activas + medios de pago ya usados (autocomplete).
+  // Caen-gracefully a [] si el endpoint falla — el form sigue funcionando.
+  let contrapartes = [];
+  let mediosPago   = [];
+  try { contrapartes = await api.prestamos.getContrapartes(true); }
+  catch { contrapartes = []; }
+  try {
+    const [t, o] = await Promise.all([
+      api.prestamos.getTomados().catch(() => []),
+      api.prestamos.getOtorgados().catch(() => []),
+    ]);
+    mediosPago = [...new Set([...t, ...o].map(p => p.medio_pago).filter(Boolean))];
+  } catch { mediosPago = []; }
+
   const ov = document.createElement('div');
   ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9999;display:flex;align-items:flex-start;justify-content:center;padding:30px 20px;overflow-y:auto';
   ov.innerHTML = `
     <div style="background:#fff;border-radius:8px;width:min(720px,95vw);box-shadow:0 20px 60px rgba(0,0,0,.3);max-height:calc(100vh - 60px);overflow-y:auto;position:relative">
       <button data-close type="button" title="Cerrar sin guardar" aria-label="Cerrar" style="position:absolute;top:14px;right:14px;background:#fff;border:1px solid #d1d5db;border-radius:50%;width:30px;height:30px;font-size:18px;cursor:pointer;color:#64748b;z-index:10;display:flex;align-items:center;justify-content:center;line-height:1">×</button>
       <div style="padding:8px">
-        ${formCrear(tipo, tcVenta, tcFecha)}
+        ${formCrear(tipo, tcVenta, tcFecha, contrapartes, mediosPago)}
       </div>
     </div>
   `;
   document.body.appendChild(ov);
   ov.querySelector('[data-close]').onclick = () => ov.remove();
   bindFormCrearPrestamo(ov.querySelector(`#form-crear-${tipo}`), tipo, ov);
+
+  // Botón "+ Nueva" abre un sub-modal para crear contraparte sin perder el form.
+  ov.querySelector('[data-act="nueva-contraparte"]')?.addEventListener('click', async () => {
+    const nueva = await modalNuevaContraparte();
+    if (!nueva) return;
+    // Refrescar el select del form principal con la nueva contraparte agregada
+    // y seleccionarla automáticamente.
+    const sel = ov.querySelector(`#form-crear-${tipo} [name=id_contraparte]`);
+    if (sel) {
+      const doc = nueva.documento_numero ? ` · ${nueva.documento_tipo || 'DOC'} ${nueva.documento_numero}` : '';
+      const opt = document.createElement('option');
+      opt.value = nueva.id_contraparte;
+      opt.textContent = `${nueva.nombre}${doc}`;
+      sel.appendChild(opt);
+      sel.value = String(nueva.id_contraparte);
+    }
+  });
+}
+
+/**
+ * Modal chico para crear contraparte sin salir del flujo del préstamo.
+ * Retorna {id_contraparte, nombre, ...} o null si canceló.
+ */
+function modalNuevaContraparte() {
+  return new Promise((resolve) => {
+    const ov = document.createElement('div');
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.65);z-index:10001;display:flex;align-items:center;justify-content:center;padding:20px';
+    ov.innerHTML = `
+      <div style="background:#fff;border-radius:8px;padding:22px;width:480px;max-width:96vw;box-shadow:0 20px 50px rgba(0,0,0,.3)">
+        <h3 style="margin:0 0 6px;font-size:16px">➕ Nueva contraparte</h3>
+        <p style="margin:0 0 14px;font-size:12px;color:#6b7280;line-height:1.5">
+          Se guarda una sola vez en el maestro. Después la podés vincular a múltiples préstamos.
+        </p>
+        <div style="display:grid;gap:10px">
+          <div>
+            <label style="font-size:11px;color:#374151;font-weight:600;display:block;margin-bottom:4px">Nombre completo *</label>
+            <input id="cp-nombre" placeholder="Jorge Roman Hurtado / Banco BCP / Promafa SAC" required
+              style="${inputStyle}">
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+            <div>
+              <label style="font-size:11px;color:#374151;font-weight:600;display:block;margin-bottom:4px">Tipo</label>
+              <select id="cp-tipo" style="${inputStyle}">
+                <option value="PERSONA">Persona física</option>
+                <option value="EMPRESA">Empresa</option>
+                <option value="BANCO">Banco / Financiera</option>
+                <option value="OTRO">Otro</option>
+              </select>
+            </div>
+            <div>
+              <label style="font-size:11px;color:#374151;font-weight:600;display:block;margin-bottom:4px">Documento</label>
+              <div style="display:flex;gap:4px">
+                <select id="cp-doc-tipo" style="${inputStyle};max-width:80px">
+                  <option value="">—</option>
+                  <option value="DNI">DNI</option>
+                  <option value="RUC">RUC</option>
+                  <option value="CE">CE</option>
+                </select>
+                <input id="cp-doc-num" placeholder="Número" style="${inputStyle};flex:1">
+              </div>
+            </div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+            <div>
+              <label style="font-size:11px;color:#374151;font-weight:600;display:block;margin-bottom:4px">Teléfono</label>
+              <input id="cp-telefono" style="${inputStyle}">
+            </div>
+            <div>
+              <label style="font-size:11px;color:#374151;font-weight:600;display:block;margin-bottom:4px">Email</label>
+              <input id="cp-email" type="email" style="${inputStyle}">
+            </div>
+          </div>
+          <div>
+            <label style="font-size:11px;color:#374151;font-weight:600;display:block;margin-bottom:4px">Notas</label>
+            <textarea id="cp-notas" rows="2" style="${inputStyle};resize:vertical"></textarea>
+          </div>
+        </div>
+        <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:18px">
+          <button id="cp-cancel" type="button" style="padding:8px 16px;background:#fff;border:1px solid #d1d5db;border-radius:5px;cursor:pointer;font-size:13px">Cancelar</button>
+          <button id="cp-ok" type="button" style="padding:8px 22px;background:#7c3aed;color:#fff;border:none;border-radius:5px;cursor:pointer;font-size:13px;font-weight:600">Crear</button>
+        </div>
+      </div>`;
+    document.body.appendChild(ov);
+    const close = (val) => { ov.remove(); resolve(val); };
+    ov.querySelector('#cp-cancel').onclick = () => close(null);
+    ov.querySelector('#cp-ok').onclick = async () => {
+      const nombre = ov.querySelector('#cp-nombre').value.trim();
+      if (!nombre) return showError('Nombre requerido');
+      try {
+        const nueva = await api.prestamos.createContraparte({
+          nombre,
+          tipo:             ov.querySelector('#cp-tipo').value,
+          documento_tipo:   ov.querySelector('#cp-doc-tipo').value || null,
+          documento_numero: ov.querySelector('#cp-doc-num').value.trim() || null,
+          telefono:         ov.querySelector('#cp-telefono').value.trim() || null,
+          email:            ov.querySelector('#cp-email').value.trim() || null,
+          notas:            ov.querySelector('#cp-notas').value.trim() || null,
+        });
+        showSuccess(`Contraparte "${nueva.nombre}" creada`);
+        close(nueva);
+      } catch (err) {
+        showError(err.error || err.message || 'Error al crear contraparte');
+      }
+    };
+  });
 }
 
 function bindFormCrearPrestamo(form, tipo, overlay) {
@@ -195,6 +352,17 @@ function bindFormCrearPrestamo(form, tipo, overlay) {
     e.preventDefault();
     const f = e.target;
     const moneda = f.moneda.value || 'PEN';
+
+    // Mig 071 — resolver nombre de la contraparte desde el select para
+    // poblar el campo legacy `acreedor`/`deudor` también (compatibilidad
+    // con vistas antiguas que aún leen ese string).
+    const idCP = Number(f.id_contraparte.value) || null;
+    const optCP = f.id_contraparte.selectedOptions[0];
+    const nombreCP = optCP?.text?.split('·')[0].trim() || '';
+    if (!idCP) {
+      return showError('Elegí una contraparte del desplegable (o creá una nueva con "+ Nueva")');
+    }
+
     const base = {
       nro_oc: f.nro_oc.value || null,
       descripcion: f.descripcion.value,
@@ -206,19 +374,23 @@ function bindFormCrearPrestamo(form, tipo, overlay) {
       monto_capital: f.monto_capital.value,
       monto_interes: f.monto_interes.value || 0,
       tasa_interes: 0,
+      // Mig 071
+      id_contraparte: idCP,
+      medio_pago: f.medio_pago?.value?.trim() || null,
+      empresa:    f.empresa?.value || 'METAL',
     };
     try {
       if (tipo === 'tomado') {
         await api.prestamos.createTomado({
           ...base,
-          acreedor: f.contraparte.value,
+          acreedor: nombreCP, // legacy: mantenemos texto sincronizado con la contraparte
           monto_pagado_inicial: Number(f.monto_pagado_inicial?.value) || 0,
         });
         showSuccess('Préstamo tomado registrado');
       } else {
         await api.prestamos.createOtorgado({
           ...base,
-          deudor: f.contraparte.value,
+          deudor: nombreCP,
           monto_cobrado_inicial: Number(f.monto_pagado_inicial?.value) || 0,
         });
         showSuccess('Préstamo otorgado registrado');
@@ -254,13 +426,22 @@ const buildTabla = (lista, tipo) => {
     const fmtSaldo = esUSD ? formatUSD(p.saldo) : formatCurrency(p.saldo);
     const totalPEN = esUSD ? Number(p.monto_total) * tc : null;
     const saldoPEN = esUSD ? Number(p.saldo) * tc : null;
+    // Mig 071: el badge de empresa ahora viene del campo `empresa`
+    // (METAL/PERFOTOOLS), no del de moneda (que igual puede ser PEN o USD
+    // independientemente). Y mostramos contraparte_nombre del JOIN si está,
+    // con fallback al texto legacy.
+    const empresa     = p.empresa || 'METAL';
+    const esPerfo     = empresa === 'PERFOTOOLS';
+    const nombreCP    = p.contraparte_nombre || (esTomado ? p.acreedor : p.deudor) || '—';
+    const medioPago   = p.medio_pago || '';
     return `
     <tr>
       <td style="font-size:11px;color:var(--text-secondary)">${p.nro_oc || '---'}
-        <br><span style="background:${esUSD?'#16a34a':'#6b7280'};color:white;padding:1px 6px;border-radius:3px;font-size:10px">${esUSD?'💵 PerfoTools':'⚙️ Metal Engineers'}</span>
+        <br><span style="background:${esPerfo?'#dc2626':'#000'};color:white;padding:1px 6px;border-radius:3px;font-size:10px">${esPerfo?'🔴 Perfotools':'⚫ Metal Engineers'}</span>
       </td>
       <td>
-        <strong>${esTomado ? p.acreedor : p.deudor}</strong>
+        <strong>${nombreCP}</strong>
+        ${medioPago ? `<br><span style="font-size:10px;color:#1e40af;background:#dbeafe;padding:1px 6px;border-radius:8px">🏦 ${medioPago}</span>` : ''}
         ${p.descripcion ? `<br><span style="font-size:10px;color:var(--text-secondary)">${p.descripcion}</span>` : ''}
       </td>
       <td style="font-size:11px">${formatDate(p.fecha_emision)}<br><span style="color:var(--text-secondary)">${p.fecha_vencimiento ? 'Vence: '+formatDate(p.fecha_vencimiento) : ''}</span></td>
@@ -372,10 +553,17 @@ export const Prestamos = async () => {
       if (tab === 'dashboard') renderPrestamosDashboard();
     };
 
-    function renderPrestamosDashboard() {
+    async function renderPrestamosDashboard() {
       const panel = document.getElementById('seccion-dashboard');
       if (!panel || panel.dataset.rendered === '1') return;
       panel.dataset.rendered = '1';
+
+      // Mig 071 — Resumen consolidado por contraparte. Lo cargamos primero
+      // (async) y lo dejamos como sección destacada arriba del resto del
+      // dashboard. Si falla, cae-gracefully sin reventar el dashboard viejo.
+      let resumenContrapartes = null;
+      try { resumenContrapartes = await api.prestamos.getResumenContrapartes(); }
+      catch (e) { console.warn('[prest dashboard] resumen contrapartes falló:', e?.message); }
 
       // ──── KPIs ────
       const hoy = new Date();
@@ -418,8 +606,114 @@ export const Prestamos = async () => {
       }, {})).map(([label, valor]) => ({ label: label.slice(0, 22), valor }))
         .filter(x => x.valor > 0).sort((a, b) => b.valor - a.valor).slice(0, 5);
 
+      // Render del bloque consolidado por contraparte (mig 071).
+      // Top 5 por saldo + tabla detalle expandible por persona.
+      const consolidadoHTML = (() => {
+        if (!resumenContrapartes || !resumenContrapartes.contrapartes?.length) {
+          return `<div class="card" style="margin-top:16px;padding:30px;text-align:center;color:var(--text-secondary);font-size:13px">
+            📇 Sin contrapartes con préstamos vinculados todavía. Vinculá uno desde el form al crear / editar.
+          </div>`;
+        }
+        const r = resumenContrapartes;
+        const top5 = r.top5 || [];
+        const filaTop = (c, idx) => {
+          const totalGen = (Number(c.total_tomado) || 0) + (Number(c.total_otorgado) || 0);
+          const saldoGen = (Number(c.saldo_tomado) || 0) + (Number(c.saldo_otorgado) || 0);
+          return `
+            <div style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-bottom:1px solid #f3f4f6">
+              <div style="width:24px;height:24px;border-radius:50%;background:${['#fbbf24','#94a3b8','#d97706','#cbd5e1','#cbd5e1'][idx] || '#cbd5e1'};color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:11px">${idx + 1}</div>
+              <div style="flex:1">
+                <div style="font-weight:600;font-size:13px">${c.nombre}</div>
+                <div style="font-size:11px;color:var(--text-secondary)">${(c.n_tomados || 0) + (c.n_otorgados || 0)} préstamo(s)</div>
+              </div>
+              <div style="text-align:right">
+                <div style="font-size:13px;font-weight:700;color:#dc2626">${formatCurrency(saldoGen)}</div>
+                <div style="font-size:10px;color:var(--text-secondary)">de ${formatCurrency(totalGen)}</div>
+              </div>
+            </div>`;
+        };
+        // Tabla detalle expandible: una fila por contraparte; sub-filas con
+        // los préstamos individuales (filtrados desde tomados+otorgados).
+        const todosLosPrestamos = [
+          ...tomados.map(p => ({ ...p, _tipo: 'tomado' })),
+          ...otorgados.map(p => ({ ...p, _tipo: 'otorgado' })),
+        ];
+        const filaDetalle = (c) => {
+          const totalGen = (Number(c.total_tomado) || 0) + (Number(c.total_otorgado) || 0);
+          const saldoGen = (Number(c.saldo_tomado) || 0) + (Number(c.saldo_otorgado) || 0);
+          const prestamos = todosLosPrestamos.filter(p => p.id_contraparte === c.id_contraparte);
+          const subFilas = prestamos.map(p => {
+            const esT = p._tipo === 'tomado';
+            const empresa = p.empresa || 'METAL';
+            return `<tr style="background:#fafafa;font-size:11px;color:#374151">
+              <td style="padding:5px 10px 5px 38px">${p.nro_oc || '—'}</td>
+              <td style="padding:5px"><span style="background:${esT ? '#fef2f2' : '#ecfdf5'};color:${esT ? '#991b1b' : '#166534'};padding:1px 6px;border-radius:8px;font-size:10px;font-weight:600">${esT ? 'TOMADO' : 'OTORGADO'}</span></td>
+              <td style="padding:5px"><span style="font-size:10px">${empresa === 'PERFOTOOLS' ? '🔴 Perfo' : '⚫ Metal'}</span></td>
+              <td style="padding:5px">${p.medio_pago || '—'}</td>
+              <td style="padding:5px;text-align:right">${formatCurrency(Number(p.monto_total) * (Number(p.tipo_cambio) || 1))}</td>
+              <td style="padding:5px;text-align:right;color:${Number(p.saldo) > 0 ? '#dc2626' : '#16a34a'};font-weight:600">${formatCurrency(Number(p.saldo) * (Number(p.tipo_cambio) || 1))}</td>
+              <td style="padding:5px;text-align:center">${badge(p.estado)}</td>
+            </tr>`;
+          }).join('');
+          return `
+            <tr data-fila="cp-${c.id_contraparte}" style="cursor:pointer;border-bottom:1px solid #e5e7eb"
+                onclick="this.dataset.open=this.dataset.open==='1'?'0':'1';document.querySelectorAll('[data-sub=cp-${c.id_contraparte}]').forEach(r=>r.style.display=this.dataset.open==='1'?'table-row':'none');this.querySelector('.arrow').textContent=this.dataset.open==='1'?'▼':'▶'">
+              <td style="padding:9px 10px"><span class="arrow" style="color:#9ca3af;margin-right:6px">▶</span><strong>${c.nombre}</strong>
+                <span style="background:#e5e7eb;color:#374151;padding:1px 6px;border-radius:8px;font-size:10px;margin-left:6px">${c.tipo || 'OTRO'}</span>
+              </td>
+              <td style="padding:9px;text-align:center;font-size:12px">${(c.n_tomados || 0) + (c.n_otorgados || 0)}</td>
+              <td style="padding:9px;text-align:right;font-weight:600">${formatCurrency(totalGen)}</td>
+              <td style="padding:9px;text-align:right;color:${saldoGen > 0 ? '#dc2626' : '#16a34a'};font-weight:700">${formatCurrency(saldoGen)}</td>
+            </tr>
+            ${subFilas ? `
+              <tr data-sub="cp-${c.id_contraparte}" style="display:none">
+                <td colspan="4" style="padding:0;background:#fafafa">
+                  <table style="width:100%;border-collapse:collapse;font-size:11px">
+                    <thead><tr style="color:var(--text-secondary)">
+                      <th style="padding:5px 10px 5px 38px;text-align:left;font-weight:500">N° Préstamo</th>
+                      <th style="padding:5px;text-align:left;font-weight:500">Tipo</th>
+                      <th style="padding:5px;text-align:left;font-weight:500">Empresa</th>
+                      <th style="padding:5px;text-align:left;font-weight:500">Medio</th>
+                      <th style="padding:5px;text-align:right;font-weight:500">Total</th>
+                      <th style="padding:5px;text-align:right;font-weight:500">Saldo</th>
+                      <th style="padding:5px;text-align:center;font-weight:500">Estado</th>
+                    </tr></thead>
+                    <tbody>${subFilas}</tbody>
+                  </table>
+                </td>
+              </tr>` : ''}
+          `;
+        };
+        return `
+          <div style="display:grid;grid-template-columns:1fr 2fr;gap:16px;margin-top:16px">
+            <div class="card">
+              <h3 style="margin-bottom:6px;font-size:14px">🏆 Top contrapartes por saldo</h3>
+              <p style="font-size:11px;color:var(--text-secondary);margin-bottom:10px">Quién más debe o a quién más debemos (combinado, ranking por saldo pendiente).</p>
+              ${top5.map(filaTop).join('') || '<p style="padding:20px;color:var(--text-secondary);font-size:12px;text-align:center">Sin movimientos</p>'}
+            </div>
+            <div class="card">
+              <h3 style="margin-bottom:6px;font-size:14px">📋 Detalle consolidado por contraparte</h3>
+              <p style="font-size:11px;color:var(--text-secondary);margin-bottom:10px">Click en cada fila para ver el desglose de préstamos individuales.</p>
+              <table style="width:100%;border-collapse:collapse;font-size:12px">
+                <thead>
+                  <tr style="background:#f9fafb">
+                    <th style="padding:9px 10px;text-align:left;font-size:11px;color:var(--text-secondary)">Contraparte</th>
+                    <th style="padding:9px;text-align:center;font-size:11px;color:var(--text-secondary)">N° préstamos</th>
+                    <th style="padding:9px;text-align:right;font-size:11px;color:var(--text-secondary)">Total</th>
+                    <th style="padding:9px;text-align:right;font-size:11px;color:var(--text-secondary)">Saldo pendiente</th>
+                  </tr>
+                </thead>
+                <tbody>${r.contrapartes.map(filaDetalle).join('')}</tbody>
+              </table>
+            </div>
+          </div>`;
+      })();
+
       panel.innerHTML = `
         <div style="margin-top:16px">
+          ${consolidadoHTML}
+
+          <h3 style="margin:24px 0 12px;font-size:14px;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.4px">📊 KPIs operativos</h3>
           ${kpiGrid([
             { label: 'Deuda Neta',       value: formatCurrency(deudaNeta), icon: '⚖️', changeType: deudaNeta > 0 ? 'negative' : 'positive' },
             { label: 'Total Debo',       value: formatCurrency(totales.total_debo),       icon: '🔴' },

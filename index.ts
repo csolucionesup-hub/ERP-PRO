@@ -17,6 +17,7 @@ import PurchaseService from './app/modules/purchases/PurchaseService';
 import InventoryService from './app/modules/inventory/InventoryService';
 import ProvidersService from './app/modules/purchases/ProvidersService';
 import PrestamosService from './app/modules/finance/PrestamosService';
+import ContraparteService from './app/modules/finance/ContraparteService';
 import TipoCambioService from './app/modules/finance/TipoCambioService';
 import CotizacionService from './app/modules/comercial/CotizacionService';
 import CotizacionPDFService from './app/modules/comercial/CotizacionPDFService';
@@ -412,6 +413,40 @@ apiRouter.post('/prestamos/otorgados/:id/cobro', validateIdParam, validateParams
 });
 apiRouter.post('/prestamos/otorgados/:id/anular', validateIdParam, auditLog('PrestamoOtorgado', 'ANULAR'), async (req: Request, res: Response) => {
   res.json(await PrestamosService.anularOtorgado(parseInt(req.params.id as string)));
+});
+
+// ===== CONTRAPARTES (mig 071) =====
+// Maestro único de personas/empresas/bancos con quien la empresa tiene
+// préstamos (tomados u otorgados). Sirve para consolidar "JRH tiene 2
+// préstamos por S/ X total" en el dashboard.
+apiRouter.get('/prestamos/contrapartes', async (req: Request, res: Response) => {
+  const soloActivos = req.query.activos === '1' || req.query.activos === 'true';
+  res.json(await ContraparteService.listar(soloActivos));
+});
+
+// Resumen agregado por contraparte — fuente del dashboard
+// (top 5 contrapartes + tabla detalle expandible).
+// Filtros opcionales: ?empresa=METAL|PERFOTOOLS y ?tipo=tomados|otorgados.
+apiRouter.get('/prestamos/contrapartes/resumen', async (req: Request, res: Response) => {
+  const empresa = req.query.empresa as ('METAL' | 'PERFOTOOLS' | undefined);
+  const tipo    = req.query.tipo as ('tomados' | 'otorgados' | undefined);
+  res.json(await ContraparteService.getResumenContrapartes({ empresa, tipo }));
+});
+
+apiRouter.get('/prestamos/contrapartes/:id', validateIdParam, async (req: Request, res: Response) => {
+  res.json(await ContraparteService.obtener(parseInt(req.params.id as string)));
+});
+
+apiRouter.post('/prestamos/contrapartes', auditLog('Contraparte', 'CREATE'), async (req: Request, res: Response) => {
+  res.status(201).json(await ContraparteService.crear(req.body || {}));
+});
+
+apiRouter.put('/prestamos/contrapartes/:id', validateIdParam, auditLog('Contraparte', 'UPDATE'), async (req: Request, res: Response) => {
+  res.json(await ContraparteService.actualizar(parseInt(req.params.id as string), req.body || {}));
+});
+
+apiRouter.delete('/prestamos/contrapartes/:id', validateIdParam, auditLog('Contraparte', 'DELETE'), async (req: Request, res: Response) => {
+  res.json(await ContraparteService.eliminar(parseInt(req.params.id as string)));
 });
 
 // ===== TIPO DE CAMBIO =====

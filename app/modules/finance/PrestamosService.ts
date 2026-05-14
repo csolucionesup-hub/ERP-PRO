@@ -46,10 +46,18 @@ class PrestamosService {
   // ===== PRÉSTAMOS TOMADOS (lo que debo) =====
 
   async getTomados() {
+    // Mig 071: incluimos nombre de la contraparte (si está vinculada),
+    // medio_pago y empresa para que el frontend pueda mostrarlos en la
+    // tabla y filtrar/agrupar sin queries extra.
     const [rows] = await db.query(`
-      SELECT *, DATEDIFF(CURDATE(), fecha_emision) as dias_transcurridos
-      FROM PrestamosTomados WHERE estado != 'ANULADO'
-      ORDER BY fecha_emision DESC
+      SELECT p.*,
+             DATEDIFF(CURDATE(), p.fecha_emision) AS dias_transcurridos,
+             c.nombre AS contraparte_nombre,
+             c.tipo   AS contraparte_tipo
+        FROM PrestamosTomados p
+        LEFT JOIN Contrapartes c ON c.id_contraparte = p.id_contraparte
+       WHERE p.estado <> 'ANULADO'
+       ORDER BY p.fecha_emision DESC
     `);
     return rows;
   }
@@ -74,6 +82,14 @@ class PrestamosService {
       saldo        <= 0.01       ? 'PAGADO'    :
       'PARCIAL';
 
+    // Mig 071 — empresa obligatoria (METAL o PERFOTOOLS). Default METAL.
+    const empresa = (data.empresa || 'METAL').toUpperCase();
+    if (!['METAL', 'PERFOTOOLS'].includes(empresa)) {
+      throw new Error("empresa debe ser METAL o PERFOTOOLS");
+    }
+    const idContraparte = data.id_contraparte ? Number(data.id_contraparte) : null;
+    const medioPago     = data.medio_pago ? String(data.medio_pago).trim() : null;
+
     const conn = await db.getConnection();
     await conn.beginTransaction();
     try {
@@ -86,11 +102,13 @@ class PrestamosService {
       const [res] = await conn.query(`
         INSERT INTO PrestamosTomados (nro_oc, acreedor, descripcion, comentario,
           fecha_emision, fecha_vencimiento, moneda, tipo_cambio,
-          monto_capital, tasa_interes, monto_interes, monto_total, monto_pagado, saldo, estado)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          monto_capital, tasa_interes, monto_interes, monto_total, monto_pagado, saldo, estado,
+          id_contraparte, medio_pago, empresa)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `, [nroOC, data.acreedor, data.descripcion || '', data.comentario || '',
           data.fecha_emision, data.fecha_vencimiento || null, moneda, tipo_cambio,
-          capital, Number(data.tasa_interes || 0), interes, total, pagadoInicial, saldo, estado]);
+          capital, Number(data.tasa_interes || 0), interes, total, pagadoInicial, saldo, estado,
+          idContraparte, medioPago, empresa]);
       await conn.commit();
       return { success: true, id: (res as any).insertId, nro_oc: nroOC };
     } catch (e) {
@@ -138,12 +156,37 @@ class PrestamosService {
     const p = (rows as any)[0];
     if (!p) throw new Error('No encontrado');
     const saldo = Math.max(total - Number(p.monto_pagado), 0);
-    await db.query(`UPDATE PrestamosTomados SET nro_oc=?, acreedor=?, descripcion=?,
-      comentario=?, fecha_emision=?, fecha_vencimiento=?, monto_capital=?,
-      tasa_interes=?, monto_interes=?, monto_total=?, saldo=? WHERE id_prestamo=?`,
-      [data.nro_oc || null, data.acreedor, data.descripcion || '', data.comentario || '',
-       data.fecha_emision, data.fecha_vencimiento || null, capital,
-       Number(data.tasa_interes || 0), interes, total, saldo, id]);
+    // Mig 071 — campos nuevos editables solo si vienen explícitos
+    const idContraparte = data.id_contraparte !== undefined
+      ? (data.id_contraparte ? Number(data.id_contraparte) : null)
+      : undefined;
+    const medioPago = data.medio_pago !== undefined
+      ? (data.medio_pago ? String(data.medio_pago).trim() : null)
+      : undefined;
+    const empresa = data.empresa !== undefined
+      ? String(data.empresa).toUpperCase()
+      : undefined;
+    if (empresa !== undefined && !['METAL', 'PERFOTOOLS'].includes(empresa)) {
+      throw new Error("empresa debe ser METAL o PERFOTOOLS");
+    }
+
+    // Construyo UPDATE dinámico para no pisar campos que el caller no manda.
+    const sets: string[] = [
+      'nro_oc=?', 'acreedor=?', 'descripcion=?', 'comentario=?',
+      'fecha_emision=?', 'fecha_vencimiento=?', 'monto_capital=?',
+      'tasa_interes=?', 'monto_interes=?', 'monto_total=?', 'saldo=?',
+    ];
+    const vals: any[] = [
+      data.nro_oc || null, data.acreedor, data.descripcion || '', data.comentario || '',
+      data.fecha_emision, data.fecha_vencimiento || null, capital,
+      Number(data.tasa_interes || 0), interes, total, saldo,
+    ];
+    if (idContraparte !== undefined) { sets.push('id_contraparte=?'); vals.push(idContraparte); }
+    if (medioPago     !== undefined) { sets.push('medio_pago=?');     vals.push(medioPago); }
+    if (empresa       !== undefined) { sets.push('empresa=?');        vals.push(empresa); }
+    vals.push(id);
+
+    await db.query(`UPDATE PrestamosTomados SET ${sets.join(', ')} WHERE id_prestamo=?`, vals);
     return { success: true };
   }
 
@@ -169,10 +212,16 @@ class PrestamosService {
   // ===== PRÉSTAMOS OTORGADOS (lo que me deben) =====
 
   async getOtorgados() {
+    // Mig 071: incluye contraparte_nombre, medio_pago, empresa.
     const [rows] = await db.query(`
-      SELECT *, DATEDIFF(CURDATE(), fecha_emision) as dias_transcurridos
-      FROM PrestamosOtorgados WHERE estado != 'ANULADO'
-      ORDER BY fecha_emision DESC
+      SELECT p.*,
+             DATEDIFF(CURDATE(), p.fecha_emision) AS dias_transcurridos,
+             c.nombre AS contraparte_nombre,
+             c.tipo   AS contraparte_tipo
+        FROM PrestamosOtorgados p
+        LEFT JOIN Contrapartes c ON c.id_contraparte = p.id_contraparte
+       WHERE p.estado <> 'ANULADO'
+       ORDER BY p.fecha_emision DESC
     `);
     return rows;
   }
@@ -196,6 +245,14 @@ class PrestamosService {
       saldo          <= 0.01     ? 'PAGADO'    :
       'PARCIAL';
 
+    // Mig 071
+    const empresa = (data.empresa || 'METAL').toUpperCase();
+    if (!['METAL', 'PERFOTOOLS'].includes(empresa)) {
+      throw new Error("empresa debe ser METAL o PERFOTOOLS");
+    }
+    const idContraparte = data.id_contraparte ? Number(data.id_contraparte) : null;
+    const medioPago     = data.medio_pago ? String(data.medio_pago).trim() : null;
+
     const conn = await db.getConnection();
     await conn.beginTransaction();
     try {
@@ -207,11 +264,13 @@ class PrestamosService {
       const [res] = await conn.query(`
         INSERT INTO PrestamosOtorgados (nro_oc, deudor, descripcion, comentario,
           fecha_emision, fecha_vencimiento, moneda, tipo_cambio,
-          monto_capital, tasa_interes, monto_interes, monto_total, monto_pagado, saldo, estado)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          monto_capital, tasa_interes, monto_interes, monto_total, monto_pagado, saldo, estado,
+          id_contraparte, medio_pago, empresa)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `, [nroOC, data.deudor, data.descripcion || '', data.comentario || '',
           data.fecha_emision, data.fecha_vencimiento || null, moneda, tipo_cambio,
-          capital, Number(data.tasa_interes || 0), interes, total, cobradoInicial, saldo, estado]);
+          capital, Number(data.tasa_interes || 0), interes, total, cobradoInicial, saldo, estado,
+          idContraparte, medioPago, empresa]);
       await conn.commit();
       return { success: true, id: (res as any).insertId, nro_oc: nroOC };
     } catch (e) {
@@ -259,12 +318,33 @@ class PrestamosService {
     const p = (rows as any)[0];
     if (!p) throw new Error('No encontrado');
     const saldo = Math.max(total - Number(p.monto_pagado), 0);
-    await db.query(`UPDATE PrestamosOtorgados SET nro_oc=?, deudor=?, descripcion=?,
-      comentario=?, fecha_emision=?, fecha_vencimiento=?, monto_capital=?,
-      tasa_interes=?, monto_interes=?, monto_total=?, saldo=? WHERE id_prestamo=?`,
-      [data.nro_oc || null, data.deudor, data.descripcion || '', data.comentario || '',
-       data.fecha_emision, data.fecha_vencimiento || null, capital,
-       Number(data.tasa_interes || 0), interes, total, saldo, id]);
+    // Mig 071
+    const idContraparte = data.id_contraparte !== undefined
+      ? (data.id_contraparte ? Number(data.id_contraparte) : null) : undefined;
+    const medioPago = data.medio_pago !== undefined
+      ? (data.medio_pago ? String(data.medio_pago).trim() : null) : undefined;
+    const empresa = data.empresa !== undefined
+      ? String(data.empresa).toUpperCase() : undefined;
+    if (empresa !== undefined && !['METAL', 'PERFOTOOLS'].includes(empresa)) {
+      throw new Error("empresa debe ser METAL o PERFOTOOLS");
+    }
+
+    const sets: string[] = [
+      'nro_oc=?', 'deudor=?', 'descripcion=?', 'comentario=?',
+      'fecha_emision=?', 'fecha_vencimiento=?', 'monto_capital=?',
+      'tasa_interes=?', 'monto_interes=?', 'monto_total=?', 'saldo=?',
+    ];
+    const vals: any[] = [
+      data.nro_oc || null, data.deudor, data.descripcion || '', data.comentario || '',
+      data.fecha_emision, data.fecha_vencimiento || null, capital,
+      Number(data.tasa_interes || 0), interes, total, saldo,
+    ];
+    if (idContraparte !== undefined) { sets.push('id_contraparte=?'); vals.push(idContraparte); }
+    if (medioPago     !== undefined) { sets.push('medio_pago=?');     vals.push(medioPago); }
+    if (empresa       !== undefined) { sets.push('empresa=?');        vals.push(empresa); }
+    vals.push(id);
+
+    await db.query(`UPDATE PrestamosOtorgados SET ${sets.join(', ')} WHERE id_prestamo=?`, vals);
     return { success: true };
   }
 
