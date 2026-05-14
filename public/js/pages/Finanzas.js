@@ -2846,6 +2846,11 @@ export const Finanzas = async () => {
         <button id="btn-libro-bancos" style="padding:8px 14px;border:1px solid #111827;background:#111827;color:#fff;border-radius:5px;cursor:pointer;font-size:12px;font-weight:600">
           📖 Libro Bancos
         </button>
+        <button id="btn-transferencias-internas"
+          title="Préstamos entre Metal Engineers y Perfotools — cuando una marca le presta plata a la otra (típicamente con conversión PEN↔USD). Permite registrar préstamos, devoluciones y diferencia de cambio cuando el banco aplicó un TC distinto al esperado."
+          style="padding:8px 14px;border:1px solid #d97706;background:#fff;color:#9a3412;border-radius:5px;cursor:pointer;font-size:12px;font-weight:600">
+          🔄 Transferencias Internas
+        </button>
         <button id="btn-conciliacion" style="padding:8px 14px;border:1px solid #d1d5db;background:#fff;border-radius:5px;cursor:pointer;font-size:12px;font-weight:600">
           🧾 Conciliación
         </button>
@@ -2982,6 +2987,10 @@ function bindHandlers(cuentas, dashboard) {
   // Libro Bancos
   const btnLB = document.getElementById('btn-libro-bancos');
   if (btnLB) btnLB.onclick = () => modalLibroBancos();
+
+  // Transferencias Internas Metal ↔ Perfotools (mig 072)
+  const btnTI = document.getElementById('btn-transferencias-internas');
+  if (btnTI) btnTI.onclick = () => modalTransferenciasInternas();
 
   // Análisis Financiero (página dedicada con 6 gráficos)
   const btnAna = document.getElementById('btn-analisis');
@@ -3136,6 +3145,13 @@ async function mostrarAnaliticaFinanzas() {
   };
 
   let data;
+  // Mig 072 — cargamos también el balance de transferencias internas
+  // para mostrar el card "Balance Metal ↔ Perfotools" en esta misma página.
+  // Hacemos las 2 queries en paralelo. Si transferencias falla (módulo no
+  // accesible), seguimos sin el card pero el resto del dashboard funciona.
+  let balanceTI = null;
+  try { balanceTI = await api.transferenciasInternas.getBalance(); }
+  catch (e) { console.warn('[analitica] balance TI no disponible:', e?.message); }
   try { data = await api.cobranzas.getAnalitica(); }
   catch (e) {
     document.getElementById('analitica-body').innerHTML =
@@ -3185,11 +3201,62 @@ async function mostrarAnaliticaFinanzas() {
         <div class="ana-sub">Detracciones SUNAT pendientes — vencen el día 15.</div>
         <div id="ana-c6-info" style="padding:14px;background:#fef3c7;border:1px solid #fbbf24;border-radius:6px;color:#92400e"></div>
       </div>
+      ${balanceTI ? `
+      <div class="ana-card ana-full">
+        <h3>💱 Balance Metal ↔ Perfotools (transferencias internas)</h3>
+        <div class="ana-sub">Saldo de préstamos vivos entre las dos marcas + diferencia de cambio acumulada.</div>
+        <div id="ana-c7-info"></div>
+      </div>
+      ` : ''}
     </div>
   `;
 
   // Esperamos un tick para que los <canvas> tengan tamaño antes de Chart.js
-  setTimeout(() => renderizarAnaliticaCharts(data), 30);
+  setTimeout(() => {
+    renderizarAnaliticaCharts(data);
+    if (balanceTI) renderizarBalanceTransferenciasInternas(balanceTI);
+  }, 30);
+}
+
+// Render del card #7 (mig 072) — usa el balance ya cargado.
+function renderizarBalanceTransferenciasInternas(b) {
+  const el = document.getElementById('ana-c7-info');
+  if (!el) return;
+  const fmtPEN = (v) => new Intl.NumberFormat('es-PE', { style: 'currency', currency: 'PEN' }).format(Number(v) || 0);
+  const direccion = b.direccion_neta;
+  const mensaje = direccion === 'PERFO_DEBE_A_METAL'
+    ? `🔴 Perfotools le debe a Metal Engineers: <strong>${fmtPEN(b.neto_pen)}</strong>`
+    : direccion === 'METAL_DEBE_A_PERFO'
+      ? `🔴 Metal Engineers le debe a Perfotools: <strong>${fmtPEN(Math.abs(b.neto_pen))}</strong>`
+      : `✅ Balance equilibrado entre las dos marcas`;
+  const bgNeto = direccion === 'EQUILIBRADO' ? '#f0fdf4' : '#fef3c7';
+  const borderNeto = direccion === 'EQUILIBRADO' ? '#86efac' : '#fbbf24';
+  const txtNeto = direccion === 'EQUILIBRADO' ? '#166534' : '#92400e';
+  el.innerHTML = `
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px">
+      <div style="padding:12px;background:#fee2e2;border:1px solid #fca5a5;border-radius:6px">
+        <div style="font-size:11px;color:#991b1b;font-weight:600">Perfo debe a Metal</div>
+        <div style="font-size:18px;font-weight:700;color:#991b1b;margin-top:4px">${fmtPEN(b.perfo_debe_a_metal)}</div>
+      </div>
+      <div style="padding:12px;background:#fee2e2;border:1px solid #fca5a5;border-radius:6px">
+        <div style="font-size:11px;color:#991b1b;font-weight:600">Metal debe a Perfo</div>
+        <div style="font-size:18px;font-weight:700;color:#991b1b;margin-top:4px">${fmtPEN(b.metal_debe_a_perfo)}</div>
+      </div>
+      <div style="padding:12px;background:${bgNeto};border:1px solid ${borderNeto};border-radius:6px">
+        <div style="font-size:11px;color:${txtNeto};font-weight:600">Neto entre marcas</div>
+        <div style="font-size:13px;font-weight:600;color:${txtNeto};margin-top:4px;line-height:1.3">${mensaje}</div>
+      </div>
+      <div style="padding:12px;background:#f3f4f6;border:1px solid #d1d5db;border-radius:6px">
+        <div style="font-size:11px;color:#374151;font-weight:600">Diferencia de cambio acumulada</div>
+        <div style="font-size:16px;font-weight:700;color:${Number(b.diferencia_cambio_acumulada) < 0 ? '#dc2626' : '#166534'};margin-top:4px">${fmtPEN(b.diferencia_cambio_acumulada)}</div>
+        <div style="font-size:10px;color:#6b7280">${b.n_con_diferencia} transf. con diferencia</div>
+      </div>
+    </div>
+    ${b.aportes && (b.aportes.metal_a_perfo > 0 || b.aportes.perfo_a_metal > 0) ? `
+      <div style="margin-top:10px;padding:10px 12px;background:#dbeafe;border:1px solid #93c5fd;border-radius:6px;font-size:12px;color:#1e40af">
+        <strong>Aportes definitivos (sin retorno):</strong>
+        Metal → Perfo: ${fmtPEN(b.aportes.metal_a_perfo)} · Perfo → Metal: ${fmtPEN(b.aportes.perfo_a_metal)}
+      </div>` : ''}`;
 }
 
 function renderizarAnaliticaCharts(data) {
@@ -3313,4 +3380,429 @@ function renderizarAnaliticaCharts(data) {
         : `✅ Sin detracciones pendientes para el día 15 — todo al día.`;
     }
   } catch (e) { console.error('[ana c6]', e); }
+}
+
+// ─── Modal Transferencias Internas (mig 072) ──────────────────────────
+// Pestaña operativa para registrar préstamos entre Metal y Perfotools.
+// Caso típico: Metal envía S/ 10,000 a Perfotools al TC 3.78 → espera
+// $2,645.50. El banco aplicó 3.79 → entraron $2,638.50. Diferencia ≈ S/ 26
+// se contabiliza como diferencia de cambio (pérdida).
+
+// Estilo común de inputs/selects para los modales de este bloque.
+// Lo defino acá local porque Finanzas.js no tiene un inputStyle global —
+// el resto del archivo usa estilos inline ad-hoc por modal.
+const inputStyle = 'width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:5px;font-size:13px;box-sizing:border-box';
+
+async function modalTransferenciasInternas() {
+  const ov = document.createElement('div');
+  ov.id = 'ov-transf-internas';
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9999;display:flex;align-items:flex-start;justify-content:center;padding:24px;overflow-y:auto';
+  ov.innerHTML = `
+    <div style="background:#fff;border-radius:10px;width:min(1100px,96vw);max-height:calc(100vh - 48px);overflow:auto;box-shadow:0 20px 60px rgba(0,0,0,.3);padding:24px;position:relative">
+      <button data-close style="position:absolute;top:14px;right:14px;background:#fff;border:1px solid #d1d5db;border-radius:50%;width:30px;height:30px;font-size:18px;cursor:pointer;color:#64748b">×</button>
+      <h2 style="margin:0 0 4px;font-size:18px">🔄 Transferencias Internas · Metal ↔ Perfotools</h2>
+      <p style="margin:0 0 16px;font-size:12px;color:#6b7280;line-height:1.5">
+        Préstamos entre las dos marcas con conversión de moneda. La <strong>diferencia de cambio</strong>
+        entre el TC esperado y el aplicado por el banco se contabiliza automáticamente. Los préstamos
+        se devuelven con transferencias inversas (botón "↩ Devolver").
+      </p>
+
+      <!-- Resumen Balance Neto -->
+      <div id="ti-balance" style="margin-bottom:16px"></div>
+
+      <!-- Toolbar -->
+      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:12px">
+        <button id="ti-nueva" style="padding:9px 16px;background:#7c3aed;color:#fff;border:none;border-radius:5px;cursor:pointer;font-size:13px;font-weight:600">+ Nueva transferencia</button>
+        <label style="font-size:11px;color:#6b7280;display:flex;align-items:center;gap:4px">
+          Empresa:
+          <select id="ti-filtro-empresa" style="padding:5px 8px;border:1px solid #d1d5db;border-radius:4px;font-size:12px">
+            <option value="">Todas</option>
+            <option value="METAL">Metal Engineers</option>
+            <option value="PERFOTOOLS">Perfotools</option>
+          </select>
+        </label>
+        <label style="font-size:11px;color:#6b7280;display:flex;align-items:center;gap:4px">
+          Estado:
+          <select id="ti-filtro-estado" style="padding:5px 8px;border:1px solid #d1d5db;border-radius:4px;font-size:12px">
+            <option value="">Todos</option>
+            <option value="PENDIENTE">Pendiente</option>
+            <option value="PARCIAL">Parcial</option>
+            <option value="DEVUELTA">Devuelta</option>
+            <option value="APORTE">Aporte</option>
+            <option value="ANULADA">Anulada</option>
+          </select>
+        </label>
+      </div>
+
+      <div id="ti-tabla" style="font-size:12px"></div>
+    </div>`;
+  document.body.appendChild(ov);
+  ov.querySelector('[data-close]').onclick = () => ov.remove();
+
+  const refresh = async () => {
+    const empresa = ov.querySelector('#ti-filtro-empresa').value || undefined;
+    const estado  = ov.querySelector('#ti-filtro-estado').value || undefined;
+    let balance, transfs;
+    try {
+      [balance, transfs] = await Promise.all([
+        api.transferenciasInternas.getBalance(),
+        api.transferenciasInternas.listar({ empresa, estado }),
+      ]);
+    } catch (e) {
+      ov.querySelector('#ti-tabla').innerHTML = `<div style="color:#dc2626;padding:20px">Error: ${e.message}</div>`;
+      return;
+    }
+    pintarBalanceTI(ov.querySelector('#ti-balance'), balance);
+    pintarTablaTI(ov.querySelector('#ti-tabla'), transfs, refresh);
+  };
+
+  ov.querySelector('#ti-nueva').onclick = async () => {
+    const data = await modalNuevaTransferenciaInterna();
+    if (!data) return;
+    try {
+      await api.transferenciasInternas.crear(data);
+      showSuccess('Transferencia interna registrada');
+      refresh();
+    } catch (e) { showError(e.error || e.message); }
+  };
+  ov.querySelector('#ti-filtro-empresa').addEventListener('change', refresh);
+  ov.querySelector('#ti-filtro-estado').addEventListener('change', refresh);
+
+  await refresh();
+}
+
+function pintarBalanceTI(el, b) {
+  if (!el) return;
+  const fmtPEN = (v) => new Intl.NumberFormat('es-PE', { style: 'currency', currency: 'PEN' }).format(Number(v) || 0);
+  const direccion = b.direccion_neta;
+  const bgColor = direccion === 'EQUILIBRADO' ? '#f0fdf4' : '#fef3c7';
+  const borderColor = direccion === 'EQUILIBRADO' ? '#86efac' : '#fbbf24';
+  const txtColor = direccion === 'EQUILIBRADO' ? '#166534' : '#92400e';
+  const mensaje = direccion === 'PERFO_DEBE_A_METAL'
+    ? `🔴 <strong>Perfotools le debe a Metal: ${fmtPEN(b.neto_pen)}</strong>`
+    : direccion === 'METAL_DEBE_A_PERFO'
+      ? `🔴 <strong>Metal Engineers le debe a Perfotools: ${fmtPEN(Math.abs(b.neto_pen))}</strong>`
+      : `✅ <strong>Balance equilibrado</strong> entre las dos marcas`;
+  el.innerHTML = `
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px">
+      <div style="padding:12px;background:#fee2e2;border:1px solid #fca5a5;border-radius:6px">
+        <div style="font-size:11px;color:#991b1b;font-weight:600">Perfo debe a Metal</div>
+        <div style="font-size:18px;font-weight:700;color:#991b1b;margin-top:4px">${fmtPEN(b.perfo_debe_a_metal)}</div>
+        <div style="font-size:10px;color:#6b7280">Saldo vivo en PEN</div>
+      </div>
+      <div style="padding:12px;background:#fee2e2;border:1px solid #fca5a5;border-radius:6px">
+        <div style="font-size:11px;color:#991b1b;font-weight:600">Metal debe a Perfo</div>
+        <div style="font-size:18px;font-weight:700;color:#991b1b;margin-top:4px">${fmtPEN(b.metal_debe_a_perfo)}</div>
+        <div style="font-size:10px;color:#6b7280">Saldo vivo en PEN</div>
+      </div>
+      <div style="padding:12px;background:${bgColor};border:1px solid ${borderColor};border-radius:6px">
+        <div style="font-size:11px;color:${txtColor};font-weight:600">Balance Neto</div>
+        <div style="font-size:14px;font-weight:700;color:${txtColor};margin-top:4px;line-height:1.3">${mensaje}</div>
+      </div>
+      <div style="padding:12px;background:#f3f4f6;border:1px solid #d1d5db;border-radius:6px">
+        <div style="font-size:11px;color:#374151;font-weight:600">Diferencia de cambio acumulada</div>
+        <div style="font-size:16px;font-weight:700;color:${Number(b.diferencia_cambio_acumulada) < 0 ? '#dc2626' : '#166534'};margin-top:4px">${fmtPEN(b.diferencia_cambio_acumulada)}</div>
+        <div style="font-size:10px;color:#6b7280">${b.n_con_diferencia} transf. con diferencia</div>
+      </div>
+    </div>`;
+}
+
+function pintarTablaTI(el, transfs, refresh) {
+  if (!el) return;
+  if (!transfs || !transfs.length) {
+    el.innerHTML = `
+      <div style="padding:40px;text-align:center;color:#6b7280;background:#f9fafb;border-radius:8px">
+        <div style="font-size:32px;margin-bottom:8px">🔄</div>
+        <div>Sin transferencias internas registradas.</div>
+        <div style="font-size:11px;margin-top:6px">Hacé click en "+ Nueva transferencia" para registrar el primer movimiento.</div>
+      </div>`;
+    return;
+  }
+  const fmtMon = (v, m) => {
+    const n = Number(v) || 0;
+    return m === 'USD'
+      ? new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(n)
+      : new Intl.NumberFormat('es-PE', { style: 'currency', currency: 'PEN' }).format(n);
+  };
+  const fmtFecha = (d) => d ? String(d).split('T')[0] : '—';
+  const badgeEstado = (e) => {
+    const map = {
+      PENDIENTE: { bg: '#fef3c7', fg: '#92400e' },
+      PARCIAL:   { bg: '#fed7aa', fg: '#9a3412' },
+      DEVUELTA:  { bg: '#dcfce7', fg: '#166534' },
+      APORTE:    { bg: '#dbeafe', fg: '#1e40af' },
+      ANULADA:   { bg: '#e5e7eb', fg: '#374151' },
+    };
+    const s = map[e] || map.PENDIENTE;
+    return `<span style="background:${s.bg};color:${s.fg};padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600">${e}</span>`;
+  };
+  const badgeTipo = (t) => {
+    const map = {
+      PRESTAMO_INTERNO: { bg: '#fef9c3', fg: '#854d0e', label: 'PRÉSTAMO' },
+      DEVOLUCION:       { bg: '#dcfce7', fg: '#166534', label: 'DEVOLUCIÓN' },
+      APORTE_CAPITAL:   { bg: '#dbeafe', fg: '#1e40af', label: 'APORTE' },
+    };
+    const s = map[t] || { bg: '#f3f4f6', fg: '#374151', label: t };
+    return `<span style="background:${s.bg};color:${s.fg};padding:2px 7px;border-radius:8px;font-size:10px;font-weight:600">${s.label}</span>`;
+  };
+  const filas = transfs.map(t => {
+    const flecha = `${t.empresa_origen === 'METAL' ? '⚫ Metal' : '🔴 Perfo'} → ${t.empresa_destino === 'METAL' ? '⚫ Metal' : '🔴 Perfo'}`;
+    const real = t.monto_destino_real != null ? fmtMon(t.monto_destino_real, t.moneda_destino) : `<span style="color:#9ca3af;font-style:italic">sin conciliar</span>`;
+    const diff = Number(t.diferencia_cambio) || 0;
+    const diffColor = diff === 0 ? '#6b7280' : (diff < 0 ? '#dc2626' : '#166534');
+    const puedeAnular = !['ANULADA','DEVUELTA'].includes(t.estado);
+    const puedeDevolver = t.tipo_movimiento === 'PRESTAMO_INTERNO' && ['PENDIENTE','PARCIAL'].includes(t.estado);
+    const puedeConciliar = t.estado !== 'ANULADA' && t.monto_destino_real == null;
+    return `
+      <tr style="border-bottom:1px solid #f3f4f6">
+        <td style="padding:8px;font-size:11px">#${t.id_transferencia}<br><span style="color:#6b7280;font-size:10px">${fmtFecha(t.fecha)}</span></td>
+        <td style="padding:8px">${badgeTipo(t.tipo_movimiento)}${t.es_devolucion_de ? `<br><span style="font-size:10px;color:#6b7280">↩ de #${t.es_devolucion_de}</span>` : ''}</td>
+        <td style="padding:8px;font-size:11px">${flecha}</td>
+        <td style="padding:8px;text-align:right;font-size:11px"><strong>${fmtMon(t.monto_origen, t.moneda_origen)}</strong><br><span style="color:#6b7280;font-size:10px">TC ${Number(t.tipo_cambio_referencia).toFixed(4)}</span></td>
+        <td style="padding:8px;text-align:right;font-size:11px"><span style="color:#6b7280">${fmtMon(t.monto_destino_estimado, t.moneda_destino)}</span><br><strong>${real}</strong></td>
+        <td style="padding:8px;text-align:right;font-size:11px;color:${diffColor};font-weight:600">${diff !== 0 ? new Intl.NumberFormat('es-PE', { style: 'currency', currency: 'PEN' }).format(diff) : '—'}</td>
+        <td style="padding:8px;text-align:right;font-size:11px;color:${Number(t.saldo_pendiente_pen) > 0 ? '#dc2626' : '#166534'};font-weight:600">${t.tipo_movimiento === 'PRESTAMO_INTERNO' ? new Intl.NumberFormat('es-PE', { style: 'currency', currency: 'PEN' }).format(t.saldo_pendiente_pen) : '—'}</td>
+        <td style="padding:8px;text-align:center">${badgeEstado(t.estado)}</td>
+        <td style="padding:8px;white-space:nowrap;text-align:right">
+          ${puedeConciliar ? `<button data-conciliar="${t.id_transferencia}" title="Cargar el monto real que entró al banco (para registrar diferencia de cambio)" style="padding:4px 8px;background:#0891b2;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:10px;font-weight:600">✓ Conciliar</button>` : ''}
+          ${puedeDevolver ? `<button data-devolver="${t.id_transferencia}" title="Registrar devolución (transferencia inversa)" style="padding:4px 8px;background:#16a34a;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:10px;font-weight:600;margin-left:3px">↩ Devolver</button>` : ''}
+          ${puedeAnular ? `<button data-anular="${t.id_transferencia}" title="Anular esta transferencia" style="padding:4px 8px;background:#fff;color:#dc2626;border:1px solid #fca5a5;border-radius:4px;cursor:pointer;font-size:10px;margin-left:3px">×</button>` : ''}
+        </td>
+      </tr>`;
+  }).join('');
+
+  el.innerHTML = `
+    <div style="overflow-x:auto;border:1px solid #e5e7eb;border-radius:6px">
+      <table style="width:100%;border-collapse:collapse">
+        <thead style="background:#f9fafb">
+          <tr style="text-align:left">
+            <th style="padding:9px;font-size:10px;color:#6b7280">N° / Fecha</th>
+            <th style="padding:9px;font-size:10px;color:#6b7280">Tipo</th>
+            <th style="padding:9px;font-size:10px;color:#6b7280">Dirección</th>
+            <th style="padding:9px;font-size:10px;color:#6b7280;text-align:right">Origen (sale)</th>
+            <th style="padding:9px;font-size:10px;color:#6b7280;text-align:right">Destino (estimado / real)</th>
+            <th style="padding:9px;font-size:10px;color:#6b7280;text-align:right">Dif. cambio</th>
+            <th style="padding:9px;font-size:10px;color:#6b7280;text-align:right">Saldo (PEN)</th>
+            <th style="padding:9px;font-size:10px;color:#6b7280;text-align:center">Estado</th>
+            <th style="padding:9px;font-size:10px;color:#6b7280;text-align:right">Acciones</th>
+          </tr>
+        </thead>
+        <tbody>${filas}</tbody>
+      </table>
+    </div>`;
+
+  el.querySelectorAll('[data-conciliar]').forEach(b => {
+    b.onclick = async () => {
+      const id = Number(b.dataset.conciliar);
+      const t = transfs.find(x => x.id_transferencia === id);
+      const sym = t.moneda_destino === 'USD' ? '$' : 'S/';
+      const valor = prompt(
+        `Conciliar transferencia #${id}\n\n` +
+        `Monto destino estimado: ${sym} ${Number(t.monto_destino_estimado).toFixed(2)}\n\n` +
+        `Ingresá el MONTO REAL que entró al banco (lo que dice tu extracto):`,
+        String(t.monto_destino_estimado)
+      );
+      if (!valor) return;
+      const real = Number(valor);
+      if (!real || real <= 0) return showError('Monto inválido');
+      try {
+        await api.transferenciasInternas.actualizar(id, { monto_destino_real: real });
+        showSuccess('Conciliada — diferencia de cambio calculada');
+        refresh();
+      } catch (e) { showError(e.error || e.message); }
+    };
+  });
+
+  el.querySelectorAll('[data-devolver]').forEach(b => {
+    b.onclick = async () => {
+      const id = Number(b.dataset.devolver);
+      const t = transfs.find(x => x.id_transferencia === id);
+      const data = await modalNuevaTransferenciaInterna({ devolverDe: t });
+      if (!data) return;
+      try {
+        await api.transferenciasInternas.crear(data);
+        showSuccess('Devolución registrada — saldo actualizado');
+        refresh();
+      } catch (e) { showError(e.error || e.message); }
+    };
+  });
+
+  el.querySelectorAll('[data-anular]').forEach(b => {
+    b.onclick = async () => {
+      const id = Number(b.dataset.anular);
+      const motivo = prompt('Motivo de anulación (opcional):') || null;
+      if (motivo === false) return;
+      try {
+        await api.transferenciasInternas.anular(id, motivo);
+        showSuccess('Anulada');
+        refresh();
+      } catch (e) { showError(e.error || e.message); }
+    };
+  });
+}
+
+/**
+ * Modal de form: nueva transferencia o devolución. Si recibe `opts.devolverDe`
+ * preconfigura todo para devolución (sentido invertido, tipo bloqueado).
+ */
+function modalNuevaTransferenciaInterna(opts = {}) {
+  const { devolverDe } = opts;
+  const esDevolucion = !!devolverDe;
+  return new Promise((resolve) => {
+    const hoy = new Date().toISOString().slice(0, 10);
+    // Si es devolución, el sentido es inverso al préstamo original
+    const empresaOrigenInit  = esDevolucion ? devolverDe.empresa_destino : 'METAL';
+    const empresaDestinoInit = esDevolucion ? devolverDe.empresa_origen  : 'PERFOTOOLS';
+    // Si es devolución, la moneda origen es la moneda destino del préstamo original
+    const monedaOrigenInit  = esDevolucion ? devolverDe.moneda_destino : 'PEN';
+    const monedaDestinoInit = esDevolucion ? devolverDe.moneda_origen  : 'USD';
+    const tcInit = esDevolucion
+      ? Number(devolverDe.tipo_cambio_referencia).toFixed(4)
+      : '3.7800';
+
+    const ov = document.createElement('div');
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.65);z-index:10001;display:flex;align-items:flex-start;justify-content:center;padding:24px;overflow-y:auto';
+    ov.innerHTML = `
+      <div style="background:#fff;border-radius:10px;width:min(640px,96vw);max-height:calc(100vh - 48px);overflow:auto;box-shadow:0 20px 60px rgba(0,0,0,.3);padding:24px;position:relative">
+        <button data-close style="position:absolute;top:14px;right:14px;background:#fff;border:1px solid #d1d5db;border-radius:50%;width:30px;height:30px;cursor:pointer">×</button>
+        <h3 style="margin:0 0 4px;font-size:16px">${esDevolucion ? '↩ Registrar devolución' : '➕ Nueva transferencia interna'}</h3>
+        <p style="margin:0 0 14px;font-size:12px;color:#6b7280;line-height:1.5">
+          ${esDevolucion
+            ? `Devolución del préstamo <strong>#${devolverDe.id_transferencia}</strong> (${devolverDe.empresa_origen} → ${devolverDe.empresa_destino}). El sentido va invertido automáticamente. Saldo actual: <strong>${new Intl.NumberFormat('es-PE',{style:'currency',currency:'PEN'}).format(Number(devolverDe.saldo_pendiente_pen))}</strong>.`
+            : `Caja origen sale, caja destino entra. Si hay conversión de moneda, el banco aplica su propio TC — registrá el monto real después para calcular la diferencia.`}
+        </p>
+        <div style="display:grid;gap:10px">
+          <div>
+            <label style="font-size:11px;color:#374151;font-weight:600;display:block;margin-bottom:4px">Fecha *</label>
+            <input id="tin-fecha" type="date" value="${hoy}" style="${inputStyle}">
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+            <div>
+              <label style="font-size:11px;color:#374151;font-weight:600;display:block;margin-bottom:4px">Empresa origen (caja que SALE)</label>
+              <select id="tin-empresa-orig" ${esDevolucion ? 'disabled' : ''} style="${inputStyle}">
+                <option value="METAL" ${empresaOrigenInit === 'METAL' ? 'selected' : ''}>Metal Engineers</option>
+                <option value="PERFOTOOLS" ${empresaOrigenInit === 'PERFOTOOLS' ? 'selected' : ''}>Perfotools</option>
+              </select>
+            </div>
+            <div>
+              <label style="font-size:11px;color:#374151;font-weight:600;display:block;margin-bottom:4px">Empresa destino (caja que ENTRA)</label>
+              <select id="tin-empresa-dest" ${esDevolucion ? 'disabled' : ''} style="${inputStyle}">
+                <option value="METAL" ${empresaDestinoInit === 'METAL' ? 'selected' : ''}>Metal Engineers</option>
+                <option value="PERFOTOOLS" ${empresaDestinoInit === 'PERFOTOOLS' ? 'selected' : ''}>Perfotools</option>
+              </select>
+            </div>
+          </div>
+          <div>
+            <label style="font-size:11px;color:#374151;font-weight:600;display:block;margin-bottom:4px">Tipo de movimiento</label>
+            <select id="tin-tipo" ${esDevolucion ? 'disabled' : ''} style="${inputStyle}">
+              ${esDevolucion ? '<option value="DEVOLUCION" selected>Devolución</option>' : `
+                <option value="PRESTAMO_INTERNO">Préstamo interno (se debe devolver)</option>
+                <option value="APORTE_CAPITAL">Aporte de capital (sin retorno)</option>
+              `}
+            </select>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+            <div>
+              <label style="font-size:11px;color:#374151;font-weight:600;display:block;margin-bottom:4px">Moneda origen</label>
+              <select id="tin-mon-orig" style="${inputStyle}">
+                <option value="PEN" ${monedaOrigenInit === 'PEN' ? 'selected' : ''}>S/. PEN</option>
+                <option value="USD" ${monedaOrigenInit === 'USD' ? 'selected' : ''}>$ USD</option>
+              </select>
+            </div>
+            <div>
+              <label style="font-size:11px;color:#374151;font-weight:600;display:block;margin-bottom:4px">Monto que SALE</label>
+              <input id="tin-monto-orig" type="number" step="0.01" min="0.01" placeholder="0.00" style="${inputStyle}">
+            </div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+            <div>
+              <label style="font-size:11px;color:#374151;font-weight:600;display:block;margin-bottom:4px">Moneda destino</label>
+              <select id="tin-mon-dest" style="${inputStyle}">
+                <option value="PEN" ${monedaDestinoInit === 'PEN' ? 'selected' : ''}>S/. PEN</option>
+                <option value="USD" ${monedaDestinoInit === 'USD' ? 'selected' : ''}>$ USD</option>
+              </select>
+            </div>
+            <div>
+              <label style="font-size:11px;color:#374151;font-weight:600;display:block;margin-bottom:4px">Tipo de cambio aplicado</label>
+              <input id="tin-tc" type="number" step="0.0001" value="${tcInit}" style="${inputStyle}">
+            </div>
+          </div>
+          <div style="background:#f0fdf4;border:1px solid #86efac;padding:10px 12px;border-radius:6px">
+            <div style="font-size:11px;color:#166534;font-weight:600;margin-bottom:4px">Monto estimado que ENTRA al destino (calculado)</div>
+            <input id="tin-monto-dest-est" type="number" step="0.01" readonly style="${inputStyle};background:#fff;font-weight:700;color:#166534">
+          </div>
+          <div style="background:#fef3c7;border:1px solid #fbbf24;padding:10px 12px;border-radius:6px">
+            <div style="font-size:11px;color:#92400e;font-weight:600;margin-bottom:4px">💱 Monto REAL que entró (extracto bancario, opcional ahora)</div>
+            <input id="tin-monto-dest-real" type="number" step="0.01" placeholder="Si ya lo sabés, ingresalo. Sino podés conciliar después." style="${inputStyle}">
+            <div style="font-size:10px;color:#92400e;margin-top:4px">Si difiere del estimado, queda como diferencia de cambio (pérdida o ganancia).</div>
+          </div>
+          <div>
+            <label style="font-size:11px;color:#374151;font-weight:600;display:block;margin-bottom:4px">Comentario</label>
+            <textarea id="tin-comentario" rows="2" placeholder="Notas: motivo del préstamo, referencia del extracto, etc." style="${inputStyle};resize:vertical"></textarea>
+          </div>
+        </div>
+        <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:18px">
+          <button id="tin-cancel" style="padding:8px 16px;background:#fff;border:1px solid #d1d5db;border-radius:5px;cursor:pointer">Cancelar</button>
+          <button id="tin-ok" style="padding:8px 22px;background:#7c3aed;color:#fff;border:none;border-radius:5px;cursor:pointer;font-weight:600">${esDevolucion ? 'Registrar devolución' : 'Registrar transferencia'}</button>
+        </div>
+      </div>`;
+    document.body.appendChild(ov);
+    const close = (val) => { ov.remove(); resolve(val); };
+    ov.querySelector('[data-close]').onclick = () => close(null);
+    ov.querySelector('#tin-cancel').onclick  = () => close(null);
+
+    // Auto-calcular monto destino estimado en vivo
+    const recalcEstimado = () => {
+      const monto = Number(ov.querySelector('#tin-monto-orig').value) || 0;
+      const tc    = Number(ov.querySelector('#tin-tc').value) || 1;
+      const monOrig = ov.querySelector('#tin-mon-orig').value;
+      const monDest = ov.querySelector('#tin-mon-dest').value;
+      let est = 0;
+      if (monOrig === monDest) est = monto;             // misma moneda
+      else if (monOrig === 'PEN') est = monto / tc;     // PEN→USD
+      else est = monto * tc;                            // USD→PEN
+      ov.querySelector('#tin-monto-dest-est').value = est.toFixed(2);
+    };
+    ['#tin-monto-orig','#tin-tc','#tin-mon-orig','#tin-mon-dest'].forEach(sel =>
+      ov.querySelector(sel).addEventListener('input', recalcEstimado));
+
+    // Auto-sincronizar empresa↔moneda (por convención: METAL=PEN, PERFO=USD).
+    // Solo aplica si NO es devolución.
+    if (!esDevolucion) {
+      ov.querySelector('#tin-empresa-orig').addEventListener('change', (e) => {
+        ov.querySelector('#tin-mon-orig').value = e.target.value === 'PERFOTOOLS' ? 'USD' : 'PEN';
+        recalcEstimado();
+      });
+      ov.querySelector('#tin-empresa-dest').addEventListener('change', (e) => {
+        ov.querySelector('#tin-mon-dest').value = e.target.value === 'PERFOTOOLS' ? 'USD' : 'PEN';
+        recalcEstimado();
+      });
+    }
+
+    ov.querySelector('#tin-ok').onclick = () => {
+      const empOrig = ov.querySelector('#tin-empresa-orig').value;
+      const empDest = ov.querySelector('#tin-empresa-dest').value;
+      if (empOrig === empDest) return showError('Empresa origen y destino deben ser distintas');
+      const monto = Number(ov.querySelector('#tin-monto-orig').value);
+      if (!monto || monto <= 0) return showError('Monto origen requerido');
+      const est = Number(ov.querySelector('#tin-monto-dest-est').value);
+      const real = ov.querySelector('#tin-monto-dest-real').value;
+      close({
+        fecha:                  ov.querySelector('#tin-fecha').value,
+        empresa_origen:         empOrig,
+        empresa_destino:        empDest,
+        tipo_movimiento:        ov.querySelector('#tin-tipo').value,
+        es_devolucion_de:       esDevolucion ? devolverDe.id_transferencia : null,
+        moneda_origen:          ov.querySelector('#tin-mon-orig').value,
+        monto_origen:           monto,
+        moneda_destino:         ov.querySelector('#tin-mon-dest').value,
+        tipo_cambio_referencia: Number(ov.querySelector('#tin-tc').value) || 1,
+        monto_destino_estimado: est,
+        monto_destino_real:     real ? Number(real) : null,
+        comentario:             ov.querySelector('#tin-comentario').value.trim() || null,
+      });
+    };
+
+    recalcEstimado();
+  });
 }
