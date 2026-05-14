@@ -89,8 +89,9 @@ const formCrear = (tipo, tcVenta = 1, tcFecha = '') => {
       <div id="banner-usd-${tipo}" style="display:none; background:#16a34a; color:white; padding:10px 14px; border-radius:6px; font-size:13px; font-weight:600;">💵 Transacción PerfoTools — Dólares americanos</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
         <div>
-          <label style="font-size:11px;color:var(--text-secondary)">N° OC (opcional)</label>
-          <input name="nro_oc" placeholder="OC-001" style="${inputStyle}">
+          <label style="font-size:11px;color:var(--text-secondary)">N° de Préstamo ${tip('Se asigna automáticamente al guardar: ' + (esTomado ? 'PT' : 'PO') + '-NNN-' + (new Date().getFullYear()) + '. No se puede editar — el sistema usa el siguiente correlativo del año en curso.')}</label>
+          <input name="nro_oc" placeholder="Se asignará automáticamente al guardar (${esTomado ? 'PT' : 'PO'}-NNN-${new Date().getFullYear()})" readonly
+            style="${inputStyle};background:#f3f4f6;color:#6b7280;cursor:not-allowed">
         </div>
         <div>
           <label style="font-size:11px;color:var(--text-secondary)">${labelContraparte}</label>

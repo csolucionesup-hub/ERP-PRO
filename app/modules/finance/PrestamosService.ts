@@ -2,6 +2,47 @@ import { db } from '../../../database/connection';
 
 class PrestamosService {
 
+  /**
+   * Genera el siguiente correlativo de N° préstamo para el año en curso.
+   * Sesión 13/05/2026: pedido de Julio — el campo nro_oc debe asignarse
+   * automáticamente en vez de tipearlo manual.
+   *
+   * Formato:
+   *   - Tomados (lo que debo):      PT-NNN-YYYY  (PT = Préstamo Tomado)
+   *   - Otorgados (lo que me deben): PO-NNN-YYYY  (PO = Préstamo Otorgado)
+   *
+   * Busca el último correlativo del año por prefijo + año y devuelve +1
+   * con padding a 3 dígitos. Si el usuario ya envió un nro_oc no vacío,
+   * NO lo pisamos (soporta carga histórica con números externos).
+   */
+  private async generarNroPrestamo(
+    conn: any,
+    tabla: 'PrestamosTomados' | 'PrestamosOtorgados',
+    prefijo: 'PT' | 'PO',
+  ): Promise<string> {
+    const anio = new Date().getFullYear();
+    const patron = `${prefijo}-%-${anio}`;
+    // FOR UPDATE en el último registro evita colisión bajo concurrencia
+    // (dos creates simultáneos del mismo prefijo+año).
+    const [rows]: any = await conn.query(
+      `SELECT nro_oc FROM ${tabla}
+        WHERE nro_oc LIKE ?
+        ORDER BY id_prestamo DESC
+        LIMIT 1
+        FOR UPDATE`,
+      [patron]
+    );
+    const ultimo = (rows as any[])[0];
+    let siguiente = 1;
+    if (ultimo?.nro_oc) {
+      // PT-007-2026 → 007 → 7 → +1
+      const partes = String(ultimo.nro_oc).split('-');
+      const num = parseInt(partes[1], 10);
+      if (!isNaN(num)) siguiente = num + 1;
+    }
+    return `${prefijo}-${String(siguiente).padStart(3, '0')}-${anio}`;
+  }
+
   // ===== PRÉSTAMOS TOMADOS (lo que debo) =====
 
   async getTomados() {
@@ -33,15 +74,31 @@ class PrestamosService {
       saldo        <= 0.01       ? 'PAGADO'    :
       'PARCIAL';
 
-    const [res] = await db.query(`
-      INSERT INTO PrestamosTomados (nro_oc, acreedor, descripcion, comentario,
-        fecha_emision, fecha_vencimiento, moneda, tipo_cambio,
-        monto_capital, tasa_interes, monto_interes, monto_total, monto_pagado, saldo, estado)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `, [data.nro_oc || null, data.acreedor, data.descripcion || '', data.comentario || '',
-        data.fecha_emision, data.fecha_vencimiento || null, moneda, tipo_cambio,
-        capital, Number(data.tasa_interes || 0), interes, total, pagadoInicial, saldo, estado]);
-    return { success: true, id: (res as any).insertId };
+    const conn = await db.getConnection();
+    await conn.beginTransaction();
+    try {
+      // Auto-asignar correlativo si el frontend no lo manda. Si llega
+      // explícito (carga histórica con N° externo), lo respetamos.
+      const nroOC = (data.nro_oc && String(data.nro_oc).trim())
+        ? String(data.nro_oc).trim()
+        : await this.generarNroPrestamo(conn, 'PrestamosTomados', 'PT');
+
+      const [res] = await conn.query(`
+        INSERT INTO PrestamosTomados (nro_oc, acreedor, descripcion, comentario,
+          fecha_emision, fecha_vencimiento, moneda, tipo_cambio,
+          monto_capital, tasa_interes, monto_interes, monto_total, monto_pagado, saldo, estado)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `, [nroOC, data.acreedor, data.descripcion || '', data.comentario || '',
+          data.fecha_emision, data.fecha_vencimiento || null, moneda, tipo_cambio,
+          capital, Number(data.tasa_interes || 0), interes, total, pagadoInicial, saldo, estado]);
+      await conn.commit();
+      return { success: true, id: (res as any).insertId, nro_oc: nroOC };
+    } catch (e) {
+      await conn.rollback();
+      throw e;
+    } finally {
+      conn.release();
+    }
   }
 
   async pagarTomado(id: number, data: any) {
@@ -139,15 +196,30 @@ class PrestamosService {
       saldo          <= 0.01     ? 'PAGADO'    :
       'PARCIAL';
 
-    const [res] = await db.query(`
-      INSERT INTO PrestamosOtorgados (nro_oc, deudor, descripcion, comentario,
-        fecha_emision, fecha_vencimiento, moneda, tipo_cambio,
-        monto_capital, tasa_interes, monto_interes, monto_total, monto_pagado, saldo, estado)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `, [data.nro_oc || null, data.deudor, data.descripcion || '', data.comentario || '',
-        data.fecha_emision, data.fecha_vencimiento || null, moneda, tipo_cambio,
-        capital, Number(data.tasa_interes || 0), interes, total, cobradoInicial, saldo, estado]);
-    return { success: true, id: (res as any).insertId };
+    const conn = await db.getConnection();
+    await conn.beginTransaction();
+    try {
+      // Auto-asignar correlativo si el frontend no lo manda.
+      const nroOC = (data.nro_oc && String(data.nro_oc).trim())
+        ? String(data.nro_oc).trim()
+        : await this.generarNroPrestamo(conn, 'PrestamosOtorgados', 'PO');
+
+      const [res] = await conn.query(`
+        INSERT INTO PrestamosOtorgados (nro_oc, deudor, descripcion, comentario,
+          fecha_emision, fecha_vencimiento, moneda, tipo_cambio,
+          monto_capital, tasa_interes, monto_interes, monto_total, monto_pagado, saldo, estado)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `, [nroOC, data.deudor, data.descripcion || '', data.comentario || '',
+          data.fecha_emision, data.fecha_vencimiento || null, moneda, tipo_cambio,
+          capital, Number(data.tasa_interes || 0), interes, total, cobradoInicial, saldo, estado]);
+      await conn.commit();
+      return { success: true, id: (res as any).insertId, nro_oc: nroOC };
+    } catch (e) {
+      await conn.rollback();
+      throw e;
+    } finally {
+      conn.release();
+    }
   }
 
   async cobrarOtorgado(id: number, data: any) {
