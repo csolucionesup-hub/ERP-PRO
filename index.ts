@@ -18,6 +18,7 @@ import InventoryService from './app/modules/inventory/InventoryService';
 import ProvidersService from './app/modules/purchases/ProvidersService';
 import PrestamosService from './app/modules/finance/PrestamosService';
 import ContraparteService from './app/modules/finance/ContraparteService';
+import TransferenciasInternasService from './app/modules/finance/TransferenciasInternasService';
 import TipoCambioService from './app/modules/finance/TipoCambioService';
 import CotizacionService from './app/modules/comercial/CotizacionService';
 import CotizacionPDFService from './app/modules/comercial/CotizacionPDFService';
@@ -508,6 +509,42 @@ apiRouter.get('/cobranzas/dashboard', async (_req: Request, res: Response) => {
 // la BD si el usuario alterna entre tabs.
 apiRouter.get('/cobranzas/analitica', async (_req: Request, res: Response) => {
   res.json(await CobranzasService.getAnalitica());
+});
+
+// ===== TRANSFERENCIAS INTERNAS Metal ↔ Perfotools (mig 072) =====
+// Vive dentro del módulo FINANZAS porque toca cajas y se concilia con el
+// Libro Bancos (fase 2). Permite registrar préstamos internos entre marcas
+// con conversión de moneda + diferencia de cambio explícita.
+apiRouter.use('/transferencias-internas', requireModulo('FINANZAS'));
+apiRouter.get('/transferencias-internas', async (req: Request, res: Response) => {
+  const filtros: any = {};
+  if (req.query.desde)   filtros.desde   = req.query.desde;
+  if (req.query.hasta)   filtros.hasta   = req.query.hasta;
+  if (req.query.empresa) filtros.empresa = req.query.empresa;
+  if (req.query.estado)  filtros.estado  = req.query.estado;
+  if (req.query.tipo)    filtros.tipo    = req.query.tipo;
+  res.json(await TransferenciasInternasService.listar(filtros));
+});
+
+apiRouter.get('/transferencias-internas/balance', async (_req: Request, res: Response) => {
+  res.json(await TransferenciasInternasService.getBalance());
+});
+
+apiRouter.get('/transferencias-internas/:id', validateIdParam, async (req: Request, res: Response) => {
+  res.json(await TransferenciasInternasService.obtener(parseInt(req.params.id as string)));
+});
+
+apiRouter.post('/transferencias-internas', auditLog('TransferenciaInterna', 'CREATE'), async (req: any, res: Response) => {
+  const data = { ...req.body, id_usuario_registra: req.user?.id_usuario || null };
+  res.status(201).json(await TransferenciasInternasService.crear(data));
+});
+
+apiRouter.put('/transferencias-internas/:id', validateIdParam, auditLog('TransferenciaInterna', 'UPDATE'), async (req: Request, res: Response) => {
+  res.json(await TransferenciasInternasService.actualizar(parseInt(req.params.id as string), req.body || {}));
+});
+
+apiRouter.post('/transferencias-internas/:id/anular', validateIdParam, auditLog('TransferenciaInterna', 'ANULAR'), async (req: Request, res: Response) => {
+  res.json(await TransferenciasInternasService.anular(parseInt(req.params.id as string), req.body?.motivo));
 });
 
 apiRouter.get('/cobranzas/:id/detalle', async (req: Request, res: Response) => {
