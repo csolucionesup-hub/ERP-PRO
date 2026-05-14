@@ -141,6 +141,9 @@ export const api = {
     consumirInventario:   (data) => post('/inventario/consumo', data),
     editarMetadataItem:   (id, d) => put(`/inventario/${id}/metadata`, d),
     deleteInventarioItem: (id, opts = {}) => del(`/inventario/${id}${opts.force ? '?force=1' : ''}`),
+    // mig 070 — familia / marca + corrección de recepción mal asignada
+    getFamiliaSimilares:  (id) => get(`/inventario/${id}/familia-similares`),
+    corregirRecepcion:    (idMov, data) => post(`/inventario/movimientos/${idMov}/corregir`, data),
   },
   cotizaciones: {
     getDashboard:     ()          => get('/cotizaciones/dashboard'),

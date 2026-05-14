@@ -2369,6 +2369,11 @@ async function abrirModalRecepcion(oc) {
             Editá la cantidad recibida por línea (pre-cargada con lo que falta). Las que recibís 0 se ignoran.
           </p>
           ${banner}
+          <!-- Mig 070: panel de advertencia cuando una línea tiene variantes
+               de la misma familia (ej: MIG vs FCAW). El logístico lo ve antes
+               de confirmar la recepción para prevenir errores tipo "pensé que
+               era MIG y era FCAW". Se popula async después del render. -->
+          <div id="rec-warn-familia" style="display:none;background:#fef3c7;border:1px solid #fbbf24;color:#92400e;padding:10px 12px;border-radius:6px;font-size:12px;margin-bottom:12px;line-height:1.5"></div>
           <table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:14px">
             <thead><tr style="background:#f9fafb;border-bottom:2px solid #d9dad9">
               <th style="padding:10px;text-align:left">Descripción</th>
@@ -2411,6 +2416,39 @@ async function abrirModalRecepcion(oc) {
       i.addEventListener('input', recalcResumen);
     });
     recalcResumen();
+
+    // Mig 070 — chequear familias similares en background, sin bloquear el render.
+    // Si alguna línea tiene id_item con variantes en la misma familia, mostrar
+    // advertencia arriba para que el logístico confirme que es el correcto.
+    (async () => {
+      try {
+        const lineasConItem = (oc.detalle || []).filter(l => l.id_item);
+        if (!lineasConItem.length) return;
+        const resultados = await Promise.all(
+          lineasConItem.map(l =>
+            api.inventory.getFamiliaSimilares(l.id_item)
+              .then(sim => ({ linea: l, similares: sim || [] }))
+              .catch(() => ({ linea: l, similares: [] }))
+          )
+        );
+        const conRiesgo = resultados.filter(r => r.similares.length > 0);
+        if (!conRiesgo.length) return;
+        const warnBox = document.getElementById('rec-warn-familia');
+        if (!warnBox) return;
+        const escAttr = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        const items = conRiesgo.map(r => {
+          const otros = r.similares.map(s => escAttr(s.nombre)).join(' · ');
+          return `<li><strong>${escAttr(r.linea.descripcion || '(sin descripción)')}</strong> → variantes en almacén: ${otros}</li>`;
+        }).join('');
+        warnBox.innerHTML = `
+          ⚠️ <strong>Atención antes de confirmar:</strong> hay líneas con variantes similares en el almacén.
+          Asegurate de que el ítem físico que recibiste coincide con el que vas a registrar — un MIG no
+          es lo mismo que un FCAW. Si te equivocaste, después podés corregirlo desde el kárdex pero requiere
+          GERENTE.
+          <ul style="margin:6px 0 0;padding-left:22px">${items}</ul>`;
+        warnBox.style.display = 'block';
+      } catch { /* fallo silencioso — la advertencia es ayuda, no requisito */ }
+    })();
 
     document.getElementById('rec-cancelar').onclick = () => {
       ov.remove();

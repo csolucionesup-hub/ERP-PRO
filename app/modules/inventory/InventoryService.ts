@@ -4,15 +4,19 @@ import { nowSQL } from '../../lib/dateUtils';
 class InventoryService {
   /**
    * Obtiene el listado de Catálogo de Almacén Valorado Históricamente.
+   * Sesión 13/05/2026 (mig 070): incluye `familia` y `marca` para agrupar
+   * variantes (SOLDADURA × 6, ALAMBRE × 2, etc.) y separar items por
+   * empresa (METAL/PERFOTOOLS/COMPARTIDO).
    */
   async getInventario() {
     const query = `
       SELECT
         id_item, sku, categoria, nombre, unidad, stock_actual, stock_minimo,
         costo_promedio_unitario AS costo_promedio,
-        (stock_actual * costo_promedio_unitario) as valorizado
+        (stock_actual * costo_promedio_unitario) as valorizado,
+        familia, marca
       FROM Inventario
-      ORDER BY nombre ASC
+      ORDER BY COALESCE(familia, nombre) ASC, nombre ASC
     `;
     const [rows] = await db.query(query);
     return rows;
@@ -298,6 +302,8 @@ class InventoryService {
     categoria?: string;
     unidad?: string;
     stock_minimo?: number;
+    familia?: string;
+    marca?: 'METAL' | 'PERFOTOOLS' | 'COMPARTIDO';
   }) {
     const [rows] = await db.query(
       'SELECT id_item FROM Inventario WHERE id_item = ?',
@@ -305,19 +311,270 @@ class InventoryService {
     );
     if (!(rows as any)[0]) throw new Error('Ítem no encontrado.');
 
-    const FIELDS: (keyof typeof data)[] = ['nombre', 'categoria', 'unidad', 'stock_minimo'];
+    // Validación de marca — el CHECK constraint también lo valida en BD,
+    // pero acá damos un error más legible.
+    if (data.marca !== undefined && !['METAL', 'PERFOTOOLS', 'COMPARTIDO'].includes(data.marca)) {
+      throw new Error("marca debe ser uno de: METAL, PERFOTOOLS, COMPARTIDO");
+    }
+
+    const FIELDS: (keyof typeof data)[] = ['nombre', 'categoria', 'unidad', 'stock_minimo', 'familia', 'marca'];
     const sets: string[] = [];
     const vals: any[] = [];
     for (const f of FIELDS) {
       if (data[f] !== undefined) {
         sets.push(`${f} = ?`);
-        vals.push(data[f] === '' ? null : data[f]);
+        // Familia vacía → null (permite "ungroupear" un item).
+        // Marca vacía → default 'COMPARTIDO'.
+        if (data[f] === '' && f === 'familia') vals.push(null);
+        else if (data[f] === '' && f === 'marca') vals.push('COMPARTIDO');
+        else vals.push(data[f]);
       }
     }
     if (!sets.length) return { success: true, sin_cambios: true };
     vals.push(idItem);
     await db.query(`UPDATE Inventario SET ${sets.join(', ')} WHERE id_item = ?`, vals);
     return { success: true };
+  }
+
+  /**
+   * Items de la misma familia que el item dado, excluyéndolo. Se usa para
+   * mostrar advertencias en el modal de recepción de OC ALMACÉN — si el
+   * logístico va a recibir contra "ALAMBRE MIG" y existe "ALAMBRE FCAW"
+   * en la misma familia, le mostramos el aviso para que confirme.
+   *
+   * Sesión 13/05/2026: motivado por un caso real donde se recibió un
+   * rollo FCAW cargándolo como MIG (variantes visualmente similares).
+   */
+  async getFamiliaSimilares(idItem: number) {
+    const [rows]: any = await db.query(
+      `SELECT id_item, sku, nombre, unidad, stock_actual, costo_promedio_unitario
+         FROM Inventario
+        WHERE familia = (SELECT familia FROM Inventario WHERE id_item = ?)
+          AND familia IS NOT NULL
+          AND id_item <> ?
+        ORDER BY nombre`,
+      [idItem, idItem]
+    );
+    return rows;
+  }
+
+  /**
+   * Corrige una entrada de inventario mal asignada (recepción al item
+   * equivocado). Caso típico: el logístico recibió un rollo FCAW pero lo
+   * cargó como MIG — stock incorrecto en MIG, costo promedio contaminado.
+   *
+   * Operación atómica:
+   *  1. Revertir el movimiento original (borrar entry o crear ajuste negativo).
+   *  2. Re-aplicar el movimiento sobre el item correcto (entrada + costo).
+   *  3. Recalcular costo_promedio_unitario de ambos items.
+   *  4. Audit log en tabla Auditoria.
+   *
+   * Solo permitido sobre MovimientosInventario de tipo ENTRADA + referencia
+   * ORDEN_COMPRA. Movimientos de SALIDA (consumo a proyecto) no se corrigen
+   * por acá — primero corregís la entrada y luego rehacés el retiro.
+   *
+   * Solo GERENTE — la decisión política se aplica en la capa de routes.
+   */
+  async corregirRecepcion(params: {
+    id_movimiento: number;
+    id_item_correcto: number;
+    motivo: string;
+    id_usuario: number | null;
+    nombre_usuario?: string;
+  }) {
+    const { id_movimiento, id_item_correcto, motivo } = params;
+    if (!motivo || !motivo.trim()) {
+      throw new Error('motivo de corrección requerido (auditable)');
+    }
+    const conn = await db.getConnection();
+    await conn.beginTransaction();
+    try {
+      // 1. Cargar el movimiento original con lock
+      const [movRows]: any = await conn.query(
+        `SELECT mi.id_movimiento, mi.id_item, mi.cantidad, mi.referencia_tipo,
+                mi.referencia_id, mi.tipo_movimiento, mi.fecha_movimiento,
+                inv.nombre AS nombre_item_actual,
+                inv.costo_promedio_unitario AS costo_actual,
+                inv.stock_actual AS stock_actual
+           FROM MovimientosInventario mi
+           JOIN Inventario inv ON inv.id_item = mi.id_item
+          WHERE mi.id_movimiento = ?
+          FOR UPDATE`,
+        [id_movimiento]
+      );
+      const mov = movRows[0];
+      if (!mov) throw new Error('Movimiento no encontrado');
+      if (mov.tipo_movimiento !== 'ENTRADA') {
+        throw new Error('Solo se pueden corregir movimientos de tipo ENTRADA');
+      }
+      if (mov.referencia_tipo !== 'ORDEN_COMPRA') {
+        throw new Error('Solo se pueden corregir entradas vinculadas a Orden de Compra');
+      }
+      if (Number(mov.cantidad) <= 0) {
+        throw new Error('Movimiento original con cantidad inválida');
+      }
+      if (Number(mov.id_item) === Number(id_item_correcto)) {
+        throw new Error('El item destino es el mismo que el actual — sin cambio');
+      }
+
+      const cantidad      = Number(mov.cantidad);
+      const idItemViejo   = Number(mov.id_item);
+      const idItemNuevo   = Number(id_item_correcto);
+
+      // 2. Cargar el item destino con lock + recuperar la línea de OC
+      // (DetalleOrdenCompra) que originó este movimiento para sacar el costo
+      // unitario real con el que se cargó originalmente.
+      const [destRows]: any = await conn.query(
+        `SELECT id_item, nombre, stock_actual, costo_promedio_unitario
+           FROM Inventario WHERE id_item = ? FOR UPDATE`,
+        [idItemNuevo]
+      );
+      const dest = destRows[0];
+      if (!dest) throw new Error('Item destino no encontrado');
+
+      // Recuperar costo unitario del DetalleOrdenCompra (la fuente real).
+      // Como un MovimientoInventario referencia una OC pero no una línea
+      // específica, asumimos que es la primera línea de esa OC con el item
+      // viejo. Si hay ambigüedad por múltiples líneas del mismo item en la
+      // misma OC, usamos el promedio ponderado.
+      const [detRows]: any = await conn.query(
+        `SELECT cantidad_recibida, precio_unitario
+           FROM DetalleOrdenCompra
+          WHERE id_oc = ? AND id_item = ? AND cantidad_recibida > 0`,
+        [mov.referencia_id, idItemViejo]
+      );
+      let costoUnitario = Number(mov.costo_actual) || 0;
+      if (detRows.length === 1) {
+        costoUnitario = Number(detRows[0].precio_unitario) || costoUnitario;
+      } else if (detRows.length > 1) {
+        let totMonto = 0, totCant = 0;
+        for (const d of detRows) {
+          totMonto += Number(d.precio_unitario) * Number(d.cantidad_recibida);
+          totCant  += Number(d.cantidad_recibida);
+        }
+        costoUnitario = totCant > 0 ? totMonto / totCant : costoUnitario;
+      }
+      const valorTotal = cantidad * costoUnitario;
+
+      // 3. REVERSAR sobre el item VIEJO ─────────────────────────────────
+      // Restamos stock + recalculamos costo promedio sacando el lote.
+      const stockViejoActual  = Number(mov.stock_actual);
+      const costoViejoActual  = Number(mov.costo_actual);
+      const stockViejoDespues = stockViejoActual - cantidad;
+      let costoViejoDespues = costoViejoActual;
+      // Si después de quitar este lote queda stock, recalculamos el promedio.
+      // Si queda 0 o negativo, no podemos calcular promedio → lo dejamos en 0.
+      const valorViejoActual  = stockViejoActual * costoViejoActual;
+      const valorRestanteViejo = valorViejoActual - valorTotal;
+      if (stockViejoDespues > 0) {
+        costoViejoDespues = Math.max(0, valorRestanteViejo / stockViejoDespues);
+      } else {
+        costoViejoDespues = 0;
+      }
+
+      await conn.query(
+        `UPDATE Inventario
+            SET stock_actual = ?,
+                costo_promedio_unitario = ?,
+                updated_at = NOW()
+          WHERE id_item = ?`,
+        [Math.max(0, stockViejoDespues), costoViejoDespues, idItemViejo]
+      );
+
+      // 4. APLICAR sobre el item NUEVO ──────────────────────────────────
+      // Sumamos stock + recalculamos costo promedio ponderado.
+      const stockNuevoActual  = Number(dest.stock_actual);
+      const costoNuevoActual  = Number(dest.costo_promedio_unitario);
+      const stockNuevoDespues = stockNuevoActual + cantidad;
+      const valorNuevoActual  = stockNuevoActual * costoNuevoActual;
+      const valorNuevoDespues = valorNuevoActual + valorTotal;
+      const costoNuevoDespues = stockNuevoDespues > 0
+        ? valorNuevoDespues / stockNuevoDespues
+        : costoUnitario;
+
+      await conn.query(
+        `UPDATE Inventario
+            SET stock_actual = ?,
+                costo_promedio_unitario = ?,
+                updated_at = NOW()
+          WHERE id_item = ?`,
+        [stockNuevoDespues, costoNuevoDespues, idItemNuevo]
+      );
+
+      // 5. Mover el MovimientoInventario al item correcto + actualizar saldo
+      // (no creamos uno nuevo — mantenemos el id_movimiento original para no
+      // duplicar el kárdex y dejar trazabilidad limpia).
+      await conn.query(
+        `UPDATE MovimientosInventario
+            SET id_item = ?,
+                saldo_posterior = ?,
+                updated_at = NOW()
+          WHERE id_movimiento = ?`,
+        [idItemNuevo, stockNuevoDespues, id_movimiento]
+      );
+
+      // 6. Si la OC original tenía DetalleOrdenCompra apuntando al item viejo,
+      // también lo movemos al item correcto (la línea representa lo que se
+      // recibió físicamente, no lo que se pidió).
+      await conn.query(
+        `UPDATE DetalleOrdenCompra
+            SET id_item = ?
+          WHERE id_oc = ? AND id_item = ?`,
+        [idItemNuevo, mov.referencia_id, idItemViejo]
+      );
+
+      // 7. Audit log
+      await conn.query(
+        `INSERT INTO Auditoria
+           (fecha, id_usuario, nombre_usuario, accion, entidad, entidad_id,
+            datos_antes, datos_despues)
+         VALUES (NOW(), ?, ?, 'UPDATE', 'MovimientoInventario', ?, ?, ?)`,
+        [
+          params.id_usuario || null,
+          params.nombre_usuario || 'sistema',
+          String(id_movimiento),
+          JSON.stringify({
+            id_item:       idItemViejo,
+            nombre_item:   mov.nombre_item_actual,
+            cantidad,
+            costo_unitario: costoUnitario,
+            stock_resultante_viejo: stockViejoDespues,
+          }),
+          JSON.stringify({
+            id_item:       idItemNuevo,
+            nombre_item:   dest.nombre,
+            cantidad,
+            costo_unitario: costoUnitario,
+            stock_resultante_nuevo: stockNuevoDespues,
+            motivo,
+          }),
+        ]
+      );
+
+      await conn.commit();
+      return {
+        success: true,
+        item_viejo: {
+          id: idItemViejo,
+          nombre: mov.nombre_item_actual,
+          stock_nuevo: Math.max(0, stockViejoDespues),
+          costo_promedio_nuevo: costoViejoDespues,
+        },
+        item_nuevo: {
+          id: idItemNuevo,
+          nombre: dest.nombre,
+          stock_nuevo: stockNuevoDespues,
+          costo_promedio_nuevo: costoNuevoDespues,
+        },
+        cantidad_movida: cantidad,
+        costo_unitario: costoUnitario,
+      };
+    } catch (e) {
+      await conn.rollback();
+      throw e;
+    } finally {
+      conn.release();
+    }
   }
 
   /**
