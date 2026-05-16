@@ -1,0 +1,1184 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tutorial: Cómo crear una Orden de Compra · Metal Engineers</title>
+<style>
+  :root {
+    --ink: #0f172a;
+    --ink-soft: #475569;
+    --muted: #94a3b8;
+    --paper: #ffffff;
+    --paper-2: #f8fafc;
+    --paper-3: #f1f5f9;
+    --line: #e2e8f0;
+    --brand: #7c3aed;
+    --brand-2: #6d28d9;
+    --ok: #16a34a;
+    --warn: #f59e0b;
+    --danger: #dc2626;
+    --gold: #eab308;
+    --info: #0ea5e9;
+    --pink: #ec4899;
+    --radius: 14px;
+    --shadow: 0 1px 3px rgba(15,23,42,.06), 0 8px 24px rgba(15,23,42,.06);
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    color: var(--ink);
+    background: var(--paper-2);
+    line-height: 1.65;
+    font-size: 16px;
+  }
+  .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+
+  /* HERO */
+  header.hero {
+    background: linear-gradient(135deg, #000 0%, #1e1b4b 50%, #4c1d95 100%);
+    color: white;
+    padding: 70px 24px 50px;
+    position: relative;
+    overflow: hidden;
+  }
+  header.hero::before {
+    content: '';
+    position: absolute; top: -150px; right: -100px;
+    width: 500px; height: 500px;
+    background: radial-gradient(circle, rgba(236,72,153,.25) 0%, transparent 70%);
+  }
+  header.hero::after {
+    content: '';
+    position: absolute; bottom: -100px; left: -50px;
+    width: 350px; height: 350px;
+    background: radial-gradient(circle, rgba(14,165,233,.2) 0%, transparent 70%);
+  }
+  header.hero h1 {
+    font-size: clamp(32px, 5vw, 48px);
+    margin: 0 0 12px;
+    line-height: 1.05;
+    font-weight: 800;
+    letter-spacing: -1.5px;
+    position: relative;
+  }
+  header.hero .subtitle {
+    font-size: clamp(16px, 2vw, 20px);
+    opacity: .9;
+    margin: 0 0 24px;
+    max-width: 720px;
+    position: relative;
+  }
+  header.hero .meta {
+    display: flex; flex-wrap: wrap; gap: 10px; position: relative;
+  }
+  header.hero .meta span {
+    background: rgba(255,255,255,.12);
+    padding: 8px 16px; border-radius: 30px;
+    font-size: 13px; backdrop-filter: blur(4px);
+    font-weight: 500;
+  }
+
+  /* TOC sticky */
+  nav.toc {
+    background: white;
+    padding: 14px 24px;
+    border-bottom: 1px solid var(--line);
+    position: sticky; top: 0; z-index: 50;
+    box-shadow: 0 1px 3px rgba(0,0,0,.04);
+  }
+  nav.toc .inner { max-width: 1100px; margin: 0 auto; display: flex; gap: 8px; flex-wrap: wrap; }
+  nav.toc a {
+    font-size: 13px;
+    color: var(--ink-soft);
+    text-decoration: none;
+    padding: 6px 12px;
+    border-radius: 8px;
+    transition: all .15s;
+    white-space: nowrap;
+  }
+  nav.toc a:hover { background: var(--paper-3); color: var(--ink); }
+
+  section { padding: 50px 0; border-bottom: 1px solid var(--line); }
+  section:last-child { border-bottom: none; }
+  section h2 {
+    font-size: clamp(24px, 3.5vw, 32px);
+    margin: 0 0 8px;
+    font-weight: 800;
+    letter-spacing: -0.5px;
+  }
+  section h2 .em { font-size: 1.2em; margin-right: 8px; }
+  section .lead {
+    font-size: 17px;
+    color: var(--ink-soft);
+    margin: 0 0 30px;
+    max-width: 760px;
+  }
+
+  /* Glass cards */
+  .card {
+    background: white;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 22px;
+    box-shadow: var(--shadow);
+  }
+  .card-titulo {
+    font-size: 18px; font-weight: 700; margin: 0 0 10px;
+  }
+
+  /* Pregunta-respuesta dialog */
+  .dialogo {
+    background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+    border: 2px solid #fbbf24;
+    border-radius: var(--radius);
+    padding: 18px 22px;
+    margin: 16px 0;
+    position: relative;
+  }
+  .dialogo::before {
+    content: '💭';
+    position: absolute;
+    top: -16px; left: 20px;
+    font-size: 28px;
+    background: white;
+    padding: 4px 8px;
+    border-radius: 50%;
+    box-shadow: var(--shadow);
+  }
+  .dialogo .pregunta { font-weight: 700; color: #92400e; margin: 4px 0 6px; }
+  .dialogo .respuesta { color: #78350f; }
+
+  /* Ejemplo concreto */
+  .ejemplo {
+    background: #f0fdf4;
+    border-left: 4px solid var(--ok);
+    border-radius: 0 var(--radius) var(--radius) 0;
+    padding: 16px 20px;
+    margin: 14px 0;
+  }
+  .ejemplo .titulo {
+    font-weight: 700;
+    color: #166534;
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin: 0 0 6px;
+  }
+  .ejemplo .escena {
+    font-size: 15px;
+    color: #14532d;
+  }
+  .ejemplo .escena strong { background: rgba(22,163,74,.15); padding: 1px 5px; border-radius: 3px; }
+
+  /* Pasos numerados */
+  .pasos { display: grid; gap: 14px; margin: 20px 0; }
+  .paso {
+    display: grid;
+    grid-template-columns: 48px 1fr;
+    gap: 16px;
+    align-items: flex-start;
+  }
+  .paso-num {
+    width: 40px; height: 40px;
+    border-radius: 50%;
+    background: var(--brand);
+    color: white;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 700;
+    font-size: 18px;
+    flex-shrink: 0;
+  }
+  .paso-content { padding-top: 6px; }
+  .paso-content strong { color: var(--ink); }
+
+  /* Tarjetas tipo de OC */
+  .tipos-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 20px;
+    margin: 30px 0;
+  }
+  .tipo-card {
+    background: white;
+    border: 2px solid var(--line);
+    border-radius: var(--radius);
+    padding: 22px;
+    transition: transform .2s, box-shadow .2s, border-color .2s;
+    position: relative;
+    overflow: hidden;
+  }
+  .tipo-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 16px 40px rgba(15,23,42,.08);
+  }
+  .tipo-card .icono {
+    font-size: 42px;
+    line-height: 1;
+    margin-bottom: 8px;
+  }
+  .tipo-card h3 {
+    font-size: 20px;
+    margin: 0 0 6px;
+    font-weight: 700;
+  }
+  .tipo-card .tag {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 3px 10px;
+    border-radius: 20px;
+    margin-bottom: 12px;
+    letter-spacing: 0.5px;
+  }
+  .tag-general   { background: #dbeafe; color: #1e40af; }
+  .tag-servicio  { background: #ddd6fe; color: #6d28d9; }
+  .tag-almacen   { background: #ccfbf1; color: #115e59; }
+  .tag-honorario { background: #fce7f3; color: #be185d; }
+  .tag-gasto     { background: #fef3c7; color: #92400e; }
+  .tipo-card p { font-size: 14px; color: var(--ink-soft); margin: 0 0 12px; }
+  .tipo-card .cuando {
+    font-size: 13px;
+    background: var(--paper-2);
+    padding: 10px 12px;
+    border-radius: 8px;
+    color: var(--ink);
+  }
+  .tipo-card .cuando strong { color: var(--brand-2); }
+
+  /* Decisión */
+  .decision-tree {
+    background: linear-gradient(135deg, #f0f9ff 0%, #fff 100%);
+    border: 2px solid #bae6fd;
+    border-radius: var(--radius);
+    padding: 24px;
+    margin: 20px 0;
+  }
+  .decision-tree h4 { margin: 0 0 16px; color: #0369a1; }
+  .opcion {
+    background: white;
+    padding: 14px 18px;
+    border-radius: 10px;
+    margin: 8px 0;
+    border: 1px solid #e0f2fe;
+    display: grid;
+    grid-template-columns: 30px 1fr;
+    gap: 12px;
+    align-items: flex-start;
+  }
+  .opcion .si { color: var(--ok); font-weight: 700; font-size: 18px; }
+  .opcion .no { color: var(--muted); font-weight: 600; }
+  .opcion .flecha { color: var(--brand); font-weight: 700; }
+
+  /* Tabla estados */
+  .estados-flow {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 8px;
+    margin: 20px 0;
+    align-items: center;
+  }
+  .estado-step {
+    background: white;
+    padding: 14px;
+    border-radius: 10px;
+    text-align: center;
+    border: 2px solid var(--line);
+    position: relative;
+  }
+  .estado-step .icono { font-size: 28px; }
+  .estado-step .nombre { font-weight: 700; font-size: 13px; margin: 4px 0 2px; }
+  .estado-step .desc { font-size: 11px; color: var(--ink-soft); }
+
+  /* Warnings/Tips */
+  .tip {
+    background: #ecfeff;
+    border-left: 4px solid var(--info);
+    padding: 14px 18px;
+    border-radius: 0 10px 10px 0;
+    margin: 16px 0;
+    font-size: 14px;
+  }
+  .tip strong { color: #0c4a6e; }
+  .warning {
+    background: #fef2f2;
+    border-left: 4px solid var(--danger);
+    padding: 14px 18px;
+    border-radius: 0 10px 10px 0;
+    margin: 16px 0;
+    font-size: 14px;
+  }
+  .warning strong { color: #991b1b; }
+
+  /* FAQ */
+  .faq {
+    background: white;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    margin: 10px 0;
+    overflow: hidden;
+  }
+  .faq summary {
+    padding: 16px 20px;
+    font-weight: 600;
+    cursor: pointer;
+    list-style: none;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .faq summary::-webkit-details-marker { display: none; }
+  .faq summary::after { content: '+'; font-size: 22px; color: var(--brand); transition: transform .15s; }
+  .faq[open] summary::after { transform: rotate(45deg); }
+  .faq summary:hover { background: var(--paper-2); }
+  .faq .answer {
+    padding: 0 20px 18px;
+    color: var(--ink-soft);
+    font-size: 15px;
+  }
+
+  /* Highlight key */
+  kbd {
+    background: var(--paper-3);
+    border: 1px solid var(--line);
+    border-bottom-width: 2px;
+    border-radius: 4px;
+    padding: 2px 8px;
+    font-family: 'SF Mono', Monaco, monospace;
+    font-size: 13px;
+    color: var(--ink);
+  }
+  code {
+    background: var(--paper-3);
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-family: 'SF Mono', Monaco, monospace;
+    font-size: 14px;
+    color: var(--brand-2);
+  }
+
+  /* Footer */
+  footer {
+    text-align: center;
+    padding: 40px 24px;
+    color: var(--muted);
+    font-size: 13px;
+    background: white;
+  }
+  footer .emoji { font-size: 24px; display: block; margin-bottom: 8px; }
+
+  /* Hero icons */
+  .hero-icons {
+    display: flex;
+    gap: 16px;
+    margin-top: 30px;
+    flex-wrap: wrap;
+    position: relative;
+  }
+  .hero-icon {
+    background: rgba(255,255,255,.1);
+    padding: 12px 16px;
+    border-radius: 12px;
+    backdrop-filter: blur(6px);
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  @media (max-width: 640px) {
+    section { padding: 36px 0; }
+    .tipos-grid { grid-template-columns: 1fr; }
+    .paso { grid-template-columns: 40px 1fr; }
+    .paso-num { width: 34px; height: 34px; font-size: 16px; }
+    nav.toc .inner { overflow-x: auto; flex-wrap: nowrap; }
+  }
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="container">
+    <h1>🛒 Cómo crear una<br>Orden de Compra</h1>
+    <p class="subtitle">
+      Una guía visual y sin tecnicismos para que cualquier persona del equipo entienda
+      qué tipo de orden crear y cómo llenarla bien la primera vez.
+    </p>
+    <div class="meta">
+      <span>⚡ 10 min de lectura</span>
+      <span>👨‍🎓 Para todos los niveles</span>
+      <span>✅ Ejemplos reales de Metal Engineers</span>
+    </div>
+    <div class="hero-icons">
+      <div class="hero-icon">🏢 General</div>
+      <div class="hero-icon">🔧 Servicio</div>
+      <div class="hero-icon">📦 Almacén</div>
+      <div class="hero-icon">👤 Honorario</div>
+      <div class="hero-icon">⛽ Gasto operativo</div>
+    </div>
+  </div>
+</header>
+
+<nav class="toc">
+  <div class="inner">
+    <a href="#que-es">📖 ¿Qué es?</a>
+    <a href="#decidir">🤔 ¿Qué tipo elijo?</a>
+    <a href="#general">🏢 GENERAL</a>
+    <a href="#servicio">🔧 SERVICIO</a>
+    <a href="#almacen">📦 ALMACÉN</a>
+    <a href="#honorario">👤 Honorario</a>
+    <a href="#gasto-op">⛽ Gasto operativo</a>
+    <a href="#estados">🚦 Estados</a>
+    <a href="#pagos">💸 Pagos</a>
+    <a href="#faq">❓ Dudas</a>
+  </div>
+</nav>
+
+<!-- QUÉ ES -->
+<section id="que-es">
+  <div class="container">
+    <h2><span class="em">📖</span>¿Qué es una Orden de Compra?</h2>
+    <p class="lead">
+      Pensá una OC como un <strong>"voy a comprar esto"</strong> que queda escrito en el sistema
+      antes de pagar. Sirve para que todos en la empresa sepan qué se compró, a quién, por
+      cuánto y para qué proyecto.
+    </p>
+
+    <div class="dialogo">
+      <p class="pregunta">¿Y por qué no compro y listo?</p>
+      <p class="respuesta">
+        Porque si no queda registrada, cuando llega el voucher del banco nadie sabe a qué
+        corresponde. La OC es el "papel" que después se cruza con el pago, la factura y la
+        recepción del producto. Sin ella, todo es un caos contable. 💸
+      </p>
+    </div>
+
+    <div class="ejemplo">
+      <p class="titulo">✨ Ejemplo cotidiano</p>
+      <p class="escena">
+        Imaginá que tu mamá te pide ir a comprar pan. Le decís: <strong>"voy a comprar 5
+        baguettes a S/ 2 cada una en la panadería de la esquina"</strong>. Eso es la OC.
+        Después volvés con el pan (recepción), le pagaste al panadero (pago) y le mostrás
+        el ticket (factura). Sin haber dicho qué ibas a comprar, ella no sabe si compraste
+        bien.
+      </p>
+    </div>
+  </div>
+</section>
+
+<!-- DECIDIR -->
+<section id="decidir">
+  <div class="container">
+    <h2><span class="em">🤔</span>¿Qué tipo de orden tengo que crear?</h2>
+    <p class="lead">
+      Antes de llenar nada, respondé estas preguntas en orden. Te llevan al tipo correcto:
+    </p>
+
+    <div class="decision-tree">
+      <h4>🌳 Árbol de decisión</h4>
+
+      <div class="opcion">
+        <div class="si">1️⃣</div>
+        <div>
+          <strong>¿Es para un proyecto específico de un cliente?</strong>
+          (algo que estás haciendo para Promafa, Drill, PDI, etc.)
+          <div style="margin-top: 6px;">
+            <span class="flecha">→ SÍ</span>: Es <code>SERVICIO</code>. Seguí a la pregunta 2.<br>
+            <span class="flecha">→ NO</span>: Pasá a la pregunta 4.
+          </div>
+        </div>
+      </div>
+
+      <div class="opcion">
+        <div class="si">2️⃣</div>
+        <div>
+          <strong>¿Es plata para una persona natural con DNI?</strong>
+          (no es factura de empresa, es Recibo por Honorarios)
+          <div style="margin-top: 6px;">
+            <span class="flecha">→ SÍ</span>: Es <code>SERVICIO + Honorario</code>. Marcá el checkbox <em>"RH persona natural"</em>.<br>
+            <span class="flecha">→ NO</span>: Seguí a la pregunta 3.
+          </div>
+        </div>
+      </div>
+
+      <div class="opcion">
+        <div class="si">3️⃣</div>
+        <div>
+          <strong>¿El producto se consume en obra y NO entra al almacén?</strong>
+          (combustible, taxi, viático, comida del personal en campo)
+          <div style="margin-top: 6px;">
+            <span class="flecha">→ SÍ</span>: Es <code>SERVICIO + Gasto operativo</code>. Marcá el checkbox amarillo.<br>
+            <span class="flecha">→ NO</span>: Es <code>SERVICIO estándar</code> (insumo del proyecto que sí entra al almacén).
+          </div>
+        </div>
+      </div>
+
+      <div class="opcion">
+        <div class="si">4️⃣</div>
+        <div>
+          <strong>¿Son insumos para tener en stock?</strong>
+          (soldadura, brocas, alambre, lijas — cosas que vas a guardar y consumir después)
+          <div style="margin-top: 6px;">
+            <span class="flecha">→ SÍ</span>: Es <code>ALMACÉN</code>. Va al inventario valorado.<br>
+            <span class="flecha">→ NO</span>: Es <code>GENERAL</code>. Gastos de oficina (luz, agua, internet, hosting, etc.)
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="tip">
+      💡 <strong>Regla del pulgar:</strong> si el gasto es POR un proyecto del cliente, es SERVICIO.
+      Si es para la operación interna de la empresa, es GENERAL o ALMACÉN.
+    </div>
+  </div>
+</section>
+
+<!-- LOS 5 TIPOS -->
+<section>
+  <div class="container">
+    <h2><span class="em">🎯</span>Las 5 variantes que existen en el sistema</h2>
+    <p class="lead">Cada una se diferencia por dónde va el costo y cómo es el flujo.</p>
+
+    <div class="tipos-grid">
+
+      <div class="tipo-card">
+        <div class="icono">🏢</div>
+        <span class="tag tag-general">GENERAL</span>
+        <h3>Gastos de oficina</h3>
+        <p>Lo que la empresa paga para funcionar día a día. No es para un cliente puntual.</p>
+        <div class="cuando">
+          <strong>Cuándo usar:</strong> Luz, agua, internet, hosting, sueldos administrativos,
+          alquiler, papelería de oficina.
+        </div>
+      </div>
+
+      <div class="tipo-card">
+        <div class="icono">🔧</div>
+        <span class="tag tag-servicio">SERVICIO</span>
+        <h3>Insumo de proyecto</h3>
+        <p>Lo que comprás específicamente para un trabajo de un cliente y que entra al almacén o se factura junto al proyecto.</p>
+        <div class="cuando">
+          <strong>Cuándo usar:</strong> Acero especial para fabricar dobladoras, soldadura
+          comprada exclusiva para la obra de Promafa, planchas para core barrel de Drill.
+        </div>
+      </div>
+
+      <div class="tipo-card">
+        <div class="icono">📦</div>
+        <span class="tag tag-almacen">ALMACÉN</span>
+        <h3>Stock general</h3>
+        <p>Insumos para tener disponibles. No están ligados a un proyecto al momento de comprarlos.</p>
+        <div class="cuando">
+          <strong>Cuándo usar:</strong> Comprar 30 cajas de soldadura 7018 para tener en
+          stock, 50 brocas, 20 m de alambre. Después se va consumiendo a varios proyectos.
+        </div>
+      </div>
+
+      <div class="tipo-card">
+        <div class="icono">👤</div>
+        <span class="tag tag-honorario">HONORARIO</span>
+        <h3>Pago a persona natural</h3>
+        <p>Cuando contratás a alguien con DNI (no empresa) que te va a emitir Recibo por Honorarios.</p>
+        <div class="cuando">
+          <strong>Cuándo usar:</strong> Pagás S/ 1,200 a Jorge (topógrafo) por su trabajo en
+          obra. No es factura, es RH. Puede ser SERVICIO o GENERAL según para qué fue.
+        </div>
+      </div>
+
+      <div class="tipo-card">
+        <div class="icono">⛽</div>
+        <span class="tag tag-gasto">GASTO OPERATIVO</span>
+        <h3>Gasto consumido en obra</h3>
+        <p>Solo aplica a SERVICIO. Cosas que se consumen al pagarse y no van al almacén.</p>
+        <div class="cuando">
+          <strong>Cuándo usar:</strong> Combustible para la camioneta que va a obra, taxi
+          para visitar al cliente, viáticos de comida del personal en campo, reembolsos
+          chicos al técnico.
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- GENERAL -->
+<section id="general">
+  <div class="container">
+    <h2><span class="em">🏢</span>Cómo crear una OC GENERAL</h2>
+    <p class="lead">El caso más simple. Es un gasto de oficina y va directo a "OFICINA CENTRAL".</p>
+
+    <div class="pasos">
+      <div class="paso">
+        <div class="paso-num">1</div>
+        <div class="paso-content">
+          Entrá a <strong>Logística → Órdenes de Compra → ➕ Nueva OC</strong>.
+        </div>
+      </div>
+      <div class="paso">
+        <div class="paso-num">2</div>
+        <div class="paso-content">
+          En <strong>Tipo</strong>, elegí <code>General (oficina)</code>.
+        </div>
+      </div>
+      <div class="paso">
+        <div class="paso-num">3</div>
+        <div class="paso-content">
+          <strong>Empresa</strong>: ME (Metal Engineers, soles) o PT (Perfotools, dólares).
+        </div>
+      </div>
+      <div class="paso">
+        <div class="paso-num">4</div>
+        <div class="paso-content">
+          <strong>Proveedor</strong>: elegí del catálogo. Si no está, primero creálo en
+          la pestaña <em>Proveedores</em>.
+        </div>
+      </div>
+      <div class="paso">
+        <div class="paso-num">5</div>
+        <div class="paso-content">
+          <strong>Centro de costo</strong>: queda <code>OFICINA CENTRAL</code> por defecto.
+        </div>
+      </div>
+      <div class="paso">
+        <div class="paso-num">6</div>
+        <div class="paso-content">
+          Agregá <strong>líneas</strong> con la descripción, cantidad y precio unitario.
+          Tildá "Aplica IGV 18%" si el proveedor te emite factura.
+        </div>
+      </div>
+      <div class="paso">
+        <div class="paso-num">7</div>
+        <div class="paso-content">
+          Click <strong>"Crear OC"</strong>. Se genera el PDF formal automáticamente.
+        </div>
+      </div>
+    </div>
+
+    <div class="ejemplo">
+      <p class="titulo">📄 Ejemplo real</p>
+      <p class="escena">
+        El recibo de luz de Enel del mes vino S/ 450. Creás OC <strong>GENERAL</strong> con
+        proveedor "Enel Distribución Perú", una línea "Energía eléctrica enero 2026 — 245
+        kWh" por S/ 450. CC: <strong>OFICINA CENTRAL</strong>. Aplica IGV ✅.
+      </p>
+    </div>
+
+    <div class="tip">
+      💡 Las OC GENERAL <strong>no necesitan recepción</strong>. Cuando se pagan, pasan
+      directo a FACTURACIÓN para esperar el comprobante del proveedor.
+    </div>
+  </div>
+</section>
+
+<!-- SERVICIO -->
+<section id="servicio">
+  <div class="container">
+    <h2><span class="em">🔧</span>Cómo crear una OC SERVICIO (insumo de proyecto)</h2>
+    <p class="lead">
+      Cuando comprás algo <em>específicamente</em> para un proyecto de un cliente.
+      Va al almacén (recepción) y el costo se imputa al proyecto.
+    </p>
+
+    <div class="pasos">
+      <div class="paso">
+        <div class="paso-num">1</div>
+        <div class="paso-content">
+          <strong>Antes que nada</strong>: el proyecto del cliente tiene que tener un
+          <strong>Centro de Costo creado</strong> que esté vinculado a la cotización.<br>
+          <em>Tip:</em> creás el CC desde la pestaña "Centros de Costo" y lo vinculás a la
+          cotización fondeada o en TRABAJO_EN_RIESGO.
+        </div>
+      </div>
+      <div class="paso">
+        <div class="paso-num">2</div>
+        <div class="paso-content">
+          En el form de Nueva OC, elegí <strong>Tipo: Servicio</strong>.
+        </div>
+      </div>
+      <div class="paso">
+        <div class="paso-num">3</div>
+        <div class="paso-content">
+          Aparece el selector <strong>Proyecto/Cotización</strong>. Elegí la cotización del
+          cliente. El CC se autocompleta. La moneda y TC se ajustan según la cotización.
+        </div>
+      </div>
+      <div class="paso">
+        <div class="paso-num">4</div>
+        <div class="paso-content">
+          Llenás proveedor, líneas, IGV. Igual que General.
+        </div>
+      </div>
+      <div class="paso">
+        <div class="paso-num">5</div>
+        <div class="paso-content">
+          Crear. El PDF se genera con el CC del proyecto y queda enlazada para que el costo
+          se vea en <strong>Producción</strong>.
+        </div>
+      </div>
+    </div>
+
+    <div class="ejemplo">
+      <p class="titulo">🛠 Ejemplo real</p>
+      <p class="escena">
+        Estás fabricando un Auger para PDI S.A.C. (proyecto "Venta de Auger para fundas de
+        1000", CC: <strong>VENTA DE AUGER PARA FUNDAS DE 1000</strong>). Necesitás comprar
+        2 planchas de acero A36 al proveedor "Aceros Bohler S.A." por S/ 1,800. Creás OC
+        SERVICIO, elegís la cotización PDI, las planchas entran al almacén cuando lleguen
+        físicamente, y el costo se imputa al proyecto PDI.
+      </p>
+    </div>
+
+    <div class="warning">
+      ⚠️ Si no ves la cotización en el desplegable, es porque no tiene CC vinculado.
+      Andá a "Centros de Costo" → "+ Nuevo" tipo PROYECTO y vinculá la cotización primero.
+    </div>
+  </div>
+</section>
+
+<!-- ALMACEN -->
+<section id="almacen">
+  <div class="container">
+    <h2><span class="em">📦</span>Cómo crear una OC ALMACÉN (stock)</h2>
+    <p class="lead">
+      Para comprar insumos a granel sin un proyecto específico al momento.
+      Los items entran al inventario valorado.
+    </p>
+
+    <div class="pasos">
+      <div class="paso">
+        <div class="paso-num">1</div>
+        <div class="paso-content">
+          En Nueva OC, elegí <strong>Tipo: Almacén</strong>.
+        </div>
+      </div>
+      <div class="paso">
+        <div class="paso-num">2</div>
+        <div class="paso-content">
+          <strong>Centro de costo</strong>: ALMACEN METAL (default).
+        </div>
+      </div>
+      <div class="paso">
+        <div class="paso-num">3</div>
+        <div class="paso-content">
+          En las líneas, elegí <strong>items del catálogo de Inventario</strong>. Si no
+          existen, los creás antes en la pestaña Inventario.
+        </div>
+      </div>
+      <div class="paso">
+        <div class="paso-num">4</div>
+        <div class="paso-content">
+          Cuando llegue el material, hacés la <strong>Recepción</strong> (botón verde en
+          el detalle de la OC). El stock sube automáticamente.
+        </div>
+      </div>
+    </div>
+
+    <div class="ejemplo">
+      <p class="titulo">📥 Ejemplo real</p>
+      <p class="escena">
+        Comprás 30 cajas de Soldadura 7018 1/8" Supercito al proveedor "Distribuidora Soldex"
+        por S/ 13.56 × 30 = S/ 406.80. CC: <strong>ALMACEN METAL</strong>. Cuando llegan, hacés
+        recepción y el inventario muestra +30 cajas. Después se va consumiendo a los proyectos
+        que las necesiten.
+      </p>
+    </div>
+
+    <div class="tip">
+      💡 La diferencia clave entre SERVICIO y ALMACÉN: SERVICIO ya sabe a qué proyecto va
+      (lo imputa). ALMACÉN va al stock general y se imputa a un proyecto solo cuando alguien
+      retira material desde Inventario.
+    </div>
+  </div>
+</section>
+
+<!-- HONORARIO -->
+<section id="honorario">
+  <div class="container">
+    <h2><span class="em">👤</span>Cómo crear una OC con Honorario</h2>
+    <p class="lead">
+      Cuando contratás a una persona natural (con DNI) que va a emitir Recibo por Honorarios.
+      No es factura, no lleva IGV. Salta el paso de "recepción".
+    </p>
+
+    <div class="pasos">
+      <div class="paso">
+        <div class="paso-num">1</div>
+        <div class="paso-content">
+          En el form de Nueva OC, llenás todo normal: tipo (puede ser GENERAL o SERVICIO),
+          proveedor (que sea una persona física, con DNI), líneas, etc.
+        </div>
+      </div>
+      <div class="paso">
+        <div class="paso-num">2</div>
+        <div class="paso-content">
+          <strong>Desmarcá "Aplica IGV 18%"</strong>. Los honorarios no llevan IGV.
+        </div>
+      </div>
+      <div class="paso">
+        <div class="paso-num">3</div>
+        <div class="paso-content">
+          En el detalle de la OC verás un campo <code>es_honorario</code> que se marca
+          automáticamente cuando el proveedor está registrado con tipo PERSONA NATURAL.
+        </div>
+      </div>
+      <div class="paso">
+        <div class="paso-num">4</div>
+        <div class="paso-content">
+          Al pagar, la OC salta el estado RECEPCION y va directo a esperar el RH del
+          proveedor (estado FACTURACION con label "RH pendiente").
+        </div>
+      </div>
+    </div>
+
+    <div class="ejemplo">
+      <p class="titulo">🧾 Ejemplo real</p>
+      <p class="escena">
+        Contratás a <strong>Jorge Roman Hurtado (DNI 12345678)</strong> para hacer un
+        levantamiento topográfico en obra Promafa por S/ 1,200. Creás OC SERVICIO + honorario,
+        sin IGV, vinculada al CC PROMAFA SAC. Cuando le pagás, queda esperando que Jorge
+        emita el RH electrónico desde SUNAT. Vos cargás el PDF cuando llegue.
+      </p>
+    </div>
+  </div>
+</section>
+
+<!-- GASTO OPERATIVO -->
+<section id="gasto-op">
+  <div class="container">
+    <h2><span class="em">⛽</span>Cómo crear una OC con Gasto Operativo</h2>
+    <p class="lead">
+      Solo aplica a SERVICIO. Es para cosas que se consumen <em>en obra</em> y no entran
+      al almacén: combustible, taxis, viáticos, reembolsos de campo.
+    </p>
+
+    <div class="pasos">
+      <div class="paso">
+        <div class="paso-num">1</div>
+        <div class="paso-content">
+          Tipo: <strong>Servicio</strong>. Elegís el proyecto/cotización.
+        </div>
+      </div>
+      <div class="paso">
+        <div class="paso-num">2</div>
+        <div class="paso-content">
+          Más abajo en el form vas a ver un <strong>checkbox amarillo</strong> que dice:
+          <em>"Gasto operativo del proyecto (combustible, taxi, viáticos, reembolsos de
+          campo)"</em>. <strong>Tildalo.</strong>
+        </div>
+      </div>
+      <div class="paso">
+        <div class="paso-num">3</div>
+        <div class="paso-content">
+          Llenás las líneas (ej: "PETROLEO 90 octanos", 1 GLB, S/ 50).
+        </div>
+      </div>
+      <div class="paso">
+        <div class="paso-num">4</div>
+        <div class="paso-content">
+          Al pagar, la OC <strong>NO pasa por recepción</strong> (el combustible ya se gastó
+          en la camioneta, no hay nada que recibir al almacén). Va directo de PAGO →
+          FACTURACION → TERMINADA.
+        </div>
+      </div>
+    </div>
+
+    <div class="ejemplo">
+      <p class="titulo">⛽ Ejemplo real</p>
+      <p class="escena">
+        El conductor cargó S/ 50 de petróleo en Repsol antes de salir a la obra de Promafa
+        en Puente Piedra. El recibo lo tenés escaneado. Creás OC SERVICIO vinculada a
+        Promafa, tildás <strong>"Gasto operativo del proyecto"</strong>, una línea "Petróleo
+        para servicio de topografía" por S/ 50. Cuando se paga al conductor (o por banco),
+        la OC pasa directo a FACTURACION sin requerir recepción al almacén.
+      </p>
+    </div>
+
+    <div class="warning">
+      ⚠️ Importante: el costo se imputa al proyecto <strong>al pagar la OC</strong>, no
+      cuando se crea. Hasta que no se pague, no aparece como gasto del proyecto en
+      Producción.
+    </div>
+  </div>
+</section>
+
+<!-- ESTADOS -->
+<section id="estados">
+  <div class="container">
+    <h2><span class="em">🚦</span>Por qué estados pasa una OC</h2>
+    <p class="lead">
+      Toda OC viaja por estos pasos hasta cerrarse. Cada paso tiene una acción específica.
+    </p>
+
+    <div class="estados-flow">
+      <div class="estado-step">
+        <div class="icono">📝</div>
+        <div class="nombre">BORRADOR</div>
+        <div class="desc">Se está armando</div>
+      </div>
+      <div class="estado-step">
+        <div class="icono">✅</div>
+        <div class="nombre">APROBADA</div>
+        <div class="desc">Firmada y lista</div>
+      </div>
+      <div class="estado-step">
+        <div class="icono">💰</div>
+        <div class="nombre">PAGO</div>
+        <div class="desc">Esperando pago</div>
+      </div>
+      <div class="estado-step">
+        <div class="icono">📦</div>
+        <div class="nombre">RECEPCIÓN</div>
+        <div class="desc">Esperando llegada</div>
+      </div>
+      <div class="estado-step">
+        <div class="icono">🧾</div>
+        <div class="nombre">FACTURACIÓN</div>
+        <div class="desc">Esperando factura/RH</div>
+      </div>
+      <div class="estado-step">
+        <div class="icono">🏁</div>
+        <div class="nombre">TERMINADA</div>
+        <div class="desc">Cerrada al 100%</div>
+      </div>
+    </div>
+
+    <div class="tip">
+      💡 <strong>Cuándo se saltea RECEPCIÓN:</strong>
+      <ul style="margin: 8px 0 0; padding-left: 20px;">
+        <li>OC <strong>GENERAL</strong> (no hay nada físico que recibir)</li>
+        <li>OC con <strong>Honorario</strong> (es servicio de persona)</li>
+        <li>OC con <strong>Gasto Operativo</strong> (ya se consumió)</li>
+      </ul>
+    </div>
+
+    <div class="ejemplo">
+      <p class="titulo">📊 Viaje de una OC ALMACÉN</p>
+      <p class="escena">
+        <strong>Lunes:</strong> creás la OC para comprar 30 soldaduras → BORRADOR.<br>
+        <strong>Martes:</strong> el Gerente firma → APROBADA.<br>
+        <strong>Miércoles:</strong> finanzas paga el 50% → PAGO (PARCIAL).<br>
+        <strong>Jueves:</strong> finanzas paga el 50% restante → PAGO (PAGADO) → RECEPCIÓN.<br>
+        <strong>Viernes:</strong> llega el material al almacén → confirmás recepción →
+        FACTURACIÓN.<br>
+        <strong>Lunes siguiente:</strong> cargás la factura del proveedor → TERMINADA. ✅
+      </p>
+    </div>
+  </div>
+</section>
+
+<!-- PAGOS -->
+<section id="pagos">
+  <div class="container">
+    <h2><span class="em">💸</span>Cómo registrar pagos (uno o varios)</h2>
+    <p class="lead">
+      Una OC se puede pagar de a partes. Cada pago lleva su constancia bancaria (PDF/foto).
+    </p>
+
+    <div class="pasos">
+      <div class="paso">
+        <div class="paso-num">1</div>
+        <div class="paso-content">
+          Abrí el detalle de la OC (debe estar en estado PAGO, RECEPCIÓN o FACTURACIÓN).
+        </div>
+      </div>
+      <div class="paso">
+        <div class="paso-num">2</div>
+        <div class="paso-content">
+          Click en el botón verde <strong>"💰 Registrar pago"</strong>.
+        </div>
+      </div>
+      <div class="paso">
+        <div class="paso-num">3</div>
+        <div class="paso-content">
+          Elegí la cuenta de la que sale el dinero (Caja Soles o Caja Dólares).
+        </div>
+      </div>
+      <div class="paso">
+        <div class="paso-num">4</div>
+        <div class="paso-content">
+          <strong>Monto a pagar</strong>: viene por defecto con el saldo pendiente. Si pagás
+          parcial, bajalo. Ej: si la OC es S/ 1,000 y pagaste solo S/ 400, escribí 400.
+        </div>
+      </div>
+      <div class="paso">
+        <div class="paso-num">5</div>
+        <div class="paso-content">
+          <strong>N° operación</strong>: opcional pero recomendado. Ponelo del voucher
+          bancario para poder cruzarlo después en el Libro Bancos.
+        </div>
+      </div>
+      <div class="paso">
+        <div class="paso-num">6</div>
+        <div class="paso-content">
+          <strong>📎 Constancia bancaria</strong>: subí el PDF o foto del voucher. Es opcional
+          al momento del pago pero <em>siempre</em> recomendado.
+        </div>
+      </div>
+      <div class="paso">
+        <div class="paso-num">7</div>
+        <div class="paso-content">
+          Click <strong>"Confirmar pago"</strong>. Si era pago parcial, la OC queda en
+          estado PARCIAL y podés volver a registrar otro pago cuando hagas el siguiente.
+        </div>
+      </div>
+    </div>
+
+    <div class="ejemplo">
+      <p class="titulo">💳 Ejemplo con 3 pagos</p>
+      <p class="escena">
+        Comprás material al proveedor "Aceros Bohler" por <strong>S/ 1,800</strong>.<br>
+        <strong>10/01:</strong> pagás anticipo del 30% = S/ 540 → subís el voucher anticipo.pdf.
+        Queda en PARCIAL.<br>
+        <strong>20/01:</strong> pagás S/ 600 más → subís voucher segundo_pago.pdf. Sigue PARCIAL.<br>
+        <strong>30/01:</strong> pagás el saldo S/ 660 → subís voucher final.pdf. Pasa a PAGADO.<br>
+        En el detalle ves las 3 filas con sus 3 constancias. La caja descontó exactamente
+        S/ 1,800 en 3 momentos.
+      </p>
+    </div>
+
+    <div class="tip">
+      💡 Si te olvidaste de subir la constancia al pagar, podés agregarla después: abrí el
+      detalle de la OC → sección "💸 PAGOS REGISTRADOS" → botón <strong>"📎 Subir constancia"</strong>
+      en la fila del pago sin voucher.
+    </div>
+
+    <div class="warning">
+      ⚠️ <strong>Comisión bancaria:</strong> el banco suele cobrar S/ 3-7 extra cuando
+      transferís a una cuenta de otro banco. <em>No lo cargues como pago de OC</em> — lo
+      maneja Finanzas al conciliar el extracto del Libro Bancos (botón "💱 Split N/D").
+    </div>
+  </div>
+</section>
+
+<!-- FAQ -->
+<section id="faq">
+  <div class="container">
+    <h2><span class="em">❓</span>Preguntas frecuentes</h2>
+    <p class="lead">Las dudas más comunes que aparecen cuando alguien empieza a usar el sistema.</p>
+
+    <details class="faq">
+      <summary>¿Y si me equivoco al elegir el tipo? ¿Puedo cambiar?</summary>
+      <div class="answer">
+        Sí, mientras la OC esté en estado BORRADOR o APROBADA podés editarla y cambiar el
+        tipo. Una vez que se registró un pago, ya no se puede cambiar el tipo (porque se
+        creó un costo asociado). Si era un error grande, se anula y se crea una nueva.
+      </div>
+    </details>
+
+    <details class="faq">
+      <summary>¿Quién aprueba las OC? ¿Yo o el Gerente?</summary>
+      <div class="answer">
+        Depende del monto. OCs hasta cierto monto las puede firmar el supervisor; arriba de
+        ese monto requiere firma del Gerente. La regla está configurada en "Configuración →
+        Firmas". Al cumplirse el umbral de firmas, la OC pasa automáticamente a estado PAGO.
+      </div>
+    </details>
+
+    <details class="faq">
+      <summary>¿Qué es un Centro de Costo? ¿Tengo que crearlo siempre?</summary>
+      <div class="answer">
+        El Centro de Costo es como una <strong>"caja"</strong> donde se acumulan los gastos
+        de algo específico. <code>OFICINA CENTRAL</code> acumula gastos de la empresa.
+        Cada proyecto tiene su propio CC (ej: <code>PROMAFA SAC</code>). Las OC ALMACÉN
+        van a <code>ALMACEN METAL</code>. Cuando crees una OC SERVICIO nueva, el CC del
+        proyecto tiene que existir antes (lo creás en la pestaña "Centros de Costo" y lo
+        vinculás a la cotización del cliente).
+      </div>
+    </details>
+
+    <details class="faq">
+      <summary>¿Cuál es la diferencia entre SERVICIO normal y SERVICIO con Gasto Operativo?</summary>
+      <div class="answer">
+        Las dos van al proyecto. La diferencia es <strong>si el ítem es físico o no</strong>.
+        <ul>
+          <li><strong>SERVICIO normal</strong>: planchas de acero, soldadura, brocas. Entra
+          al almacén con la recepción y suma al inventario.</li>
+          <li><strong>SERVICIO con Gasto Operativo</strong>: combustible, taxi, comida en
+          campo. No es algo que se inventaría. Se imputa al proyecto al pagar.</li>
+        </ul>
+        Si tildás Gasto Operativo, la OC se saltea el paso RECEPCIÓN.
+      </div>
+    </details>
+
+    <details class="faq">
+      <summary>¿Tengo que llenar Atención, Lugar de Entrega, todo?</summary>
+      <div class="answer">
+        Si la OC va a salir como PDF al proveedor, sí — cuanto más completa, más
+        profesional se ve. Si es un gasto interno chico, podés dejarlos en blanco. El
+        sistema rellena con defaults razonables (ej: Lugar de Entrega = Lima).
+      </div>
+    </details>
+
+    <details class="faq">
+      <summary>¿Puedo pagar una OC desde la cuenta en dólares aunque la OC sea en soles?</summary>
+      <div class="answer">
+        Sí, podés hacerlo. El sistema convierte automáticamente al TC del día. Esto se usa
+        cuando Perfotools le presta a Metal Engineers para cubrir un pago en soles —
+        recordá registrar después la "Transferencia Interna" en el módulo de Finanzas para
+        que el saldo entre marcas quede correcto.
+      </div>
+    </details>
+
+    <details class="faq">
+      <summary>¿Qué pasa si anulo una OC ya pagada?</summary>
+      <div class="answer">
+        Solo el Gerente puede anular OCs pagadas. Si la anulás, se anulan también:
+        <ul>
+          <li>Los movimientos bancarios asociados (el dinero "vuelve" a la caja).</li>
+          <li>Los CostoServicio imputados al proyecto.</li>
+          <li>Los movimientos de inventario (en ALMACÉN).</li>
+        </ul>
+        Queda registrada como ANULADA con la razón. Usalo solo cuando hay un error real,
+        no para corregir cosas menores.
+      </div>
+    </details>
+
+    <details class="faq">
+      <summary>El proveedor no tiene cuenta en mi banco. ¿Eso afecta la OC?</summary>
+      <div class="answer">
+        No afecta la OC en sí. Pero cuando finanzas haga la transferencia, el banco va a
+        cobrar una <strong>comisión interbancaria</strong> (S/ 3-7 aprox.). En el extracto
+        bancario aparece como "I-BANC + COM.O/CI-BANC". Finanzas resuelve esto con la
+        herramienta <strong>💱 Split N/D</strong> en el Libro Bancos. Vos no te preocupes,
+        seguís cargando la OC por el monto sin comisión.
+      </div>
+    </details>
+
+    <details class="faq">
+      <summary>¿Y si la OC tiene varios items, todos van al mismo proyecto?</summary>
+      <div class="answer">
+        Sí. Una OC tiene un solo Centro de Costo. Si comprás cosas para 2 proyectos
+        distintos al mismo proveedor en una misma compra física, lo correcto es <strong>crear
+        2 OCs separadas</strong>, una para cada CC. Así cada proyecto tiene imputado solo
+        lo suyo.
+      </div>
+    </details>
+
+    <details class="faq">
+      <summary>¿Dónde veo cuánto gasté en un proyecto?</summary>
+      <div class="answer">
+        Andá a <strong>Producción</strong> y vas a ver una fila por cada proyecto activo
+        con sus columnas:
+        <ul>
+          <li><strong>Cotizado</strong>: lo que acordaste con el cliente.</li>
+          <li><strong>Comprometido</strong>: suma de OCs autorizadas (incluye BORRADOR y APROBADA).</li>
+          <li><strong>Pagado real</strong>: caja que efectivamente salió + retiros de almacén.</li>
+          <li><strong>Margen</strong>: cotizado − comprometido.</li>
+        </ul>
+        Si la fila aparece roja, el proyecto está en déficit.
+      </div>
+    </details>
+
+  </div>
+</section>
+
+<footer>
+  <span class="emoji">🛒</span>
+  Tutorial — Órdenes de Compra<br>
+  Metal Engineers SAC · v1 · 15/05/2026
+</footer>
+
+</body>
+</html>
