@@ -419,7 +419,7 @@ window.ensureOCModal = ensureOCModal;
 // a OC.verOC sin haber montado el TabBar de OrdenesCompra). Las function
 // declarations se hoistean, así que las referencias funcionan aunque estén
 // definidas más abajo en el archivo.
-window.OC = { nuevaOC, verOC, aprobar, aprobarParaPago, listoParaFacturar, marcarCredito, subirFactura, eliminarFactura, subirVoucherPago, eliminarVoucherPago, firmar, desfirmar, agregarNota, borrarNota, recibir, facturar, registrarPago, cerrarSinFactura, cerrarPagaSinFactura, asociarFactura, anular, reactivar, eliminarOC, mandarABorrador, editar, editarFecha, editarMetadata: editarMetadataOC, descargarPDF, reporteROC, marcarEnTransito, desmarcarTransito, cerrarImportacion, vincularMadre, desvincularMadre, descargarExcel: () => api.ordenesCompra.descargarExcel().catch(e => showError(e.message || 'Error descargando Excel')) };
+window.OC = { nuevaOC, verOC, aprobar, aprobarParaPago, listoParaFacturar, marcarCredito, subirFactura, eliminarFactura, subirVoucherPago, eliminarVoucherPago, firmar, desfirmar, agregarNota, borrarNota, recibir, facturar, registrarPago, cerrarSinFactura, cerrarPagaSinFactura, asociarFactura, anular, reactivar, eliminarOC, mandarABorrador, editar, editarFecha, editarMetadata: editarMetadataOC, descargarPDF, reporteROC, marcarEnTransito, desmarcarTransito, cerrarImportacion, vincularMadre, desvincularMadre, vincularMadreServicio, verGastosVinculados, _vincularDesdeModal, _desvincularDesdeModal, descargarExcel: () => api.ordenesCompra.descargarExcel().catch(e => showError(e.message || 'Error descargando Excel')) };
 
 // ═════════════════════════════════════════════════════════════════════════
 // IMPORTACIONES — landed cost (mig 068)
@@ -468,13 +468,223 @@ async function vincularMadre(id_oc, nro) {
 }
 
 async function desvincularMadre(id_oc, nro) {
-  if (!confirm(`¿Desvincular ${nro} de su importación madre?\n\nSus gastos dejarán de formar parte del landed cost.`)) return;
+  if (!confirm(`¿Desvincular ${nro} de su OC madre?\n\nDejará de formar parte del costo total agrupado.`)) return;
   try {
     await api.ordenesCompra.desvincularMadre(id_oc);
     showSuccess('Desvinculada');
     if (document.getElementById('oc-modal')?.innerHTML) verOC(id_oc);
     if (window.refreshModule) window.refreshModule();
   } catch (e) { showError(e.message || 'Error'); }
+}
+
+// Vincular una OC gasto_operativo a su SERVICIO madre del mismo CC.
+// Lista las OCs SERVICIO no-gasto-operativo del mismo proyecto y deja al usuario elegir.
+async function vincularMadreServicio(id_oc, nro) {
+  let ocSat, todas;
+  try {
+    [ocSat, todas] = await Promise.all([
+      api.ordenesCompra.get(id_oc),
+      api.ordenesCompra.list({})
+    ]);
+  } catch (e) {
+    showError(e.message || 'Error cargando datos'); return;
+  }
+  if (!ocSat?.id_centro_costo) {
+    showError('Esta OC no tiene centro de costo asignado. Asigná uno primero.'); return;
+  }
+  const ccId = Number(ocSat.id_centro_costo);
+  const candidatas = (todas || []).filter(m =>
+    m.tipo_oc === 'SERVICIO' &&
+    !m.es_gasto_operativo &&
+    Number(m.id_centro_costo) === ccId &&
+    m.estado !== 'ANULADA' &&
+    m.id_oc !== id_oc
+  );
+  if (!candidatas.length) {
+    showError(`No hay OCs SERVICIO en el centro de costo "${ocSat.centro_costo || '?'}" para vincular. La OC madre debe ser tipo SERVICIO y NO estar marcada como gasto operativo.`);
+    return;
+  }
+  // Modal con tabla de candidatas + radio para elegir
+  const ov = document.createElement('div');
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9999;display:flex;align-items:flex-start;justify-content:center;padding:30px 20px;overflow-y:auto';
+  const filas = candidatas.map(m => `
+    <tr style="border-bottom:1px solid #e5e7eb;cursor:pointer" data-id-madre="${m.id_oc}" data-row>
+      <td style="padding:8px"><input type="radio" name="madre-pick" value="${m.id_oc}"></td>
+      <td style="padding:8px;font-size:12px;font-weight:600">${m.nro_oc}</td>
+      <td style="padding:8px;font-size:12px">${m.proveedor_nombre || '—'}</td>
+      <td style="padding:8px;font-size:12px;color:#6b7280">${m.estado}</td>
+      <td style="padding:8px;font-size:12px;text-align:right">${m.moneda} ${Number(m.total || 0).toFixed(2)}</td>
+    </tr>`).join('');
+  ov.innerHTML = `
+    <div style="background:#fff;border-radius:8px;width:min(800px,95vw);box-shadow:0 20px 60px rgba(0,0,0,.3);max-height:calc(100vh - 60px);overflow-y:auto;position:relative">
+      <button data-close type="button" title="Cerrar" aria-label="Cerrar" style="position:absolute;top:14px;right:14px;background:#fff;border:1px solid #d1d5db;border-radius:50%;width:30px;height:30px;font-size:18px;cursor:pointer;color:#64748b;z-index:10;display:flex;align-items:center;justify-content:center;line-height:1">×</button>
+      <div style="padding:24px">
+        <h3 style="margin:0 0 8px;font-size:18px">🔗 Vincular ${nro} a OC madre</h3>
+        <p style="margin:0 0 16px;font-size:12px;color:#6b7280">Elegí la OC SERVICIO principal de <strong>${ocSat.centro_costo || 'este CC'}</strong> a la que este gasto operativo pertenece. Solo es un agrupador visual: no toca pagos ni facturación.</p>
+        <table style="width:100%;border-collapse:collapse;margin-bottom:16px">
+          <thead><tr style="background:#f3f4f6">
+            <th style="padding:8px;width:30px"></th>
+            <th style="padding:8px;text-align:left;font-size:11px;text-transform:uppercase">N° OC</th>
+            <th style="padding:8px;text-align:left;font-size:11px;text-transform:uppercase">Proveedor</th>
+            <th style="padding:8px;text-align:left;font-size:11px;text-transform:uppercase">Estado</th>
+            <th style="padding:8px;text-align:right;font-size:11px;text-transform:uppercase">Total</th>
+          </tr></thead>
+          <tbody>${filas}</tbody>
+        </table>
+        <div style="display:flex;gap:10px;justify-content:flex-end">
+          <button data-close type="button" style="padding:10px 18px;background:#fff;color:#374151;border:1px solid #d1d5db;border-radius:6px;cursor:pointer;font-weight:600">Cancelar</button>
+          <button data-confirm type="button" style="padding:10px 18px;background:#15803d;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600">Vincular</button>
+        </div>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(ov);
+  ov.querySelectorAll('[data-close]').forEach(b => b.onclick = () => ov.remove());
+  ov.querySelectorAll('[data-row]').forEach(tr => {
+    tr.onclick = () => {
+      const r = tr.querySelector('input[type=radio]'); if (r) r.checked = true;
+    };
+  });
+  ov.querySelector('[data-confirm]').onclick = async () => {
+    const sel = ov.querySelector('input[name=madre-pick]:checked');
+    if (!sel) { showError('Elegí una OC madre primero'); return; }
+    const idMadre = Number(sel.value);
+    try {
+      await api.ordenesCompra.vincularMadre(id_oc, idMadre);
+      ov.remove();
+      showSuccess(`Vinculada a OC madre #${idMadre}`);
+      if (document.getElementById('oc-modal')?.innerHTML) verOC(id_oc);
+      if (window.refreshModule) window.refreshModule();
+    } catch (e) { showError(e.message || 'Error vinculando'); }
+  };
+}
+
+// Vista de la OC SERVICIO madre: ver gastos operativos vinculados + agregar nuevos.
+// Modal con resumen agregado (costo madre + costo gastos + total real) + lista de
+// candidatas del mismo CC sin madre asignada (con botón para vincular cada una).
+async function verGastosVinculados(id_oc, nro) {
+  let resumen;
+  try {
+    resumen = await api.ordenesCompra.servicioResumen(id_oc);
+  } catch (e) {
+    showError(e.message || 'Error obteniendo resumen'); return;
+  }
+  const ov = document.createElement('div');
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9999;display:flex;align-items:flex-start;justify-content:center;padding:30px 20px;overflow-y:auto';
+
+  const fmtFecha = (f) => f ? new Date(f).toLocaleDateString('es-PE') : '—';
+
+  const filasSat = resumen.satelites.length
+    ? resumen.satelites.map(s => `
+        <tr style="border-bottom:1px solid #e5e7eb">
+          <td style="padding:8px;font-size:12px;font-weight:600">${s.nro_oc}</td>
+          <td style="padding:8px;font-size:12px">${s.proveedor || '—'}</td>
+          <td style="padding:8px;font-size:11px;color:#6b7280">${s.estado}</td>
+          <td style="padding:8px;font-size:11px">${fmtFecha(s.fecha_emision)}</td>
+          <td style="padding:8px;font-size:12px;text-align:right">${s.moneda} ${Number(s.total).toFixed(2)}</td>
+          <td style="padding:8px;font-size:12px;text-align:right;font-weight:600">S/ ${Number(s.total_pen).toFixed(2)}</td>
+          <td style="padding:8px;text-align:center">
+            <button onclick="OC._desvincularDesdeModal(${s.id_oc}, ${id_oc}, '${(s.nro_oc || '').replace(/'/g, "\\'")}')" title="Quitar este gasto del agrupado" style="padding:4px 10px;background:#fff;color:#dc2626;border:1px solid #fecaca;border-radius:4px;cursor:pointer;font-size:11px">✕ Quitar</button>
+          </td>
+        </tr>`).join('')
+    : `<tr><td colspan="7" style="padding:18px;text-align:center;color:#9ca3af;font-size:12px;font-style:italic">No hay gastos operativos vinculados aún. Si abajo hay candidatas, podés agregarlas.</td></tr>`;
+
+  const filasCand = resumen.candidatas.length
+    ? resumen.candidatas.map(c => `
+        <tr style="border-bottom:1px solid #e5e7eb">
+          <td style="padding:8px;font-size:12px;font-weight:600">${c.nro_oc}</td>
+          <td style="padding:8px;font-size:12px">${c.proveedor || '—'}</td>
+          <td style="padding:8px;font-size:11px;color:#6b7280">${c.estado}</td>
+          <td style="padding:8px;font-size:11px">${fmtFecha(c.fecha_emision)}</td>
+          <td style="padding:8px;font-size:12px;text-align:right">${c.moneda} ${Number(c.total).toFixed(2)}</td>
+          <td style="padding:8px;font-size:12px;text-align:right;font-weight:600">S/ ${Number(c.total_pen).toFixed(2)}</td>
+          <td style="padding:8px;text-align:center">
+            <button onclick="OC._vincularDesdeModal(${c.id_oc}, ${id_oc}, '${(c.nro_oc || '').replace(/'/g, "\\'")}')" title="Vincular este gasto al servicio madre" style="padding:4px 10px;background:#15803d;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:11px;font-weight:600">+ Vincular</button>
+          </td>
+        </tr>`).join('')
+    : `<tr><td colspan="7" style="padding:18px;text-align:center;color:#9ca3af;font-size:12px;font-style:italic">No hay OCs gasto operativo del mismo CC sin vincular. Cuando crees una nueva OC SERVICIO con "Gasto operativo del proyecto" tildado y este mismo centro de costo, aparecerá acá.</td></tr>`;
+
+  ov.innerHTML = `
+    <div style="background:#fff;border-radius:8px;width:min(1000px,95vw);box-shadow:0 20px 60px rgba(0,0,0,.3);max-height:calc(100vh - 60px);overflow-y:auto;position:relative">
+      <button data-close type="button" title="Cerrar" aria-label="Cerrar" style="position:absolute;top:14px;right:14px;background:#fff;border:1px solid #d1d5db;border-radius:50%;width:30px;height:30px;font-size:18px;cursor:pointer;color:#64748b;z-index:10;display:flex;align-items:center;justify-content:center;line-height:1">×</button>
+      <div style="padding:24px">
+        <h3 style="margin:0 0 4px;font-size:18px">🔗 Gastos vinculados a ${nro}</h3>
+        <p style="margin:0 0 16px;font-size:12px;color:#6b7280">Centro de costo: <strong>${resumen.madre.cc_nombre || '—'}</strong> · Proveedor: ${resumen.madre.proveedor || '—'} · Fecha: ${fmtFecha(resumen.madre.fecha_emision)}</p>
+
+        <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;padding:14px;margin-bottom:18px">
+          <div style="font-weight:700;font-size:13px;margin-bottom:8px;color:#166534">📊 Costo real del servicio</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;font-size:12px">
+            <div>OC principal:<br><strong style="font-size:14px">S/ ${Number(resumen.madre.total_pen).toFixed(2)}</strong></div>
+            <div>+ Gastos operativos (${resumen.satelites.length}):<br><strong style="font-size:14px">S/ ${Number(resumen.total_gastos_pen).toFixed(2)}</strong></div>
+            <div style="border-left:2px solid #16a34a;padding-left:10px">= TOTAL REAL:<br><strong style="font-size:16px;color:#16a34a">S/ ${Number(resumen.total_real_pen).toFixed(2)}</strong></div>
+          </div>
+        </div>
+
+        <h4 style="margin:0 0 8px;font-size:14px">Gastos vinculados (${resumen.satelites.length})</h4>
+        <table style="width:100%;border-collapse:collapse;margin-bottom:20px">
+          <thead><tr style="background:#f3f4f6">
+            <th style="padding:6px 8px;text-align:left;font-size:10px;text-transform:uppercase">N° OC</th>
+            <th style="padding:6px 8px;text-align:left;font-size:10px;text-transform:uppercase">Proveedor</th>
+            <th style="padding:6px 8px;text-align:left;font-size:10px;text-transform:uppercase">Estado</th>
+            <th style="padding:6px 8px;text-align:left;font-size:10px;text-transform:uppercase">Fecha</th>
+            <th style="padding:6px 8px;text-align:right;font-size:10px;text-transform:uppercase">Total orig.</th>
+            <th style="padding:6px 8px;text-align:right;font-size:10px;text-transform:uppercase">Total PEN</th>
+            <th style="padding:6px 8px;text-align:center;font-size:10px;text-transform:uppercase">Acción</th>
+          </tr></thead>
+          <tbody>${filasSat}</tbody>
+        </table>
+
+        <h4 style="margin:0 0 8px;font-size:14px">Candidatas del mismo CC (${resumen.candidatas.length})</h4>
+        <p style="margin:0 0 8px;font-size:11px;color:#6b7280">OCs SERVICIO marcadas como "gasto operativo" en el mismo proyecto, todavía sin madre.</p>
+        <table style="width:100%;border-collapse:collapse;margin-bottom:16px">
+          <thead><tr style="background:#f3f4f6">
+            <th style="padding:6px 8px;text-align:left;font-size:10px;text-transform:uppercase">N° OC</th>
+            <th style="padding:6px 8px;text-align:left;font-size:10px;text-transform:uppercase">Proveedor</th>
+            <th style="padding:6px 8px;text-align:left;font-size:10px;text-transform:uppercase">Estado</th>
+            <th style="padding:6px 8px;text-align:left;font-size:10px;text-transform:uppercase">Fecha</th>
+            <th style="padding:6px 8px;text-align:right;font-size:10px;text-transform:uppercase">Total orig.</th>
+            <th style="padding:6px 8px;text-align:right;font-size:10px;text-transform:uppercase">Total PEN</th>
+            <th style="padding:6px 8px;text-align:center;font-size:10px;text-transform:uppercase">Acción</th>
+          </tr></thead>
+          <tbody>${filasCand}</tbody>
+        </table>
+
+        <div style="display:flex;justify-content:flex-end">
+          <button data-close type="button" style="padding:10px 18px;background:#fff;color:#374151;border:1px solid #d1d5db;border-radius:6px;cursor:pointer;font-weight:600">Cerrar</button>
+        </div>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(ov);
+  ov.querySelectorAll('[data-close]').forEach(b => b.onclick = () => ov.remove());
+}
+
+// Helpers usados dentro del modal verGastosVinculados — refresca el modal tras la acción.
+async function _vincularDesdeModal(id_satelite, id_madre, nro) {
+  try {
+    await api.ordenesCompra.vincularMadre(id_satelite, id_madre);
+    showSuccess(`Vinculada ${nro}`);
+    // Refresca el modal abierto
+    const ovs = document.querySelectorAll('div[style*="z-index:9999"]');
+    ovs.forEach(o => o.remove());
+    // Re-abre el resumen
+    const ocMadre = await api.ordenesCompra.get(id_madre);
+    verGastosVinculados(id_madre, ocMadre.nro_oc || `#${id_madre}`);
+    if (window.refreshModule) window.refreshModule();
+  } catch (e) { showError(e.message || 'Error vinculando'); }
+}
+
+async function _desvincularDesdeModal(id_satelite, id_madre, nro) {
+  if (!confirm(`¿Quitar ${nro} del agrupado?\n\nDejará de contar en el costo real total. Podés re-vincularla después.`)) return;
+  try {
+    await api.ordenesCompra.desvincularMadre(id_satelite);
+    showSuccess('Quitada del agrupado');
+    const ovs = document.querySelectorAll('div[style*="z-index:9999"]');
+    ovs.forEach(o => o.remove());
+    const ocMadre = await api.ordenesCompra.get(id_madre);
+    verGastosVinculados(id_madre, ocMadre.nro_oc || `#${id_madre}`);
+    if (window.refreshModule) window.refreshModule();
+  } catch (e) { showError(e.message || 'Error desvinculando'); }
 }
 
 async function cerrarImportacion(id_oc, nro) {
@@ -1404,10 +1614,13 @@ async function verOC(id_oc) {
             🔗 <strong>Vinculada a:</strong> ${oc.cotizacion_nro} — ${oc.cotizacion_cliente || ''}${oc.cotizacion_proyecto ? ' · ' + oc.cotizacion_proyecto : ''}
           </div>` : ''}
 
-          ${oc.oc_madre_id ? `
+          ${oc.oc_madre_id ? (oc.es_gasto_operativo ? `
+          <div style="background:#fef3c7;border:1px solid #fcd34d;color:#78350f;padding:10px 14px;border-radius:6px;margin-bottom:16px;font-size:13px">
+            🔗 <strong>Gasto operativo vinculado:</strong> este gasto forma parte del costo real del servicio madre #${oc.oc_madre_id}.
+          </div>` : `
           <div style="background:#f0f9ff;border:1px solid #bae6fd;color:#075985;padding:10px 14px;border-radius:6px;margin-bottom:16px;font-size:13px">
             🚢 <strong>Satélite de importación:</strong> sus gastos forman parte del landed cost de la OC madre #${oc.oc_madre_id}.
-          </div>` : ''}
+          </div>`) : ''}
           ${oc.estado === 'EN_TRANSITO' ? `
           <div style="background:#f0f9ff;border:1px solid #bae6fd;color:#075985;padding:10px 14px;border-radius:6px;margin-bottom:16px;font-size:13px">
             🚢 <strong>En tránsito:</strong> mercadería pagada al proveedor pero todavía NO entra al inventario. Vinculá las OCs satélite (flete, desaduanaje, impuestos) y después usá "Cerrar importación" para aplicar el landed cost.
@@ -1735,14 +1948,31 @@ function accionesSegunEstado(oc) {
     btns.push(`<button onclick="OC.cerrarImportacion(${oc.id_oc}, '${nroSafe}')" title="Cerrar la importación: suma los gastos satélite vinculados (flete, desaduanaje, impuestos), prorratea sobre los productos, y recibe al inventario con el costo landed correcto. Sólo se puede hacer una vez por importación." style="padding:10px 18px;background:#059669;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">🚛 Cerrar importación</button>`);
     btns.push(`<button onclick="OC.desmarcarTransito(${oc.id_oc}, '${nroSafe}')" title="Volver al estado anterior (PAGO/APROBADA). Útil si marcaste por error." style="padding:10px 18px;background:#fff;color:#374151;border:1px solid #d1d5db;border-radius:6px;cursor:pointer;font-weight:600">↩️ Desmarcar tránsito</button>`);
   }
-  // Vincular/desvincular a OC madre — solo para OCs satélite (GENERAL típico:
-  // flete, desaduanaje, impuestos). No para ALMACEN (esas son MADRES, no satélites).
+  // Vincular/desvincular — dos casos:
+  //   A) Satélite de importación: OC NO-ALMACEN sin gasto_operativo → vincula a madre ALMACEN.
+  //   B) Satélite de servicio: OC SERVICIO + es_gasto_operativo=TRUE → vincula a madre SERVICIO del mismo CC.
   if (oc.tipo_oc !== 'ALMACEN' && !['ANULADA', 'TERMINADA', 'CERRADA_SIN_FACTURA'].includes(oc.estado)) {
     if (oc.oc_madre_id) {
-      btns.push(`<button onclick="OC.desvincularMadre(${oc.id_oc}, '${nroSafe}')" title="Desvincular esta OC de su importación madre. Sus gastos dejarán de prorratearse a productos. Sólo se puede hacer si la madre todavía no cerró la importación." style="padding:10px 18px;background:#fff;color:#374151;border:1px solid #d1d5db;border-radius:6px;cursor:pointer;font-weight:600">🔗 Desvincular (madre #${oc.oc_madre_id})</button>`);
-    } else {
+      // Ya vinculada — botón Desvincular (texto distinto según caso)
+      const txtDesv = oc.es_gasto_operativo
+        ? `🔗 Desvincular del servicio madre #${oc.oc_madre_id}`
+        : `🔗 Desvincular (madre #${oc.oc_madre_id})`;
+      const tipDesv = oc.es_gasto_operativo
+        ? 'Desvincular este gasto operativo del servicio madre. Dejará de aparecer en el costo real total. Podés re-vincularlo después si querés.'
+        : 'Desvincular esta OC de su importación madre. Sus gastos dejarán de prorratearse a productos. Sólo se puede hacer si la madre todavía no cerró la importación.';
+      btns.push(`<button onclick="OC.desvincularMadre(${oc.id_oc}, '${nroSafe}')" title="${tipDesv}" style="padding:10px 18px;background:#fff;color:#374151;border:1px solid #d1d5db;border-radius:6px;cursor:pointer;font-weight:600">${txtDesv}</button>`);
+    } else if (oc.es_gasto_operativo && oc.tipo_oc === 'SERVICIO') {
+      // Gasto operativo sin madre — ofrecer vincular a servicio madre del mismo CC
+      btns.push(`<button onclick="OC.vincularMadreServicio(${oc.id_oc}, '${nroSafe}')" title="Vincular este gasto operativo (combustible, taxi, viáticos) a la OC SERVICIO principal del mismo proyecto. Sirve para ver el costo real total del trabajo en una sola vista. No afecta pagos ni facturación." style="padding:10px 18px;background:#fff;color:#374151;border:1px solid #d1d5db;border-radius:6px;cursor:pointer;font-weight:600">🔗 Vincular a OC madre del proyecto</button>`);
+    } else if (!oc.es_gasto_operativo) {
+      // OC no-gasto-operativo sin madre — ofrecer vincular a importación
       btns.push(`<button onclick="OC.vincularMadre(${oc.id_oc}, '${nroSafe}')" title="Vincular esta OC como satélite de una importación (OC ALMACEN en tránsito). Sus gastos van a formar parte del landed cost del producto." style="padding:10px 18px;background:#fff;color:#374151;border:1px solid #d1d5db;border-radius:6px;cursor:pointer;font-weight:600">🔗 Vincular a importación</button>`);
     }
+  }
+  // Vista de OC madre SERVICIO (no-gasto-operativo, con CC) → botón para ver/agregar satélites del proyecto.
+  // Aparece en cualquier estado salvo ANULADA, porque el costo real total siempre tiene sentido consultarlo.
+  if (oc.tipo_oc === 'SERVICIO' && !oc.es_gasto_operativo && oc.id_centro_costo && oc.estado !== 'ANULADA') {
+    btns.push(`<button onclick="OC.verGastosVinculados(${oc.id_oc}, '${nroSafe}')" title="Ver los gastos operativos del proyecto vinculados a este servicio (combustible, taxi, viáticos, reembolsos). Permite agregar gastos del mismo centro de costo y ver el costo real total." style="padding:10px 18px;background:#fff;color:#374151;border:1px solid #d1d5db;border-radius:6px;cursor:pointer;font-weight:600">🔗 Gastos vinculados</button>`);
   }
   // RECEPCION → permite registrar recepción de mercadería/servicio.
   // Solo si todavía hay algo pendiente de recibir (estado_recepcion !== RECIBIDO).

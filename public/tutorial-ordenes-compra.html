@@ -432,6 +432,7 @@
     <a href="#gasto-op">⛽ Gasto operativo</a>
     <a href="#estados">🚦 Estados</a>
     <a href="#pagos">💸 Pagos</a>
+    <a href="#vinculadas">🔗 Vinculadas</a>
     <a href="#faq">❓ Dudas</a>
   </div>
 </nav>
@@ -1048,6 +1049,126 @@
       ⚠️ <strong>Comisión bancaria:</strong> el banco suele cobrar S/ 3-7 extra cuando
       transferís a una cuenta de otro banco. <em>No lo cargues como pago de OC</em> — lo
       maneja Finanzas al conciliar el extracto del Libro Bancos (botón "💱 Split N/D").
+    </div>
+  </div>
+</section>
+
+<!-- VINCULADAS -->
+<section id="vinculadas">
+  <div class="container">
+    <h2><span class="em">🔗</span>OCs vinculadas: cuando varias OCs son del mismo trabajo</h2>
+    <p class="lead">
+      A veces una sola OC <strong>no alcanza</strong> para contar todo lo que costó un
+      trabajo. El servicio principal va por su OC, pero el combustible, los taxis y los
+      viáticos del campo van por OCs aparte. <em>Las podés vincular para verlas juntas.</em>
+    </p>
+
+    <div class="tip" style="margin-bottom:24px">
+      💡 <strong>Para qué sirve:</strong> ver de un vistazo el <strong>costo real total</strong>
+      de un trabajo, sumando la OC principal + todos los gastos operativos que se
+      consumieron durante la ejecución.
+    </div>
+
+    <h3 style="margin-top:30px">📚 Ejemplo: servicio de topografía Promafa</h3>
+    <p>
+      Contrataste al topógrafo de <strong>Promafa</strong> para que mida un lote. El
+      trabajo tarda 2 días en obra. Durante esos 2 días gastás:
+    </p>
+
+    <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:18px;margin:16px 0">
+      <div style="display:grid;grid-template-columns:1fr;gap:10px;font-size:14px">
+        <div style="padding:10px;background:#fff;border-left:4px solid #4c1d95;border-radius:4px">
+          <strong>OC 001 — Promafa Topografía</strong> · SERVICIO · S/ 800<br>
+          <span style="color:#6b7280;font-size:12px">Trabajo principal contratado al topógrafo</span>
+        </div>
+        <div style="padding:10px;background:#fff;border-left:4px solid #ea580c;border-radius:4px;margin-left:30px">
+          <strong>OC 002 — Combustible</strong> · SERVICIO + ⛽ Gasto operativo · S/ 50<br>
+          <span style="color:#6b7280;font-size:12px">Petróleo para movilizarse al lote</span>
+        </div>
+        <div style="padding:10px;background:#fff;border-left:4px solid #ea580c;border-radius:4px;margin-left:30px">
+          <strong>OC 003 — Taxi al lote</strong> · SERVICIO + ⛽ Gasto operativo · S/ 30<br>
+          <span style="color:#6b7280;font-size:12px">Reembolso al ingeniero por taxis del día 2</span>
+        </div>
+      </div>
+      <div style="margin-top:14px;padding:12px;background:#ecfdf5;border:1px solid #a7f3d0;border-radius:6px;font-size:14px">
+        <strong>Costo real total del servicio:</strong>
+        <span style="color:#16a34a;font-weight:700;font-size:16px"> S/ 880</span>
+        (no S/ 800)
+      </div>
+    </div>
+
+    <h3 style="margin-top:30px">🎯 Cómo vincular paso a paso</h3>
+
+    <div class="paso">
+      <div class="paso-num">1</div>
+      <div>
+        <strong>Creá las OCs como siempre.</strong> La OC principal del topógrafo es
+        <strong>SERVICIO</strong> normal. Las OCs de combustible/taxi/viáticos son
+        <strong>SERVICIO + ⛽ Gasto operativo del proyecto</strong> tildado.
+        <br><br>
+        🔑 <strong>Importante:</strong> las 4 OCs deben tener el <strong>mismo Centro
+        de Costo</strong> (mismo proyecto). Si no, el sistema no te deja vincular.
+      </div>
+    </div>
+
+    <div class="paso">
+      <div class="paso-num">2</div>
+      <div>
+        <strong>Abrí la OC madre</strong> (la del servicio principal, S/ 800). En la
+        barra de botones de abajo vas a ver <strong>"🔗 Gastos vinculados"</strong>.
+        Click ahí.
+      </div>
+    </div>
+
+    <div class="paso">
+      <div class="paso-num">3</div>
+      <div>
+        Se abre un modal con 2 tablas:
+        <ul>
+          <li><strong>Gastos vinculados</strong> — los que ya están agrupados (al
+          principio está vacío)</li>
+          <li><strong>Candidatas del mismo CC</strong> — OCs gasto operativo del mismo
+          proyecto que todavía no están vinculadas a nadie</li>
+        </ul>
+        Click en <strong>"+ Vincular"</strong> en cada candidata que quieras agrupar.
+      </div>
+    </div>
+
+    <div class="paso">
+      <div class="paso-num">4</div>
+      <div>
+        Listo. El modal muestra arriba en verde el <strong>COSTO REAL TOTAL</strong>
+        (madre + satélites). Si te equivocaste con una, click en <strong>"✕ Quitar"</strong>
+        y vuelve a la lista de candidatas.
+      </div>
+    </div>
+
+    <div class="ejemplo">
+      ✅ <strong>Resultado:</strong> abrir la OC 001 te muestra "Costo real: S/ 880
+      (incluye 2 gastos vinculados)". Cuando hagas reportes del proyecto en Producción,
+      la columna <em>Comprometido</em> ya estaba sumando todo automáticamente — el
+      vínculo es solo para verlo claro.
+    </div>
+
+    <h3 style="margin-top:30px">⚠️ Reglas importantes</h3>
+    <ul style="font-size:14px;line-height:1.7">
+      <li>La <strong>madre</strong> debe ser tipo <strong>SERVICIO</strong>, sin tildar
+      "gasto operativo".</li>
+      <li>Las <strong>satélites</strong> deben ser tipo <strong>SERVICIO</strong> CON
+      "gasto operativo" tildado.</li>
+      <li><strong>Mismo Centro de Costo</strong> entre madre y satélite. Si una OC va
+      a otro proyecto, no se puede vincular.</li>
+      <li>Una satélite solo puede tener <strong>una madre</strong> a la vez. Para
+      cambiar, desvinculá primero.</li>
+      <li>Vincular o desvincular <strong>NO toca pagos ni facturación</strong>. Cada OC
+      sigue su flujo normal. Es <em>solo agrupación visual</em>.</li>
+    </ul>
+
+    <div class="warning">
+      🚢 <strong>Caso especial — importaciones Perfotools:</strong> el vínculo
+      ALMACÉN + GENERAL (flete, SUNAT, FICARGO) sigue funcionando exactamente igual que
+      antes. Ese tiene su propio flujo de "landed cost" cuando cerrás la importación.
+      Lo de SERVICIO + gastos operativos es un caso nuevo y separado.
     </div>
   </div>
 </section>
