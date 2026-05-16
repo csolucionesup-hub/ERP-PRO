@@ -2341,6 +2341,11 @@ ocRouter.get('/:id/importacion-resumen', validateIdParam, async (req: Request, r
   res.json(await OrdenCompraService.getResumenImportacion(Number(req.params.id)));
 });
 
+// Resumen de servicio agrupado (madre SERVICIO + satélites gasto_operativo del mismo CC)
+ocRouter.get('/:id/servicio-resumen', validateIdParam, async (req: Request, res: Response) => {
+  res.json(await OrdenCompraService.getResumenServicio(Number(req.params.id)));
+});
+
 ocRouter.post('/:id/cerrar-importacion', validateIdParam, auditLog('OrdenCompra', 'UPDATE'), async (req: Request, res: Response) => {
   const lineas = Array.isArray(req.body?.lineas) ? req.body.lineas : [];
   res.json(await OrdenCompraService.cerrarImportacion(Number(req.params.id), lineas, req.user!.id_usuario));

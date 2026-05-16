@@ -2378,34 +2378,76 @@ class OrdenCompraService {
   }
 
   /**
-   * Vincula una OC satélite (GENERAL típico: flete, desaduanaje, impuestos)
-   * a una OC ALMACEN madre. Los gastos de la satélite van a contar como
-   * landed al cerrar la importación.
+   * Vincula una OC satélite a una OC madre. Dos casos soportados:
+   *
+   *   1) IMPORTACIÓN (Perfotools):
+   *      - Madre: tipo_oc = ALMACEN
+   *      - Satélite: tipo_oc != ALMACEN (GENERAL típicamente: flete, SUNAT, FICARGO)
+   *      - Sin restricción de CC (la madre y los gastos pueden no tener proyecto)
+   *      - Los gastos satélite se prorratean como landed cost al cerrar la
+   *        importación.
+   *
+   *   2) SERVICIO AGRUPADO (proyectos en obra):
+   *      - Madre: tipo_oc = SERVICIO, es_gasto_operativo = FALSE
+   *        (la OC del trabajo principal contratado al proveedor — topógrafo,
+   *        soldador, etc.)
+   *      - Satélite: tipo_oc = SERVICIO, es_gasto_operativo = TRUE
+   *        (combustible/taxi/viáticos que se consumieron para ejecutar ese
+   *        trabajo)
+   *      - **MISMO id_centro_costo** entre madre y satélite (validación dura).
+   *      - NO hay prorrateo de costo a inventario — los gastos operativos ya
+   *        van a CostoServicio GASTO_OC al pagar. El vínculo es puramente
+   *        visual: agrupa para ver el "costo real total" del servicio.
    */
   async vincularSatelite(id_oc_satelite: number, id_oc_madre: number, id_usuario: number | null = null) {
     if (id_oc_satelite === id_oc_madre) {
       throw new Error('Una OC no puede ser su propia madre');
     }
     const [rowsSat]: any = await db.query(
-      `SELECT id_oc, tipo_oc, oc_madre_id FROM OrdenesCompra WHERE id_oc = ?`,
+      `SELECT id_oc, tipo_oc, oc_madre_id, es_gasto_operativo, id_centro_costo
+       FROM OrdenesCompra WHERE id_oc = ?`,
       [id_oc_satelite]
     );
     const sat = rowsSat[0];
     if (!sat) throw new Error('OC satélite no encontrada');
-    if (sat.tipo_oc === 'ALMACEN') {
-      throw new Error('Una OC ALMACEN no puede ser satélite (solo madre)');
-    }
+
     const [rowsMadre]: any = await db.query(
-      `SELECT id_oc, tipo_oc, estado FROM OrdenesCompra WHERE id_oc = ?`,
+      `SELECT id_oc, tipo_oc, estado, es_gasto_operativo, id_centro_costo
+       FROM OrdenesCompra WHERE id_oc = ?`,
       [id_oc_madre]
     );
     const madre = rowsMadre[0];
     if (!madre) throw new Error('OC madre no encontrada');
-    if (madre.tipo_oc !== 'ALMACEN') {
-      throw new Error('La madre debe ser tipo ALMACEN');
-    }
     if (madre.estado === 'TERMINADA' || madre.estado === 'ANULADA') {
       throw new Error('No se puede vincular a una OC madre cerrada/anulada');
+    }
+
+    // Caso 1: IMPORTACIÓN (madre ALMACEN)
+    if (madre.tipo_oc === 'ALMACEN') {
+      if (sat.tipo_oc === 'ALMACEN') {
+        throw new Error('Una OC ALMACEN no puede ser satélite (solo madre de importación)');
+      }
+      // OK — sin más validaciones (sin candado de CC, sin gasto_operativo)
+    }
+    // Caso 2: SERVICIO AGRUPADO (madre SERVICIO no-gasto-operativo)
+    else if (madre.tipo_oc === 'SERVICIO' && !madre.es_gasto_operativo) {
+      if (sat.tipo_oc !== 'SERVICIO') {
+        throw new Error('La satélite de un servicio madre debe ser tipo SERVICIO');
+      }
+      if (!sat.es_gasto_operativo) {
+        throw new Error('Solo OCs marcadas como "gasto operativo" pueden ser satélites de un servicio');
+      }
+      if (!madre.id_centro_costo || !sat.id_centro_costo) {
+        throw new Error('La madre y la satélite deben tener centro de costo definido');
+      }
+      if (Number(madre.id_centro_costo) !== Number(sat.id_centro_costo)) {
+        throw new Error('La madre y la satélite deben pertenecer al mismo centro de costo');
+      }
+    }
+    else {
+      throw new Error(
+        'La madre solo puede ser tipo ALMACEN (importación) o SERVICIO no-gasto-operativo (proyecto)'
+      );
     }
 
     await db.query(
@@ -2542,6 +2584,110 @@ class OrdenCompraService {
       total_gastos_pen: Number(totalGastosPEN.toFixed(2)),
       total_landed_pen: Number((totalMadrePEN + totalGastosPEN).toFixed(2)),
       items: itemsConLanded,
+    };
+  }
+
+  /**
+   * Devuelve el resumen de un servicio agrupado (madre SERVICIO + N satélites
+   * con es_gasto_operativo=TRUE).
+   *
+   * A diferencia de getResumenImportacion(), aquí NO hay prorrateo de costo a
+   * inventario — los gastos operativos ya se imputan al proyecto vía
+   * CostoServicio GASTO_OC al pagar. El objetivo es **agregar visualmente**:
+   * "el servicio de topografía Promafa me costó realmente S/ 880, no S/ 800,
+   * porque tuve que pagar S/ 50 de petróleo + S/ 30 de taxi".
+   *
+   * Devuelve también las OCs candidatas (gastos operativos del mismo CC sin
+   * madre asignada) para que el frontend ofrezca el dropdown de vinculación.
+   */
+  async getResumenServicio(id_oc_madre: number) {
+    const [rowsMadre]: any = await db.query(
+      `SELECT oc.id_oc, oc.nro_oc, oc.tipo_oc, oc.estado, oc.moneda, oc.tipo_cambio,
+              oc.total, oc.empresa, oc.es_gasto_operativo, oc.id_centro_costo,
+              oc.fecha_emision, p.razon_social AS proveedor, cc.nombre AS cc_nombre
+       FROM OrdenesCompra oc
+       LEFT JOIN Proveedores p ON p.id_proveedor = oc.id_proveedor
+       LEFT JOIN CentrosCosto cc ON cc.id_centro_costo = oc.id_centro_costo
+       WHERE oc.id_oc = ?`,
+      [id_oc_madre]
+    );
+    const madre = rowsMadre[0];
+    if (!madre) throw new Error('OC madre no encontrada');
+    if (madre.tipo_oc !== 'SERVICIO') {
+      throw new Error('El resumen de servicio agrupado solo aplica a OCs tipo SERVICIO');
+    }
+    if (madre.es_gasto_operativo) {
+      throw new Error('Una OC marcada como gasto operativo no puede ser madre');
+    }
+    if (!madre.id_centro_costo) {
+      throw new Error('La OC madre no tiene centro de costo asignado');
+    }
+    const tcMadre = Number(madre.tipo_cambio) || 1;
+    const totalMadrePEN = madre.moneda === 'USD'
+      ? Number(madre.total) * tcMadre
+      : Number(madre.total);
+
+    // Satélites ya vinculadas (cualquier estado salvo ANULADA)
+    const [satelites]: any = await db.query(
+      `SELECT oc.id_oc, oc.nro_oc, oc.tipo_oc, oc.estado, oc.moneda, oc.tipo_cambio,
+              oc.total, oc.fecha_emision, oc.es_gasto_operativo,
+              p.razon_social AS proveedor
+       FROM OrdenesCompra oc
+       LEFT JOIN Proveedores p ON p.id_proveedor = oc.id_proveedor
+       WHERE oc.oc_madre_id = ? AND oc.estado <> 'ANULADA'
+       ORDER BY oc.fecha_emision, oc.id_oc`,
+      [id_oc_madre]
+    );
+
+    let totalGastosPEN = 0;
+    const satelitesConPEN = satelites.map((s: any) => {
+      const tcSat = Number(s.tipo_cambio) || 1;
+      const totalPEN = s.moneda === 'USD' ? Number(s.total) * tcSat : Number(s.total);
+      totalGastosPEN += totalPEN;
+      return { ...s, total_pen: Number(totalPEN.toFixed(2)) };
+    });
+
+    // Candidatas para vincular: SERVICIO + es_gasto_operativo=TRUE + mismo CC
+    // + sin madre asignada + no anuladas + no es la propia madre.
+    const [candidatas]: any = await db.query(
+      `SELECT oc.id_oc, oc.nro_oc, oc.estado, oc.moneda, oc.tipo_cambio,
+              oc.total, oc.fecha_emision, p.razon_social AS proveedor
+       FROM OrdenesCompra oc
+       LEFT JOIN Proveedores p ON p.id_proveedor = oc.id_proveedor
+       WHERE oc.tipo_oc = 'SERVICIO'
+         AND oc.es_gasto_operativo = TRUE
+         AND oc.id_centro_costo = ?
+         AND oc.oc_madre_id IS NULL
+         AND oc.estado <> 'ANULADA'
+         AND oc.id_oc <> ?
+       ORDER BY oc.fecha_emision DESC, oc.id_oc DESC`,
+      [madre.id_centro_costo, id_oc_madre]
+    );
+    const candidatasConPEN = candidatas.map((c: any) => {
+      const tcC = Number(c.tipo_cambio) || 1;
+      const totalPEN = c.moneda === 'USD' ? Number(c.total) * tcC : Number(c.total);
+      return { ...c, total_pen: Number(totalPEN.toFixed(2)) };
+    });
+
+    return {
+      madre: {
+        id_oc: madre.id_oc,
+        nro_oc: madre.nro_oc,
+        estado: madre.estado,
+        moneda: madre.moneda,
+        tipo_cambio: tcMadre,
+        empresa: madre.empresa,
+        total: Number(madre.total),
+        total_pen: Number(totalMadrePEN.toFixed(2)),
+        proveedor: madre.proveedor,
+        id_centro_costo: madre.id_centro_costo,
+        cc_nombre: madre.cc_nombre,
+        fecha_emision: madre.fecha_emision,
+      },
+      satelites: satelitesConPEN,
+      candidatas: candidatasConPEN,
+      total_gastos_pen: Number(totalGastosPEN.toFixed(2)),
+      total_real_pen: Number((totalMadrePEN + totalGastosPEN).toFixed(2)),
     };
   }
 

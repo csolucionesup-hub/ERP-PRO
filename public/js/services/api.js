@@ -507,6 +507,7 @@ export const api = {
     vincularMadre:       (id, id_oc_madre) => post(`/ordenes-compra/${id}/vincular-madre`, { id_oc_madre }),
     desvincularMadre:    (id) => post(`/ordenes-compra/${id}/desvincular-madre`, {}),
     importacionResumen:  (id) => get(`/ordenes-compra/${id}/importacion-resumen`),
+    servicioResumen:     (id) => get(`/ordenes-compra/${id}/servicio-resumen`),
     cerrarImportacion:   (id, lineas) => post(`/ordenes-compra/${id}/cerrar-importacion`, { lineas }),
     asignarItems: (id, asignaciones) => post(`/ordenes-compra/${id}/asignar-items`, { asignaciones }),
     editarFecha: (id, fecha) => put(`/ordenes-compra/${id}/fecha`, { fecha }),
