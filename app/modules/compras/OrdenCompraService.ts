@@ -87,6 +87,20 @@ export interface CrearOCParams {
   autorizado_por?: string;
   cuenta_bancaria_pago?: string;
   lugar_entrega?: string;
+
+  /**
+   * Honorario persona natural (DNI, sin factura). Skip recepción.
+   */
+  es_honorario?: boolean;
+
+  /**
+   * Mig 073 (15/05/2026) — Gasto operativo del proyecto (combustible, taxi,
+   * viáticos, reembolsos de campo). Solo aplica a tipo_oc='SERVICIO'.
+   * Salta recepción y crea CostoServicio al pagar (igual que recibir() lo
+   * hace para SERVICIO normal, pero disparado en registrarPago en lugar de
+   * recibir()).
+   */
+  es_gasto_operativo?: boolean;
 }
 
 class OrdenCompraService {
@@ -231,6 +245,10 @@ class OrdenCompraService {
       const ctactoTel    = params.contacto_telefono|| null;
 
       const esHonorario = (params as any).es_honorario === true;
+      // Mig 073: gasto operativo del proyecto (combustible, taxi, viáticos…).
+      // Solo aplica a SERVICIO. Salta recepción y crea CostoServicio al pagar.
+      const esGastoOperativo = (params as any).es_gasto_operativo === true
+        && (params.tipo_oc || 'GENERAL') === 'SERVICIO';
       const [res]: any = await conn.query(
         `INSERT INTO OrdenesCompra
           (nro_oc, fecha_emision, fecha_entrega_esperada, id_proveedor, id_servicio, id_cotizacion,
@@ -240,8 +258,8 @@ class OrdenCompraService {
            estado, id_usuario_crea, id_usuario_aprueba, fecha_aprobacion,
            atencion, contacto_interno, contacto_telefono,
            solicitado_por, revisado_por, autorizado_por,
-           cuenta_bancaria_pago, lugar_entrega, es_honorario)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           cuenta_bancaria_pago, lugar_entrega, es_honorario, es_gasto_operativo)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [nro_oc, params.fecha_emision, params.fecha_entrega_esperada || null,
          params.id_proveedor, params.id_servicio || null, params.id_cotizacion || null,
          cc, params.tipo_oc || 'GENERAL',
@@ -255,7 +273,7 @@ class OrdenCompraService {
          params.atencion || null, ctactoNombre, ctactoTel,
          solicitado, revisado, autorizado,
          params.cuenta_bancaria_pago || null, params.lugar_entrega || 'Lima',
-         esHonorario]
+         esHonorario, esGastoOperativo]
       );
       const id_oc = res.insertId;
 
@@ -387,7 +405,8 @@ class OrdenCompraService {
    */
   async marcarListoParaFacturar(id_oc: number, id_usuario: number) {
     const [rows]: any = await db.query(
-      `SELECT estado, estado_pago, tipo_oc, es_honorario FROM OrdenesCompra WHERE id_oc = ?`, [id_oc]
+      `SELECT estado, estado_pago, tipo_oc, es_honorario, es_gasto_operativo
+         FROM OrdenesCompra WHERE id_oc = ?`, [id_oc]
     );
     if (!rows[0]) throw new Error('OC no encontrada');
     const oc = rows[0];
@@ -399,8 +418,9 @@ class OrdenCompraService {
     }
 
     // Solo se valida recepción si el tipo de OC la requiere (ALMACEN o servicios/honorarios).
-    // Las OCs GENERAL no-honorario no tienen mercadería ni trabajo a recibir.
-    if (this._requiereRecepcion(oc.tipo_oc, oc.es_honorario)) {
+    // Las OCs GENERAL no-honorario y las marcadas como gasto operativo no tienen
+    // mercadería ni trabajo a recibir.
+    if (this._requiereRecepcion(oc.tipo_oc, oc.es_honorario, oc.es_gasto_operativo)) {
       const [det]: any = await db.query(`
         SELECT SUM(cantidad) AS pedido, SUM(cantidad_recibida) AS recibido
           FROM DetalleOrdenCompra
@@ -1160,9 +1180,10 @@ class OrdenCompraService {
       // Cualquier pago (total o parcial) saca la card de PAGO o de APROBADA
       // (caso honorarios). La card va a RECEPCION. Si venía de RECEPCION se
       // queda ahí (el avance lo decide _checkAutoAvance si recepción está completa).
-      // Excepción: OCs GENERAL no-honorario saltan recepción y van directo a
-      // FACTURACION cuando el pago cierra al 100%.
-      const saltaRecepcion = !this._requiereRecepcion(oc.tipo_oc, oc.es_honorario) && cierraTotal;
+      // Excepción: OCs GENERAL no-honorario, honorarios y gastos operativos
+      // saltan recepción y van directo a FACTURACION cuando el pago cierra
+      // al 100%.
+      const saltaRecepcion = !this._requiereRecepcion(oc.tipo_oc, oc.es_honorario, oc.es_gasto_operativo) && cierraTotal;
       const proximoEstadoOC = ['PAGO', 'APROBADA'].includes(oc.estado)
         ? (saltaRecepcion ? 'FACTURACION' : 'RECEPCION')
         : oc.estado;
@@ -1592,6 +1613,13 @@ class OrdenCompraService {
     const conn = await db.getConnection();
     await conn.beginTransaction();
     try {
+      // Mig 073: gasto operativo editable solo en BORRADOR/APROBADA/PAGO y
+      // solo válido para SERVICIO. Si el caller no lo envía, conservamos el
+      // valor anterior (no se pisa con FALSE al editar otros campos).
+      const tipoOcEdit = params.tipo_oc || 'GENERAL';
+      const esGastoOperativoNuevo =
+        (params as any).es_gasto_operativo === true && tipoOcEdit === 'SERVICIO';
+
       await conn.query(
         `UPDATE OrdenesCompra SET
            fecha_emision = ?, fecha_entrega_esperada = ?,
@@ -1601,11 +1629,11 @@ class OrdenCompraService {
            forma_pago = ?, dias_credito = ?, condiciones_entrega = ?, observaciones = ?,
            atencion = ?, contacto_interno = ?, contacto_telefono = ?,
            solicitado_por = ?, revisado_por = ?, autorizado_por = ?,
-           cuenta_bancaria_pago = ?, lugar_entrega = ?
+           cuenta_bancaria_pago = ?, lugar_entrega = ?, es_gasto_operativo = ?
          WHERE id_oc = ?`,
         [params.fecha_emision, params.fecha_entrega_esperada || null,
          params.id_proveedor, params.id_servicio || null, params.id_cotizacion || null,
-         params.centro_costo || 'OFICINA CENTRAL', params.tipo_oc || 'GENERAL',
+         params.centro_costo || 'OFICINA CENTRAL', tipoOcEdit,
          params.empresa || 'ME', moneda, tc,
          subtotal, descuento, aplicaIgv ? 1 : 0, igv, total,
          params.forma_pago || 'CONTADO', params.dias_credito || 0,
@@ -1613,6 +1641,7 @@ class OrdenCompraService {
          params.atencion || null, params.contacto_interno || null, params.contacto_telefono || null,
          params.solicitado_por || null, params.revisado_por || null, params.autorizado_por || null,
          params.cuenta_bancaria_pago || null, params.lugar_entrega || 'Lima',
+         esGastoOperativoNuevo,
          id_oc]
       );
 
@@ -2192,8 +2221,17 @@ class OrdenCompraService {
    * cualquier honorario, lo cual atascaba el flujo en RECEPCION sin nada que
    * recibir realmente.
    */
-  private _requiereRecepcion(tipo_oc?: string | null, es_honorario?: boolean | number): boolean {
+  private _requiereRecepcion(
+    tipo_oc?: string | null,
+    es_honorario?: boolean | number,
+    es_gasto_operativo?: boolean | number,
+  ): boolean {
+    // Honorarios persona natural: no entran al almacén, se confirman con RH.
     if (es_honorario) return false;
+    // Gasto operativo del proyecto (mig 073, 15/05/2026):
+    // combustible / taxi / viáticos / reembolsos. Ya consumidos al pagarse,
+    // no tiene sentido "recibirlos". El costo se imputa al pagar.
+    if (es_gasto_operativo) return false;
     return tipo_oc === 'ALMACEN' || tipo_oc === 'SERVICIO';
   }
 
@@ -2206,17 +2244,19 @@ class OrdenCompraService {
   private async _checkAutoAvance(conn: any, id_oc: number) {
     const [r]: any = await conn.query(`
       SELECT oc.estado, oc.estado_pago, oc.estado_factura, oc.tipo_oc, oc.es_honorario,
+             oc.es_gasto_operativo,
              SUM(d.cantidad) AS total_pedido,
              SUM(d.cantidad_recibida) AS total_recibido
         FROM OrdenesCompra oc
         JOIN DetalleOrdenCompra d ON d.id_oc = oc.id_oc
        WHERE oc.id_oc = ?
-       GROUP BY oc.id_oc, oc.estado, oc.estado_pago, oc.estado_factura, oc.tipo_oc, oc.es_honorario
+       GROUP BY oc.id_oc, oc.estado, oc.estado_pago, oc.estado_factura,
+                oc.tipo_oc, oc.es_honorario, oc.es_gasto_operativo
     `, [id_oc]);
     const row = r[0];
     if (!row) return;
 
-    const requiereRec = this._requiereRecepcion(row.tipo_oc, row.es_honorario);
+    const requiereRec = this._requiereRecepcion(row.tipo_oc, row.es_honorario, row.es_gasto_operativo);
     const recibidoCompleto = !requiereRec || (Number(row.total_recibido) >= Number(row.total_pedido) - 0.0001);
     const pagoCompleto = row.estado_pago === 'PAGADO';
     const facturaOK = row.estado_factura === 'FACTURADA';

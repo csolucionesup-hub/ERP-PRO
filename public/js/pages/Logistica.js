@@ -1361,6 +1361,16 @@ function renderFormOC(tipoOC) {
           Aplica IGV 18%${esServicio ? ' (desmarcar si es RH persona natural)' : ''}
         </label>
 
+        ${esServicio ? `
+        <label style="display:flex;gap:6px;align-items:flex-start;font-size:12px;background:#fef3c7;border:1px solid #fbbf24;padding:8px 10px;border-radius:6px;color:#92400e">
+          <input type="checkbox" name="es_gasto_operativo" style="margin-top:2px">
+          <span>
+            <strong>Gasto operativo del proyecto</strong> (combustible, taxi, viáticos, reembolsos de campo)
+            <br>
+            <span style="font-size:11px;font-weight:400">No entra al almacén. El costo se imputa al proyecto al pagar — la OC pasa directo a FACTURACION sin pasar por RECEPCION.</span>
+          </span>
+        </label>` : ''}
+
         <div style="background:#f9fafb;padding:10px;border-radius:6px;font-size:13px">
           <div style="display:flex;justify-content:space-between"><span>Subtotal:</span><strong class="t-subtotal">S/ 0.00</strong></div>
           <div style="display:flex;justify-content:space-between"><span>IGV 18%:</span><strong class="t-igv" style="color:var(--text-secondary)">S/ 0.00</strong></div>
@@ -1713,6 +1723,8 @@ function bindFormOCMulti(panel, tipoOC) {
       moneda:         fd.get('moneda') || 'PEN',
       tipo_cambio:    Number(fd.get('tipo_cambio')) || 1,
       aplica_igv:     fd.get('aplica_igv') === 'on',
+      // Mig 073 — solo válido para SERVICIO; el backend lo descarta para los demás tipos.
+      es_gasto_operativo: fd.get('es_gasto_operativo') === 'on',
       forma_pago:     fd.get('forma_pago') || 'CONTADO',
       dias_credito:   Number(fd.get('dias_credito')) || 0,
       atencion:       fd.get('atencion') || null,

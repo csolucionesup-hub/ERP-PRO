@@ -3258,6 +3258,8 @@ async function nuevaOC(editData) {
   const centroCosto    = esEdit ? (editData.centro_costo || 'OFICINA CENTRAL') : 'OFICINA CENTRAL';
   const observaciones  = esEdit ? (editData.observaciones || '') : '';
   const aplicaIgv      = esEdit ? !!Number(editData.aplica_igv) : !!_cfg.aplica_igv;
+  // Mig 073 — gasto operativo (combustible/taxi/viáticos) en OC SERVICIO.
+  const esGastoOperativo = esEdit ? !!editData.es_gasto_operativo : false;
   const tituloModal    = esEdit ? `✎ Editar OC ${editData.nro_oc}` : '➕ Nueva Orden de Compra';
   const textoBotonOk   = esEdit ? 'Guardar cambios' : 'Crear OC';
 
@@ -3351,6 +3353,16 @@ async function nuevaOC(editData) {
               <input type="checkbox" name="aplica_igv" id="oc-aplica-igv" ${aplicaIgv ? 'checked' : ''}> Aplica IGV 18%
               <span style="font-size:10px;color:#6b7280;margin-left:8px">
                 ${tip('Mientras el IGV esté apagado, los precios unitarios admiten hasta 4 decimales (útil para cotizaciones precisas). Al marcarlo, los precios y cantidades se redondean a 2 decimales según norma SUNAT/SIRE para facturación.')}
+              </span>
+            </label>
+          </div>
+          <div id="oc-gasto-op-wrap" style="grid-column:span 3;${tipoOC === 'SERVICIO' ? '' : 'display:none'}">
+            <label style="display:flex;gap:6px;align-items:flex-start;font-size:12px;background:#fef3c7;border:1px solid #fbbf24;padding:8px 10px;border-radius:6px;color:#92400e">
+              <input type="checkbox" name="es_gasto_operativo" id="oc-gasto-op" ${esGastoOperativo ? 'checked' : ''} style="margin-top:2px">
+              <span>
+                <strong>Gasto operativo del proyecto</strong> (combustible, taxi, viáticos, reembolsos de campo) ${tip('Solo para SERVICIO. La OC NO requiere recepción al almacén — al pagarla, el costo se imputa directamente al proyecto. Útil cuando el ítem ya se consumió en obra.')}
+                <br>
+                <span style="font-size:11px;font-weight:400">No entra al almacén. Pasa directo a FACTURACION cuando el pago cierra al 100%.</span>
               </span>
             </label>
           </div>
@@ -3477,10 +3489,20 @@ async function nuevaOC(editData) {
     }
   };
 
-  // Toggle de visibilidad del bloque proyecto según tipo_oc
+  // Toggle de visibilidad del bloque proyecto según tipo_oc.
+  // Mig 073: el checkbox "Gasto operativo" también se muestra/oculta junto
+  // con el bloque proyecto (solo aplica a SERVICIO).
+  const gastoOpWrap = document.getElementById('oc-gasto-op-wrap');
   const togglePicker = () => {
     const tipo = document.querySelector('#form-oc select[name="tipo_oc"]')?.value;
-    if (proyBlock) proyBlock.style.display = (tipo === 'SERVICIO') ? '' : 'none';
+    const esServ = tipo === 'SERVICIO';
+    if (proyBlock)   proyBlock.style.display   = esServ ? '' : 'none';
+    if (gastoOpWrap) gastoOpWrap.style.display = esServ ? '' : 'none';
+    // Si se sale de SERVICIO, desmarcamos el checkbox por las dudas.
+    if (!esServ) {
+      const cb = document.getElementById('oc-gasto-op');
+      if (cb) cb.checked = false;
+    }
   };
   document.querySelector('#form-oc select[name="tipo_oc"]')?.addEventListener('change', togglePicker);
   document.querySelector('#form-oc select[name="moneda"]')?.addEventListener('change', cargarProyectos);
@@ -3523,6 +3545,8 @@ async function nuevaOC(editData) {
       moneda: fd.get('moneda'),
       tipo_cambio: Number(fd.get('tipo_cambio')),
       aplica_igv: fd.get('aplica_igv') === 'on',
+      // Mig 073 — backend descarta el flag si tipo_oc != SERVICIO.
+      es_gasto_operativo: fd.get('es_gasto_operativo') === 'on',
       forma_pago: fd.get('forma_pago'),
       dias_credito: Number(fd.get('dias_credito')),
       observaciones: fd.get('observaciones'),
