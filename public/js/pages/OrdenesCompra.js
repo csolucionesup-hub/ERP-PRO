@@ -18,10 +18,10 @@ import { pill } from '../components/Pill.js';
 
 const ESTADO_COLOR = {
   BORRADOR:           { bg: '#f3f4f6', fg: '#374151', icon: '📝', label: 'Borrador' },
-  APROBADA:           { bg: '#dbeafe', fg: '#1e3a8a', icon: '✅', label: 'Aprobada' },
-  PAGO:               { bg: '#fee2e2', fg: '#991b1b', icon: '💰', label: 'Pago' },
+  APROBADA:           { bg: '#dbeafe', fg: '#1e3a8a', icon: '✅', label: 'A APROBAR' },
+  PAGO:               { bg: '#fee2e2', fg: '#991b1b', icon: '💰', label: 'PAGO TOTAL/PAGO PARCIAL' },
   EN_TRANSITO:        { bg: '#e0f2fe', fg: '#075985', icon: '🚢', label: 'En tránsito' },
-  RECEPCION:          { bg: '#fef9c3', fg: '#713f12', icon: '📦', label: 'Recepción' },
+  RECEPCION:          { bg: '#fef9c3', fg: '#713f12', icon: '📦', label: 'RECEPCIÓN/CANCELAR SALDOS' },
   FACTURACION:        { bg: '#fef3c7', fg: '#854d0e', icon: '🧾', label: 'Facturación / RH' },
   TERMINADA:          { bg: '#dcfce7', fg: '#166534', icon: '✓', label: 'Terminada' },
   CERRADA_SIN_FACTURA:{ bg: '#fce7f3', fg: '#9d174d', icon: '🗂', label: 'Cerrada sin factura' },
@@ -419,7 +419,7 @@ window.ensureOCModal = ensureOCModal;
 // a OC.verOC sin haber montado el TabBar de OrdenesCompra). Las function
 // declarations se hoistean, así que las referencias funcionan aunque estén
 // definidas más abajo en el archivo.
-window.OC = { nuevaOC, verOC, aprobar, aprobarParaPago, pasarARecepcion, pasarAFacturacionDesdePago, listoParaFacturar, marcarCredito, subirFactura, eliminarFactura, subirVoucherPago, eliminarVoucherPago, firmar, desfirmar, agregarNota, borrarNota, recibir, facturar, registrarPago, cerrarSinFactura, cerrarPagaSinFactura, asociarFactura, anular, reactivar, eliminarOC, mandarABorrador, editar, editarFecha, editarMetadata: editarMetadataOC, descargarPDF, reporteROC, marcarEnTransito, desmarcarTransito, cerrarImportacion, vincularMadre, desvincularMadre, vincularMadreServicio, verGastosVinculados, _vincularDesdeModal, _desvincularDesdeModal, descargarExcel: () => api.ordenesCompra.descargarExcel().catch(e => showError(e.message || 'Error descargando Excel')) };
+window.OC = { nuevaOC, verOC, aprobar, aprobarParaPago, pasarARecepcion, pasarAFacturacionDesdePago, terminar, listoParaFacturar, marcarCredito, subirFactura, eliminarFactura, subirVoucherPago, eliminarVoucherPago, firmar, desfirmar, agregarNota, borrarNota, recibir, facturar, registrarPago, cerrarSinFactura, cerrarPagaSinFactura, asociarFactura, anular, reactivar, eliminarOC, mandarABorrador, editar, editarFecha, editarMetadata: editarMetadataOC, descargarPDF, reporteROC, marcarEnTransito, desmarcarTransito, cerrarImportacion, vincularMadre, desvincularMadre, vincularMadreServicio, verGastosVinculados, _vincularDesdeModal, _desvincularDesdeModal, descargarExcel: () => api.ordenesCompra.descargarExcel().catch(e => showError(e.message || 'Error descargando Excel')) };
 
 // ═════════════════════════════════════════════════════════════════════════
 // IMPORTACIONES — landed cost (mig 068)
@@ -1187,7 +1187,7 @@ function pintarColumnasKanban() {
     return `
       <div class="oc-kanban-column" data-estado="${estado}" style="background:${color.bg}">
         <div class="oc-kanban-header" style="border-bottom:2px solid ${color.fg}22">
-          <strong style="color:${color.fg}">${color.icon} ${estado.replace('_', ' ')}</strong>
+          <strong style="color:${color.fg}">${color.icon} ${color.label}</strong>
           <span class="count" style="background:${color.fg}">${ocs.length}</span>
         </div>
         <div class="oc-kanban-cards">
@@ -1727,7 +1727,8 @@ async function verOC(id_oc) {
 
           ${(() => {
             // Lista de PAGOS (multi-pago, mig 064). Cada uno con su voucher.
-            if (!pagosAdjuntos || !pagosAdjuntos.length) return '';
+            // En A APROBAR (APROBADA) no se muestran ni se permiten constancias.
+            if (!pagosAdjuntos || !pagosAdjuntos.length || oc.estado === 'APROBADA') return '';
             const _esGer = (JSON.parse(localStorage.getItem('erp_user') || '{}').rol === 'GERENTE');
             const filas = pagosAdjuntos.map(p => {
               const tieneVoucher = !!p.voucher_url;
@@ -1917,10 +1918,10 @@ function accionesSegunEstado(oc) {
   // APROBADA = puesto de control de revisión.
   // "Pasar a Pagos" solo aparece cuando se alcanzó el umbral de firmas requeridas.
   // Si aún faltan firmas, el botón no aparece — hay que completar los casilleros primero.
-  if (oc.estado === 'APROBADA' && !oc.es_honorario) {
+  if (oc.estado === 'APROBADA') {
     const _firmasOK = Number(oc.firmas_actuales) >= (Number(oc.firmas_requeridas) || 1);
     if (_firmasOK) {
-      btns.push(`<button onclick="OC.aprobarParaPago(${oc.id_oc})" title="Las firmas requeridas están completas. Enviar la OC a la bandeja de Pagos (Finanzas) para registrar el pago al proveedor." style="padding:10px 18px;background:#16a34a;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600;font-size:15px">✓ Pasar a Pagos</button>`);
+      btns.push(`<button onclick="OC.aprobarParaPago(${oc.id_oc})" title="Las firmas requeridas están completas. Enviar la OC a la bandeja de Pagos para registrar constancias. Aplica a todos los tipos de OC." style="padding:10px 18px;background:#16a34a;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600;font-size:15px">Ir a Pagos</button>`);
     }
   }
   // Etiquetas contextuales: las OCs de honorarios (es_honorario=true)
@@ -1945,11 +1946,11 @@ function accionesSegunEstado(oc) {
     const _yaHayPagos = Number(oc.monto_pagado || 0) > 0;
     const _labelPago = _yaHayPagos ? '💰 Registrar otro pago' : '💰 Registrar pago';
     btns.push(`<button onclick="OC.registrarPago(${oc.id_oc}, '${nroSafe}')" title="Registrar pago al proveedor con su constancia. Podés hacer tantos pagos como necesites — la OC se queda en PAGO hasta que vos decidas avanzarla." style="padding:10px 18px;background:#15803d;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">${_labelPago}</button>`);
-    // Botón de avance: depende del tipo de OC
-    if (oc.tipo_oc === 'ALMACEN') {
-      btns.push(`<button onclick="OC.pasarARecepcion(${oc.id_oc}, '${nroSafe}')" title="Mover esta OC a la etapa de Recepción para registrar el ingreso de mercadería al almacén. Podés hacerlo aunque el pago todavía sea parcial." style="padding:10px 18px;background:#7c3aed;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">📦 Pasar a Recepción</button>`);
+    // Botón de avance: solo ALMACEN METAL va a Recepción, todo lo demás va a Facturas
+    if (oc.centro_costo === 'ALMACEN METAL') {
+      btns.push(`<button onclick="OC.pasarARecepcion(${oc.id_oc}, '${nroSafe}')" title="Mover esta OC a Recepción para registrar el ingreso de mercadería al almacén. Solo aplica al centro de costo ALMACEN METAL. Podés hacerlo aunque el pago sea parcial." style="padding:10px 18px;background:#7c3aed;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">📦 Pasar a Recepción</button>`);
     } else {
-      btns.push(`<button onclick="OC.pasarAFacturacionDesdePago(${oc.id_oc}, '${nroSafe}')" title="Mover esta OC a la etapa de Facturación para subir el comprobante del proveedor (factura o RxH). No hay mercadería que recepcionar en servicios u oficina central." style="padding:10px 18px;background:#7c3aed;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">🧾 Pasar a Facturación</button>`);
+      btns.push(`<button onclick="OC.pasarAFacturacionDesdePago(${oc.id_oc}, '${nroSafe}')" title="Mover esta OC a Facturación para subir las facturas del proveedor. Aplica a Oficina Central, servicios y cualquier otro centro de costo que no sea ALMACEN METAL." style="padding:10px 18px;background:#7c3aed;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">Pasar a Facturas</button>`);
     }
   }
   // Importación: marcar OC ALMACEN como EN_TRANSITO (pagada pero la mercadería
@@ -2002,12 +2003,8 @@ function accionesSegunEstado(oc) {
   if (oc.estado === 'RECEPCION' && oc.estado_pago !== 'PAGADO') {
     btns.push(`<button onclick="OC.registrarPago(${oc.id_oc}, '${nroSafe}')" title="Pagar el saldo pendiente del proveedor." style="padding:10px 18px;background:#15803d;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">💰 Pagar saldo</button>`);
   }
-  // En honorarios permitimos pagar directo desde APROBADA (atajo común:
-  // contraté → trabajó → pagué, todo en el mismo día). Para no-honorarios
-  // hay que pasar por PAGO formalmente.
-  if (esHon && oc.estado === 'APROBADA') {
-    btns.push(`<button onclick="OC.registrarPago(${oc.id_oc}, '${nroSafe}')" title="Pagar directamente al colaborador. Saltea PAGO/RECEPCIÓN (no aplican en honorarios). La OC pasa a 'Pagada · pend. RxH' hasta que entregue el Recibo por Honorarios." style="padding:10px 18px;background:#15803d;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">💰 Registrar pago</button>`);
-  }
+  // Nota: el pago desde APROBADA fue removido. Todas las OCs (incluidas
+  // honorarios) deben pasar por "Ir a Pagos" → columna PAGO antes de pagar.
   // RECEPCION + recepción completa + pago completo → habilitar "Listo para facturas/RH"
   // (avanza a FACTURACIÓN sin generar comprobante; recién en esa columna se sube el documento).
   // En RECEPCIÓN ya NO mostramos "Recibí factura" ni "Subir factura": esas acciones viven en FACTURACIÓN.
@@ -2021,9 +2018,13 @@ function accionesSegunEstado(oc) {
   if (oc.estado === 'RECEPCION' && oc.estado_recepcion === 'RECIBIDO' && oc.tipo_oc !== 'ALMACEN') {
     btns.push(`<button onclick="OC.cerrarSinFactura(${oc.id_oc}, '${nroSafe}')" title="Cerrar la OC sin comprobante formal (compra al contado, caja chica, etc). Genera el Gasto contable pero deja la OC en bandeja 'Sin facturar' por si después llega el comprobante." style="padding:10px 18px;background:#ea580c;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">🗂 Cerrar sin comprobante</button>`);
   }
-  // FACTURACION con factura recibida pero sin pago → ofrecer Registrar pago para cerrar a TERMINADA.
-  // Si pago ya estaba PAGADO el backend auto-avanza a TERMINADA al subir la factura
-  // (FacturaOCService → checkAutoAvance), así que acá no aparece el botón.
+  // FACTURACION → botón principal "Pasar a Terminadas" (decisión manual del usuario).
+  // El usuario decide cuándo la OC está completamente cerrada, independientemente del
+  // estado de factura o pago. Siempre visible en FACTURACION.
+  if (oc.estado === 'FACTURACION') {
+    btns.push(`<button onclick="OC.terminar(${oc.id_oc})" title="Cerrar la OC como TERMINADA. Usá este botón cuando hayas registrado todos los pagos y facturas necesarios. La OC pasa a la columna de Terminadas." style="padding:10px 18px;background:#16a34a;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600;font-size:15px">✓ Pasar a Terminadas</button>`);
+  }
+  // FACTURACION con factura recibida pero sin pago → ofrecer Registrar pago.
   if (oc.estado === 'FACTURACION' && oc.estado_factura === 'FACTURADA' && oc.estado_pago !== 'PAGADO') {
     btns.push(`<button onclick="OC.registrarPago(${oc.id_oc}, '${nroSafe}')" title="Registrar el pago al proveedor de este comprobante. Genera el movimiento bancario y cierra la OC en 'Terminada (pago + comprobante)'." style="padding:10px 18px;background:#15803d;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">💰 Registrar pago</button>`);
   }
@@ -2152,8 +2153,8 @@ async function pasarARecepcion(id, nro) {
 
 async function pasarAFacturacionDesdePago(id, nro) {
   const ok = await confirmarAccion({
-    titulo: '🧾 Pasar a Facturación',
-    mensaje: `La OC <strong>${nro}</strong> pasará a <strong>FACTURACIÓN</strong> donde se suben los comprobantes del proveedor (facturas o RxH).<br><br>No hay mercadería que recepcionar en este tipo de OC. ¿Confirmás?`,
+    titulo: 'Pasar a Facturas',
+    mensaje: `La OC <strong>${nro}</strong> pasará a <strong>FACTURACIÓN</strong> donde se suben las facturas del proveedor.<br><br>No hay mercadería que recepcionar en este tipo de OC. ¿Confirmás?`,
     tipo: 'info',
     textoBoton: 'Sí, pasar a Facturación',
   });
@@ -2161,6 +2162,21 @@ async function pasarAFacturacionDesdePago(id, nro) {
   try {
     await api.ordenesCompra.pasarAFacturacionDesdePago(id);
     showSuccess('OC pasada a Facturación');
+    setTimeout(() => refreshOC(), 600);
+  } catch (e) { showError(e.message); }
+}
+
+async function terminar(id) {
+  const ok = await confirmarAccion({
+    titulo: '✓ Pasar a Terminadas',
+    mensaje: 'La OC pasará a <strong>TERMINADA</strong>. Usá esto cuando hayas registrado todos los pagos y facturas necesarios.<br><br>¿Confirmás que la OC está completamente cerrada?',
+    tipo: 'info',
+    textoBoton: 'Sí, terminar OC',
+  });
+  if (!ok) return;
+  try {
+    await api.ordenesCompra.terminar(id);
+    showSuccess('OC marcada como Terminada');
     setTimeout(() => refreshOC(), 600);
   } catch (e) { showError(e.message); }
 }

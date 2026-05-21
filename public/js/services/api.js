@@ -501,6 +501,7 @@ export const api = {
     aprobarParaPago: (id)    => post(`/ordenes-compra/${id}/aprobar-para-pago`, {}),
     pasarARecepcion: (id)    => post(`/ordenes-compra/${id}/pasar-a-recepcion`, {}),
     pasarAFacturacionDesdePago: (id) => post(`/ordenes-compra/${id}/pasar-a-facturacion-desde-pago`, {}),
+    terminar:          (id)  => post(`/ordenes-compra/${id}/terminar`, {}),
     listoParaFacturar: (id)  => post(`/ordenes-compra/${id}/listo-para-facturar`, {}),
     recibir:    (id, lineas) => post(`/ordenes-compra/${id}/recibir`, { lineas }),
     // Importaciones (landed cost) — mig 068

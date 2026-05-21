@@ -399,12 +399,12 @@ class OrdenCompraService {
    */
   async pasarARecepcion(id_oc: number, id_usuario: number) {
     const [rows]: any = await db.query(
-      'SELECT estado, tipo_oc FROM OrdenesCompra WHERE id_oc = ?', [id_oc]
+      'SELECT estado, tipo_oc, centro_costo FROM OrdenesCompra WHERE id_oc = ?', [id_oc]
     );
     if (!rows[0]) throw new Error('OC no encontrada');
     const oc = rows[0];
     if (oc.estado !== 'PAGO') throw new Error(`OC debe estar en PAGO para pasar a Recepción (actual: ${oc.estado})`);
-    if (oc.tipo_oc !== 'ALMACEN') throw new Error('Solo OCs de ALMACEN pasan por la etapa de Recepción');
+    if (oc.centro_costo !== 'ALMACEN METAL') throw new Error('Solo OCs del centro de costo ALMACEN METAL pasan por la etapa de Recepción');
 
     await db.query(`UPDATE OrdenesCompra SET estado='RECEPCION' WHERE id_oc=?`, [id_oc]);
     await this._registrarTransicion(id_oc, 'PAGO', 'RECEPCION', id_usuario, 'Pasado a Recepción manualmente');
@@ -418,16 +418,33 @@ class OrdenCompraService {
    */
   async pasarAFacturacionDesdePago(id_oc: number, id_usuario: number) {
     const [rows]: any = await db.query(
-      'SELECT estado, tipo_oc, es_honorario FROM OrdenesCompra WHERE id_oc = ?', [id_oc]
+      'SELECT estado, tipo_oc, es_honorario, centro_costo FROM OrdenesCompra WHERE id_oc = ?', [id_oc]
     );
     if (!rows[0]) throw new Error('OC no encontrada');
     const oc = rows[0];
-    if (oc.estado !== 'PAGO') throw new Error(`OC debe estar en PAGO para pasar a Facturación (actual: ${oc.estado})`);
-    if (oc.tipo_oc === 'ALMACEN') throw new Error('Las OCs de ALMACEN pasan por RECEPCION primero — usá "Pasar a Recepción"');
+    if (oc.estado !== 'PAGO') throw new Error(`OC debe estar en PAGO para pasar a Facturas (actual: ${oc.estado})`);
+    if (oc.centro_costo === 'ALMACEN METAL') throw new Error('Las OCs de ALMACEN METAL pasan por RECEPCION primero — usá "Pasar a Recepción"');
 
     await db.query(`UPDATE OrdenesCompra SET estado='FACTURACION' WHERE id_oc=?`, [id_oc]);
-    await this._registrarTransicion(id_oc, 'PAGO', 'FACTURACION', id_usuario, 'Pasado a Facturación manualmente');
+    await this._registrarTransicion(id_oc, 'PAGO', 'FACTURACION', id_usuario, 'Pasado a Facturas manualmente');
     return { success: true, estado: 'FACTURACION' as const };
+  }
+
+  /**
+   * Terminar la OC manualmente desde FACTURACION.
+   * El usuario decide cuándo considera que la OC está completamente cerrada.
+   * No valida estado de factura — es decisión explícita del usuario.
+   */
+  async terminarOC(id_oc: number, id_usuario: number) {
+    const [rows]: any = await db.query(
+      'SELECT estado FROM OrdenesCompra WHERE id_oc = ?', [id_oc]
+    );
+    if (!rows[0]) throw new Error('OC no encontrada');
+    if (rows[0].estado !== 'FACTURACION') throw new Error(`OC debe estar en FACTURACION para terminar (actual: ${rows[0].estado})`);
+
+    await db.query(`UPDATE OrdenesCompra SET estado='TERMINADA' WHERE id_oc=?`, [id_oc]);
+    await this._registrarTransicion(id_oc, 'FACTURACION', 'TERMINADA', id_usuario, 'Terminada manualmente por usuario');
+    return { success: true, estado: 'TERMINADA' as const };
   }
 
   /**
@@ -1030,20 +1047,18 @@ class OrdenCompraService {
           ]
         );
 
-        const [factRows]: any = await conn.query(
-          `SELECT estado_factura FROM OrdenesCompra WHERE id_oc = ?`, [id_oc]
-        );
-        const proximoEstado = (cierraTotal && factRows[0]?.estado_factura === 'FACTURADA') ? 'TERMINADA' : 'FACTURACION';
+        // Siempre queda en FACTURACION — el usuario decide manualmente cuándo
+        // pasar a TERMINADA con el botón "Pasar a Terminadas".
         await conn.query(
           `UPDATE OrdenesCompra
-              SET estado = ?, monto_pagado = ?, estado_pago = ?,
+              SET monto_pagado = ?, estado_pago = ?,
                   pagada_at = COALESCE(pagada_at, ?)
             WHERE id_oc = ?`,
-          [proximoEstado, nuevoMontoPagado, nuevoEstadoPago, datos.fecha_pago, id_oc]
+          [nuevoMontoPagado, nuevoEstadoPago, datos.fecha_pago, id_oc]
         );
 
         await conn.commit();
-        return { success: true, estado: proximoEstado as 'TERMINADA' | 'FACTURACION', id_oc, monto_pagado: nuevoMontoPagado, estado_pago: nuevoEstadoPago };
+        return { success: true, estado: 'FACTURACION' as const, id_oc, monto_pagado: nuevoMontoPagado, estado_pago: nuevoEstadoPago };
       }
 
       // ── CASO B: PAGO / RECEPCION → pago sin factura aún ────────────────
@@ -2299,10 +2314,9 @@ class OrdenCompraService {
     const pagoCompleto = row.estado_pago === 'PAGADO';
     const facturaOK = row.estado_factura === 'FACTURADA';
 
-    if (recibidoCompleto && pagoCompleto && facturaOK && row.estado !== 'TERMINADA') {
-      await conn.query(`UPDATE OrdenesCompra SET estado='TERMINADA' WHERE id_oc=?`, [id_oc]);
-      await this._registrarTransicion(id_oc, row.estado, 'TERMINADA', null, 'Auto: todo cerrado');
-    } else if (recibidoCompleto && pagoCompleto && row.estado === 'RECEPCION') {
+    // Auto-avance RECEPCION → FACTURACION cuando recepción completa + pago cerrado.
+    // TERMINADA NO se asigna automáticamente — el usuario apreta "Pasar a Terminadas".
+    if (recibidoCompleto && pagoCompleto && row.estado === 'RECEPCION') {
       await conn.query(`UPDATE OrdenesCompra SET estado='FACTURACION' WHERE id_oc=?`, [id_oc]);
       await this._registrarTransicion(id_oc, 'RECEPCION', 'FACTURACION', null, 'Auto: recepción completa + pago al día');
     }
