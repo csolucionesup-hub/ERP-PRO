@@ -925,16 +925,14 @@ class OrdenCompraService {
     );
     const oc = rows[0];
     if (!oc) throw new Error('OC no encontrada');
-    // Estados válidos para registrar pago: PAGO/RECEPCION/FACTURACION.
-    // El atajo viejo "honorarios pagan desde APROBADA" se removió tras
-    // introducir multifirma (mig 065). Ahora el gate de aprobación lo decide
-    // OCFirmasService.firmar(): cuando se cumple el umbral, la OC pasa
-    // automáticamente a PAGO. Si querés pagar una OC honoraria que está en
-    // APROBADA, primero firmás (con regla default 1 firma alcanza con 1 click)
-    // → pasa a PAGO → recién ahí podés registrar el pago.
-    const estadosValidosPago = ['PAGO', 'RECEPCION', 'FACTURACION'];
+    // Estados válidos para registrar pago: PAGO/EN_TRANSITO/RECEPCION/FACTURACION.
+    // EN_TRANSITO (Perfotools imports): la mercadería ya se pagó al proveedor y
+    // viaja al país. Acá se siguen registrando pagos parciales, comisiones
+    // bancarias del giro internacional, ajustes de tipo de cambio, etc.
+    // La OC se mantiene en EN_TRANSITO hasta que el usuario cierre la importación.
+    const estadosValidosPago = ['PAGO', 'EN_TRANSITO', 'RECEPCION', 'FACTURACION'];
     if (!estadosValidosPago.includes(oc.estado)) {
-      throw new Error(`OC debe estar PAGO, RECEPCION o FACTURACION para registrar pago (actual: ${oc.estado}). Si está en APROBADA, primero firmá los casilleros requeridos.`);
+      throw new Error(`OC debe estar en PAGO, EN_TRANSITO, RECEPCION o FACTURACION para registrar pago (actual: ${oc.estado}). Si está en APROBADA, primero firmá los casilleros requeridos.`);
     }
 
     const tcOC = Number(oc.tipo_cambio) || 1;

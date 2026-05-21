@@ -1972,9 +1972,18 @@ function accionesSegunEstado(oc) {
   if (oc.tipo_oc === 'ALMACEN' && ['APROBADA', 'PAGO'].includes(oc.estado)) {
     btns.push(`<button onclick="OC.marcarEnTransito(${oc.id_oc}, '${nroSafe}')" title="Marcar la mercadería como EN TRÁNSITO (importación pagada al proveedor, todavía no llegó al país). No entra al inventario hasta cerrar la importación con los gastos asociados (flete, desaduanaje, impuestos). Usá esto para importaciones de Perfotools." style="padding:10px 18px;background:#0ea5e9;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">🚢 Marcar en tránsito</button>`);
   }
-  // EN_TRANSITO → 2 acciones: Cerrar importación (recibe al inventario con
-  // landed cost) o Desmarcar tránsito (volver a PAGO/APROBADA si fue error).
+  // EN_TRANSITO → 3 acciones: Pagar saldo (si todavía hay pago pendiente),
+  // Cerrar importación (recibe al inventario con landed cost),
+  // o Desmarcar tránsito (volver a PAGO/APROBADA si fue error).
   if (oc.estado === 'EN_TRANSITO') {
+    // Pagar saldo durante tránsito: típico en importaciones donde hay pago
+    // parcial inicial al proveedor + ajustes de TC + comisiones bancarias
+    // del giro internacional mientras la mercadería viaja.
+    if (oc.estado_pago !== 'PAGADO') {
+      const _yaHayPagos = Number(oc.monto_pagado || 0) > 0;
+      const _labelPagoT = _yaHayPagos ? '💰 Registrar otro pago' : '💰 Registrar pago';
+      btns.push(`<button onclick="OC.registrarPago(${oc.id_oc}, '${nroSafe}')" title="Registrar un pago adicional al proveedor extranjero o un cargo bancario (comisión SWIFT, ajuste TC) mientras la mercadería viaja. Podés subir N constancias — la OC sigue en EN TRÁNSITO hasta que cierres la importación." style="padding:10px 18px;background:#15803d;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">${_labelPagoT}</button>`);
+    }
     btns.push(`<button onclick="OC.cerrarImportacion(${oc.id_oc}, '${nroSafe}')" title="Cerrar la importación: suma los gastos satélite vinculados (flete, desaduanaje, impuestos), prorratea sobre los productos, y recibe al inventario con el costo landed correcto. Sólo se puede hacer una vez por importación." style="padding:10px 18px;background:#059669;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">🚛 Cerrar importación</button>`);
     btns.push(`<button onclick="OC.desmarcarTransito(${oc.id_oc}, '${nroSafe}')" title="Volver al estado anterior (PAGO/APROBADA). Útil si marcaste por error." style="padding:10px 18px;background:#fff;color:#374151;border:1px solid #d1d5db;border-radius:6px;cursor:pointer;font-weight:600">↩️ Desmarcar tránsito</button>`);
   }
