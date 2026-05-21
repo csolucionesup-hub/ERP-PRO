@@ -393,6 +393,44 @@ class OrdenCompraService {
   }
 
   /**
+   * Pasar de PAGO a RECEPCION manualmente (solo OCs tipo ALMACEN).
+   * El usuario decide cuándo mover la card, independientemente del estado
+   * de pago (puede tener pagos parciales todavía pendientes).
+   */
+  async pasarARecepcion(id_oc: number, id_usuario: number) {
+    const [rows]: any = await db.query(
+      'SELECT estado, tipo_oc FROM OrdenesCompra WHERE id_oc = ?', [id_oc]
+    );
+    if (!rows[0]) throw new Error('OC no encontrada');
+    const oc = rows[0];
+    if (oc.estado !== 'PAGO') throw new Error(`OC debe estar en PAGO para pasar a Recepción (actual: ${oc.estado})`);
+    if (oc.tipo_oc !== 'ALMACEN') throw new Error('Solo OCs de ALMACEN pasan por la etapa de Recepción');
+
+    await db.query(`UPDATE OrdenesCompra SET estado='RECEPCION' WHERE id_oc=?`, [id_oc]);
+    await this._registrarTransicion(id_oc, 'PAGO', 'RECEPCION', id_usuario, 'Pasado a Recepción manualmente');
+    return { success: true, estado: 'RECEPCION' as const };
+  }
+
+  /**
+   * Pasar de PAGO a FACTURACION manualmente (OCs GENERAL, SERVICIO, honorarios,
+   * gastos operativos — todo lo que no requiere recepción de mercadería).
+   * El usuario decide cuándo mover la card.
+   */
+  async pasarAFacturacionDesdePago(id_oc: number, id_usuario: number) {
+    const [rows]: any = await db.query(
+      'SELECT estado, tipo_oc, es_honorario FROM OrdenesCompra WHERE id_oc = ?', [id_oc]
+    );
+    if (!rows[0]) throw new Error('OC no encontrada');
+    const oc = rows[0];
+    if (oc.estado !== 'PAGO') throw new Error(`OC debe estar en PAGO para pasar a Facturación (actual: ${oc.estado})`);
+    if (oc.tipo_oc === 'ALMACEN') throw new Error('Las OCs de ALMACEN pasan por RECEPCION primero — usá "Pasar a Recepción"');
+
+    await db.query(`UPDATE OrdenesCompra SET estado='FACTURACION' WHERE id_oc=?`, [id_oc]);
+    await this._registrarTransicion(id_oc, 'PAGO', 'FACTURACION', id_usuario, 'Pasado a Facturación manualmente');
+    return { success: true, estado: 'FACTURACION' as const };
+  }
+
+  /**
    * Pasar de RECEPCION a FACTURACION ("Listo para subir facturas/RH").
    * Tercer gate: en RECEPCION se cierran pago y recepción. Una vez ambas
    * al 100%, este método mueve la card a FACTURACION donde recién se sube
@@ -1177,19 +1215,13 @@ class OrdenCompraService {
         ]
       );
 
-      // Regla de avance de estado:
-      //   - Pago PARCIAL desde PAGO/APROBADA → la card se QUEDA en PAGO.
-      //     El usuario puede registrar tantos pagos parciales como quiera
-      //     (con su constancia cada uno) antes de cerrar el total.
-      //   - Pago TOTAL desde PAGO/APROBADA → avanza a RECEPCION (o
-      //     FACTURACION para OCs que saltan recepción: GENERAL, honorarios,
-      //     gastos operativos).
-      //   - Si ya venía de RECEPCION, se queda ahí (el avance lo decide
-      //     _checkAutoAvance cuando recepción también se completa).
-      const saltaRecepcion = !this._requiereRecepcion(oc.tipo_oc, oc.es_honorario, oc.es_gasto_operativo) && cierraTotal;
-      const proximoEstadoOC = ['PAGO', 'APROBADA'].includes(oc.estado)
-        ? (cierraTotal ? (saltaRecepcion ? 'FACTURACION' : 'RECEPCION') : oc.estado)
-        : oc.estado;
+      // registrarPago NUNCA mueve la card fuera de PAGO — el avance es siempre
+      // manual mediante botones explícitos:
+      //   ALMACEN       → botón "Pasar a Recepción"  (pasarARecepcion)
+      //   GENERAL/SERV  → botón "Pasar a Facturación" (pasarAFacturacionDesdePago)
+      // Si ya estaba en RECEPCION se queda ahí; _checkAutoAvance lo avanzará
+      // a FACTURACION cuando recepción + pago estén al 100%.
+      const proximoEstadoOC = oc.estado;
       await conn.query(
         `UPDATE OrdenesCompra
             SET estado = ?, monto_pagado = ?, estado_pago = ?,

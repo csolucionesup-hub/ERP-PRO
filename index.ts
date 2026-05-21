@@ -2123,6 +2123,14 @@ ocRouter.post('/:id/aprobar-para-pago', validateIdParam, auditLog('OrdenCompra',
   res.json(await OrdenCompraService.aprobarParaPago(Number(req.params.id), req.user!.id_usuario));
 });
 
+ocRouter.post('/:id/pasar-a-recepcion', validateIdParam, auditLog('OrdenCompra', 'UPDATE'), async (req: any, res: Response) => {
+  res.json(await OrdenCompraService.pasarARecepcion(Number(req.params.id), req.user!.id_usuario));
+});
+
+ocRouter.post('/:id/pasar-a-facturacion-desde-pago', validateIdParam, auditLog('OrdenCompra', 'UPDATE'), async (req: any, res: Response) => {
+  res.json(await OrdenCompraService.pasarAFacturacionDesdePago(Number(req.params.id), req.user!.id_usuario));
+});
+
 ocRouter.post('/:id/listo-para-facturar', validateIdParam, auditLog('OrdenCompra', 'UPDATE'), async (req: any, res: Response) => {
   res.json(await OrdenCompraService.marcarListoParaFacturar(Number(req.params.id), req.user!.id_usuario));
 });

@@ -419,7 +419,7 @@ window.ensureOCModal = ensureOCModal;
 // a OC.verOC sin haber montado el TabBar de OrdenesCompra). Las function
 // declarations se hoistean, así que las referencias funcionan aunque estén
 // definidas más abajo en el archivo.
-window.OC = { nuevaOC, verOC, aprobar, aprobarParaPago, listoParaFacturar, marcarCredito, subirFactura, eliminarFactura, subirVoucherPago, eliminarVoucherPago, firmar, desfirmar, agregarNota, borrarNota, recibir, facturar, registrarPago, cerrarSinFactura, cerrarPagaSinFactura, asociarFactura, anular, reactivar, eliminarOC, mandarABorrador, editar, editarFecha, editarMetadata: editarMetadataOC, descargarPDF, reporteROC, marcarEnTransito, desmarcarTransito, cerrarImportacion, vincularMadre, desvincularMadre, vincularMadreServicio, verGastosVinculados, _vincularDesdeModal, _desvincularDesdeModal, descargarExcel: () => api.ordenesCompra.descargarExcel().catch(e => showError(e.message || 'Error descargando Excel')) };
+window.OC = { nuevaOC, verOC, aprobar, aprobarParaPago, pasarARecepcion, pasarAFacturacionDesdePago, listoParaFacturar, marcarCredito, subirFactura, eliminarFactura, subirVoucherPago, eliminarVoucherPago, firmar, desfirmar, agregarNota, borrarNota, recibir, facturar, registrarPago, cerrarSinFactura, cerrarPagaSinFactura, asociarFactura, anular, reactivar, eliminarOC, mandarABorrador, editar, editarFecha, editarMetadata: editarMetadataOC, descargarPDF, reporteROC, marcarEnTransito, desmarcarTransito, cerrarImportacion, vincularMadre, desvincularMadre, vincularMadreServicio, verGastosVinculados, _vincularDesdeModal, _desvincularDesdeModal, descargarExcel: () => api.ordenesCompra.descargarExcel().catch(e => showError(e.message || 'Error descargando Excel')) };
 
 // ═════════════════════════════════════════════════════════════════════════
 // IMPORTACIONES — landed cost (mig 068)
@@ -1937,13 +1937,20 @@ function accionesSegunEstado(oc) {
     : 'Cargar la factura/boleta del proveedor. Genera la Compra (ALMACEN) o el Gasto (GENERAL/SERVICIO) y la Tx en caja. Después de esto la OC ya no se puede anular.';
   const txtFacturaTardia = esHon ? '🧾 Recibí RxH' : '🧾 Recibí factura';
 
-  // PAGO = bandeja de Finanzas. Podés registrar N pagos parciales desde acá.
-  // La OC se queda en PAGO hasta que el total esté 100% cubierto, recién entonces
-  // avanza a RECEPCION. Cada pago parcial puede tener su propia constancia.
+  // PAGO = bandeja de Finanzas. Registrá N pagos parciales con su constancia cada uno.
+  // La card NO avanza automáticamente — el usuario decide cuándo mover:
+  //   ALMACEN     → "Pasar a Recepción"   (puede tener pago parcial aún)
+  //   GENERAL/SERV → "Pasar a Facturación" (no hay mercadería que recepcionar)
   if (oc.estado === 'PAGO') {
     const _yaHayPagos = Number(oc.monto_pagado || 0) > 0;
     const _labelPago = _yaHayPagos ? '💰 Registrar otro pago' : '💰 Registrar pago';
-    btns.push(`<button onclick="OC.registrarPago(${oc.id_oc}, '${nroSafe}')" title="Registrar pago al proveedor. Podés hacer tantos pagos parciales como necesites — cada uno con su constancia. La OC avanza a RECEPCIÓN recién cuando se cierra el total." style="padding:10px 18px;background:#15803d;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">${_labelPago}</button>`);
+    btns.push(`<button onclick="OC.registrarPago(${oc.id_oc}, '${nroSafe}')" title="Registrar pago al proveedor con su constancia. Podés hacer tantos pagos como necesites — la OC se queda en PAGO hasta que vos decidas avanzarla." style="padding:10px 18px;background:#15803d;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">${_labelPago}</button>`);
+    // Botón de avance: depende del tipo de OC
+    if (oc.tipo_oc === 'ALMACEN') {
+      btns.push(`<button onclick="OC.pasarARecepcion(${oc.id_oc}, '${nroSafe}')" title="Mover esta OC a la etapa de Recepción para registrar el ingreso de mercadería al almacén. Podés hacerlo aunque el pago todavía sea parcial." style="padding:10px 18px;background:#7c3aed;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">📦 Pasar a Recepción</button>`);
+    } else {
+      btns.push(`<button onclick="OC.pasarAFacturacionDesdePago(${oc.id_oc}, '${nroSafe}')" title="Mover esta OC a la etapa de Facturación para subir el comprobante del proveedor (factura o RxH). No hay mercadería que recepcionar en servicios u oficina central." style="padding:10px 18px;background:#7c3aed;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">🧾 Pasar a Facturación</button>`);
+    }
   }
   // Importación: marcar OC ALMACEN como EN_TRANSITO (pagada pero la mercadería
   // aún no llegó). Solo aparece en APROBADA o PAGO, y solo para ALMACEN.
@@ -2124,6 +2131,36 @@ async function aprobarParaPago(id) {
   try {
     await api.ordenesCompra.aprobarParaPago(id);
     showSuccess('OC aprobada para pago');
+    setTimeout(() => refreshOC(), 600);
+  } catch (e) { showError(e.message); }
+}
+
+async function pasarARecepcion(id, nro) {
+  const ok = await confirmarAccion({
+    titulo: '📦 Pasar a Recepción',
+    mensaje: `La OC <strong>${nro}</strong> pasará a <strong>RECEPCIÓN</strong> para registrar el ingreso de mercadería al almacén.<br><br>Podés hacerlo aunque el pago todavía sea parcial — los pagos pendientes se registran en RECEPCIÓN. ¿Confirmás?`,
+    tipo: 'info',
+    textoBoton: 'Sí, pasar a Recepción',
+  });
+  if (!ok) return;
+  try {
+    await api.ordenesCompra.pasarARecepcion(id);
+    showSuccess('OC pasada a Recepción');
+    setTimeout(() => refreshOC(), 600);
+  } catch (e) { showError(e.message); }
+}
+
+async function pasarAFacturacionDesdePago(id, nro) {
+  const ok = await confirmarAccion({
+    titulo: '🧾 Pasar a Facturación',
+    mensaje: `La OC <strong>${nro}</strong> pasará a <strong>FACTURACIÓN</strong> donde se suben los comprobantes del proveedor (facturas o RxH).<br><br>No hay mercadería que recepcionar en este tipo de OC. ¿Confirmás?`,
+    tipo: 'info',
+    textoBoton: 'Sí, pasar a Facturación',
+  });
+  if (!ok) return;
+  try {
+    await api.ordenesCompra.pasarAFacturacionDesdePago(id);
+    showSuccess('OC pasada a Facturación');
     setTimeout(() => refreshOC(), 600);
   } catch (e) { showError(e.message); }
 }
