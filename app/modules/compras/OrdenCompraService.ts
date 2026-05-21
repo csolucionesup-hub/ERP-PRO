@@ -2067,9 +2067,12 @@ class OrdenCompraService {
               cot.proyecto       AS cotizacion_proyecto,
               cot.moneda         AS cotizacion_moneda,
               cot.total          AS cotizacion_total,
-              u_prep.nombre  AS preparado_por_nombre,
-              u_rev.nombre   AS revisado_por_nombre,
-              u_aut.nombre   AS autorizado_por_nombre
+              u_prep.nombre    AS preparado_por_nombre,
+              u_prep.firma_url AS preparado_por_firma_url,
+              u_rev.nombre     AS revisado_por_nombre,
+              u_rev.firma_url  AS revisado_por_firma_url,
+              u_aut.nombre     AS autorizado_por_nombre,
+              u_aut.firma_url  AS autorizado_por_firma_url
        FROM OrdenesCompra oc
        LEFT JOIN Proveedores p ON p.id_proveedor = oc.id_proveedor
        LEFT JOIN Cotizaciones cot ON cot.id_cotizacion = oc.id_cotizacion

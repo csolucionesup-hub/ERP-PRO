@@ -1840,7 +1840,7 @@ async function verOC(id_oc) {
             const reqFirmas = Number(oc.firmas_requeridas) || 1;
             const actuales = Number(oc.firmas_actuales) || 0;
 
-            const card = (etiqueta, casillero, idFirmante, nombreFirmante, fechaFirma) => {
+            const card = (etiqueta, casillero, idFirmante, nombreFirmante, fechaFirma, firmaUrl) => {
               const firmada = !!idFirmante;
               const puedeQuitar = firmada && (idFirmante === idUserActual || esGer) && (oc.estado === 'APROBADA' || oc.estado === 'PAGO');
               const fecha = fechaFirma ? new Date(fechaFirma).toLocaleString('es-PE', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' }) : '';
@@ -1848,20 +1848,24 @@ async function verOC(id_oc) {
                 <div style="flex:1;min-width:200px;padding:12px;border:1px solid ${firmada?'#86efac':'#d1d5db'};border-radius:6px;background:${firmada?'#ecfdf5':'#f9fafb'}">
                   <div style="font-size:10px;font-weight:700;color:var(--text-secondary);letter-spacing:.3px;margin-bottom:6px">${etiqueta}</div>
                   ${firmada ? `
+                    ${firmaUrl ? `<img src="${firmaUrl}" alt="Firma de ${escapeHtml(nombreFirmante||'')}" style="max-height:48px;max-width:140px;object-fit:contain;display:block;margin-bottom:6px">` : ''}
                     <div style="font-size:13px;font-weight:600;color:#065f46">${escapeHtml(nombreFirmante || '—')}</div>
                     <div style="font-size:10px;color:#6b7280;margin-top:2px">firmado: ${fecha}</div>
                     ${puedeQuitar ? `<button onclick="OC.desfirmar(${oc.id_oc}, '${casillero}')" title="Quitar tu firma. Si la OC ya estaba en PAGO y al quitar caen las firmas debajo del umbral, vuelve a APROBADA." style="margin-top:8px;background:transparent;color:#dc2626;border:1px solid #fecaca;border-radius:4px;padding:3px 8px;cursor:pointer;font-size:11px">Quitar firma</button>` : ''}
                   ` : `
                     <div style="font-size:12px;color:#9ca3af;margin-bottom:8px">Pendiente</div>
-                    ${firmableAhora ? `<button onclick="OC.firmar(${oc.id_oc}, '${casillero}')" title="Firmar como ${etiqueta.toLowerCase()}. Si con esta firma se alcanza el umbral configurado, la OC pasa automáticamente a PAGO." style="background:#2563eb;color:white;border:none;border-radius:4px;padding:5px 10px;cursor:pointer;font-size:11px;font-weight:600">✍️ Firmar</button>` : `<span style="color:#9ca3af;font-size:11px">—</span>`}
+                    ${firmableAhora ? `<button onclick="OC.firmar(${oc.id_oc}, '${casillero}')" title="Firmar como ${etiqueta.toLowerCase()}. Cuando se alcance el número de firmas requeridas, aparecerá el botón 'Pasar a Pagos'." style="background:#2563eb;color:white;border:none;border-radius:4px;padding:5px 10px;cursor:pointer;font-size:11px;font-weight:600">✍️ Firmar</button>` : `<span style="color:#9ca3af;font-size:11px">—</span>`}
                   `}
                 </div>
               `;
             };
 
             const colorBarra = actuales >= reqFirmas ? '#16a34a' : '#f59e0b';
+            const listoParaPago = actuales >= reqFirmas;
             const headerTxt = firmableAhora
-              ? `${actuales} / ${reqFirmas} firma${reqFirmas>1?'s':''} requerida${reqFirmas>1?'s':''} para pasar a PAGO`
+              ? (listoParaPago
+                  ? `✅ ${actuales} / ${reqFirmas} firmas — listo para pasar a pagos`
+                  : `${actuales} / ${reqFirmas} firma${reqFirmas>1?'s':''} requerida${reqFirmas>1?'s':''}`)
               : `${actuales} firma${actuales>1?'s':''} registrada${actuales>1?'s':''}`;
 
             return `
@@ -1871,9 +1875,9 @@ async function verOC(id_oc) {
                   <span style="font-size:11px;color:${colorBarra};font-weight:600">${headerTxt}</span>
                 </div>
                 <div style="display:flex;gap:8px;flex-wrap:wrap">
-                  ${card('PREPARADO POR',  'preparado',  oc.preparado_por_id,  oc.preparado_por_nombre,  oc.preparado_at)}
-                  ${card('REVISADO POR',   'revisado',   oc.revisado_por_id,   oc.revisado_por_nombre,   oc.revisado_at)}
-                  ${card('AUTORIZADO POR', 'autorizado', oc.autorizado_por_id, oc.autorizado_por_nombre, oc.autorizado_at)}
+                  ${card('PREPARADO POR',  'preparado',  oc.preparado_por_id,  oc.preparado_por_nombre,  oc.preparado_at,  oc.preparado_por_firma_url)}
+                  ${card('REVISADO POR',   'revisado',   oc.revisado_por_id,   oc.revisado_por_nombre,   oc.revisado_at,   oc.revisado_por_firma_url)}
+                  ${card('AUTORIZADO POR', 'autorizado', oc.autorizado_por_id, oc.autorizado_por_nombre, oc.autorizado_at, oc.autorizado_por_firma_url)}
                 </div>
               </div>
             `;
@@ -1910,10 +1914,14 @@ function accionesSegunEstado(oc) {
   if (oc.estado === 'BORRADOR') {
     btns.push(`<button onclick="OC.aprobar(${oc.id_oc})" title="Marcar la OC como lista para aprobación. Pasa de BORRADOR a APROBADA y queda en revisión hasta que se le dé 'Aprobado para pago'." style="padding:10px 18px;background:#16a34a;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">✓ Lista para aprobación</button>`);
   }
-  // APROBADA = puesto de control de revisión. Único avance hacia adelante: "Aprobado para pago" → PAGO.
-  // No mostramos Registrar pago / Marcar crédito acá: esas acciones viven en PAGO.
+  // APROBADA = puesto de control de revisión.
+  // "Pasar a Pagos" solo aparece cuando se alcanzó el umbral de firmas requeridas.
+  // Si aún faltan firmas, el botón no aparece — hay que completar los casilleros primero.
   if (oc.estado === 'APROBADA' && !oc.es_honorario) {
-    btns.push(`<button onclick="OC.aprobarParaPago(${oc.id_oc})" title="Marcar la OC como revisada y aprobada para pago. La envía a la bandeja de Finanzas (columna PAGO) para que registren el pago o crédito." style="padding:10px 18px;background:#16a34a;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">✅ Aprobado para pago</button>`);
+    const _firmasOK = Number(oc.firmas_actuales) >= (Number(oc.firmas_requeridas) || 1);
+    if (_firmasOK) {
+      btns.push(`<button onclick="OC.aprobarParaPago(${oc.id_oc})" title="Las firmas requeridas están completas. Enviar la OC a la bandeja de Pagos (Finanzas) para registrar el pago al proveedor." style="padding:10px 18px;background:#16a34a;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600;font-size:15px">✓ Pasar a Pagos</button>`);
+    }
   }
   // Etiquetas contextuales: las OCs de honorarios (es_honorario=true)
   // representan trabajo de persona natural — NO hay envío ni recepción de
@@ -2277,8 +2285,8 @@ async function eliminarFactura(id_factura_oc, id_oc) {
 async function firmar(id_oc, casillero) {
   try {
     const r = await api.ordenesCompra.firmar(id_oc, casillero);
-    const msg = r.estado === 'PAGO'
-      ? `✓ ${casillero.toUpperCase()} firmada — OC alcanzó ${r.firmas_actuales}/${r.firmas_requeridas} firmas y pasó a PAGO`
+    const msg = r.listo_para_pago
+      ? `✓ ${casillero.toUpperCase()} firmada — ${r.firmas_actuales}/${r.firmas_requeridas} firmas completas. Ya podés usar "Pasar a Pagos".`
       : `✓ ${casillero.toUpperCase()} firmada (${r.firmas_actuales}/${r.firmas_requeridas} firmas)`;
     showSuccess(msg);
     if (document.getElementById('oc-modal')?.innerHTML) verOC(id_oc);

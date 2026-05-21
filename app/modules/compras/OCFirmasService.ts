@@ -145,29 +145,7 @@ class OCFirmasService {
       const firmasActuales = this._contarFirmas(fresca);
       const firmasReq = await this._resolverFirmasRequeridas(Number(fresca.total), fresca.centro_costo);
 
-      let estadoNuevo = 'APROBADA';
-      if (firmasActuales >= firmasReq) {
-        // Alcanzó umbral → PAGO. id_usuario_aprueba = último firmante.
-        await conn.query(
-          `UPDATE OrdenesCompra
-              SET estado = 'PAGO',
-                  id_usuario_aprueba = ?,
-                  fecha_aprobacion = COALESCE(fecha_aprobacion, NOW())
-            WHERE id_oc = ?`,
-          [id_usuario, id_oc]
-        );
-        estadoNuevo = 'PAGO';
-
-        // Registrar transición en historial. Best-effort (no bloquea si la
-        // tabla no existe).
-        try {
-          await conn.query(
-            `INSERT INTO OrdenCompraHistorial (id_oc, estado_anterior, estado_nuevo, id_usuario, comentario)
-             VALUES (?, 'APROBADA', 'PAGO', ?, ?)`,
-            [id_oc, id_usuario, `Auto: ${firmasActuales}/${firmasReq} firmas alcanzadas`]
-          );
-        } catch (_e) { /* tabla quizá no existe en algunos entornos */ }
-      }
+      const listoParaPago = firmasActuales >= firmasReq;
 
       await conn.commit();
       return {
@@ -175,7 +153,8 @@ class OCFirmasService {
         casillero,
         firmas_actuales: firmasActuales,
         firmas_requeridas: firmasReq,
-        estado: estadoNuevo,
+        listo_para_pago: listoParaPago,
+        estado: 'APROBADA',
       };
     } catch (e) {
       await conn.rollback();
