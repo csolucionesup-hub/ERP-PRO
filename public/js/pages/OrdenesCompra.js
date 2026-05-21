@@ -1937,11 +1937,13 @@ function accionesSegunEstado(oc) {
     : 'Cargar la factura/boleta del proveedor. Genera la Compra (ALMACEN) o el Gasto (GENERAL/SERVICIO) y la Tx en caja. Después de esto la OC ya no se puede anular.';
   const txtFacturaTardia = esHon ? '🧾 Recibí RxH' : '🧾 Recibí factura';
 
-  // "Marcar como Enviada" eliminado — ENVIADA ya no es un estado del flujo.
-  // PAGO = bandeja de Finanzas. Botón principal verde: Registrar pago (total o parcial).
-  // Recepción NO va acá: vive en RECEPCION.
+  // PAGO = bandeja de Finanzas. Podés registrar N pagos parciales desde acá.
+  // La OC se queda en PAGO hasta que el total esté 100% cubierto, recién entonces
+  // avanza a RECEPCION. Cada pago parcial puede tener su propia constancia.
   if (oc.estado === 'PAGO') {
-    btns.push(`<button onclick="OC.registrarPago(${oc.id_oc}, '${nroSafe}')" title="Registrar el pago al proveedor. Soporta pago total o parcial. Genera Tx EGRESO + movimiento bancario por el monto pagado. La OC pasa a RECEPCIÓN (con badge de saldo pendiente si fue parcial)." style="padding:10px 18px;background:#15803d;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">💰 Registrar pago</button>`);
+    const _yaHayPagos = Number(oc.monto_pagado || 0) > 0;
+    const _labelPago = _yaHayPagos ? '💰 Registrar otro pago' : '💰 Registrar pago';
+    btns.push(`<button onclick="OC.registrarPago(${oc.id_oc}, '${nroSafe}')" title="Registrar pago al proveedor. Podés hacer tantos pagos parciales como necesites — cada uno con su constancia. La OC avanza a RECEPCIÓN recién cuando se cierra el total." style="padding:10px 18px;background:#15803d;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">${_labelPago}</button>`);
   }
   // Importación: marcar OC ALMACEN como EN_TRANSITO (pagada pero la mercadería
   // aún no llegó). Solo aparece en APROBADA o PAGO, y solo para ALMACEN.

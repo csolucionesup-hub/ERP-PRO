@@ -1177,15 +1177,18 @@ class OrdenCompraService {
         ]
       );
 
-      // Cualquier pago (total o parcial) saca la card de PAGO o de APROBADA
-      // (caso honorarios). La card va a RECEPCION. Si venía de RECEPCION se
-      // queda ahí (el avance lo decide _checkAutoAvance si recepción está completa).
-      // Excepción: OCs GENERAL no-honorario, honorarios y gastos operativos
-      // saltan recepción y van directo a FACTURACION cuando el pago cierra
-      // al 100%.
+      // Regla de avance de estado:
+      //   - Pago PARCIAL desde PAGO/APROBADA → la card se QUEDA en PAGO.
+      //     El usuario puede registrar tantos pagos parciales como quiera
+      //     (con su constancia cada uno) antes de cerrar el total.
+      //   - Pago TOTAL desde PAGO/APROBADA → avanza a RECEPCION (o
+      //     FACTURACION para OCs que saltan recepción: GENERAL, honorarios,
+      //     gastos operativos).
+      //   - Si ya venía de RECEPCION, se queda ahí (el avance lo decide
+      //     _checkAutoAvance cuando recepción también se completa).
       const saltaRecepcion = !this._requiereRecepcion(oc.tipo_oc, oc.es_honorario, oc.es_gasto_operativo) && cierraTotal;
       const proximoEstadoOC = ['PAGO', 'APROBADA'].includes(oc.estado)
-        ? (saltaRecepcion ? 'FACTURACION' : 'RECEPCION')
+        ? (cierraTotal ? (saltaRecepcion ? 'FACTURACION' : 'RECEPCION') : oc.estado)
         : oc.estado;
       await conn.query(
         `UPDATE OrdenesCompra
