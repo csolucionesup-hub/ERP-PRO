@@ -1207,17 +1207,12 @@ function ocTieneProblema(oc) {
 }
 
 // Mismo criterio que el backend (_requiereRecepcion en OrdenCompraService.ts).
-// Saltan recepción:
-//  - GENERAL (cualquiera): gastos administrativos / alquileres, no hay nada físico.
-//  - HONORARIO de cualquier tipo_oc: persona natural, el pago YA es el
-//    reconocimiento; el RH se sube en FACTURACION sin pasar por recepción.
-// Requieren recepción:
-//  - ALMACEN: mercadería física que se chequea contra remito.
-//  - SERVICIO no-honorario: trabajo externo (técnico tercerizado), confirmar
-//    antes de pagar la factura.
+// Cambio 21/05/2026 (Julio): solo CC='ALMACEN METAL' requiere recepción.
+// Servicios y proyectos saltan directo PAGO → FACTURACION (no hay productos).
 function requiereRecepcion(oc) {
   if (oc.es_honorario) return false;
-  return oc.tipo_oc === 'ALMACEN' || oc.tipo_oc === 'SERVICIO';
+  if (oc.es_gasto_operativo) return false;
+  return oc.centro_costo === 'ALMACEN METAL';
 }
 
 function escapeHtml(s) {

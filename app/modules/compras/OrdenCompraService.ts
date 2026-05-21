@@ -460,7 +460,7 @@ class OrdenCompraService {
    */
   async marcarListoParaFacturar(id_oc: number, id_usuario: number) {
     const [rows]: any = await db.query(
-      `SELECT estado, estado_pago, tipo_oc, es_honorario, es_gasto_operativo
+      `SELECT estado, estado_pago, tipo_oc, centro_costo, es_honorario, es_gasto_operativo
          FROM OrdenesCompra WHERE id_oc = ?`, [id_oc]
     );
     if (!rows[0]) throw new Error('OC no encontrada');
@@ -472,10 +472,8 @@ class OrdenCompraService {
       throw new Error('El pago no está cerrado al 100%. Termine de pagar antes de avanzar a facturación.');
     }
 
-    // Solo se valida recepción si el tipo de OC la requiere (ALMACEN o servicios/honorarios).
-    // Las OCs GENERAL no-honorario y las marcadas como gasto operativo no tienen
-    // mercadería ni trabajo a recibir.
-    if (this._requiereRecepcion(oc.tipo_oc, oc.es_honorario, oc.es_gasto_operativo)) {
+    // Solo se valida recepción si el centro de costo es ALMACEN METAL.
+    if (this._requiereRecepcion(oc.centro_costo, oc.es_honorario, oc.es_gasto_operativo)) {
       const [det]: any = await db.query(`
         SELECT SUM(cantidad) AS pedido, SUM(cantidad_recibida) AS recibido
           FROM DetalleOrdenCompra
@@ -2258,34 +2256,32 @@ class OrdenCompraService {
    * ¿La OC requiere paso explícito de RECEPCION antes de pasar a FACTURACION?
    *
    * SÍ:
-   *  - ALMACEN: siempre. Mercadería física que hay que chequear contra remito.
-   *  - SERVICIO no-honorario: trabajo externo (ej. técnico tercerizado). Hay
-   *    que confirmar que vino y dejó listo lo que se contrató antes de pagar
-   *    la factura formal.
+   *  - centro_costo === 'ALMACEN METAL': mercadería física que entra al almacén
+   *    valorizado. Hay que chequear contra remito antes de facturar.
    *
    * NO (saltan PAGO -> FACTURACION directo):
-   *  - GENERAL: gastos administrativos, alquileres, servicios públicos. No hay
-   *    paquete ni trabajo discreto que "recibir" — el pago mismo cierra.
-   *  - HONORARIO (cualquier tipo_oc con es_honorario=TRUE): persona natural
-   *    cobrando por horas/trabajo. El pago YA es el reconocimiento del trabajo
-   *    y el RH se sube en FACTURACION. Recepción no agrega nada.
+   *  - Cualquier otro centro de costo (OFICINA CENTRAL, proyectos, servicios).
+   *    No hay nada físico ni discreto que "recibir" — el pago/comprobante cierra.
+   *  - HONORARIO (cualquier tipo con es_honorario=TRUE): persona natural cobrando
+   *    por trabajo. El pago YA es el reconocimiento; el RH se sube en FACTURACION.
+   *  - Gasto operativo del proyecto (mig 073): combustible/taxi/viáticos.
    *
-   * Antes del fix (08/05/2026 noche): se requería recepción para SERVICIO y
-   * cualquier honorario, lo cual atascaba el flujo en RECEPCION sin nada que
-   * recibir realmente.
+   * Cambio 21/05/2026 (Julio): antes se requería recepción para tipo_oc='ALMACEN'
+   * y tipo_oc='SERVICIO'. Atascaba SERVICIOs en RECEPCION con CC distinto a ALMACEN
+   * METAL (ej. PROMAFA SAC). Ahora la única condición es centro_costo='ALMACEN METAL'.
    */
   private _requiereRecepcion(
-    tipo_oc?: string | null,
+    centro_costo?: string | null,
     es_honorario?: boolean | number,
     es_gasto_operativo?: boolean | number,
   ): boolean {
     // Honorarios persona natural: no entran al almacén, se confirman con RH.
     if (es_honorario) return false;
     // Gasto operativo del proyecto (mig 073, 15/05/2026):
-    // combustible / taxi / viáticos / reembolsos. Ya consumidos al pagarse,
-    // no tiene sentido "recibirlos". El costo se imputa al pagar.
+    // combustible / taxi / viáticos / reembolsos. Ya consumidos al pagarse.
     if (es_gasto_operativo) return false;
-    return tipo_oc === 'ALMACEN' || tipo_oc === 'SERVICIO';
+    // Única regla que dispara recepción: CC=ALMACEN METAL.
+    return centro_costo === 'ALMACEN METAL';
   }
 
   /**
@@ -2296,20 +2292,20 @@ class OrdenCompraService {
    */
   private async _checkAutoAvance(conn: any, id_oc: number) {
     const [r]: any = await conn.query(`
-      SELECT oc.estado, oc.estado_pago, oc.estado_factura, oc.tipo_oc, oc.es_honorario,
-             oc.es_gasto_operativo,
+      SELECT oc.estado, oc.estado_pago, oc.estado_factura, oc.tipo_oc, oc.centro_costo,
+             oc.es_honorario, oc.es_gasto_operativo,
              SUM(d.cantidad) AS total_pedido,
              SUM(d.cantidad_recibida) AS total_recibido
         FROM OrdenesCompra oc
         JOIN DetalleOrdenCompra d ON d.id_oc = oc.id_oc
        WHERE oc.id_oc = ?
        GROUP BY oc.id_oc, oc.estado, oc.estado_pago, oc.estado_factura,
-                oc.tipo_oc, oc.es_honorario, oc.es_gasto_operativo
+                oc.tipo_oc, oc.centro_costo, oc.es_honorario, oc.es_gasto_operativo
     `, [id_oc]);
     const row = r[0];
     if (!row) return;
 
-    const requiereRec = this._requiereRecepcion(row.tipo_oc, row.es_honorario, row.es_gasto_operativo);
+    const requiereRec = this._requiereRecepcion(row.centro_costo, row.es_honorario, row.es_gasto_operativo);
     const recibidoCompleto = !requiereRec || (Number(row.total_recibido) >= Number(row.total_pedido) - 0.0001);
     const pagoCompleto = row.estado_pago === 'PAGADO';
     const facturaOK = row.estado_factura === 'FACTURADA';
