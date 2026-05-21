@@ -45,6 +45,13 @@ interface OCData {
   solicitado_por?: string | null;
   revisado_por?: string | null;
   autorizado_por?: string | null;
+  // Firmas reales (mig 065) — nombre + URL de imagen escaneada del usuario que firmó
+  preparado_por_nombre?: string | null;
+  preparado_por_firma_url?: string | null;
+  revisado_por_nombre?: string | null;
+  revisado_por_firma_url?: string | null;
+  autorizado_por_nombre?: string | null;
+  autorizado_por_firma_url?: string | null;
   cuenta_bancaria_pago?: string | null;
   lugar_entrega?: string | null;
   // El service trae estos alias desde el JOIN con Proveedores
@@ -116,6 +123,23 @@ function fechaCorta(v: any): string {
 export class OrdenCompraPDFService {
   /** Genera el PDF de una OC y devuelve un Buffer listo para enviar al cliente. */
   static async generar(oc: OCData, cfg: ConfigEmpresa): Promise<Buffer> {
+    // Pre-descargar las 3 firmas escaneadas en paralelo (mismo patrón que
+    // RendicionPDFService). Si una falla o no existe, queda null y el PDF
+    // muestra solo nombre. Best-effort — nunca rompe la generación.
+    const descargarFirma = async (url?: string | null): Promise<Buffer | null> => {
+      if (!url) return null;
+      try {
+        const resp = await fetch(url);
+        if (!resp.ok) return null;
+        return Buffer.from(await resp.arrayBuffer());
+      } catch { return null; }
+    };
+    const [firmaPrep, firmaRev, firmaAut] = await Promise.all([
+      descargarFirma(oc.preparado_por_firma_url),
+      descargarFirma(oc.revisado_por_firma_url),
+      descargarFirma(oc.autorizado_por_firma_url),
+    ]);
+
     return new Promise((resolve, reject) => {
       const doc = new PDFDocument({ size: 'A4', margin: 45, bufferPages: true });
       const chunks: Buffer[] = [];
@@ -124,7 +148,7 @@ export class OrdenCompraPDFService {
       doc.on('error', reject);
 
       try {
-        OrdenCompraPDFService.render(doc, oc, cfg);
+        OrdenCompraPDFService.render(doc, oc, cfg, { firmaPrep, firmaRev, firmaAut });
         doc.end();
       } catch (e) {
         reject(e);
@@ -132,7 +156,12 @@ export class OrdenCompraPDFService {
     });
   }
 
-  private static render(doc: PDFKit.PDFDocument, oc: OCData, cfg: ConfigEmpresa) {
+  private static render(
+    doc: PDFKit.PDFDocument,
+    oc: OCData,
+    cfg: ConfigEmpresa,
+    firmas?: { firmaPrep: Buffer | null; firmaRev: Buffer | null; firmaAut: Buffer | null },
+  ) {
     const pageW = doc.page.width;
     const marginL = 45;
     const marginR = 45;
@@ -341,14 +370,15 @@ export class OrdenCompraPDFService {
     y += 10;
 
     // ── 7. Centro de costo + contacto ──────────────────────
-    // Las firmas y el contacto interno usan los defaults de Configuración
-    // como fallback si la OC no tiene override propio. Así, cambiar los
-    // nombres en Configuración aplica a todas las OCs (pasadas y futuras).
+    // Las firmas priorizan al usuario REAL que firmó (mig 065). Si no hay firma
+    // todavía, se usa el override de la OC (solicitado_por/revisado_por/autorizado_por)
+    // y como último fallback los defaults de Configuración. Así, una vez firmada la
+    // OC, el PDF refleja al firmante real con su nombre + imagen de firma escaneada.
     const contactoNombre = oc.contacto_interno || cfg.oc_contacto_nombre || null;
     const contactoTel    = oc.contacto_telefono || cfg.oc_contacto_telefono || null;
-    const solicitadoPor  = oc.solicitado_por   || cfg.oc_solicitado_default || null;
-    const revisadoPor    = oc.revisado_por     || cfg.oc_revisado_default   || null;
-    const autorizadoPor  = oc.autorizado_por   || cfg.oc_autorizado_default || null;
+    const solicitadoPor  = oc.preparado_por_nombre  || oc.solicitado_por || cfg.oc_solicitado_default || null;
+    const revisadoPor    = oc.revisado_por_nombre   || oc.revisado_por   || cfg.oc_revisado_default   || null;
+    const autorizadoPor  = oc.autorizado_por_nombre || oc.autorizado_por || cfg.oc_autorizado_default || null;
 
     doc.font('Helvetica').fontSize(9);
     doc.text(`CENTRO COSTO: ${oc.centro_costo}`, marginL, y);
@@ -359,19 +389,32 @@ export class OrdenCompraPDFService {
     }
 
     // ── 8. Firmas (3 columnas) ─────────────────────────────
-    y += 40;
+    // Espacio reservado arriba de cada línea para apoyar la imagen de firma
+    // escaneada (cuando el usuario que firmó tiene firma_url en Usuarios).
+    y += 60; // antes era +40, ahora +60 para dejar espacio a la imagen
     const firmaW = contentW / 3;
-    const firma = (x: number, cargo: string, nombre?: string | null) => {
+    const firma = (x: number, cargo: string, nombre?: string | null, firmaImg?: Buffer | null) => {
       doc.font('Helvetica').fontSize(9);
+      // Imagen de firma escaneada ARRIBA de la línea (best-effort, si la
+      // imagen es inválida cae al fallback de solo nombre+línea sin romper).
+      if (firmaImg) {
+        try {
+          doc.image(firmaImg, x + 20, y - 38, {
+            fit: [firmaW - 40, 36],
+            align: 'center',
+            valign: 'bottom',
+          });
+        } catch { /* fallback silencioso */ }
+      }
       doc.moveTo(x + 20, y).lineTo(x + firmaW - 20, y).stroke();
       doc.text(cargo, x, y + 4, { width: firmaW, align: 'center' });
       if (nombre) {
         doc.font('Helvetica').fontSize(9.5).text(nombre, x, y + 18, { width: firmaW, align: 'center' });
       }
     };
-    firma(marginL,                    'Solicitado Por :', solicitadoPor);
-    firma(marginL + firmaW,           'Revisado Por :',   revisadoPor);
-    firma(marginL + firmaW * 2,       'Autorizado Por :', autorizadoPor);
+    firma(marginL,                    'Solicitado Por :', solicitadoPor,  firmas?.firmaPrep);
+    firma(marginL + firmaW,           'Revisado Por :',   revisadoPor,    firmas?.firmaRev);
+    firma(marginL + firmaW * 2,       'Autorizado Por :', autorizadoPor,  firmas?.firmaAut);
 
     // ── 9. Pie de página: reducir margen inferior para que las 3 líneas quepan ─
     const originalBottomMargin = doc.page.margins.bottom;
