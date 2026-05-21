@@ -1836,14 +1836,27 @@ async function verOC(id_oc) {
             const userActual = JSON.parse(localStorage.getItem('erp_user') || '{}');
             const idUserActual = userActual.id_usuario;
             const rolActual = userActual.rol;
+            const emailActual = String(userActual.email || '').toLowerCase();
             const esGer = rolActual === 'GERENTE';
             const firmableAhora = oc.estado === 'APROBADA';
             const reqFirmas = Number(oc.firmas_requeridas) || 1;
             const actuales = Number(oc.firmas_actuales) || 0;
 
+            // Mapeo fijo casillero ← usuario (acordado 21/05/2026, debe espejarse
+            // con CASILLERO_POR_EMAIL del backend OCFirmasService.ts).
+            // GERENTE bypassa: puede firmar cualquier casillero.
+            const CASILLERO_POR_EMAIL = {
+              'luisramos@metalengineers.com.pe':  'preparado',
+              'jorgeroman@metalengineers.com.pe': 'revisado',
+              'julio@metalengineers.com.pe':      'autorizado',
+            };
+            const casilleroAsignado = CASILLERO_POR_EMAIL[emailActual] || null;
+            const puedeFirmarCasillero = (cas) => esGer || casilleroAsignado === cas;
+
             const card = (etiqueta, casillero, idFirmante, nombreFirmante, fechaFirma, firmaUrl) => {
               const firmada = !!idFirmante;
               const puedeQuitar = firmada && (idFirmante === idUserActual || esGer) && (oc.estado === 'APROBADA' || oc.estado === 'PAGO');
+              const yoPuedoFirmar = firmableAhora && puedeFirmarCasillero(casillero);
               const fecha = fechaFirma ? new Date(fechaFirma).toLocaleString('es-PE', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' }) : '';
               return `
                 <div style="flex:1;min-width:200px;padding:12px;border:1px solid ${firmada?'#86efac':'#d1d5db'};border-radius:6px;background:${firmada?'#ecfdf5':'#f9fafb'}">
@@ -1855,7 +1868,11 @@ async function verOC(id_oc) {
                     ${puedeQuitar ? `<button onclick="OC.desfirmar(${oc.id_oc}, '${casillero}')" title="Quitar tu firma. Si la OC ya estaba en PAGO y al quitar caen las firmas debajo del umbral, vuelve a APROBADA." style="margin-top:8px;background:transparent;color:#dc2626;border:1px solid #fecaca;border-radius:4px;padding:3px 8px;cursor:pointer;font-size:11px">Quitar firma</button>` : ''}
                   ` : `
                     <div style="font-size:12px;color:#9ca3af;margin-bottom:8px">Pendiente</div>
-                    ${firmableAhora ? `<button onclick="OC.firmar(${oc.id_oc}, '${casillero}')" title="Firmar como ${etiqueta.toLowerCase()}. Cuando se alcance el número de firmas requeridas, aparecerá el botón 'Pasar a Pagos'." style="background:#2563eb;color:white;border:none;border-radius:4px;padding:5px 10px;cursor:pointer;font-size:11px;font-weight:600">✍️ Firmar</button>` : `<span style="color:#9ca3af;font-size:11px">—</span>`}
+                    ${yoPuedoFirmar
+                      ? `<button onclick="OC.firmar(${oc.id_oc}, '${casillero}')" title="Firmar como ${etiqueta.toLowerCase()}. Cuando se alcance el número de firmas requeridas, aparecerá el botón 'Ir a Pagos'." style="background:#2563eb;color:white;border:none;border-radius:4px;padding:5px 10px;cursor:pointer;font-size:11px;font-weight:600">✍️ Firmar</button>`
+                      : firmableAhora
+                        ? `<span style="color:#9ca3af;font-size:11px" title="Este casillero está asignado a otro usuario. Solo un GERENTE o el usuario asignado pueden firmarlo.">🔒 No asignado a vos</span>`
+                        : `<span style="color:#9ca3af;font-size:11px">—</span>`}
                   `}
                 </div>
               `;

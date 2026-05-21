@@ -19,6 +19,18 @@ const COLUMNAS_FIRMA: Record<Casillero, [string, string]> = {
 };
 
 /**
+ * Asignación fija de casillero por usuario (acordado con Julio 21/05/2026).
+ * Cada usuario solo puede firmar SU casillero asignado.
+ * GERENTE bypassa esta restricción y puede firmar cualquiera.
+ * Si entran usuarios nuevos al circuito de firmas, agregar acá.
+ */
+const CASILLERO_POR_EMAIL: Record<string, Casillero> = {
+  'luisramos@metalengineers.com.pe':  'preparado',
+  'jorgeroman@metalengineers.com.pe': 'revisado',
+  'julio@metalengineers.com.pe':      'autorizado',
+};
+
+/**
  * OCFirmasService — multifirma para Órdenes de Compra (mig 065).
  *
  * Flujo:
@@ -88,23 +100,27 @@ class OCFirmasService {
    * en PAGO ya se aprobó (refirmar después no tiene sentido; si se quiere
    * cambiar firmas hay que mandar a borrador primero).
    *
-   * Reglas de rol por casillero:
-   *   - GERENTE / APROBADOR: pueden firmar cualquier casillero (auto-aprobación válida).
-   *   - USUARIO regular: solo PREPARADO POR (típico autor de la OC).
+   * Reglas (acordado con Julio 21/05/2026):
+   *   - GERENTE: puede firmar cualquier casillero (bypass total).
+   *   - Resto de usuarios: solo el casillero que tienen asignado en
+   *     CASILLERO_POR_EMAIL. Cualquier otro casillero devuelve 403.
    *   - Refirmar el mismo casillero (con nuevo usuario) sobreescribe el anterior.
    */
-  async firmar(id_oc: number, casillero: Casillero, id_usuario: number, rol: string, comentario?: string) {
+  async firmar(id_oc: number, casillero: Casillero, id_usuario: number, rol: string, comentario?: string, email?: string) {
     const [colId, colAt] = COLUMNAS_FIRMA[casillero] || [];
     if (!colId) throw new Error(`Casillero inválido: ${casillero}`);
 
-    // Reglas de rol por casillero
-    if (casillero === 'autorizado' && !['GERENTE', 'APROBADOR'].includes(rol)) {
-      throw new Error('Solo GERENTE o APROBADOR pueden firmar como AUTORIZADO POR');
+    // Validación por identidad: cada usuario solo puede firmar SU casillero.
+    // GERENTE bypassa.
+    if (rol !== 'GERENTE') {
+      const casilleroAsignado = CASILLERO_POR_EMAIL[(email || '').toLowerCase()];
+      if (!casilleroAsignado) {
+        throw new Error('Tu usuario no tiene casillero de firma asignado. Solo Luis (PREPARADO), Jorge (REVISADO) o Julio (AUTORIZADO) pueden firmar. Si necesitás firmar, pedile a un GERENTE que lo haga.');
+      }
+      if (casilleroAsignado !== casillero) {
+        throw new Error(`No podés firmar el casillero ${casillero.toUpperCase()}. Tu casillero asignado es ${casilleroAsignado.toUpperCase()}.`);
+      }
     }
-    if (casillero === 'revisado' && !['GERENTE', 'APROBADOR'].includes(rol)) {
-      throw new Error('Solo GERENTE o APROBADOR pueden firmar como REVISADO POR');
-    }
-    // PREPARADO POR: cualquier usuario con permiso al módulo (autor)
 
     const conn = await db.getConnection();
     await conn.beginTransaction();

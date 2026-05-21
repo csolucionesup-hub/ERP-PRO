@@ -2105,7 +2105,7 @@ ocRouter.post('/:id/firmar', validateIdParam, auditLog('OrdenCompra', 'UPDATE'),
     return res.status(400).json({ error: 'casillero inválido (preparado | revisado | autorizado)' });
   }
   res.json(await OCFirmasService.firmar(
-    Number(req.params.id), casillero, req.user!.id_usuario, req.user!.rol, req.body?.comentario
+    Number(req.params.id), casillero, req.user!.id_usuario, req.user!.rol, req.body?.comentario, req.user!.email
   ));
 });
 
