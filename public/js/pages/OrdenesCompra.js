@@ -16,16 +16,19 @@ import { TabBar } from '../components/TabBar.js';
 import { kpiGrid } from '../components/KpiCard.js';
 import { pill } from '../components/Pill.js';
 
+// Cada estado tiene: label corto (visible siempre) + labelLargo (tooltip on hover).
+// Patrón usado por Jira / Linear / GitHub Projects para columnas estrechas:
+// header limpio con 1 palabra + descripción completa al pasar el cursor.
 const ESTADO_COLOR = {
-  BORRADOR:           { bg: '#f3f4f6', fg: '#374151', icon: '📝', label: 'Borrador' },
-  APROBADA:           { bg: '#dbeafe', fg: '#1e3a8a', icon: '✅', label: 'A APROBAR' },
-  PAGO:               { bg: '#fee2e2', fg: '#991b1b', icon: '💰', label: 'PAGO TOTAL/PAGO PARCIAL' },
-  EN_TRANSITO:        { bg: '#e0f2fe', fg: '#075985', icon: '🚢', label: 'En tránsito' },
-  RECEPCION:          { bg: '#fef9c3', fg: '#713f12', icon: '📦', label: 'RECEPCIÓN/CANCELAR SALDOS' },
-  FACTURACION:        { bg: '#fef3c7', fg: '#854d0e', icon: '🧾', label: 'Facturación / RH' },
-  TERMINADA:          { bg: '#dcfce7', fg: '#166534', icon: '✓', label: 'Terminada' },
-  CERRADA_SIN_FACTURA:{ bg: '#fce7f3', fg: '#9d174d', icon: '🗂', label: 'Cerrada sin factura' },
-  ANULADA:            { bg: '#e5e7eb', fg: '#6b7280', icon: '❌', label: 'Anulada' },
+  BORRADOR:           { bg: '#f3f4f6', fg: '#374151', icon: '📝', label: 'BORRADOR',    labelLargo: 'Borrador — OC en armado, todavía no requiere firmas' },
+  APROBADA:           { bg: '#dbeafe', fg: '#1e3a8a', icon: '✅', label: 'A APROBAR',   labelLargo: 'A Aprobar — Esperando las 3 firmas (Preparado / Revisado / Autorizado)' },
+  PAGO:               { bg: '#fee2e2', fg: '#991b1b', icon: '💰', label: 'PAGOS',       labelLargo: 'Pago Total / Pago Parcial — Subir N constancias hasta cerrar el saldo' },
+  EN_TRANSITO:        { bg: '#e0f2fe', fg: '#075985', icon: '🚢', label: 'EN TRÁNSITO', labelLargo: 'En Tránsito — Importación pagada, mercadería viajando al país' },
+  RECEPCION:          { bg: '#fef9c3', fg: '#713f12', icon: '📦', label: 'RECEPCIÓN',   labelLargo: 'Recepción / Cancelar Saldos — Solo ALMACEN METAL, registrar ingreso de mercadería' },
+  FACTURACION:        { bg: '#fef3c7', fg: '#854d0e', icon: '🧾', label: 'FACTURACIÓN', labelLargo: 'Facturación / RH — Subir N facturas o Recibos por Honorarios' },
+  TERMINADA:          { bg: '#dcfce7', fg: '#166534', icon: '✓', label: 'TERMINADA',   labelLargo: 'Terminada — OC cerrada con todos los pagos y comprobantes' },
+  CERRADA_SIN_FACTURA:{ bg: '#fce7f3', fg: '#9d174d', icon: '🗂', label: 'SIN FACTURA', labelLargo: 'Cerrada Sin Factura — Pagada pero el proveedor no emitió comprobante' },
+  ANULADA:            { bg: '#e5e7eb', fg: '#6b7280', icon: '❌', label: 'ANULADA',     labelLargo: 'Anulada — OC dada de baja, el N° queda quemado' },
 };
 
 const COLUMNAS_KANBAN_PRINCIPALES = [
@@ -1186,7 +1189,7 @@ function pintarColumnasKanban() {
     const ocs = porEstado[estado];
     return `
       <div class="oc-kanban-column" data-estado="${estado}" style="background:${color.bg}">
-        <div class="oc-kanban-header" style="border-bottom:2px solid ${color.fg}22">
+        <div class="oc-kanban-header" style="border-bottom:2px solid ${color.fg}22" title="${color.labelLargo || color.label}">
           <strong style="color:${color.fg}">${color.icon} ${color.label}</strong>
           <span class="count" style="background:${color.fg}">${ocs.length}</span>
         </div>

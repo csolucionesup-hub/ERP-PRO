@@ -1098,27 +1098,26 @@ tr:last-child td {
   top: 0;
   z-index: 1;
   background: inherit;
-  padding: 10px 12px;
+  padding: 12px 12px;
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: 8px;
-  /* Altura uniforme — 2 líneas de título caben en cualquier columna */
-  min-height: 52px;
+  /* Altura uniforme — todas las columnas matchean */
+  min-height: 44px;
   box-sizing: border-box;
-  font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.5px;
+  cursor: help; /* indica que hay tooltip */
 }
 .oc-kanban-header > strong {
-  /* Título: se acomoda en 1 ó 2 líneas centrado verticalmente */
+  /* Título compacto en 1 línea — descripción completa en tooltip */
   flex: 1;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
   overflow: hidden;
-  line-height: 1.25;
+  white-space: nowrap;
+  text-overflow: ellipsis;
   font-size: 11px;
+  font-weight: 700;
 }
 .oc-kanban-header .count {
   flex-shrink: 0;
