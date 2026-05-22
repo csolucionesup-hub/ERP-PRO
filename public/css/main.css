@@ -1102,16 +1102,33 @@ tr:last-child td {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 8px;
+  /* Altura uniforme — 2 líneas de título caben en cualquier columna */
+  min-height: 52px;
+  box-sizing: border-box;
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
+.oc-kanban-header > strong {
+  /* Título: se acomoda en 1 ó 2 líneas centrado verticalmente */
+  flex: 1;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  line-height: 1.25;
+  font-size: 11px;
+}
 .oc-kanban-header .count {
+  flex-shrink: 0;
   color: white;
-  padding: 1px 8px;
+  padding: 2px 9px;
   border-radius: 10px;
   font-size: 10px;
   font-weight: 700;
+  min-width: 22px;
+  text-align: center;
 }
 .oc-kanban-cards {
   flex: 1;
