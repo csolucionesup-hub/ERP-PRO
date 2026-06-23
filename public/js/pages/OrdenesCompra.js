@@ -1218,10 +1218,6 @@ function requiereRecepcion(oc) {
   return oc.centro_costo === 'ALMACEN METAL';
 }
 
-function escapeHtml(s) {
-  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]);
-}
-
 function kanbanCard(oc, color) {
   const monto = oc.moneda === 'USD' ? fUSD(oc.total) : fPEN(oc.total);
   const dotClass = calcularDotClass(oc);

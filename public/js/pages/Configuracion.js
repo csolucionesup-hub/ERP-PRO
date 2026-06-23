@@ -6,7 +6,7 @@
  */
 
 import { api } from '../services/api.js';
-import { showSuccess, showError } from '../services/ui.js';
+import { showSuccess, showError, escapeHtml } from '../services/ui.js';
 import { TabBar } from '../components/TabBar.js';
 
 const REGIMENES = {
@@ -840,9 +840,8 @@ function renderFirmasOCHtml(reglas) {
   `;
 }
 
-function escapeHtmlConfig(s) {
-  return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-}
+// Alias histórico — usa el escapeHtml global de ui.js (fuente única)
+const escapeHtmlConfig = escapeHtml;
 
 async function refrescarFirmasReglas() {
   const panel = document.getElementById('tab-firmas-oc');

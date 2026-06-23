@@ -1,5 +1,5 @@
 import { api } from '../services/api.js';
-import { showSuccess, showError } from '../services/ui.js';
+import { showSuccess, showError, escapeHtml, escapeAttr } from '../services/ui.js';
 
 const MODULOS = ['GERENCIA', 'COMERCIAL', 'FINANZAS', 'LOGISTICA', 'ALMACEN', 'ADMINISTRACION'];
 // El rol es un label libre; estas opciones aparecen como sugerencias en el datalist
@@ -25,7 +25,7 @@ export const Usuarios = async () => {
   const renderModulos = (mods, rol) => {
     if (rol === 'GERENTE') return '<span style="color:var(--text-secondary);font-size:12px;font-style:italic;">Acceso Total</span>';
     return mods.length
-      ? mods.map(m => `<span style="display:inline-block;padding:2px 8px;border-radius:4px;background:#f0f0f0;font-size:11px;margin:1px;">${m}</span>`).join('')
+      ? mods.map(m => `<span style="display:inline-block;padding:2px 8px;border-radius:4px;background:#f0f0f0;font-size:11px;margin:1px;">${escapeHtml(m)}</span>`).join('')
       : '<span style="color:var(--text-secondary);font-size:12px;">Sin módulos</span>';
   };
 
@@ -48,11 +48,11 @@ export const Usuarios = async () => {
 
   const rows = usuarios.map(u => `
     <tr data-id="${u.id_usuario}">
-      <td style="padding:12px 16px;font-weight:500;">${u.nombre}</td>
-      <td style="padding:12px 16px;color:var(--text-secondary);font-size:13px;">${u.email}</td>
+      <td style="padding:12px 16px;font-weight:500;">${escapeHtml(u.nombre)}</td>
+      <td style="padding:12px 16px;color:var(--text-secondary);font-size:13px;">${escapeHtml(u.email)}</td>
       <td style="padding:12px 16px;">
         <span style="padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600;
-          background:${rolColor(u.rol)};color:#fff;">${u.rol}</span>
+          background:${rolColor(u.rol)};color:#fff;">${escapeHtml(u.rol)}</span>
       </td>
       <td style="padding:12px 16px;">
         ${renderModulos(u.modulos || [], u.rol)}
@@ -66,14 +66,14 @@ export const Usuarios = async () => {
       </td>
       <td style="padding:12px 16px;text-align:center">
         ${u.firma_url
-          ? `<img src="${u.firma_url}" alt="Firma" style="max-width:90px;max-height:36px;object-fit:contain;border:1px solid #e5e7eb;border-radius:4px;background:#fff;padding:2px" title="Firma escaneada de ${u.nombre}">`
+          ? `<img src="${escapeHtml(u.firma_url)}" alt="Firma" style="max-width:90px;max-height:36px;object-fit:contain;border:1px solid #e5e7eb;border-radius:4px;background:#fff;padding:2px" title="Firma escaneada de ${escapeHtml(u.nombre)}">`
           : `<span style="font-size:11px;color:#9ca3af;font-style:italic">sin firma</span>`}
         <div style="margin-top:4px;display:flex;gap:4px;justify-content:center">
-          <button onclick="subirFirmaUsuario(${u.id_usuario}, '${u.nombre.replace(/'/g, "\\'")}')"
+          <button onclick="subirFirmaUsuario(${u.id_usuario}, '${escapeAttr(u.nombre)}')"
             title="Subir o reemplazar la firma escaneada de este usuario (PNG/JPG, máx 2MB). Se embebe automáticamente en el PDF de las rendiciones que firme."
             style="padding:3px 8px;border:1px solid #d1d5db;background:#fff;border-radius:4px;font-size:10px;cursor:pointer">📤 ${u.firma_url ? 'Cambiar' : 'Subir'}</button>
           ${u.firma_url ? `
-            <button onclick="eliminarFirmaUsuario(${u.id_usuario}, '${u.nombre.replace(/'/g, "\\'")}')"
+            <button onclick="eliminarFirmaUsuario(${u.id_usuario}, '${escapeAttr(u.nombre)}')"
               title="Quitar la firma escaneada. El archivo en Cloudinary queda huérfano."
               style="padding:3px 8px;border:1px solid #fecaca;background:transparent;color:#dc2626;border-radius:4px;font-size:10px;cursor:pointer">✕</button>
           ` : ''}
@@ -81,7 +81,7 @@ export const Usuarios = async () => {
       </td>
       <td style="padding:12px 16px;white-space:nowrap;">
         ${u.id_usuario !== erpUser.id_usuario ? `
-        <button onclick='editarUsuario(${JSON.stringify(u).replace(/"/g, "&quot;")})'
+        <button onclick='editarUsuario(${JSON.stringify(u).replace(/&/g, "&amp;").replace(/'/g, "&#39;").replace(/"/g, "&quot;").replace(/</g, "&lt;")})'
           style="padding:5px 12px;border:1.5px solid #676767;background:transparent;border-radius:6px;font-size:12px;cursor:pointer;margin-right:6px;">
           ✎ Editar
         </button>` : `

@@ -1,5 +1,5 @@
 import { api } from '../services/api.js';
-import { showError } from '../services/ui.js';
+import { showError, escapeHtml } from '../services/ui.js';
 import { TabBar } from '../components/TabBar.js';
 import { kpiGrid } from '../components/KpiCard.js';
 import { pill } from '../components/Pill.js';
@@ -1288,10 +1288,6 @@ function pintarPersonal(body, data) {
     ${otrosGenerales}
     ${topPersonas}
   `;
-}
-
-function escapeHtml(s) {
-  return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
 // ─── Modal: Nueva OC de Honorario ─────────────────────────────────────

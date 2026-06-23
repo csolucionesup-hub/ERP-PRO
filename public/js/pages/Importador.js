@@ -11,7 +11,7 @@
  */
 
 import { api } from '../services/api.js';
-import { showSuccess, showError } from '../services/ui.js';
+import { showSuccess, showError, escapeHtml } from '../services/ui.js';
 
 const ENTIDADES = [
   {
@@ -219,7 +219,7 @@ function renderPreview(entidad, preview) {
         <div style="padding:12px;background:#fef2f2;border-radius:8px;margin-bottom:16px;max-height:200px;overflow-y:auto">
           <strong style="color:#991b1b;font-size:12px">Errores detectados (primeros ${preview.errores.length}):</strong>
           <ul style="margin:6px 0 0;padding-left:20px;font-size:11px">
-            ${preview.errores.map(er => `<li>Fila ${er.fila} · campo <code>${er.campo}</code>: ${er.mensaje}</li>`).join('')}
+            ${preview.errores.map(er => `<li>Fila ${er.fila} · campo <code>${escapeHtml(er.campo)}</code>: ${escapeHtml(er.mensaje)}</li>`).join('')}
           </ul>
         </div>
       ` : ''}
@@ -231,13 +231,13 @@ function renderPreview(entidad, preview) {
             <table style="width:100%;border-collapse:collapse;font-size:11px">
               <thead>
                 <tr style="background:#f9fafb;border-bottom:1px solid #d9dad9">
-                  ${Object.keys(preview.preview[0]).map(k => `<th style="padding:6px;text-align:left">${k}</th>`).join('')}
+                  ${Object.keys(preview.preview[0]).map(k => `<th style="padding:6px;text-align:left">${escapeHtml(k)}</th>`).join('')}
                 </tr>
               </thead>
               <tbody>
                 ${preview.preview.map(row => `
                   <tr style="border-bottom:1px solid #f0f0f0">
-                    ${Object.values(row).map(v => `<td style="padding:6px">${v == null ? '—' : String(v).slice(0, 40)}</td>`).join('')}
+                    ${Object.values(row).map(v => `<td style="padding:6px">${v == null ? '—' : escapeHtml(String(v).slice(0, 40))}</td>`).join('')}
                   </tr>
                 `).join('')}
               </tbody>

@@ -21,10 +21,17 @@ export function showToast(msg, type = 'success', duration = 3500) {
   const toast = document.createElement('div');
   toast.className = `erp-toast erp-toast--${type}`;
 
-  // Ícono según tipo
+  // Ícono según tipo. El mensaje se inyecta con textContent (NO innerHTML) para
+  // que sea inerte aunque venga de datos de BD — neutraliza XSS en todos los
+  // showSuccess/showError del ERP sin escapar caso por caso.
   const icons = { success: '✓', error: '✕', info: 'ℹ' };
-  toast.innerHTML = `<span class="erp-toast__icon">${icons[type] ?? '•'}</span>
-                     <span class="erp-toast__msg">${msg}</span>`;
+  const iconEl = document.createElement('span');
+  iconEl.className = 'erp-toast__icon';
+  iconEl.textContent = icons[type] ?? '•';
+  const msgEl = document.createElement('span');
+  msgEl.className = 'erp-toast__msg';
+  msgEl.textContent = String(msg ?? '');
+  toast.append(iconEl, msgEl);
 
   container.appendChild(toast);
 
@@ -36,6 +43,47 @@ export function showToast(msg, type = 'success', duration = 3500) {
     toast.classList.remove('erp-toast--show');
     toast.addEventListener('transitionend', () => toast.remove(), { once: true });
   }, duration);
+}
+
+/**
+ * Escapa una cadena para inyectarla de forma segura como TEXTO dentro de
+ * innerHTML. Convierte los 5 metacaracteres peligrosos (& < > " ') en sus
+ * entidades. Fuente única para todo el ERP — NO redefinir local en páginas.
+ *
+ * IMPORTANTE: esto protege el contexto HTML (texto y atributos con comillas).
+ * NO es suficiente para datos que terminan dentro de un handler inline tipo
+ * onclick="fn('${dato}')" (contexto JS). Para ese caso usar escapeAttr abajo.
+ *
+ * @param {*} s — valor a escapar (cualquier tipo; null/undefined → '')
+ * @returns {string} cadena segura para innerHTML
+ */
+export function escapeHtml(s) {
+  return String(s ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+/**
+ * Escapa un valor de BD que se inserta dentro de un handler inline en string
+ * literal con comilla simple — p.ej. onclick="fn('${escapeAttr(x)}')".
+ * Neutraliza backslash, comilla simple y los metacaracteres HTML para que el
+ * dato no pueda romper el literal ni el atributo. Solución puente hasta migrar
+ * a event delegation con dataset (Fase 3).
+ *
+ * @param {*} s — valor a escapar
+ * @returns {string} cadena segura para un literal JS dentro de un atributo HTML
+ */
+export function escapeAttr(s) {
+  return String(s ?? '')
+    .replace(/&/g, '&amp;')    // HTML: debe ir primero
+    .replace(/"/g, '&quot;')   // cerraría el atributo (delimitado por ")
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/\\/g, '\\\\')     // JS: duplicar backslash ANTES de escapar la comilla
+    .replace(/'/g, "\\'");     // JS: comilla simple → \' (backslash literal sobrevive al decode HTML)
 }
 
 /** Alias semántico para errores */

@@ -1,5 +1,5 @@
 import { api } from '../services/api.js';
-import { showError } from '../services/ui.js';
+import { showError, escapeHtml } from '../services/ui.js';
 
 // ─── Helpers ──────────────────────────────────────────────────────────
 const fPEN = (v) => 'S/ ' + Number(v || 0).toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -11,8 +11,6 @@ const fmtFecha = (s) => {
   if (isNaN(d.getTime())) return String(s).slice(0, 10);
   return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`;
 };
-const escapeHtml = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-
 const ESTADO_COLOR = {
   APROBADA:           { bg: '#dcfce7', fg: '#166534', icon: '✅', label: 'APROBADA' },
   TRABAJO_EN_RIESGO:  { bg: '#fed7aa', fg: '#9a3412', icon: '⚠️', label: 'EN RIESGO' },

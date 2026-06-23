@@ -1,5 +1,5 @@
 import { api } from '../services/api.js';
-import { showSuccess, showError, tip } from '../services/ui.js';
+import { showSuccess, showError, tip, escapeHtml, escapeAttr } from '../services/ui.js';
 import { kpiGrid } from '../components/KpiCard.js';
 import { lineChart, barChart, chartColors, destroyChart } from '../components/charts.js';
 
@@ -15,7 +15,7 @@ const ESTADO_STYLE = {
   ANULADO:   'status-anulado',
 };
 
-const badge = (estado) => `<span class="status-badge ${ESTADO_STYLE[estado] || 'status-pendiente'}">${estado}</span>`;
+const badge = (estado) => `<span class="status-badge ${ESTADO_STYLE[estado] || 'status-pendiente'}">${escapeHtml(estado)}</span>`;
 
 const inputStyle = 'padding:9px; border-radius:var(--radius-sm); border:1px solid var(--border-light); width:100%; box-sizing:border-box';
 
@@ -91,10 +91,10 @@ const formCrear = (tipo, tcVenta = 1, tcFecha = '', contrapartes = [], mediosPag
   const idForm = `form-crear-${tipo}`;
   const opcionesContraparte = (contrapartes || []).filter(c => c.activo !== false).map(c => {
     const doc = c.documento_numero ? ` · ${c.documento_tipo || 'DOC'} ${c.documento_numero}` : '';
-    return `<option value="${c.id_contraparte}">${c.nombre}${doc}</option>`;
+    return `<option value="${c.id_contraparte}">${escapeHtml(c.nombre)}${escapeHtml(doc)}</option>`;
   }).join('');
   const opcionesMedio = [...new Set((mediosPago || []).filter(Boolean))].sort()
-    .map(m => `<option value="${m}"></option>`).join('');
+    .map(m => `<option value="${escapeHtml(m)}"></option>`).join('');
   return `
   <div class="card" style="margin-top:0">
     <h3 style="margin-bottom:15px;font-weight:600;font-size:14px">Registrar Préstamo ${esTomado ? 'Tomado' : 'Otorgado'}</h3>
@@ -436,13 +436,13 @@ const buildTabla = (lista, tipo) => {
     const medioPago   = p.medio_pago || '';
     return `
     <tr>
-      <td style="font-size:11px;color:var(--text-secondary)">${p.nro_oc || '---'}
+      <td style="font-size:11px;color:var(--text-secondary)">${escapeHtml(p.nro_oc || '---')}
         <br><span style="background:${esPerfo?'#dc2626':'#000'};color:white;padding:1px 6px;border-radius:3px;font-size:10px">${esPerfo?'🔴 Perfotools':'⚫ Metal Engineers'}</span>
       </td>
       <td>
-        <strong>${nombreCP}</strong>
-        ${medioPago ? `<br><span style="font-size:10px;color:#1e40af;background:#dbeafe;padding:1px 6px;border-radius:8px">🏦 ${medioPago}</span>` : ''}
-        ${p.descripcion ? `<br><span style="font-size:10px;color:var(--text-secondary)">${p.descripcion}</span>` : ''}
+        <strong>${escapeHtml(nombreCP)}</strong>
+        ${medioPago ? `<br><span style="font-size:10px;color:#1e40af;background:#dbeafe;padding:1px 6px;border-radius:8px">🏦 ${escapeHtml(medioPago)}</span>` : ''}
+        ${p.descripcion ? `<br><span style="font-size:10px;color:var(--text-secondary)">${escapeHtml(p.descripcion)}</span>` : ''}
       </td>
       <td style="font-size:11px">${formatDate(p.fecha_emision)}<br><span style="color:var(--text-secondary)">${p.fecha_vencimiento ? 'Vence: '+formatDate(p.fecha_vencimiento) : ''}</span></td>
       <td style="text-align:center;${diasStyle}">${dias}d</td>
@@ -461,7 +461,7 @@ const buildTabla = (lista, tipo) => {
       <td>
         <div style="display:flex;gap:4px;flex-wrap:wrap">
           ${p.estado !== 'PAGADO' && p.estado !== 'COBRADO' ? `<button class="action-btn" style="background:var(--success);color:white;border:none;font-size:11px" onclick="window.registrarPago('${tipo}',${p.id_prestamo})">${accionPago}</button>` : ''}
-          <button class="action-btn" style="font-size:11px" onclick="window.abrirEditar('${tipo}',${JSON.stringify(p).replace(/"/g,'&quot;')})">Editar</button>
+          <button class="action-btn" style="font-size:11px" onclick="window.abrirEditar('${tipo}',${JSON.stringify(p).replace(/&/g,'&amp;').replace(/'/g,'&#39;').replace(/"/g,'&quot;').replace(/</g,'&lt;')})">Editar</button>
           <button class="action-btn" style="font-size:11px;color:var(--danger)" onclick="window.eliminarPrestamo('${tipo}',${p.id_prestamo})">Eliminar</button>
           ${p.estado !== 'ANULADO' ? `<button class="action-btn action-btn-anular" style="font-size:11px" onclick="window.anularPrestamo('${tipo}',${p.id_prestamo})">Anular</button>` : ''}
         </div>
@@ -623,7 +623,7 @@ export const Prestamos = async () => {
             <div style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-bottom:1px solid #f3f4f6">
               <div style="width:24px;height:24px;border-radius:50%;background:${['#fbbf24','#94a3b8','#d97706','#cbd5e1','#cbd5e1'][idx] || '#cbd5e1'};color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:11px">${idx + 1}</div>
               <div style="flex:1">
-                <div style="font-weight:600;font-size:13px">${c.nombre}</div>
+                <div style="font-weight:600;font-size:13px">${escapeHtml(c.nombre)}</div>
                 <div style="font-size:11px;color:var(--text-secondary)">${(c.n_tomados || 0) + (c.n_otorgados || 0)} préstamo(s)</div>
               </div>
               <div style="text-align:right">
@@ -646,10 +646,10 @@ export const Prestamos = async () => {
             const esT = p._tipo === 'tomado';
             const empresa = p.empresa || 'METAL';
             return `<tr style="background:#fafafa;font-size:11px;color:#374151">
-              <td style="padding:5px 10px 5px 38px">${p.nro_oc || '—'}</td>
+              <td style="padding:5px 10px 5px 38px">${escapeHtml(p.nro_oc || '—')}</td>
               <td style="padding:5px"><span style="background:${esT ? '#fef2f2' : '#ecfdf5'};color:${esT ? '#991b1b' : '#166534'};padding:1px 6px;border-radius:8px;font-size:10px;font-weight:600">${esT ? 'TOMADO' : 'OTORGADO'}</span></td>
               <td style="padding:5px"><span style="font-size:10px">${empresa === 'PERFOTOOLS' ? '🔴 Perfo' : '⚫ Metal'}</span></td>
-              <td style="padding:5px">${p.medio_pago || '—'}</td>
+              <td style="padding:5px">${escapeHtml(p.medio_pago || '—')}</td>
               <td style="padding:5px;text-align:right">${formatCurrency(Number(p.monto_total) * (Number(p.tipo_cambio) || 1))}</td>
               <td style="padding:5px;text-align:right;color:${Number(p.saldo) > 0 ? '#dc2626' : '#16a34a'};font-weight:600">${formatCurrency(Number(p.saldo) * (Number(p.tipo_cambio) || 1))}</td>
               <td style="padding:5px;text-align:center">${badge(p.estado)}</td>
@@ -658,8 +658,8 @@ export const Prestamos = async () => {
           return `
             <tr data-fila="cp-${c.id_contraparte}" style="cursor:pointer;border-bottom:1px solid #e5e7eb"
                 onclick="this.dataset.open=this.dataset.open==='1'?'0':'1';document.querySelectorAll('[data-sub=cp-${c.id_contraparte}]').forEach(r=>r.style.display=this.dataset.open==='1'?'table-row':'none');this.querySelector('.arrow').textContent=this.dataset.open==='1'?'▼':'▶'">
-              <td style="padding:9px 10px"><span class="arrow" style="color:#9ca3af;margin-right:6px">▶</span><strong>${c.nombre}</strong>
-                <span style="background:#e5e7eb;color:#374151;padding:1px 6px;border-radius:8px;font-size:10px;margin-left:6px">${c.tipo || 'OTRO'}</span>
+              <td style="padding:9px 10px"><span class="arrow" style="color:#9ca3af;margin-right:6px">▶</span><strong>${escapeHtml(c.nombre)}</strong>
+                <span style="background:#e5e7eb;color:#374151;padding:1px 6px;border-radius:8px;font-size:10px;margin-left:6px">${escapeHtml(c.tipo || 'OTRO')}</span>
               </td>
               <td style="padding:9px;text-align:center;font-size:12px">${(c.n_tomados || 0) + (c.n_otorgados || 0)}</td>
               <td style="padding:9px;text-align:right;font-weight:600">${formatCurrency(totalGen)}</td>
@@ -742,7 +742,7 @@ export const Prestamos = async () => {
                     const contraparte = p._tipo === 'tomado' ? p.acreedor : p.deudor;
                     return `<div style="padding:10px;border-left:3px solid ${urgente ? '#dc2626' : '#f59e0b'};background:${urgente ? '#fef2f2' : '#fffbeb'};border-radius:4px">
                       <div style="display:flex;justify-content:space-between;align-items:center">
-                        <strong style="font-size:12px">${contraparte.slice(0, 24)}</strong>
+                        <strong style="font-size:12px">${escapeHtml(contraparte.slice(0, 24))}</strong>
                         <span style="font-size:10px;padding:1px 6px;border-radius:10px;background:${p._tipo === 'tomado' ? '#dc2626' : '#16a34a'};color:white">${p._tipo === 'tomado' ? 'Pago' : 'Cobro'}</span>
                       </div>
                       <div style="display:flex;justify-content:space-between;margin-top:4px;font-size:11px">

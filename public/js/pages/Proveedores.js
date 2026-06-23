@@ -1,5 +1,5 @@
 import { api } from '../services/api.js';
-import { showSuccess, showError } from '../services/ui.js';
+import { showSuccess, showError, escapeHtml, escapeAttr } from '../services/ui.js';
 
 export const Proveedores = async () => {
   let proveedores = [];
@@ -29,25 +29,25 @@ export const Proveedores = async () => {
     if (p.banco_2_nombre) metodos.push(`${p.banco_2_nombre} ${p.banco_2_numero || ''}`.trim());
     if (p.billetera_digital) metodos.push(`📱 Yape/Plin ${p.billetera_digital}`);
     const metodosHTML = metodos.length
-      ? metodos.map(m => `<div style="font-size:11px">• ${m}</div>`).join('')
+      ? metodos.map(m => `<div style="font-size:11px">• ${escapeHtml(m)}</div>`).join('')
       : '<span style="color:#e65100;font-size:11px">⚠️ Sin método de pago</span>';
 
     return `
       <tr data-tipo="${p.tipo === 'PERSONA_NATURAL' ? 'PERSONA' : 'EMPRESA'}">
-        <td style="font-size:11px">${tipoBadge}<br><span style="font-weight:600">${docLabel}: ${doc}</span></td>
+        <td style="font-size:11px">${tipoBadge}<br><span style="font-weight:600">${docLabel}: ${escapeHtml(doc)}</span></td>
         <td>
-          <strong style="font-size:13px">${p.razon_social}</strong>
-          ${p.contacto ? `<br><span style="font-size:11px;color:var(--text-secondary)">👤 ${p.contacto}</span>` : ''}
+          <strong style="font-size:13px">${escapeHtml(p.razon_social)}</strong>
+          ${p.contacto ? `<br><span style="font-size:11px;color:var(--text-secondary)">👤 ${escapeHtml(p.contacto)}</span>` : ''}
         </td>
         <td style="font-size:12px">
-          ${p.telefono ? `📞 ${p.telefono}` : '<span style="color:var(--text-secondary)">—</span>'}
-          ${p.email ? `<br><span style="font-size:11px">📧 ${p.email}</span>` : ''}
+          ${p.telefono ? `📞 ${escapeHtml(p.telefono)}` : '<span style="color:var(--text-secondary)">—</span>'}
+          ${p.email ? `<br><span style="font-size:11px">📧 ${escapeHtml(p.email)}</span>` : ''}
         </td>
         <td>${metodosHTML}</td>
         <td>
           <div style="display:flex;gap:4px">
             <button class="action-btn" style="background:var(--info);color:white" title="Editar datos del proveedor: razón social, RUC, contactos, cuentas bancarias, dirección. Los cambios se ven reflejados en próximas OCs (no toca documentos históricos)." onclick="window.editarProveedor(${p.id_proveedor})">Editar</button>
-            <button class="action-btn" style="background:#ef4444;color:white" title="Eliminar proveedor (solo si no tiene OCs, compras o gastos asociados). Si está vinculado, anulalo en sus documentos primero." aria-label="Eliminar proveedor" onclick="window.eliminarProveedor(${p.id_proveedor},'${(p.razon_social || '').replace(/'/g, "\\'")}')">×</button>
+            <button class="action-btn" style="background:#ef4444;color:white" title="Eliminar proveedor (solo si no tiene OCs, compras o gastos asociados). Si está vinculado, anulalo en sus documentos primero." aria-label="Eliminar proveedor" onclick="window.eliminarProveedor(${p.id_proveedor},'${escapeAttr(p.razon_social)}')">×</button>
           </div>
         </td>
       </tr>
@@ -75,34 +75,34 @@ export const Proveedores = async () => {
 
         <div class="doc-empresa" style="${tipo === 'EMPRESA' ? '' : 'display:none'}">
           <label style="${labelStyle}">RUC * (11 dígitos)</label>
-          <input name="ruc" value="${p.ruc || ''}" maxlength="11" pattern="[0-9]{11}" placeholder="20XXXXXXXXX" style="${inputStyle}">
+          <input name="ruc" value="${escapeHtml(p.ruc)}" maxlength="11" pattern="[0-9]{11}" placeholder="20XXXXXXXXX" style="${inputStyle}">
         </div>
 
         <div class="doc-persona" style="${tipo === 'PERSONA_NATURAL' ? '' : 'display:none'}">
           <label style="${labelStyle}">DNI (8 dígitos)</label>
-          <input name="dni" value="${p.dni || ''}" maxlength="8" pattern="[0-9]{8}" placeholder="12345678" style="${inputStyle}">
+          <input name="dni" value="${escapeHtml(p.dni)}" maxlength="8" pattern="[0-9]{8}" placeholder="12345678" style="${inputStyle}">
         </div>
 
         <div>
           <label style="${labelStyle}">Razón Social / Nombre completo *</label>
-          <input name="razon_social" value="${p.razon_social || ''}" required style="${inputStyle}">
+          <input name="razon_social" value="${escapeHtml(p.razon_social)}" required style="${inputStyle}">
         </div>
 
         <div>
           <label style="${labelStyle}">Persona de contacto</label>
-          <input name="contacto" value="${p.contacto || ''}" placeholder="Quien atiende del proveedor" style="${inputStyle}">
+          <input name="contacto" value="${escapeHtml(p.contacto)}" placeholder="Quien atiende del proveedor" style="${inputStyle}">
         </div>
 
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
           <div><label style="${labelStyle}">Teléfono</label>
-            <input name="telefono" value="${p.telefono || ''}" placeholder="9XXXXXXXX" style="${inputStyle}"></div>
+            <input name="telefono" value="${escapeHtml(p.telefono)}" placeholder="9XXXXXXXX" style="${inputStyle}"></div>
           <div><label style="${labelStyle}">Email</label>
-            <input name="email" type="email" value="${p.email || ''}" placeholder="ventas@empresa.com" style="${inputStyle}"></div>
+            <input name="email" type="email" value="${escapeHtml(p.email)}" placeholder="ventas@empresa.com" style="${inputStyle}"></div>
         </div>
 
         <div>
           <label style="${labelStyle}">Dirección</label>
-          <input name="direccion" value="${p.direccion || ''}" placeholder="Av. Principal 123 - Distrito" style="${inputStyle}">
+          <input name="direccion" value="${escapeHtml(p.direccion)}" placeholder="Av. Principal 123 - Distrito" style="${inputStyle}">
         </div>
 
         <!-- Cuenta 1 -->
@@ -126,9 +126,9 @@ export const Proveedores = async () => {
           </div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
             <div><label style="${labelStyle}">Nº cuenta</label>
-              <input name="banco_1_numero" value="${p.banco_1_numero || ''}" placeholder="194-12345678-0-12" style="${inputStyle}"></div>
+              <input name="banco_1_numero" value="${escapeHtml(p.banco_1_numero)}" placeholder="194-12345678-0-12" style="${inputStyle}"></div>
             <div><label style="${labelStyle}">CCI</label>
-              <input name="banco_1_cci" value="${p.banco_1_cci || ''}" placeholder="00219412345678012345" maxlength="20" style="${inputStyle}"></div>
+              <input name="banco_1_cci" value="${escapeHtml(p.banco_1_cci)}" placeholder="00219412345678012345" maxlength="20" style="${inputStyle}"></div>
           </div>
         </div>
 
@@ -153,16 +153,16 @@ export const Proveedores = async () => {
           </div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
             <div><label style="${labelStyle}">Nº cuenta</label>
-              <input name="banco_2_numero" value="${p.banco_2_numero || ''}" placeholder="194-9876543-1-87" style="${inputStyle}"></div>
+              <input name="banco_2_numero" value="${escapeHtml(p.banco_2_numero)}" placeholder="194-9876543-1-87" style="${inputStyle}"></div>
             <div><label style="${labelStyle}">CCI</label>
-              <input name="banco_2_cci" value="${p.banco_2_cci || ''}" maxlength="20" style="${inputStyle}"></div>
+              <input name="banco_2_cci" value="${escapeHtml(p.banco_2_cci)}" maxlength="20" style="${inputStyle}"></div>
           </div>
         </div>
 
         <!-- Billetera digital -->
         <div style="${sectionStyle}">
           <div style="${sectionTitle}">📱 Billetera digital (Yape / Plin)</div>
-          <input name="billetera_digital" value="${p.billetera_digital || ''}" placeholder="Número de celular: 987654321" style="${inputStyle}">
+          <input name="billetera_digital" value="${escapeHtml(p.billetera_digital)}" placeholder="Número de celular: 987654321" style="${inputStyle}">
         </div>
 
         <button type="submit" style="margin-top:10px;padding:11px;border:none;background:var(--primary-color);color:white;border-radius:6px;cursor:pointer;font-weight:600;font-size:13px">

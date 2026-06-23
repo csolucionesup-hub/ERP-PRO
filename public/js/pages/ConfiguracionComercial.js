@@ -1,11 +1,11 @@
 import { api } from '../services/api.js';
-import { showSuccess, showError } from '../services/ui.js';
+import { showSuccess, showError, escapeHtml } from '../services/ui.js';
 
 let _configs = {};
 let _marca   = 'METAL';
 
 function campo(label, name, value, placeholder = '') {
-  const v = value == null ? '' : String(value).replace(/"/g, '&quot;');
+  const v = escapeHtml(value);
   return `
     <label style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:#444">
       <span style="font-weight:600">${label}</span>
@@ -54,7 +54,7 @@ function renderHTML() {
           <div id="logo-preview-${_marca}"
                style="width:200px;height:80px;border:1px dashed #ccc;border-radius:6px;display:flex;align-items:center;justify-content:center;background:#fff;overflow:hidden">
             ${c.logo_url
-              ? `<img src="${c.logo_url}" alt="Logo ${_marca}" style="max-width:100%;max-height:100%;object-fit:contain">`
+              ? `<img src="${escapeHtml(c.logo_url)}" alt="Logo ${_marca}" style="max-width:100%;max-height:100%;object-fit:contain">`
               : `<span style="color:#999;font-size:12px">Sin logo</span>`}
           </div>
           <div style="display:flex;flex-direction:column;gap:6px">
@@ -163,7 +163,7 @@ window.cfgComercial = {
       const result = await api.configuracionMarca.uploadLogo(_marca, file);
       // Actualizar el caché local y el preview sin recargar la página
       _configs[_marca] = { ..._configs[_marca], logo_url: result.url, logo_public_id: result.public_id };
-      if (preview) preview.innerHTML = `<img src="${result.url}" alt="Logo ${_marca}" style="max-width:100%;max-height:100%;object-fit:contain">`;
+      if (preview) preview.innerHTML = `<img src="${escapeHtml(result.url)}" alt="Logo ${_marca}" style="max-width:100%;max-height:100%;object-fit:contain">`;
       if (status)  status.textContent = '✓ Logo actualizado';
       showSuccess(`Logo de ${_marca} actualizado`);
       // Limpiar el input para que el mismo archivo se pueda re-subir si se quiere
