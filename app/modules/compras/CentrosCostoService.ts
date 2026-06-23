@@ -1,5 +1,12 @@
 import { db } from '../../../database/connection';
 
+// Largo máximo del nombre de un centro de costo. El nombre se propaga como
+// `centro_costo` a OrdenesCompra, Gastos, Compras, Rendiciones y OCFirmasReglas,
+// todas VARCHAR(100) (ver migración 074). Si el nombre lo supera, se guarda en
+// el maestro pero revienta al crear la OC con "value too long for varchar". Lo
+// limitamos acá para dar un error claro en vez del críptico de Postgres.
+export const CC_NOMBRE_MAX = 100;
+
 /**
  * CentrosCostoService — maestro de centros de costo.
  * Tipos: OFICINA (Oficina Central, Marketing) / PROYECTO (proyectos cliente)
@@ -35,6 +42,7 @@ class CentrosCostoService {
     }
 
     let nombre = (data.nombre || '').trim().toUpperCase();
+    const nombreEsManual = nombre.length > 0;
     let id_cotizacion: number | null = data.id_cotizacion ? Number(data.id_cotizacion) : null;
 
     // Si viene una cotización vinculada, auto-armar el nombre desde sus datos
@@ -60,6 +68,16 @@ class CentrosCostoService {
     }
 
     if (!nombre) throw new Error('Nombre de centro de costo requerido (o vincular una cotización con proyecto definido)');
+
+    // Guard de longitud (ver CC_NOMBRE_MAX). Si el usuario tipeó un nombre muy
+    // largo, error claro. Si es auto-generado desde la cotización, truncamos
+    // para no bloquear el flujo (el nombre largo igual no cabe en la OC).
+    if (nombre.length > CC_NOMBRE_MAX) {
+      if (nombreEsManual) {
+        throw new Error(`El nombre del centro de costo no puede superar ${CC_NOMBRE_MAX} caracteres (tiene ${nombre.length}). Acortalo — se usa como referencia en cada orden de compra.`);
+      }
+      nombre = nombre.slice(0, CC_NOMBRE_MAX).trim();
+    }
 
     const [res]: any = await db.query(
       `INSERT INTO CentrosCosto (nombre, tipo, descripcion, id_cotizacion)
@@ -115,6 +133,9 @@ class CentrosCostoService {
     const nombreActual = fila.nombre;
     const nombreFinal = (nombreNuevo || '').trim().toUpperCase();
     if (!nombreFinal) throw new Error('El nombre nuevo no puede estar vacío');
+    if (nombreFinal.length > CC_NOMBRE_MAX) {
+      throw new Error(`El nombre del centro de costo no puede superar ${CC_NOMBRE_MAX} caracteres (tiene ${nombreFinal.length}). Acortalo — se usa como referencia en cada orden de compra.`);
+    }
 
     // ¿Existe otro centro con el nombre destino? (Colisión)
     const [col]: any = await db.query(

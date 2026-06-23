@@ -275,8 +275,8 @@ async function abrirModalNuevoCC(tipos, tipoColor) {
 
         <div>
           <label style="font-size:11px;color:var(--text-secondary)">Nombre *</label>
-          <input name="nombre" id="cc-nombre" required placeholder="Ej: FABRICACION AUGER PSV, OFICINA SUR" style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
-          <span style="font-size:10px;color:var(--text-secondary)">Se guarda en MAYÚSCULAS para evitar duplicados</span>
+          <input name="nombre" id="cc-nombre" required maxlength="100" placeholder="Ej: FABRICACION AUGER PSV, OFICINA SUR" style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
+          <span style="font-size:10px;color:var(--text-secondary)">Se guarda en MAYÚSCULAS para evitar duplicados · <span id="cc-nombre-cont">0/100</span></span>
         </div>
         <div>
           <label style="font-size:11px;color:var(--text-secondary)">Descripción (opcional)</label>
@@ -316,8 +316,27 @@ async function abrirModalNuevoCC(tipos, tipoColor) {
     const auto = proyecto
       ? `${proyecto} · ${cliente}`.toUpperCase()
       : `${nro} · ${cliente}`.toUpperCase();
-    nombreInput.value = auto;
+    // El nombre se usa como centro_costo en cada OC (VARCHAR(100)). Si el
+    // auto-generado se pasa, lo recortamos y avisamos para que el usuario lo
+    // edite a algo legible en vez de toparse con el error al crear la OC.
+    nombreInput.value = auto.length > 100 ? auto.slice(0, 100) : auto;
+    actualizarContadorCC();
+    if (auto.length > 100) {
+      showError('El nombre auto-generado superaba 100 caracteres y se recortó. Editalo a algo más corto antes de guardar.');
+    }
   });
+
+  // Contador en vivo del largo del nombre (límite 100 = ancho de centro_costo
+  // en OrdenesCompra/Gastos/Compras). Pone el contador en rojo al pasarse.
+  const contadorCC = ov.querySelector('#cc-nombre-cont');
+  function actualizarContadorCC() {
+    if (!contadorCC) return;
+    const n = nombreInput.value.length;
+    contadorCC.textContent = `${n}/100`;
+    contadorCC.style.color = n > 100 ? '#dc2626' : 'var(--text-secondary)';
+  }
+  nombreInput.addEventListener('input', actualizarContadorCC);
+  actualizarContadorCC();
 
   ov.querySelector('#form-cc-nuevo').onsubmit = async (e) => {
     e.preventDefault();
@@ -361,7 +380,7 @@ async function editarCC(id) {
         <select name="tipo" required style="padding:8px 10px;border:1px solid #d1d5db;border-radius:6px">
           ${tipos.map(t => `<option value="${t}" ${cc.tipo === t ? 'selected' : ''}>${t}</option>`).join('')}
         </select>
-        <input name="nombre" value="${cc.nombre}" required style="padding:8px 10px;border:1px solid #d1d5db;border-radius:6px">
+        <input name="nombre" value="${cc.nombre}" required maxlength="100" style="padding:8px 10px;border:1px solid #d1d5db;border-radius:6px">
         <input name="descripcion" value="${cc.descripcion || ''}" placeholder="Descripción" style="padding:8px 10px;border:1px solid #d1d5db;border-radius:6px">
         <button type="submit" style="padding:11px;background:var(--primary-color);color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">Guardar cambios</button>
       </form>
@@ -1743,7 +1762,13 @@ function bindFormOCMulti(panel, tipoOC) {
       setTimeout(() => location.reload(), 1800);
     } catch (err) {
       if (btn) { btn.disabled = false; btn.textContent = '✅ Crear OC + generar PDF'; }
-      showError(err?.error || err?.message || 'Error al crear OC');
+      const raw = err?.error || err?.message || 'Error al crear OC';
+      // Traducir el error críptico de Postgres a algo accionable: casi siempre
+      // es el nombre del centro de costo o la descripción de un ítem muy larga.
+      const msg = /value too long for type character varying/i.test(raw)
+        ? 'Un texto supera el largo máximo permitido (revisá el nombre del centro de costo o la descripción de los ítems y acortalo).'
+        : raw;
+      showError(msg);
     }
   };
 }
