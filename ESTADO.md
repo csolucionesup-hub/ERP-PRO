@@ -2,14 +2,28 @@
 
 > **LEER PRIMERO.** Este documento es la fuente de verdad sobre qué está hecho, qué falta y dónde estamos parados. Se actualiza al cierre de cada sesión de trabajo.
 
-**Última actualización:** 2026-05-12 (sesión maratón — importaciones landed cost, centros costo vinculados a cotización, panel compromiso futuro caja, pase responsive 2026, merge manual PDI→Auger)
-**Rama activa:** `main` (worktree activo para features: `D:/proyectos/ERP-PRO/.claude/worktrees/busy-brown-829244` branch `claude/busy-brown-829244`)
-**Último commit pusheado:** `65fdd35 Merge: responsive pass + Prestamos consistente (12/05/2026)`
+**Última actualización:** 2026-06-23 (fix OC `centro_costo` overflow varchar(60) + kanban responsive por `@container` + prep auditoría)
+**Rama activa:** `main` (limpio, sincronizado)
+**Último commit pusheado:** `b0398d5 fix(logística): centro_costo overflow al crear OC + kanban se cortaba con sidebar (#15)`
 **Servidor dev:** `npx ts-node index.ts` en `D:\proyectos\ERP-PRO` → `http://localhost:3000`
 **Producción:** `erp-pro-production-e4c0.up.railway.app` — Railway (deploy automático desde main, ACTIVE confirmado)
-**Cache buster JS actual:** `v=20260512r5` (app.js + 19 imports + index.html + main.css) — bumpeado 5 veces en sesión 12/05.
-**Migraciones BD:** 001 → 069 aplicadas (Supabase Postgres project `fhlrxlsscerfiuuyiejw`). Migraciones nuevas hoy: **068_importaciones_landed_cost** + **069_centrocosto_cotizacion_link** (ambas ADD-only, verificadas con snapshot antes/después — cero data perdida).
-**Permisos Claude:** desde 12/05 yo (Claude) hago commit+push a feature branches `claude/*` automáticamente vía `.claude/settings.local.json`. Push a main lo sigue haciendo Julio manualmente (gate de release).
+**Cache buster actual:** JS `v=20260623r1` (app.js + 19 imports + index.html) · CSS `main.css?v=20260623r1`.
+**Migraciones BD:** 001 → **074** aplicadas (Supabase Postgres project `fhlrxlsscerfiuuyiejw`). Última: **074_oc_centro_costo_width** (OrdenesCompra/OCFirmasReglas `centro_costo` VARCHAR→100, ADD-only, verificada).
+**Permisos Claude:** Claude hace commit+push a feature branches `claude/*` automáticamente. Merge/push a `main` lo autoriza Julio (gate de release) — en esta sesión autorizó el merge del PR #15 explícitamente.
+
+---
+
+## 🔜 PRÓXIMA SESIÓN — Auditoría de seguridad y funcionamiento (PC + celular)
+
+Barrido completo del ERP (código + producción) en **escritorio y móvil**, cubriendo seguridad y funcionamiento/UX. Entregable: hallazgos priorizados (críticos→menores) + plan de fix.
+Plan y checklist completos en el vault: `D:\workspace\knowledge-vault\sessions\2026-06-23-erp-pro-fix-oc-centrocosto-kanban-y-prep-auditoria.md`.
+Antes de tocar nada: `npm run db:backup`. Usar MCP Supabase `get_advisors` (security+performance) como punto de partida.
+
+## ✅ Sesión 2026-06-23 — Fix OC centro_costo + Kanban responsive
+
+- **OC fallaba con `value too long for type character varying(60)`**: el nombre del CC superaba 60 chars. Causa: inconsistencia de esquema (`OrdenesCompra.centro_costo`=60 mientras el resto del modelo=100, maestro=120). Fix: **mig 074** sube OC/firmasreglas a 100 + guard backend/frontend (`CC_NOMBRE_MAX=100`, maxlength+contador, traducción del error críptico). Bonus: audit de renombrado de CC usaba columna `descripcion` inexistente → arreglado.
+- **Kanban se cortaba al abrir la sidebar**: breakpoints por `@media`/viewport no restaban los 260px de la sidebar. Fix: migrados a `@container` (ancho real). Verificado con repro aislado.
+- PR #15 mergeado a main (`b0398d5`), deployado y verificado en producción.
 
 ## 🚨 Bug RESUELTO — Cobranzas USD/PEN (cerrado 08/05 noche, antes era ACTIVO)
 
