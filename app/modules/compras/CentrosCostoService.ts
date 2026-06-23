@@ -201,15 +201,26 @@ class CentrosCostoService {
         [impacto.nombre_nuevo, impacto.nombre_actual]
       );
 
-      // 3. Audit log (best-effort — si la tabla Auditoria no existe, no romper)
+      // 3. Audit log (best-effort — si la tabla Auditoria no existe, no romper).
+      // La tabla Auditoria NO tiene columna `descripcion`; el detalle va en
+      // datos_despues (JSON) y el id del CC en entidad_id.
       try {
         await conn.query(
-          `INSERT INTO Auditoria (id_usuario, entidad, accion, descripcion)
-           VALUES (?, 'CentroCosto', 'UPDATE', ?)`,
+          `INSERT INTO Auditoria (id_usuario, entidad, entidad_id, accion, datos_despues)
+           VALUES (?, 'CentroCosto', ?, 'UPDATE', ?)`,
           [
             id_usuario,
-            `Renombrar CC #${id}: "${impacto.nombre_actual}" → "${impacto.nombre_nuevo}". ` +
-            `Propagado a ${impacto.afectados_oc} OCs, ${impacto.afectados_gastos} gastos, ${impacto.afectados_compras} compras.`,
+            String(id),
+            JSON.stringify({
+              accion: 'renombrar',
+              nombre_anterior: impacto.nombre_actual,
+              nombre_nuevo: impacto.nombre_nuevo,
+              propagado: {
+                ocs: impacto.afectados_oc,
+                gastos: impacto.afectados_gastos,
+                compras: impacto.afectados_compras,
+              },
+            }),
           ]
         );
       } catch (_) { /* tabla puede no existir */ }
