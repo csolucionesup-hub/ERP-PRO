@@ -2,8 +2,8 @@
 
 > **LEER PRIMERO.** Este documento es la fuente de verdad sobre qué está hecho, qué falta y dónde estamos parados. Se actualiza al cierre de cada sesión de trabajo.
 
-**Última actualización:** 2026-06-23 (fix OC `centro_costo` overflow varchar(60) + kanban responsive por `@container` + prep auditoría)
-**Rama activa:** `main` (limpio, sincronizado)
+**Última actualización:** 2026-06-23 sesión 2 (auditoría de seguridad/funcionamiento + candados de autorización dormidos)
+**Rama activa:** `claude/auth-locks-dormant` (commit `c32c546`, pusheada, SIN merge a main)
 **Último commit pusheado:** `b0398d5 fix(logística): centro_costo overflow al crear OC + kanban se cortaba con sidebar (#15)`
 **Servidor dev:** `npx ts-node index.ts` en `D:\proyectos\ERP-PRO` → `http://localhost:3000`
 **Producción:** `erp-pro-production-e4c0.up.railway.app` — Railway (deploy automático desde main, ACTIVE confirmado)
@@ -13,11 +13,14 @@
 
 ---
 
-## 🔜 PRÓXIMA SESIÓN — Auditoría de seguridad y funcionamiento (PC + celular)
+## 🔴 AUDITORÍA HECHA (2026-06-23 sesión 2) — XSS crítico pendiente
 
-Barrido completo del ERP (código + producción) en **escritorio y móvil**, cubriendo seguridad y funcionamiento/UX. Entregable: hallazgos priorizados (críticos→menores) + plan de fix.
-Plan y checklist completos en el vault: `D:\workspace\knowledge-vault\sessions\2026-06-23-erp-pro-fix-oc-centrocosto-kanban-y-prep-auditoria.md`.
-Antes de tocar nada: `npm run db:backup`. Usar MCP Supabase `get_advisors` (security+performance) como punto de partida.
+Auditoría formal por capas. Detalle: `D:\workspace\knowledge-vault\sessions\2026-06-23-erp-pro-auditoria-seguridad-funcionamiento.md`.
+
+- 🔴 **CRÍTICO pendiente — Stored XSS:** datos de BD (cliente, comentarios, razón social, observaciones, `descripcion_banco`) inyectados crudos en `innerHTML` en casi todas las páginas; `escapeHtml` redefinido local en 4 páginas, no global. CSP inútil (`unsafe-inline`/`unsafe-eval` por onclick inline). Token JWT en localStorage → robo de sesión. **NO tocado** — rama aparte.
+- 🟡 **Autorización RESUELTA (dormida) en `claude/auth-locks-dormant` (commit `c32c546`, SIN merge):** candados por módulo (ocRouter→LOGISTICA, facturas/facturacion/ple→FINANZAS, adjuntos→requireAnyModulo), `/prestamos`→llave propia PRESTAMOS, fix shadowing `/admin`, helper `requireAnyModulo`, frontend Sidebar/Usuarios + PRESTAMOS/PRODUCCION, cache buster r2, **migración 075** (PRESTAMOS al CHECK, NO aplicada a prod). GERENTE pasa todo → invisible en UAT. "Echar llave" = aplicar mig 075 + asignar módulos + bajar rol en Usuarios.
+- 🟡 **Hardening backend pendiente:** errorHandler filtra `err.message` + TxConnection propaga error Postgres crudo; periodoGuard fail-open; validateParams descarta parseado de Zod; ConfiguracionService inyección por identificador (gated GERENTE).
+- ⚪ **Menor:** pase móvil en vivo (G20), DB lints Supabase. Backup de la sesión: `backups/erp-pro-2026-06-23T22-33-52.json`.
 
 ## ✅ Sesión 2026-06-23 — Fix OC centro_costo + Kanban responsive
 
