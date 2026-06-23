@@ -1,7 +1,7 @@
 import { api } from '../services/api.js';
 import { showSuccess, showError } from '../services/ui.js';
 
-const MODULOS = ['GERENCIA', 'COMERCIAL', 'FINANZAS', 'LOGISTICA', 'ALMACEN', 'ADMINISTRACION'];
+const MODULOS = ['GERENCIA', 'COMERCIAL', 'FINANZAS', 'PRESTAMOS', 'LOGISTICA', 'ALMACEN', 'ADMINISTRACION', 'PRODUCCION'];
 // El rol es un label libre; estas opciones aparecen como sugerencias en el datalist
 const ROLES_SUGERIDOS = [
   'GERENTE', 'CONTADOR', 'USUARIO',

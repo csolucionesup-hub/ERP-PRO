@@ -47,3 +47,22 @@ export function requireModulo(modulo: string) {
     return res.status(403).json({ error: `Acceso denegado. Se requiere el módulo '${modulo}'.` });
   };
 }
+
+/**
+ * Igual que requireModulo, pero pasa si el usuario tiene CUALQUIERA de los
+ * módulos de la lista. Útil para recursos compartidos entre áreas (ej.
+ * adjuntos, que cuelgan de OCs / rendiciones / cotizaciones) o para una
+ * transición donde un recurso es accesible desde más de un módulo.
+ * GERENTE siempre pasa.
+ */
+export function requireAnyModulo(modulos: string[]) {
+  return (req: Request, res: Response, next: NextFunction) => {
+    if (!req.user) {
+      return res.status(401).json({ error: 'No autenticado.' });
+    }
+    if (req.user.rol === 'GERENTE' || req.user.modulos.some((m) => modulos.includes(m))) {
+      return next();
+    }
+    return res.status(403).json({ error: `Acceso denegado. Se requiere alguno de los módulos: ${modulos.join(', ')}.` });
+  };
+}
