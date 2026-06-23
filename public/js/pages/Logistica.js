@@ -16,7 +16,7 @@
  */
 
 import { api } from '../services/api.js';
-import { showSuccess, showError } from '../services/ui.js';
+import { showSuccess, showError, escapeHtml, escapeAttr } from '../services/ui.js';
 import { TabBar } from '../components/TabBar.js';
 import { kpiGrid } from '../components/KpiCard.js';
 import { lineChart, barChart, chartColors, destroyChart } from '../components/charts.js';
@@ -167,17 +167,17 @@ async function renderTabCentros(panel) {
     return `
       <tr style="${!cc.activo ? 'opacity:0.5' : ''}">
         <td style="padding:8px"><span style="background:${c.bg};color:${c.fg};padding:3px 8px;border-radius:8px;font-size:11px;font-weight:600">${c.icon} ${cc.tipo}</span></td>
-        <td style="padding:8px;font-weight:600">${cc.nombre}</td>
+        <td style="padding:8px;font-weight:600">${escapeHtml(cc.nombre)}</td>
         <td style="padding:8px;text-align:right">${cc.cantidad_ocs || 0}</td>
         <td style="padding:8px;text-align:right;font-weight:700">${fPEN(monto)}</td>
         <td style="padding:8px;font-size:11px;color:var(--text-secondary)">${cc.ultima_fecha ? fmtDate(cc.ultima_fecha) : '—'}</td>
         <td style="padding:8px;text-align:center">${cc.activo ? '✅' : '❌'}</td>
         <td style="padding:8px;white-space:nowrap">
-          <button onclick="Logistica.verROC('${cc.nombre.replace(/'/g, "\\'")}')" style="padding:4px 8px;font-size:11px;background:#fff;border:1px solid #065f46;color:#065f46;border-radius:4px;cursor:pointer" title="Vista previa del ROC en pantalla (sin descargar)" aria-label="Ver ROC">👁 Ver</button>
-          <button onclick="Logistica.descargarROC('${cc.nombre.replace(/'/g, "\\'")}')" style="padding:4px 8px;font-size:11px;background:#065f46;color:white;border:none;border-radius:4px;cursor:pointer" title="Reporte semanal de OCs (Excel)">📊 ROC</button>
+          <button onclick="Logistica.verROC('${escapeAttr(cc.nombre)}')" style="padding:4px 8px;font-size:11px;background:#fff;border:1px solid #065f46;color:#065f46;border-radius:4px;cursor:pointer" title="Vista previa del ROC en pantalla (sin descargar)" aria-label="Ver ROC">👁 Ver</button>
+          <button onclick="Logistica.descargarROC('${escapeAttr(cc.nombre)}')" style="padding:4px 8px;font-size:11px;background:#065f46;color:white;border:none;border-radius:4px;cursor:pointer" title="Reporte semanal de OCs (Excel)">📊 ROC</button>
           <button onclick="Logistica.editarCC(${cc.id_centro_costo})" title="Editar nombre y datos del centro de costo" style="padding:4px 8px;font-size:11px;background:var(--info);color:white;border:none;border-radius:4px;cursor:pointer">Editar</button>
           <button onclick="Logistica.toggleCC(${cc.id_centro_costo}, ${cc.activo})" title="${cc.activo ? 'Desactivar (no aparece como opción en formularios pero sigue vinculado a OCs/gastos históricos)' : 'Reactivar para volver a usar en nuevos formularios'}" style="padding:4px 8px;font-size:11px;background:${cc.activo ? '#f59e0b' : '#16a34a'};color:white;border:none;border-radius:4px;cursor:pointer">${cc.activo ? 'Desactivar' : 'Activar'}</button>
-          <button onclick="Logistica.eliminarCC(${cc.id_centro_costo}, '${cc.nombre.replace(/'/g, "\\'")}')" title="Eliminar permanente (solo si no tiene OCs/gastos asociados)" aria-label="Eliminar centro de costo" style="padding:4px 8px;font-size:11px;background:#dc2626;color:white;border:none;border-radius:4px;cursor:pointer">×</button>
+          <button onclick="Logistica.eliminarCC(${cc.id_centro_costo}, '${escapeAttr(cc.nombre)}')" title="Eliminar permanente (solo si no tiene OCs/gastos asociados)" aria-label="Eliminar centro de costo" style="padding:4px 8px;font-size:11px;background:#dc2626;color:white;border:none;border-radius:4px;cursor:pointer">×</button>
         </td>
       </tr>`;
   }).join('');
@@ -215,10 +215,10 @@ async function renderTabCentros(panel) {
       <table style="width:100%;border-collapse:collapse;font-size:11px">
         ${huerfanos.map(h => `
           <tr style="border-bottom:1px solid #fde68a">
-            <td style="padding:6px 4px;font-weight:600;color:#78350f">${h.nombre}</td>
+            <td style="padding:6px 4px;font-weight:600;color:#78350f">${escapeHtml(h.nombre)}</td>
             <td style="padding:6px 4px;text-align:right;color:#92400e">${h.usos} uso(s)</td>
             <td style="padding:6px 4px;text-align:right">
-              <button onclick="Logistica.regularizarHuerfano('${h.nombre.replace(/'/g, "\\'")}')" title="Crear este nombre como centro de costo formal (tipo PROYECTO)" style="padding:4px 10px;background:#f59e0b;color:white;border:none;border-radius:4px;cursor:pointer;font-size:11px;font-weight:600">Regularizar</button>
+              <button onclick="Logistica.regularizarHuerfano('${escapeAttr(h.nombre)}')" title="Crear este nombre como centro de costo formal (tipo PROYECTO)" style="padding:4px 10px;background:#f59e0b;color:white;border:none;border-radius:4px;cursor:pointer;font-size:11px;font-weight:600">Regularizar</button>
             </td>
           </tr>
         `).join('')}
@@ -267,7 +267,7 @@ async function abrirModalNuevoCC(tipos, tipoColor) {
             <option value="">— Manual / sin vincular —</option>
             ${cotizacionesDisp.map(c => {
               const lbl = `${c.nro_cotizacion} · ${(c.proyecto || '(sin proyecto)')} · ${c.cliente || ''}`;
-              return `<option value="${c.id_cotizacion}" data-proyecto="${(c.proyecto || '').replace(/"/g, '&quot;')}" data-cliente="${(c.cliente || '').replace(/"/g, '&quot;')}" data-nro="${c.nro_cotizacion}">${lbl}</option>`;
+              return `<option value="${c.id_cotizacion}" data-proyecto="${escapeHtml(c.proyecto || '')}" data-cliente="${escapeHtml(c.cliente || '')}" data-nro="${escapeHtml(c.nro_cotizacion)}">${escapeHtml(lbl)}</option>`;
             }).join('')}
           </select>
           <span style="font-size:10px;color:#075985;display:block;margin-top:4px">${cotizacionesDisp.length} cotización(es) disponibles. El nombre se autocompleta al elegir.</span>
@@ -380,8 +380,8 @@ async function editarCC(id) {
         <select name="tipo" required style="padding:8px 10px;border:1px solid #d1d5db;border-radius:6px">
           ${tipos.map(t => `<option value="${t}" ${cc.tipo === t ? 'selected' : ''}>${t}</option>`).join('')}
         </select>
-        <input name="nombre" value="${cc.nombre}" required maxlength="100" style="padding:8px 10px;border:1px solid #d1d5db;border-radius:6px">
-        <input name="descripcion" value="${cc.descripcion || ''}" placeholder="Descripción" style="padding:8px 10px;border:1px solid #d1d5db;border-radius:6px">
+        <input name="nombre" value="${escapeHtml(cc.nombre)}" required maxlength="100" style="padding:8px 10px;border:1px solid #d1d5db;border-radius:6px">
+        <input name="descripcion" value="${escapeHtml(cc.descripcion || '')}" placeholder="Descripción" style="padding:8px 10px;border:1px solid #d1d5db;border-radius:6px">
         <button type="submit" style="padding:11px;background:var(--primary-color);color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600">Guardar cambios</button>
       </form>
     </div>
@@ -652,7 +652,7 @@ async function verROC(centroNombre) {
       <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px">
         <div style="background:#fff;border:1px solid #e5e7eb;border-radius:8px;padding:10px 12px">
           <div style="font-size:10px;color:#6b7280;font-weight:600">CENTRO</div>
-          <div style="font-size:13px;font-weight:700;margin-top:2px">${datos.params.centro_costo}</div>
+          <div style="font-size:13px;font-weight:700;margin-top:2px">${escapeHtml(datos.params.centro_costo)}</div>
         </div>
         <div style="background:#fff;border:1px solid #e5e7eb;border-radius:8px;padding:10px 12px">
           <div style="font-size:10px;color:#6b7280;font-weight:600">CANTIDAD OCs</div>
@@ -688,7 +688,7 @@ async function verROC(centroNombre) {
         return `
           <tr style="background:${colorEstado(o.estado)};border-bottom:1px solid #e5e7eb">
             <td style="padding:6px 8px;font-size:11px;font-weight:600">${tipo}</td>
-            <td style="padding:6px 8px;font-size:11px;font-weight:600">${o.nro_oc}</td>
+            <td style="padding:6px 8px;font-size:11px;font-weight:600">${escapeHtml(o.nro_oc)}</td>
             <td style="padding:6px 8px;font-size:11px">${fmtFecha(o.fecha_emision)}</td>
             <td style="padding:6px 8px;font-size:11px">${prov}</td>
             <td style="padding:6px 8px;font-size:11px;max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${desc}">${desc || '—'}</td>
@@ -703,7 +703,7 @@ async function verROC(centroNombre) {
             <td style="padding:6px 8px;font-size:10px;text-align:center">${o.pagada_marca ? '✓' : ''}</td>
             <td style="padding:6px 8px;font-size:10px;text-align:center">${o.fecha_real_pago || ''}</td>
             <td style="padding:6px 8px;font-size:10px;text-align:center">${o.estado_rendicion}</td>
-            <td style="padding:6px 8px;font-size:10px">${o.nro_factura || ''}</td>
+            <td style="padding:6px 8px;font-size:10px">${escapeHtml(o.nro_factura || '')}</td>
           </tr>
         `;
       }).join('');
@@ -1050,12 +1050,12 @@ function renderTabSinFactura(panel) {
               return `
                 <tr style="border-bottom:1px solid #e5e7eb">
                   <td style="padding:10px;font-weight:700">
-                    <a href="#" onclick="event.preventDefault();OC.verOC(${oc.id_oc})" style="color:var(--primary-color);text-decoration:none">${oc.nro_oc}</a>
+                    <a href="#" onclick="event.preventDefault();OC.verOC(${oc.id_oc})" style="color:var(--primary-color);text-decoration:none">${escapeHtml(oc.nro_oc)}</a>
                   </td>
                   <td style="padding:10px;color:#6b7280">${fmtDate(oc.fecha_emision)}</td>
-                  <td style="padding:10px">${oc.proveedor_nombre || '—'}</td>
+                  <td style="padding:10px">${escapeHtml(oc.proveedor_nombre || '—')}</td>
                   <td style="padding:10px"><span style="font-size:10px;background:#e5e7eb;padding:2px 6px;border-radius:4px">${oc.tipo_oc}</span></td>
-                  <td style="padding:10px;color:#6b7280">${oc.centro_costo || '—'}</td>
+                  <td style="padding:10px;color:#6b7280">${escapeHtml(oc.centro_costo || '—')}</td>
                   <td style="padding:10px">
                     ${tienePDF
                       ? `<span title="${tipBadge}" style="font-size:10px;background:#dcfce7;color:#166534;padding:3px 8px;border-radius:10px;font-weight:600;margin-right:4px">${txtBadge}</span>
@@ -1191,11 +1191,11 @@ function renderTablaOCs(ocs, opts = {}) {
               : '';
             return `
               <tr style="border-bottom:1px solid #e5e7eb">
-                <td style="padding:8px;font-weight:600">${o.nro_oc || '—'}</td>
+                <td style="padding:8px;font-weight:600">${escapeHtml(o.nro_oc || '—')}</td>
                 <td style="padding:8px">${fmtDate(o.fecha_emision)}</td>
-                <td style="padding:8px">${o.proveedor_nombre || '—'}</td>
+                <td style="padding:8px">${escapeHtml(o.proveedor_nombre || '—')}</td>
                 ${opts.mostrarServicio ? `<td style="padding:8px;font-size:11px">${o.servicio_codigo || '—'}</td>` : ''}
-                <td style="padding:8px"><span style="font-size:10px;background:#e5e7eb;padding:2px 6px;border-radius:4px">${o.centro_costo || '—'}</span></td>
+                <td style="padding:8px"><span style="font-size:10px;background:#e5e7eb;padding:2px 6px;border-radius:4px">${escapeHtml(o.centro_costo || '—')}</span></td>
                 <td style="padding:8px;text-align:right;font-weight:700">${fmtMoney(o.total, o.moneda)}</td>
                 <td style="padding:8px;text-align:center">${estadoBadgeOC(o.estado)}</td>
                 <td style="padding:8px;text-align:center;white-space:nowrap">
@@ -1232,7 +1232,7 @@ function estadoBadgeOC(estado) {
 function emptyState(titulo, subtitulo = '') {
   return `<div style="padding:40px;text-align:center;color:var(--text-secondary)">
     <div style="font-size:32px;margin-bottom:10px">📋</div>
-    <div style="font-size:14px;font-weight:600;color:#555">${titulo}</div>
+    <div style="font-size:14px;font-weight:600;color:#555">${escapeHtml(titulo)}</div>
     ${subtitulo ? `<div style="font-size:12px;margin-top:6px">${subtitulo}</div>` : ''}
   </div>`;
 }
@@ -1250,7 +1250,7 @@ function renderFormOC(tipoOC) {
 
   const provOpts = _proveedores.map(p => {
     const doc = p.ruc || p.dni || '';
-    return `<option value="${p.id_proveedor}">${p.razon_social}${doc ? ' · ' + doc : ''}</option>`;
+    return `<option value="${p.id_proveedor}">${escapeHtml(p.razon_social)}${doc ? ' · ' + escapeHtml(doc) : ''}</option>`;
   }).join('');
 
   const titulo = esServicio ? 'Nueva OC de Servicio'
@@ -1283,10 +1283,10 @@ function renderFormOC(tipoOC) {
       ? ` · ${c.cotizacion_nro}${c.cotizacion_cliente ? ' · ' + c.cotizacion_cliente : ''}`
       : '';
     return `<option value="${c.id_centro_costo}"
-              data-nombre="${(c.nombre || '').replace(/"/g, '&quot;')}"
+              data-nombre="${escapeHtml(c.nombre || '')}"
               data-id-cot="${c.id_cotizacion || ''}"
-              data-cliente="${(c.cotizacion_cliente || '').replace(/"/g, '&quot;')}"
-              data-marca="${c.cotizacion_marca || ''}">${c.nombre}${extra}</option>`;
+              data-cliente="${escapeHtml(c.cotizacion_cliente || '')}"
+              data-marca="${escapeHtml(c.cotizacion_marca || '')}">${escapeHtml(c.nombre)}${escapeHtml(extra)}</option>`;
   }).join('');
 
   // Pre-seleccionar el único candidato natural para ALMACEN (típicamente
@@ -1309,7 +1309,7 @@ function renderFormOC(tipoOC) {
 
   return `
     <div class="card">
-      <h3 style="margin-bottom:6px;font-size:15px">➕ ${titulo}</h3>
+      <h3 style="margin-bottom:6px;font-size:15px">➕ ${escapeHtml(titulo)}</h3>
       <p style="font-size:11px;color:var(--text-secondary);margin-bottom:12px">${ayuda}</p>
       <form id="${formId}" data-tipo-oc="${tipoOC}" style="display:flex;flex-direction:column;gap:10px">
         <input type="hidden" name="tipo_oc" value="${tipoOC}">
@@ -1551,7 +1551,7 @@ function bindFormOCMulti(panel, tipoOC) {
           const tcTxt = monedaTxt === 'USD' ? ` · TC ${Number(cc?.cotizacion_tc || 0).toFixed(4)}` : '';
           ccInfoDiv.innerHTML =
             `<div style="background:#f0f9ff;border:1px solid #bae6fd;padding:8px 10px;border-radius:6px;color:#0c4a6e">
-               <strong>Proyecto:</strong> ${cc?.cotizacion_nro || '—'} · ${cliente || '—'}<br>
+               <strong>Proyecto:</strong> ${escapeHtml(cc?.cotizacion_nro || '—')} · ${escapeHtml(cliente || '—')}<br>
                <strong>Marca:</strong> ${marca || cc?.cotizacion_marca || '—'} · <strong>Moneda:</strong> ${monedaTxt}${tcTxt}
              </div>`;
         }
