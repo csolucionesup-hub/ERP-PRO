@@ -10,7 +10,7 @@
  */
 
 import { api } from '../services/api.js';
-import { showSuccess, showError, setupPendienteBanner, esErrorConfigVacia } from '../services/ui.js';
+import { showSuccess, showError, setupPendienteBanner, esErrorConfigVacia, escapeHtml, escapeAttr } from '../services/ui.js';
 import { TabBar } from '../components/TabBar.js';
 import { kpiGrid } from '../components/KpiCard.js';
 
@@ -256,21 +256,21 @@ async function renderPendientesFacturar(panel) {
     const estadoBadge = c.estado === 'TERMINADA'
       ? '<span style="background:#dcfce7;color:#166534;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600">✓ TERMINADA</span>'
       : '<span style="background:#dbeafe;color:#1e40af;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600">● APROBADA</span>';
-    const nroSafe = String(c.nro_cotizacion || '').replace(/'/g, "\\'");
+    const nroSafe = escapeAttr(c.nro_cotizacion);
 
     return `
       <tr style="border-bottom:1px solid #e5e7eb">
         <td style="padding:10px;font-weight:700">
           ${marcaBadge}
-          <div style="margin-top:3px">${c.nro_cotizacion}</div>
+          <div style="margin-top:3px">${escapeHtml(c.nro_cotizacion)}</div>
         </td>
         <td style="padding:10px;font-size:12px;color:#6b7280">
           ${fmtFecha(fechaRef)}
           ${c.fecha_aprobacion_comercial ? '<div style="font-size:10px;color:#16a34a">✓ Aprobada</div>' : '<div style="font-size:10px;color:#9ca3af">emisión</div>'}
         </td>
         <td style="padding:10px">
-          <strong>${c.cliente || '—'}</strong>
-          ${c.proyecto ? `<div style="font-size:11px;color:#6b7280">${c.proyecto}</div>` : ''}
+          <strong>${escapeHtml(c.cliente || '—')}</strong>
+          ${c.proyecto ? `<div style="font-size:11px;color:#6b7280">${escapeHtml(c.proyecto)}</div>` : ''}
         </td>
         <td style="padding:10px;text-align:right;font-weight:700;font-variant-numeric:tabular-nums">${fmtMoneda(c.total, c.moneda)}</td>
         <td style="padding:10px;text-align:center">${estadoBadge}</td>
@@ -336,14 +336,14 @@ async function renderFacturas(panel) {
 
     const rows = facturas.map(f => {
       const estadoBadge = estadoSunatBadge(f.estado_sunat);
-      const pdf = f.pdf_url ? `<a href="${f.pdf_url}" target="_blank" style="color:#3b82f6;text-decoration:underline">PDF</a>` : '—';
-      const cdr = f.cdr_url ? `<a href="${f.cdr_url}" target="_blank" style="color:#3b82f6;text-decoration:underline">CDR</a>` : '—';
+      const pdf = f.pdf_url ? `<a href="${escapeHtml(f.pdf_url)}" target="_blank" style="color:#3b82f6;text-decoration:underline">PDF</a>` : '—';
+      const cdr = f.cdr_url ? `<a href="${escapeHtml(f.cdr_url)}" target="_blank" style="color:#3b82f6;text-decoration:underline">CDR</a>` : '—';
       return `
         <tr style="border-bottom:1px solid #e5e7eb">
-          <td style="padding:10px;font-weight:700">${f.numero_formateado}</td>
-          <td style="padding:10px"><span style="font-size:11px;background:${f.tipo === 'FACTURA' ? '#dbeafe' : '#fef3c7'};padding:2px 8px;border-radius:4px">${f.tipo}</span></td>
+          <td style="padding:10px;font-weight:700">${escapeHtml(f.numero_formateado)}</td>
+          <td style="padding:10px"><span style="font-size:11px;background:${f.tipo === 'FACTURA' ? '#dbeafe' : '#fef3c7'};padding:2px 8px;border-radius:4px">${escapeHtml(f.tipo)}</span></td>
           <td style="padding:10px">${String(f.fecha_emision).split('T')[0]}</td>
-          <td style="padding:10px;font-size:12px">${f.cliente_numero_doc}<br><span style="color:var(--text-secondary)">${f.cliente_razon_social}</span></td>
+          <td style="padding:10px;font-size:12px">${escapeHtml(f.cliente_numero_doc)}<br><span style="color:var(--text-secondary)">${escapeHtml(f.cliente_razon_social)}</span></td>
           <td style="padding:10px;text-align:right;font-weight:600">${f.moneda} ${Number(f.total).toFixed(2)}</td>
           <td style="padding:10px;text-align:center">${estadoBadge}</td>
           <td style="padding:10px;text-align:center;font-size:11px">${pdf} · ${cdr}</td>
@@ -389,7 +389,7 @@ function estadoSunatBadge(estado) {
     ERROR:      { bg: '#fecaca', fg: '#7f1d1d', icon: '⚠️' },
   };
   const s = styles[estado] || styles.PENDIENTE;
-  return `<span style="background:${s.bg};color:${s.fg};padding:3px 10px;border-radius:10px;font-size:11px;font-weight:600;white-space:nowrap">${s.icon} ${estado}</span>`;
+  return `<span style="background:${s.bg};color:${s.fg};padding:3px 10px;border-radius:10px;font-size:11px;font-weight:600;white-space:nowrap">${s.icon} ${escapeHtml(estado)}</span>`;
 }
 
 // ─── TAB 3: Pack Contable (placeholder Fase D) ────────────────
