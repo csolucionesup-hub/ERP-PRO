@@ -1075,14 +1075,24 @@ tr:last-child td {
   cursor: pointer;
 }
 
+/* El tab del kanban es un "container" → las columnas reaccionan al ancho
+   REAL disponible, no al del viewport. Esto es clave: con la sidebar abierta
+   el contenido pierde 260px, y un @media basado en viewport no se entera
+   (veía 1280px y mantenía 7 cols aunque solo cupieran ~996px → se cortaba). */
+#tab-kanban {
+  container-type: inline-size;
+  container-name: ockanban;
+}
+
 .oc-kanban-board {
   display: grid;
   /* 7 columnas: BORRADOR, APROBADA, PAGO, EN_TRANSITO, RECEPCION, FACTURACION, TERMINADA */
-  grid-template-columns: repeat(7, minmax(170px, 1fr));
+  grid-template-columns: repeat(7, minmax(140px, 1fr));
   gap: 10px;
   margin-top: 10px;
   max-height: calc(100vh - 280px);
-  /* Scroll horizontal cuando la pantalla no da para 7 cols */
+  /* Scroll horizontal solo como último recurso (no debería hacer falta:
+     los @container de abajo bajan el nº de columnas antes de desbordar) */
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
 }
@@ -1143,34 +1153,32 @@ tr:last-child td {
   font-size: 11px;
 }
 
-/* Responsivo del kanban — 7 cols full → 4 cols tablet landscape →
-   2 cols tablet portrait → 1 col + flow vertical en mobile.
-   La regla mobile (1 col) es importante porque cada columna ya es scrolleable
+/* Responsivo del kanban POR ANCHO DE CONTENEDOR (no de viewport):
+   7 cols → 4 cols → 2 cols → 1 col según el espacio REAL disponible, así
+   abrir/cerrar la sidebar reacomoda las columnas en vez de cortarlas.
+   La regla de 1 col es importante porque cada columna ya es scrolleable
    verticalmente por si misma; apilarlas en 1 sola es más usable que 7 scrolls. */
-@media (max-width: 1400px) {
+@container ockanban (max-width: 1040px) {
   .oc-kanban-board {
-    grid-template-columns: repeat(7, minmax(160px, 1fr));
-    /* Forzar scroll horizontal cuando 7×160 = 1120 + gap no entra */
-  }
-}
-@media (max-width: 1100px) {
-  .oc-kanban-board {
-    grid-template-columns: repeat(4, minmax(170px, 1fr));
+    grid-template-columns: repeat(4, minmax(150px, 1fr));
     max-height: none;
     overflow-x: visible;
   }
 }
-@media (max-width: 900px) {
+@container ockanban (max-width: 780px) {
   .oc-kanban-board {
-    grid-template-columns: repeat(2, minmax(160px, 1fr));
+    grid-template-columns: repeat(2, minmax(150px, 1fr));
     max-height: none;
   }
 }
-@media (max-width: 600px) {
+@container ockanban (max-width: 540px) {
   .oc-kanban-board {
     grid-template-columns: 1fr;
     max-height: none;
   }
+}
+/* Filtros: apilar en pantallas chicas (esto sí depende del viewport real) */
+@media (max-width: 600px) {
   .oc-kanban-filtros { flex-direction: column; align-items: stretch; }
   .oc-kanban-filtros label { justify-content: space-between; }
 }
