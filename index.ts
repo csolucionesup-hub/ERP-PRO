@@ -1157,6 +1157,16 @@ const firmaUpload = multer({
   }
 });
 
+authRouter.post('/logout', (_req: Request, res: Response) => {
+  // El JS no puede borrar una cookie httpOnly → tiene que hacerlo el server.
+  res.clearCookie(AUTH_COOKIE_NAME, {
+    path: '/',
+    sameSite: 'strict',
+    secure: process.env.NODE_ENV === 'production',
+  });
+  res.json({ ok: true });
+});
+
 authRouter.get('/me/firma', requireAuth, async (req: any, res: Response) => {
   res.json(await AuthService.getFirma(req.user.id_usuario));
 });
