@@ -652,8 +652,7 @@ export const api = {
   ple: {
     ventasPreview:  (anio, mes) => get(`/ple/ventas/preview?anio=${anio}&mes=${mes}`),
     comprasPreview: (anio, mes) => get(`/ple/compras/preview?anio=${anio}&mes=${mes}`),
-    // URL absolutas para descarga (el navegador ya manda el bearer vía el sistema de ui.js).
-    // En realidad usamos fetch + blob para descargar con Authorization header.
+    // Descarga via fetch + blob con cookie httpOnly (credentials: same-origin).
     descargarVentas: async (anio, mes) => {
       const r = await fetch(`${API_BASE_URL}/ple/ventas?anio=${anio}&mes=${mes}`, {
         credentials: 'same-origin',
