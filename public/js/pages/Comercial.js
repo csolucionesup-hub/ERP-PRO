@@ -998,7 +998,7 @@ function archivoTable(cotizaciones, _filtroMarcaLegacy) {
     const f = _archivoFiltros;
     const filtrosActivos = [
       f.marca && `marca: ${MARCAS[f.marca]?.label}`,
-      f.cliente !== 'Todos' && `cliente: ${f.cliente}`,
+      f.cliente !== 'Todos' && `cliente: ${escapeHtml(f.cliente)}`,
       f.anio !== 'Todos' && `año: ${f.anio}`,
       f.mes !== 'Todos' && `mes: ${f.mes}`,
       f.moneda !== 'Todas' && `moneda: ${f.moneda}`,
