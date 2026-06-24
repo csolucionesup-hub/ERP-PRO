@@ -2,11 +2,11 @@
 
 > **LEER PRIMERO.** Este documento es la fuente de verdad sobre qué está hecho, qué falta y dónde estamos parados. Se actualiza al cierre de cada sesión de trabajo.
 
-**Última actualización:** 2026-06-23 sesión 4 — **seguridad MERGEADA a main** (PR #16: XSS Fase 1 + autorización dormida + hardening backend + migs 075/076). Railway deployando.
-**Rama activa:** `main` (al día, `c7fbe33`).
+**Última actualización:** 2026-06-23 sesión 4 — **seguridad EN PRODUCCIÓN** (PR #16 mergeado + deploy Railway sirviendo `r4` + migs 075/076 aplicadas a Supabase + advisors de seguridad en CERO).
+**Rama activa:** `main` (al día). Deploy verificado: producción sirve `app.js?v=20260623r4`, HTTP 200.
 **Ramas integradas (PR #16, merged):** `claude/backend-hardening`, `claude/xss-escape-html`, `claude/auth-locks-dormant`.
-**Último commit pusheado a main:** `c7fbe33 merge: integración de seguridad (PR #16)`.
-**⚠ Pendiente post-merge:** aplicar migs **075 + 076** a Supabase (`npx ts-node database/apply_migrations.ts --env=railway`) + smoke test (inyectar `<img src=x onerror>` en un campo → debe verse inerte). Candados de autorización van DORMIDOS (GERENTE pasa todo).
+**✅ Post-merge hecho:** migs 075 (PRESTAMOS al CHECK) + 076 (search_path + 20 índices FK) **aplicadas vía MCP a Supabase y verificadas**; `get_advisors` security = `[]`. **Candados de autorización DORMIDOS** (GERENTE pasa todo — no restringe a nadie hasta "echar llave"). Único pendiente opcional: smoke test manual del XSS (inyectar `<img src=x onerror>` en un campo → debe verse inerte).
+**⚠ OJO apply_migrations.ts:** usa mysql2 contra `.env.railway` = **Railway MySQL LEGACY**, NO el Supabase productivo. Las migraciones a prod se aplican **vía MCP `apply_migration`** (o adaptando a Postgres), NO con ese runner.
 **Servidor dev:** `npx ts-node index.ts` en `D:\proyectos\ERP-PRO` → `http://localhost:3000`
 **Producción:** `erp-pro-production-e4c0.up.railway.app` — Railway (deploy automático desde main, ACTIVE confirmado)
 **Cache buster actual:** JS `v=20260623r4` (19 imports app.js + index.html + main.css).
