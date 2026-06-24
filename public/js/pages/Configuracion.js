@@ -137,41 +137,41 @@ function renderTabEmpresa(panel, cfg) {
       <form id="form-empresa" style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
         <div>
           <label>RUC</label>
-          <input name="ruc" value="${cfg.ruc || ''}" readonly style="background:#f5f5f5" maxlength="11">
+          <input name="ruc" value="${escapeHtml(cfg.ruc || '')}" readonly style="background:#f5f5f5" maxlength="11">
           <div class="app-form-hint">11 dígitos. No editable después de la configuración inicial.</div>
         </div>
         <div>
           <label>Razón Social *</label>
-          <input name="razon_social" value="${cfg.razon_social || ''}" required>
+          <input name="razon_social" value="${escapeHtml(cfg.razon_social || '')}" required>
           <div class="app-form-hint">Nombre legal exacto según SUNAT (con S.A.C., S.A., E.I.R.L., etc.).</div>
         </div>
         <div>
           <label>Nombre Comercial</label>
-          <input name="nombre_comercial" value="${cfg.nombre_comercial || ''}">
+          <input name="nombre_comercial" value="${escapeHtml(cfg.nombre_comercial || '')}">
           <div class="app-form-hint">Nombre con el que te conocen los clientes (puede diferir de la razón social).</div>
         </div>
         <div>
           <label>Email Facturación</label>
-          <input type="email" name="email_facturacion" value="${cfg.email_facturacion || ''}">
+          <input type="email" name="email_facturacion" value="${escapeHtml(cfg.email_facturacion || '')}">
           <div class="app-form-hint">Aparece en cotizaciones y OCs como contacto de pagos.</div>
         </div>
         <div>
           <label>Teléfono</label>
-          <input name="telefono" value="${cfg.telefono || ''}">
+          <input name="telefono" value="${escapeHtml(cfg.telefono || '')}">
         </div>
         <div>
           <label>Web</label>
-          <input name="web" value="${cfg.web || ''}">
+          <input name="web" value="${escapeHtml(cfg.web || '')}">
           <div class="app-form-hint">Sin "https://". Ej: www.metalengineers.com.pe</div>
         </div>
         <div style="grid-column:span 2">
           <label>Dirección Fiscal</label>
-          <input name="direccion_fiscal" value="${cfg.direccion_fiscal || ''}">
+          <input name="direccion_fiscal" value="${escapeHtml(cfg.direccion_fiscal || '')}">
           <div class="app-form-hint">Dirección registrada en SUNAT. Aparece en facturas y comprobantes.</div>
         </div>
         <div style="grid-column:span 2">
           <label>Logo URL</label>
-          <input name="logo_url" value="${cfg.logo_url || ''}">
+          <input name="logo_url" value="${escapeHtml(cfg.logo_url || '')}">
           <div class="app-form-hint">URL pública de la imagen del logo. Recomendado: PNG con fondo transparente, máx. 800px ancho.</div>
         </div>
         <div style="grid-column:span 2;display:flex;justify-content:flex-end">
@@ -211,32 +211,32 @@ function renderTabEmpresa(panel, cfg) {
       <form id="form-firmas-oc" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px">
         <div>
           <label>Solicitado por</label>
-          <input name="oc_solicitado_default" value="${cfg.oc_solicitado_default || ''}">
+          <input name="oc_solicitado_default" value="${escapeHtml(cfg.oc_solicitado_default || '')}">
           <div class="app-form-hint">Quien levanta el requerimiento (asistente de compras, jefe de proyecto).</div>
         </div>
         <div>
           <label>Revisado por</label>
-          <input name="oc_revisado_default" value="${cfg.oc_revisado_default || ''}">
+          <input name="oc_revisado_default" value="${escapeHtml(cfg.oc_revisado_default || '')}">
           <div class="app-form-hint">Quien valida la cotización del proveedor (administración).</div>
         </div>
         <div>
           <label>Autorizado por</label>
-          <input name="oc_autorizado_default" value="${cfg.oc_autorizado_default || ''}">
+          <input name="oc_autorizado_default" value="${escapeHtml(cfg.oc_autorizado_default || '')}">
           <div class="app-form-hint">Quien aprueba el desembolso (gerencia).</div>
         </div>
         <div>
           <label>Contacto interno (nombre)</label>
-          <input name="oc_contacto_nombre" value="${cfg.oc_contacto_nombre || ''}">
+          <input name="oc_contacto_nombre" value="${escapeHtml(cfg.oc_contacto_nombre || '')}">
           <div class="app-form-hint">Aparece como "Contacto: …" abajo del centro de costo.</div>
         </div>
         <div>
           <label>Celular del contacto</label>
-          <input name="oc_contacto_telefono" value="${cfg.oc_contacto_telefono || ''}">
+          <input name="oc_contacto_telefono" value="${escapeHtml(cfg.oc_contacto_telefono || '')}">
           <div class="app-form-hint">Para que el proveedor sepa a quién llamar.</div>
         </div>
         <div>
           <label>Ciudad de emisión</label>
-          <input name="oc_ciudad_emision" value="${cfg.oc_ciudad_emision || ''}">
+          <input name="oc_ciudad_emision" value="${escapeHtml(cfg.oc_ciudad_emision || '')}">
           <div class="app-form-hint">Encabezado del PDF: "Puente Piedra, 12 de Enero del 2026".</div>
         </div>
         <div style="grid-column:span 3;display:flex;justify-content:flex-end">
@@ -365,11 +365,11 @@ function renderTabFacturacion(panel, cfg, diag) {
         </div>
         <div>
           <label>Endpoint URL (API OSE)</label>
-          <input name="ose_endpoint_url" value="${cfg.ose_endpoint_url || ''}" placeholder="https://api.nubefact.com/api/v1/20610071962">
+          <input name="ose_endpoint_url" value="${escapeHtml(cfg.ose_endpoint_url || '')}" placeholder="https://api.nubefact.com/api/v1/20610071962">
         </div>
         <div>
           <label>Usuario OSE</label>
-          <input name="ose_usuario" value="${cfg.ose_usuario || ''}">
+          <input name="ose_usuario" value="${escapeHtml(cfg.ose_usuario || '')}">
         </div>
         <div>
           <label>Token / API Key</label>
@@ -377,7 +377,7 @@ function renderTabFacturacion(panel, cfg, diag) {
         </div>
         <div>
           <label>Certificado digital (ruta .pfx)</label>
-          <input name="cert_digital_ruta" value="${cfg.cert_digital_ruta || ''}" placeholder="./certs/metalengineers.pfx">
+          <input name="cert_digital_ruta" value="${escapeHtml(cfg.cert_digital_ruta || '')}" placeholder="./certs/metalengineers.pfx">
         </div>
         <div>
           <label>Password certificado</label>
@@ -387,11 +387,11 @@ function renderTabFacturacion(panel, cfg, diag) {
         <div style="grid-column:span 2;border-top:1px solid var(--border-light);padding-top:14px;margin-top:6px">
           <h4 style="margin-bottom:10px;font-size:13px">Series de numeración</h4>
         </div>
-        <div><label>Serie Factura</label><input name="serie_factura" value="${cfg.serie_factura}" maxlength="4"></div>
-        <div><label>Serie Boleta</label><input name="serie_boleta" value="${cfg.serie_boleta}" maxlength="4"></div>
-        <div><label>Serie Nota Crédito</label><input name="serie_nota_credito" value="${cfg.serie_nota_credito}" maxlength="4"></div>
-        <div><label>Serie Nota Débito</label><input name="serie_nota_debito" value="${cfg.serie_nota_debito}" maxlength="4"></div>
-        <div><label>Serie Guía Remisión</label><input name="serie_guia_remision" value="${cfg.serie_guia_remision}" maxlength="4"></div>
+        <div><label>Serie Factura</label><input name="serie_factura" value="${escapeHtml(cfg.serie_factura)}" maxlength="4"></div>
+        <div><label>Serie Boleta</label><input name="serie_boleta" value="${escapeHtml(cfg.serie_boleta)}" maxlength="4"></div>
+        <div><label>Serie Nota Crédito</label><input name="serie_nota_credito" value="${escapeHtml(cfg.serie_nota_credito)}" maxlength="4"></div>
+        <div><label>Serie Nota Débito</label><input name="serie_nota_debito" value="${escapeHtml(cfg.serie_nota_debito)}" maxlength="4"></div>
+        <div><label>Serie Guía Remisión</label><input name="serie_guia_remision" value="${escapeHtml(cfg.serie_guia_remision)}" maxlength="4"></div>
 
         <div style="grid-column:span 2;display:flex;justify-content:flex-end;margin-top:10px">
           <button type="submit" style="padding:10px 24px;background:var(--primary-color);color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:600">
@@ -587,11 +587,11 @@ async function recargarAuditoria() {
             ${rows.map(r => `
               <tr style="border-bottom:1px solid var(--border-light)">
                 <td style="padding:8px 10px;color:var(--text-secondary)">${new Date(r.fecha).toLocaleString('es-PE')}</td>
-                <td style="padding:8px 10px">${r.nombre_usuario || '—'}</td>
-                <td style="padding:8px 10px"><span style="background:${accionColor(r.accion)};color:#fff;padding:2px 8px;border-radius:4px;font-weight:600">${r.accion}</span></td>
-                <td style="padding:8px 10px">${r.entidad}</td>
-                <td style="padding:8px 10px;font-family:monospace">${r.entidad_id || ''}</td>
-                <td style="padding:8px 10px;color:var(--text-secondary);font-size:11px">${r.ip || ''}</td>
+                <td style="padding:8px 10px">${escapeHtml(r.nombre_usuario || '—')}</td>
+                <td style="padding:8px 10px"><span style="background:${accionColor(r.accion)};color:#fff;padding:2px 8px;border-radius:4px;font-weight:600">${escapeHtml(r.accion)}</span></td>
+                <td style="padding:8px 10px">${escapeHtml(r.entidad)}</td>
+                <td style="padding:8px 10px;font-family:monospace">${escapeHtml(r.entidad_id || '')}</td>
+                <td style="padding:8px 10px;color:var(--text-secondary);font-size:11px">${escapeHtml(r.ip || '')}</td>
               </tr>
             `).join('')}
           </tbody>
