@@ -16,9 +16,8 @@ const colorPct = (v) => v > 0 ? '#16a34a' : v < 0 ? '#dc2626' : '#6b7280';
 
 const abrirPDFRendicion = async (id) => {
   try {
-    const token = localStorage.getItem('erp_token');
     const r = await fetch(`/api/rendiciones/${id}/pdf`, {
-      headers: { Authorization: `Bearer ${token}` },
+      credentials: 'same-origin',
     });
     if (!r.ok) {
       let detalle = '';

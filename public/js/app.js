@@ -1,29 +1,29 @@
 ﻿// Cache busting para imports ES module: cada path lleva su ?v=YYYYMMDDr#
 // hardcodeado. Si se cambia CUALQUIER archivo de pages/components/services
 // hay que bumpear el sufijo en TODAS las líneas (Find/Replace de v=2026...).
-import { renderSidebar } from './components/Sidebar.js?v=20260623r4';
-import { Dashboard }   from './pages/Dashboard.js?v=20260623r4';
-import { Finanzas }    from './pages/Finanzas.js?v=20260623r4';
-import { Inventario }  from './pages/Inventario.js?v=20260623r4';
-import { Usuarios }    from './pages/Usuarios.js?v=20260623r4';
-import { Compras }       from './pages/Compras.js?v=20260623r4';
+import { renderSidebar } from './components/Sidebar.js?v=20260623r5';
+import { Dashboard }   from './pages/Dashboard.js?v=20260623r5';
+import { Finanzas }    from './pages/Finanzas.js?v=20260623r5';
+import { Inventario }  from './pages/Inventario.js?v=20260623r5';
+import { Usuarios }    from './pages/Usuarios.js?v=20260623r5';
+import { Compras }       from './pages/Compras.js?v=20260623r5';
 // Servicios — módulo deprecado al cierre 03/05/2026 (Camino A vació la tabla
 // en producción; flujo migrado a Cotizaciones APROBADAS + OCs). El backend
 // sigue vivo porque Logística/OC consumen api.services.getServiciosActivos()
 // para popular dropdowns, pero la página ya no se navega.
-import { Proveedores }   from './pages/Proveedores.js?v=20260623r4';
-import { Prestamos }     from './pages/Prestamos.js?v=20260623r4';
-import { Comercial }     from './pages/Comercial.js?v=20260623r4';
-import { ConfiguracionComercial } from './pages/ConfiguracionComercial.js?v=20260623r4';
-import { Logistica }     from './pages/Logistica.js?v=20260623r4';
-import { Administracion } from './pages/Administracion.js?v=20260623r4';
-import { Configuracion }  from './pages/Configuracion.js?v=20260623r4';
-import { Contabilidad }   from './pages/Contabilidad.js?v=20260623r4';
-import { Importador }     from './pages/Importador.js?v=20260623r4';
-import { OrdenesCompra }  from './pages/OrdenesCompra.js?v=20260623r4';
-import { Produccion }     from './pages/Produccion.js?v=20260623r4';
-import { Alertas }        from './pages/Alertas.js?v=20260623r4';
-import { showSuccess, showError, showToast } from './services/ui.js?v=20260623r4';
+import { Proveedores }   from './pages/Proveedores.js?v=20260623r5';
+import { Prestamos }     from './pages/Prestamos.js?v=20260623r5';
+import { Comercial }     from './pages/Comercial.js?v=20260623r5';
+import { ConfiguracionComercial } from './pages/ConfiguracionComercial.js?v=20260623r5';
+import { Logistica }     from './pages/Logistica.js?v=20260623r5';
+import { Administracion } from './pages/Administracion.js?v=20260623r5';
+import { Configuracion }  from './pages/Configuracion.js?v=20260623r5';
+import { Contabilidad }   from './pages/Contabilidad.js?v=20260623r5';
+import { Importador }     from './pages/Importador.js?v=20260623r5';
+import { OrdenesCompra }  from './pages/OrdenesCompra.js?v=20260623r5';
+import { Produccion }     from './pages/Produccion.js?v=20260623r5';
+import { Alertas }        from './pages/Alertas.js?v=20260623r5';
+import { showSuccess, showError, showToast } from './services/ui.js?v=20260623r5';
 
 // Exponer helpers de toast globalmente (los modules ES no tienen acceso
 // directo desde otros modules sin import; varios usan window.showSuccess?.()
@@ -92,8 +92,9 @@ function getUser() {
 // Exponer navigate globalmente para que los onclick en páginas puedan llamarlo
 window.navigate = (page) => navigate(page);
 
-window.logout = function () {
-  localStorage.removeItem('erp_token');
+window.logout = async function () {
+  try { await fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin' }); }
+  catch { /* aunque falle, seguimos al login */ }
   localStorage.removeItem('erp_user');
   localStorage.removeItem('erp_last_page');
   window.location.replace('/login.html');
@@ -234,9 +235,7 @@ async function navigate(page) {
 // el wizard antes de que se topen con errores en Contabilidad / OCs / Facturas.
 async function configEmpresaExiste() {
   try {
-    const r = await fetch('/api/config/existe', {
-      headers: { 'Authorization': 'Bearer ' + (localStorage.getItem('erp_token') || '') }
-    });
+    const r = await fetch('/api/config/existe', { credentials: 'same-origin' });
     if (!r.ok) return true; // ante cualquier duda no bloqueamos al usuario
     const data = await r.json();
     return !!data?.existe;
@@ -250,8 +249,8 @@ async function configEmpresaExiste() {
  * setean SOLO al hacer login — si el GERENTE cambia el rol/módulos de un
  * usuario después, sin esto la pantalla queda stale hasta logout/login.
  *
- * /api/auth/me ahora consulta BD fresca y devuelve `{ usuario, cambio, token }`.
- * Si `cambio: true`, regrabamos `erp_user` y `erp_token` en localStorage.
+ * /api/auth/me ahora consulta BD fresca y devuelve `{ usuario }`.
+ * Si el rol/flags cambiaron, recargamos la SPA para que los componentes lean el localStorage fresco.
  *
  * Best-effort: si falla (sin red, 401, etc.), no bloqueamos el arranque —
  * el flujo legacy con el JWT existente sigue funcionando hasta que el
@@ -259,25 +258,16 @@ async function configEmpresaExiste() {
  */
 async function refreshSessionFromServer({ reloadOnChange = false } = {}) {
   try {
-    const token = localStorage.getItem('erp_token');
-    if (!token) return false;
-    const r = await fetch('/api/auth/me', {
-      headers: { 'Authorization': 'Bearer ' + token }
-    });
+    const r = await fetch('/api/auth/me', { credentials: 'same-origin' });
     if (r.status === 401) {
-      // JWT inválido o usuario desactivado → al login.
-      localStorage.removeItem('erp_token');
+      // Cookie inválida/ausente o usuario desactivado → al login.
       localStorage.removeItem('erp_user');
       window.location.replace('/login.html');
       return false;
     }
     if (!r.ok) return false;
     const data = await r.json();
-    if (!data?.usuario) return false;
 
-    // Detectar si el rol o flags cambiaron contra el localStorage actual.
-    // Si cambian, varias páginas leyeron el rol viejo en variables locales
-    // y la única forma 100% segura es recargar.
     let prev = {};
     try { prev = JSON.parse(localStorage.getItem('erp_user') || '{}'); } catch {}
     const cambioRolOFlags =
@@ -286,25 +276,26 @@ async function refreshSessionFromServer({ reloadOnChange = false } = {}) {
       !!prev.puede_importar     !== !!data.usuario.puede_importar;
 
     localStorage.setItem('erp_user', JSON.stringify(data.usuario));
-    if (data.cambio && data.token) {
-      localStorage.setItem('erp_token', data.token);
-    }
+    // El token ya no viaja en el body: /me refresca la cookie del lado server.
 
-    if (cambioRolOFlags && reloadOnChange) {
+    if (reloadOnChange && cambioRolOFlags) {
       // Aviso visible 1.5s antes del reload para que el usuario sepa qué pasa.
       try { window.showToast?.('Tus permisos fueron actualizados. Refrescando…', 'info'); } catch {}
       setTimeout(() => window.location.reload(), 1500);
       return true;
     }
-    return cambioRolOFlags;
+    return false;
   } catch {
-    // sin red / endpoint caído → no bloqueamos
     return false;
   }
 }
 
 async function init() {
-  if (!localStorage.getItem('erp_token')) {
+  // Limpieza one-time: el token ahora vive en cookie httpOnly. Si quedó un
+  // erp_token viejo de localStorage (sesión pre-migración), lo borramos.
+  localStorage.removeItem('erp_token');
+
+  if (!localStorage.getItem('erp_user')) {
     window.location.replace('/login.html');
     return;
   }

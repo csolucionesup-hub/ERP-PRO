@@ -127,9 +127,8 @@ function bindHandlers() {
     btn.addEventListener('click', async () => {
       const entidad = btn.dataset.entidad;
       try {
-        const token = localStorage.getItem('erp_token');
         const r = await fetch(`/api/importador/template-xlsx/${entidad}`, {
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
+          credentials: 'same-origin',
         });
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         const blob = await r.blob();
@@ -150,7 +149,6 @@ function bindHandlers() {
       const file = e.target.files[0];
       if (!file) return;
       const entidad = e.target.dataset.entidad;
-      const token = localStorage.getItem('erp_token');
       const esXlsx = /\.xlsx?$/i.test(file.name) ||
                      file.type.includes('spreadsheet') || file.type.includes('excel');
       try {
@@ -162,7 +160,7 @@ function bindHandlers() {
           fd.append('entidad', entidad);
           preview = await fetch('/api/importador/preview-xlsx', {
             method: 'POST',
-            headers: { Authorization: `Bearer ${token}` },
+            credentials: 'same-origin',
             body: fd,
           }).then(r => r.json());
         } else {
@@ -170,7 +168,8 @@ function bindHandlers() {
           const texto = await file.text();
           preview = await fetch('/api/importador/preview', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ entidad, csv_texto: texto }),
           }).then(r => r.json());
         }
@@ -264,11 +263,11 @@ function renderPreview(entidad, preview) {
   window.confirmarImportador = async () => {
     const { entidad, datos } = window.__importPending || {};
     if (!entidad || !datos?.length) return;
-    const t = localStorage.getItem('erp_token');
     try {
       const r = await fetch('/api/importador/commit', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${t}` },
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ entidad, datos }),
       }).then(r => r.json());
       if (r.success) {

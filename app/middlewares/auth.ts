@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
+import { AUTH_COOKIE_NAME } from '../modules/auth/cookieOptions';
 
 // En producción este fallback NO se usa: index.ts hace process.exit(1) si
 // JWT_SECRET falta antes de llegar aquí. El fallback solo cubre dev local.
@@ -22,11 +23,12 @@ declare global {
 }
 
 export function requireAuth(req: Request, res: Response, next: NextFunction) {
-  const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+  // El token vive en una cookie httpOnly (no en localStorage ni en el header
+  // Authorization). Corte limpio: sin fallback a Bearer.
+  const token = (req as any).cookies?.[AUTH_COOKIE_NAME];
+  if (!token) {
     return res.status(401).json({ error: 'Acceso denegado. Token requerido.' });
   }
-  const token = authHeader.split(' ')[1];
   try {
     const payload = jwt.verify(token, JWT_SECRET) as JwtPayload;
     req.user = payload;

@@ -163,8 +163,10 @@
       }
     });
 
-    // Si ya hay token, redirigir al sistema
-    if (localStorage.getItem('erp_token')) {
+    // El token vive en cookie httpOnly (no legible por JS). Usamos erp_user
+    // como pista de "ya logueado"; si la cookie no es válida, /me en app.js
+    // rebota al login.
+    if (localStorage.getItem('erp_user')) {
       window.location.replace('/');
     }
 
@@ -182,17 +184,16 @@
       try {
         const res = await fetch('/api/auth/login', {
           method: 'POST',
+          credentials: 'same-origin',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email, password })
+          body: JSON.stringify({ email, password }),
         });
-
         const data = await res.json();
-
         if (!res.ok) {
-          throw new Error(data.error || 'Error de autenticación');
+          throw new Error(data.error || 'Error al iniciar sesión');
         }
 
-        localStorage.setItem('erp_token', data.token);
+        // El token ya vino como cookie httpOnly. Solo guardamos datos de UI.
         localStorage.setItem('erp_user', JSON.stringify(data.usuario));
         window.location.replace('/');
       } catch {
