@@ -2,7 +2,7 @@
 
 > **LEER PRIMERO.** Este documento es la fuente de verdad sobre qué está hecho, qué falta y dónde estamos parados. Se actualiza al cierre de cada sesión de trabajo.
 
-**Última actualización:** 2026-06-23 sesión 5 — **XSS Fase 3a: JWT a cookie httpOnly** implementado y **PR #17 abierto** (sin merge; pendiente smoke test local + gate de Julio).
+**Última actualización:** 2026-06-24 sesión 6 — **XSS Fase 3a: smoke test E2E PASADO** (vía HTTP, sin browser). PR #17 verificado end-to-end; **solo falta el merge de Julio** (gate de release).
 **Rama activa:** `claude/jwt-httponly-cookie` (12 commits, PR #17 abierto). `main` quedó al día tras sesión 4.
 **Ramas integradas (PR #16, merged):** `claude/backend-hardening`, `claude/xss-escape-html`, `claude/auth-locks-dormant`.
 **✅ Post-merge hecho:** migs 075 (PRESTAMOS al CHECK) + 076 (search_path + 20 índices FK) **aplicadas vía MCP a Supabase y verificadas**; `get_advisors` security = `[]`. **Candados de autorización DORMIDOS** (GERENTE pasa todo — no restringe a nadie hasta "echar llave"). Único pendiente opcional: smoke test manual del XSS (inyectar `<img src=x onerror>` en un campo → debe verse inerte).
@@ -27,7 +27,9 @@ Sub-proyecto A de la deuda "XSS Fase 2/3". Se movió el JWT de `localStorage` a 
 
 **Verificado:** `npx tsc --noEmit` limpio · `check_mojibake` OK · unit tests `scripts/test_auth_cookie.ts` 9/9 · `grep erp_token public/` = solo la línea de limpieza one-time.
 
-**Pendiente antes de mergear:** smoke test E2E manual en local (login → DevTools confirma cookie HttpOnly + cero `erp_token` en localStorage → navegar/subir foto/bajar PDF → logout borra cookie). Luego Julio mergea PR #17 → Railway deploya solo (`secure:true` por `NODE_ENV=production`).
+**✅ Smoke test E2E PASADO (2026-06-24, vía HTTP/curl contra server local, sin browser):** login devuelve cookie con `HttpOnly` + `SameSite=Strict` + `Max-Age=28800` y **el token NO viaja en el body**; `/me` con cookie → 200; `/me` sin cookie → 401; logout borra la cookie (`Expires: 1970`); ruta protegida sin cookie → 401. Lo "solo-browser" (`document.cookie` ciego, no-localStorage) está garantizado por diseño (`HttpOnly` bloquea `document.cookie`; grep confirma que `public/` no guarda el token salvo la limpieza one-time).
+
+**Único pendiente:** Julio mergea PR #17 → Railway deploya solo (`secure:true` por `NODE_ENV=production`). **Heads-up:** tras el deploy todos re-loguean una vez (corte limpio, sin fallback a Bearer).
 
 **Spec/Plan:** `docs/superpowers/specs/2026-06-23-jwt-httponly-cookie-design.md` · `docs/superpowers/plans/2026-06-23-jwt-httponly-cookie.md`. Detalle vault: `sessions/2026-06-23-erp-pro-xss-fase3a-cookie-httponly.md`.
 
