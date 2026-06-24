@@ -2,16 +2,36 @@
 
 > **LEER PRIMERO.** Este documento es la fuente de verdad sobre qué está hecho, qué falta y dónde estamos parados. Se actualiza al cierre de cada sesión de trabajo.
 
-**Última actualización:** 2026-06-23 sesión 4 — **seguridad EN PRODUCCIÓN** (PR #16 mergeado + deploy Railway sirviendo `r4` + migs 075/076 aplicadas a Supabase + advisors de seguridad en CERO).
-**Rama activa:** `main` (al día). Deploy verificado: producción sirve `app.js?v=20260623r4`, HTTP 200.
+**Última actualización:** 2026-06-23 sesión 5 — **XSS Fase 3a: JWT a cookie httpOnly** implementado y **PR #17 abierto** (sin merge; pendiente smoke test local + gate de Julio).
+**Rama activa:** `claude/jwt-httponly-cookie` (12 commits, PR #17 abierto). `main` quedó al día tras sesión 4.
 **Ramas integradas (PR #16, merged):** `claude/backend-hardening`, `claude/xss-escape-html`, `claude/auth-locks-dormant`.
 **✅ Post-merge hecho:** migs 075 (PRESTAMOS al CHECK) + 076 (search_path + 20 índices FK) **aplicadas vía MCP a Supabase y verificadas**; `get_advisors` security = `[]`. **Candados de autorización DORMIDOS** (GERENTE pasa todo — no restringe a nadie hasta "echar llave"). Único pendiente opcional: smoke test manual del XSS (inyectar `<img src=x onerror>` en un campo → debe verse inerte).
 **⚠ OJO apply_migrations.ts:** usa mysql2 contra `.env.railway` = **Railway MySQL LEGACY**, NO el Supabase productivo. Las migraciones a prod se aplican **vía MCP `apply_migration`** (o adaptando a Postgres), NO con ese runner.
 **Servidor dev:** `npx ts-node index.ts` en `D:\proyectos\ERP-PRO` → `http://localhost:3000`
 **Producción:** `erp-pro-production-e4c0.up.railway.app` — Railway (deploy automático desde main, ACTIVE confirmado)
-**Cache buster actual:** JS `v=20260623r4` (19 imports app.js + index.html + main.css).
+**Cache buster actual:** JS `v=20260623r5` (19 imports app.js + index.html) — bumpeado en rama `claude/jwt-httponly-cookie`. En `main` sigue `r4` hasta mergear PR #17.
 **Migraciones BD:** 001 → **074** aplicadas en Supabase. **075 + 076 en el repo pero AÚN NO aplicadas** (project `fhlrxlsscerfiuuyiejw`). 075=PRESTAMOS al CHECK de usuariomodulos · 076=search_path trigger + 20 índices FK.
 **Permisos Claude:** Claude hace commit+push a feature branches `claude/*` automáticamente. Merge/push a `main` lo autoriza Julio (gate de release) — en esta sesión autorizó el merge del PR #15 explícitamente.
+
+---
+
+## ✅ Sesión 2026-06-23 (5) — XSS Fase 3a: JWT en cookie httpOnly (PR #17)
+
+Sub-proyecto A de la deuda "XSS Fase 2/3". Se movió el JWT de `localStorage` a una **cookie httpOnly** (Secure-en-prod + SameSite=Strict + 8h) → defensa en profundidad: aunque un XSS ejecutara código, ya **no puede leer/robar el token**. **Sin migraciones de BD.**
+
+**Decisiones (brainstorming):** CSRF cubierto solo con SameSite=Strict (app same-origin, YAGNI). **Corte limpio:** `requireAuth` lee solo cookie, sin fallback a `Authorization: Bearer` (mantenerlo dejaría el token robable). Costo: todos re-loguean una vez tras el deploy.
+
+**Backend:** `cookie-parser` + middleware; `app/modules/auth/cookieOptions.ts` (`authCookieOptions()` pura + testeada); `requireAuth` lee `req.cookies.erp_token`; `/login` y `/me` setean la cookie y **el token nunca viaja en el body**; nuevo `POST /api/auth/logout` (borra la cookie server-side).
+
+**Frontend:** `login.html`, `api.js` (base `fetchAPI` + 14 helpers de upload/PDF/Excel), `app.js` (guard de arranque por `erp_user`, `refreshSessionFromServer` sin token, `logout` async al endpoint, limpieza one-time del `erp_token` viejo) **+ 9 `fetch` crudos sueltos** en Comercial/Administración/Importador/OrdenesCompra que el plan original omitió y el code-review cazó (habrían roto esos módulos con `Bearer undefined` → 401). Cache buster JS → `v=20260623r5`.
+
+**Verificado:** `npx tsc --noEmit` limpio · `check_mojibake` OK · unit tests `scripts/test_auth_cookie.ts` 9/9 · `grep erp_token public/` = solo la línea de limpieza one-time.
+
+**Pendiente antes de mergear:** smoke test E2E manual en local (login → DevTools confirma cookie HttpOnly + cero `erp_token` en localStorage → navegar/subir foto/bajar PDF → logout borra cookie). Luego Julio mergea PR #17 → Railway deploya solo (`secure:true` por `NODE_ENV=production`).
+
+**Spec/Plan:** `docs/superpowers/specs/2026-06-23-jwt-httponly-cookie-design.md` · `docs/superpowers/plans/2026-06-23-jwt-httponly-cookie.md`. Detalle vault: `sessions/2026-06-23-erp-pro-xss-fase3a-cookie-httponly.md`.
+
+**Sigue pendiente (NO en este PR):** Fase 2 (CSP estricta) + Fase 3b (event delegation, migrar 196 handlers `onclick=`). B es prerequisito de C — alto esfuerzo/riesgo, mejor post-UAT.
 
 ---
 
