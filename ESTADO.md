@@ -2,14 +2,15 @@
 
 > **LEER PRIMERO.** Este documento es la fuente de verdad sobre qué está hecho, qué falta y dónde estamos parados. Se actualiza al cierre de cada sesión de trabajo.
 
-**Última actualización:** 2026-06-23 sesión 4 — **integración de seguridad** (XSS Fase 1 + autorización dormida + hardening backend + mig 076), consolidada en `claude/security-integration` lista para mergear a main.
-**Rama activa:** `claude/security-integration` (mergea `backend-hardening` + `xss-escape-html` + `auth-locks-dormant`; build verificado; lista para revisar + mergear a main — gate de Julio).
-**Ramas origen ya integradas:** `claude/backend-hardening`, `claude/xss-escape-html`, `claude/auth-locks-dormant`.
-**Último commit pusheado a main:** `b0398d5 fix(logística): centro_costo overflow al crear OC + kanban se cortaba con sidebar (#15)`
+**Última actualización:** 2026-06-23 sesión 4 — **seguridad MERGEADA a main** (PR #16: XSS Fase 1 + autorización dormida + hardening backend + migs 075/076). Railway deployando.
+**Rama activa:** `main` (al día, `c7fbe33`).
+**Ramas integradas (PR #16, merged):** `claude/backend-hardening`, `claude/xss-escape-html`, `claude/auth-locks-dormant`.
+**Último commit pusheado a main:** `c7fbe33 merge: integración de seguridad (PR #16)`.
+**⚠ Pendiente post-merge:** aplicar migs **075 + 076** a Supabase (`npx ts-node database/apply_migrations.ts --env=railway`) + smoke test (inyectar `<img src=x onerror>` en un campo → debe verse inerte). Candados de autorización van DORMIDOS (GERENTE pasa todo).
 **Servidor dev:** `npx ts-node index.ts` en `D:\proyectos\ERP-PRO` → `http://localhost:3000`
 **Producción:** `erp-pro-production-e4c0.up.railway.app` — Railway (deploy automático desde main, ACTIVE confirmado)
-**Cache buster actual:** main = JS `v=20260623r1`. En `claude/security-integration` unificado a **`v=20260623r4`** (19 imports app.js + index.html + main.css). Bumpear al mergear si hace falta.
-**Migraciones BD:** 001 → **074** aplicadas (Supabase Postgres project `fhlrxlsscerfiuuyiejw`). Última: **074_oc_centro_costo_width** (OrdenesCompra/OCFirmasReglas `centro_costo` VARCHAR→100, ADD-only, verificada).
+**Cache buster actual:** JS `v=20260623r4` (19 imports app.js + index.html + main.css).
+**Migraciones BD:** 001 → **074** aplicadas en Supabase. **075 + 076 en el repo pero AÚN NO aplicadas** (project `fhlrxlsscerfiuuyiejw`). 075=PRESTAMOS al CHECK de usuariomodulos · 076=search_path trigger + 20 índices FK.
 **Permisos Claude:** Claude hace commit+push a feature branches `claude/*` automáticamente. Merge/push a `main` lo autoriza Julio (gate de release) — en esta sesión autorizó el merge del PR #15 explícitamente.
 
 ---
