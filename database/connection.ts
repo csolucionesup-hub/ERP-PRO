@@ -269,8 +269,19 @@ class TxConnection {
     if (isInsert(processedSql) && !hasReturning(processedSql)) {
       processedSql = processedSql.replace(/;?\s*$/, ' RETURNING *');
     }
-    const qr = await this.client.query(processedSql, values);
-    return toMysql2Result(qr, sql);
+    try {
+      const qr = await this.client.query(processedSql, values);
+      return toMysql2Result(qr, sql);
+    } catch (error: any) {
+      // No propagar el error crudo de Postgres (filtra schema/table/column y el
+      // SQLSTATE) hacia la UI. Se loguea completo server-side y se relanza uno
+      // genérico, PRESERVANDO `code` (SQLSTATE) — el retry-on-duplicate de los
+      // correlativos depende de `e.code === '23505'`.
+      console.error(`[DATABASE ERROR tx] ${error?.message} - SQL: ${sql.slice(0, 80)}`);
+      const wrapped: any = new Error('Error ejecutando consulta en BD. Revise conexión o sintaxis.');
+      wrapped.code = error?.code;
+      throw wrapped;
+    }
   }
 }
 
@@ -297,7 +308,11 @@ export const db = {
       return toMysql2Result(qr, sql);
     } catch (error: any) {
       console.error(`[DATABASE ERROR] ${error.message} - Faltó instrucción: ${sql.slice(0, 80)}`);
-      throw new Error('Error ejecutando consulta en BD. Revise conexión o sintaxis.');
+      // Genérico hacia arriba, preservando `code` (SQLSTATE) para los checks de
+      // duplicado (retry-on-duplicate de correlativos usa `e.code === '23505'`).
+      const wrapped: any = new Error('Error ejecutando consulta en BD. Revise conexión o sintaxis.');
+      wrapped.code = error?.code;
+      throw wrapped;
     }
   },
 

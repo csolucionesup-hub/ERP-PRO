@@ -124,7 +124,16 @@ class ConfiguracionService {
       merged.fecha_cambio_regimen = new Date().toISOString().slice(0, 10);
     }
 
-    const keys = Object.keys(merged).filter(k => k !== 'id' && k !== 'created_at' && k !== 'updated_at');
+    // Whitelist anti-inyección/mass-assignment: el SET arma identificadores desde
+    // las claves del patch (el `?` sólo parametriza VALORES, no nombres de columna).
+    // Sólo permitimos columnas REALES de la tabla (las que devuelve la fila actual)
+    // y que matcheen un identificador snake_case seguro.
+    const columnasReales = new Set(Object.keys(actual));
+    const COL_RE = /^[a-z][a-z0-9_]*$/;
+    const keys = Object.keys(merged).filter(k =>
+      k !== 'id' && k !== 'created_at' && k !== 'updated_at' &&
+      columnasReales.has(k) && COL_RE.test(k)
+    );
     if (keys.length === 0) return;
     const sets = keys.map(k => `${k} = ?`).join(', ');
     const vals = keys.map(k => (merged as any)[k]);
@@ -176,7 +185,11 @@ class ConfiguracionService {
     if (!data.ruc || !data.razon_social) {
       throw new Error('RUC y razón social son obligatorios');
     }
-    const keys = Object.keys(data).filter(k => k !== 'id');
+    // Whitelist anti-inyección: los nombres de columna del INSERT vienen de las
+    // claves del payload. Aún no existe fila de referencia (es el primer setup),
+    // así que validamos que cada clave sea un identificador snake_case seguro.
+    const COL_RE = /^[a-z][a-z0-9_]*$/;
+    const keys = Object.keys(data).filter(k => k !== 'id' && COL_RE.test(k));
     const placeholders = keys.map(() => '?').join(', ');
     const vals = keys.map(k => (data as any)[k]);
     const [res] = await db.query(

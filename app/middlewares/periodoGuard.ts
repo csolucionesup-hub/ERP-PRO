@@ -32,9 +32,17 @@ export function periodoGuard(campoFecha = 'fecha') {
         estado,
       });
     } catch (e) {
-      // Fail-safe: si la consulta falla, permitir la operación en vez de bloquear.
+      // Fail-CLOSED: si no podemos verificar el estado del periodo, bloqueamos
+      // por seguridad (es un sistema contable — no se debe mutar un periodo que
+      // podría estar cerrado). Un GERENTE puede forzar con el header de override.
       console.error('[periodoGuard] error consultando estado:', e);
-      next();
+      const override =
+        req.headers['x-override-periodo'] === 'true' &&
+        req.user?.rol === 'GERENTE';
+      if (override) return next();
+      return res.status(503).json({
+        error: 'No se pudo verificar el estado del periodo contable. Operación bloqueada por seguridad. Reintentá en unos segundos; si persiste, un GERENTE puede forzarla.',
+      });
     }
   };
 }
