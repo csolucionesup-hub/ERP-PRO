@@ -7,18 +7,15 @@ const API_BASE_URL = '/api';
 
 // ── Base fetch con JWT automático ───────────────────────────
 async function fetchAPI(url, options = {}) {
-  const token = localStorage.getItem('erp_token');
   const headers = {
     'Content-Type': 'application/json',
     ...options.headers,
-    ...(token ? { 'Authorization': `Bearer ${token}` } : {})
   };
 
   try {
-    const response = await fetch(url, { ...options, headers });
+    const response = await fetch(url, { ...options, credentials: 'same-origin', headers });
 
     if (response.status === 401) {
-      localStorage.removeItem('erp_token');
       localStorage.removeItem('erp_user');
       window.location.replace('/login.html');
       return;
@@ -189,12 +186,11 @@ export const api = {
     // Cerrar proyecto: cualquier estado activo → TERMINADA (Finanzas).
     marcarTerminada:  (id)     => post(`/cotizaciones/${id}/marcar-terminada`),
     uploadFoto: async (file) => {
-      const token = localStorage.getItem('erp_token');
       const fd = new FormData();
       fd.append('foto', file);
       const r = await fetch(`${API_BASE_URL}/cotizaciones/upload-foto`, {
         method: 'POST',
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        credentials: 'same-origin',
         body: fd,
       });
       if (!r.ok) {
@@ -274,12 +270,11 @@ export const api = {
     getByMarca:    (marca)         => get(`/configuracion-marca/${marca}`),
     update:        (marca, data)   => put(`/configuracion-marca/${marca}`, data),
     uploadLogo: async (marca, file) => {
-      const token = localStorage.getItem('erp_token');
       const fd = new FormData();
       fd.append('logo', file);
       const r = await fetch(`${API_BASE_URL}/configuracion-marca/${marca}/upload-logo`, {
         method: 'POST',
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        credentials: 'same-origin',
         body: fd,
       });
       if (!r.ok) {
@@ -334,12 +329,11 @@ export const api = {
     resetPassword:  (id, password) => fetchAPI(`/api/usuarios/${id}/password`, { method: 'PUT', body: JSON.stringify({ password }) }),
     eliminarFirma:  (id)      => fetchAPI(`/api/usuarios/${id}/firma`, { method: 'DELETE' }),
     subirFirma: async (id, file) => {
-      const token = localStorage.getItem('erp_token');
       const fd = new FormData();
       fd.append('archivo', file);
       const r = await fetch(`${API_BASE_URL}/usuarios/${id}/firma`, {
         method: 'POST',
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        credentials: 'same-origin',
         body: fd,
       });
       if (!r.ok) {
@@ -352,15 +346,15 @@ export const api = {
   // Perfil del usuario actual (firma escaneada — mig 067)
   auth: {
     me:                   () => fetchAPI('/api/auth/me'),
+    logout:               () => post('/auth/logout', {}),
     getMiFirma:           () => fetchAPI('/api/auth/me/firma'),
     eliminarMiFirma:      () => fetchAPI('/api/auth/me/firma', { method: 'DELETE' }),
     subirMiFirma: async (file) => {
-      const token = localStorage.getItem('erp_token');
       const fd = new FormData();
       fd.append('archivo', file);
       const r = await fetch(`${API_BASE_URL}/auth/me/firma`, {
         method: 'POST',
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        credentials: 'same-origin',
         body: fd,
       });
       if (!r.ok) {
@@ -395,12 +389,11 @@ export const api = {
     list:    (refTipo, refId) => get(`/adjuntos/${refTipo}/${refId}`),
     delete:  (id)             => del(`/adjuntos/${id}`),
     upload: async (refTipo, refId, file) => {
-      const token = localStorage.getItem('erp_token');
       const fd = new FormData();
       fd.append('file', file);
       const r = await fetch(`${API_BASE_URL}/adjuntos/${refTipo}/${refId}`, {
         method: 'POST',
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        credentials: 'same-origin',
         body: fd,
       });
       if (!r.ok) {
@@ -457,13 +450,12 @@ export const api = {
     pdfUrl:           (id)    => `/api/rendiciones/${id}/pdf`,
     eliminarAdjunto:  (id, idAdj) => del(`/rendiciones/${id}/adjuntos/${idAdj}`),
     subirAdjunto: async (id, file, tipo = 'OTRO') => {
-      const token = localStorage.getItem('erp_token');
       const fd = new FormData();
       fd.append('file', file);
       fd.append('tipo', tipo);
       const r = await fetch(`${API_BASE_URL}/rendiciones/${id}/adjuntos`, {
         method: 'POST',
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        credentials: 'same-origin',
         body: fd,
       });
       if (!r.ok) {
@@ -522,9 +514,8 @@ export const api = {
     anular:     (id, motivo) => post(`/ordenes-compra/${id}/anular`, { motivo }),
     reactivar:  (id)         => post(`/ordenes-compra/${id}/reactivar`, {}),
     descargarPDF: async (id) => {
-      const token = localStorage.getItem('erp_token');
       const r = await fetch(`${API_BASE_URL}/ordenes-compra/${id}/pdf`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        credentials: 'same-origin',
       });
       if (!r.ok) throw new Error('Error generando PDF: HTTP ' + r.status);
       const blob = await r.blob();
@@ -548,11 +539,10 @@ export const api = {
      * params: { centro_costo, anio, semana?, empresa? }
      */
     descargarROC: async (params) => {
-      const token = localStorage.getItem('erp_token');
       const qs = new URLSearchParams();
       Object.entries(params).forEach(([k, v]) => { if (v != null && v !== '') qs.append(k, v); });
       const r = await fetch(`${API_BASE_URL}/ordenes-compra/roc?${qs.toString()}`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        credentials: 'same-origin',
       });
       if (!r.ok) throw new Error('Error generando ROC: HTTP ' + r.status);
       const blob = await r.blob();
@@ -589,10 +579,9 @@ export const api = {
     eliminarFirmaRegla: (id_regla) => del(`/ordenes-compra/firmas-reglas/${id_regla}`),
     // Factura del proveedor (multi-factura, mig 064)
     subirFactura:  async (id, formData) => {
-      const token = localStorage.getItem('erp_token');
       const r = await fetch(`${API_BASE_URL}/ordenes-compra/${id}/factura`, {
         method: 'POST',
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        credentials: 'same-origin',
         body: formData,
       });
       if (!r.ok) {
@@ -610,10 +599,9 @@ export const api = {
     // Pagos individuales (multi-pago, mig 064)
     listarPagos:     (id) => get(`/ordenes-compra/${id}/pagos`),
     subirVoucherPago: async (id_pago, formData) => {
-      const token = localStorage.getItem('erp_token');
       const r = await fetch(`${API_BASE_URL}/ordenes-compra/pago/${id_pago}/voucher`, {
         method: 'POST',
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        credentials: 'same-origin',
         body: formData,
       });
       if (!r.ok) {
@@ -628,7 +616,6 @@ export const api = {
      * (constancia bancaria) opcional. Si no hay archivo, manda JSON normal.
      */
     registrarPagoConVoucher: async (id, body, archivo) => {
-      const token = localStorage.getItem('erp_token');
       const fd = new FormData();
       Object.entries(body || {}).forEach(([k, v]) => {
         if (v !== undefined && v !== null) fd.append(k, String(v));
@@ -636,7 +623,7 @@ export const api = {
       if (archivo) fd.append('voucher', archivo);
       const r = await fetch(`${API_BASE_URL}/ordenes-compra/${id}/registrar-pago`, {
         method: 'POST',
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        credentials: 'same-origin',
         body: fd,
       });
       if (!r.ok) {
@@ -647,9 +634,8 @@ export const api = {
     },
     // Export Excel del listado completo
     descargarExcel: async () => {
-      const token = localStorage.getItem('erp_token');
       const r = await fetch(`${API_BASE_URL}/ordenes-compra/listado/excel`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        credentials: 'same-origin',
       });
       if (!r.ok) throw new Error('Error descargando Excel: HTTP ' + r.status);
       const blob = await r.blob();
@@ -666,12 +652,10 @@ export const api = {
   ple: {
     ventasPreview:  (anio, mes) => get(`/ple/ventas/preview?anio=${anio}&mes=${mes}`),
     comprasPreview: (anio, mes) => get(`/ple/compras/preview?anio=${anio}&mes=${mes}`),
-    // URL absolutas para descarga (el navegador ya manda el bearer vía el sistema de ui.js).
-    // En realidad usamos fetch + blob para descargar con Authorization header.
+    // Descarga via fetch + blob con cookie httpOnly (credentials: same-origin).
     descargarVentas: async (anio, mes) => {
-      const token = localStorage.getItem('erp_token');
       const r = await fetch(`${API_BASE_URL}/ple/ventas?anio=${anio}&mes=${mes}`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        credentials: 'same-origin',
       });
       if (!r.ok) throw new Error(`Error ${r.status}`);
       const blob = await r.blob();
@@ -683,9 +667,8 @@ export const api = {
       return { nombre, lineas: Number(r.headers.get('x-ple-lineas')) || 0 };
     },
     descargarCompras: async (anio, mes) => {
-      const token = localStorage.getItem('erp_token');
       const r = await fetch(`${API_BASE_URL}/ple/compras?anio=${anio}&mes=${mes}`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        credentials: 'same-origin',
       });
       if (!r.ok) throw new Error(`Error ${r.status}`);
       const blob = await r.blob();

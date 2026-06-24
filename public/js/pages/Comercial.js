@@ -1626,9 +1626,8 @@ export const Comercial = async () => {
     // mostrar solo "HTTP 500" — clave para diagnosticar problemas de
     // generación (campos NULL en config de marca, fotos rotas, etc).
     const fetchPDFCotizacion = async (id) => {
-      const token = localStorage.getItem('erp_token');
       const r = await fetch(`/api/cotizaciones/${id}/pdf`, {
-        headers: { Authorization: `Bearer ${token}` },
+        credentials: 'same-origin',
       });
       if (!r.ok) {
         let detalle = '';
@@ -1655,7 +1654,7 @@ export const Comercial = async () => {
     };
 
     // Preview en modal con iframe — el usuario decide si descarga o cierra.
-    // Usa el mismo endpoint que descargarPDFCotizacion (Bearer token via fetch);
+    // Usa el mismo endpoint que descargarPDFCotizacion (cookie httpOnly via fetch);
     // el blob URL alimenta el visor PDF nativo del navegador dentro del iframe.
     window.previewPDFCotizacion = async (id, nro) => {
       let blobUrl = null;
@@ -2184,9 +2183,8 @@ export const Comercial = async () => {
 // del setTimeout del render, lo cual obligaba a visitar Comercial primero.
 
 const _fetchPDFCotizacionGlobal = async (id) => {
-  const token = localStorage.getItem('erp_token');
   const r = await fetch(`/api/cotizaciones/${id}/pdf`, {
-    headers: { Authorization: `Bearer ${token}` },
+    credentials: 'same-origin',
   });
   if (!r.ok) {
     let detalle = '';

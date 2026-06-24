@@ -560,3 +560,14 @@ deuda_neta = total_base - monto_detraccion - monto_retencion - cobrado
 - Fix nro_operacion duplicado en descripción de EECC importados (cosmético)
 - Módulo Logística completo (UI)
 - OC de servicios Finanzas (tabla nueva en BD)
+
+---
+
+## Vista cross-proyecto — bóveda de Julio
+
+Existe una ficha curada de ERP-PRO en la bóveda cross-proyecto:
+`D:\workspace\knowledge-vault\projects\erp-pro.md`
+
+- La fuente canónica para trabajar EN ERP-PRO sigue siendo este CLAUDE.md (y `ESTADO.md` para estado vivo).
+- La ficha en la bóveda está marcada como **stub** — completarla al cierre de la próxima sesión técnica con stack, comandos, módulos V1 y V2.
+- La carpeta `D:\proyectos\ERP-PRO\` NO se procesa con Graphify recursivo. Solo la ficha curada `erp-pro.md` se indexa en el grafo.

@@ -77,9 +77,8 @@ function confirmarAccion({ titulo, mensaje, tipo = 'warning', textoBoton = 'Conf
 // Se declara al top-level para que esté disponible apenas se carga el módulo
 // OrdenesCompra (importado en app.js), no solo cuando el usuario entra a OC.
 async function fetchPDFOC(id) {
-  const token = localStorage.getItem('erp_token');
   const r = await fetch(`/api/ordenes-compra/${id}/pdf`, {
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    credentials: 'same-origin',
   });
   if (!r.ok) {
     const errBody = await r.json().catch(() => ({}));
@@ -158,8 +157,7 @@ async function _previewArchivoBackend(url, titulo) {
   overlay.querySelector('[data-close]').onclick = cleanup;
   const content = overlay.querySelector('[data-content]');
   try {
-    const token = localStorage.getItem('erp_token');
-    const r = await fetch(url, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+    const r = await fetch(url, { credentials: 'same-origin' });
     if (!r.ok) {
       const errBody = await r.json().catch(() => ({}));
       throw new Error(errBody.error || `HTTP ${r.status}`);
@@ -1031,9 +1029,8 @@ function renderKanban(panel) {
     pintarColumnasKanban();
   });
   document.getElementById('oc-btn-export').addEventListener('click', () => {
-    const token = localStorage.getItem('erp_token');
     fetch('/api/ordenes-compra/listado/excel', {
-      headers: { 'Authorization': 'Bearer ' + token }
+      credentials: 'same-origin',
     }).then(r => r.blob()).then(b => {
       const url = URL.createObjectURL(b);
       const a = document.createElement('a');
@@ -2261,10 +2258,10 @@ async function marcarCredito(id) {
   const fecha = new Date(Date.now() + numDias * 86400000).toISOString().slice(0, 10);
 
   try {
-    const token = localStorage.getItem('erp_token');
     const r = await fetch(`/api/ordenes-compra/${id}/marcar-credito`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ dias_credito: numDias, fecha_vence: fecha }),
     });
     if (!r.ok) {
@@ -2591,10 +2588,9 @@ async function subirFactura(id) {
       const oldTxt = submitBtn.textContent;
       submitBtn.textContent = '⏳ Subiendo…';
       try {
-        const token = localStorage.getItem('erp_token');
         const r = await fetch(`/api/ordenes-compra/${id}/factura`, {
           method: 'POST',
-          headers: { 'Authorization': 'Bearer ' + token },
+          credentials: 'same-origin',
           body: fd,
         });
         if (!r.ok) {

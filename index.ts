@@ -6,6 +6,7 @@ import path from 'path';
 import morgan from 'morgan';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
+import cookieParser from 'cookie-parser';
 
 // Node / TS Lógica de Negocio
 import { db, DEFAULT_ACCOUNT_ID } from './database/connection';
@@ -61,6 +62,7 @@ import { periodoGuard } from './app/middlewares/periodoGuard';
 import { requireAuth, requireModulo, requireAnyModulo } from './app/middlewares/auth';
 import { validateIdParam } from './app/middlewares/validateId';
 import AuthService from './app/modules/auth/AuthService';
+import { authCookieOptions, AUTH_COOKIE_NAME } from './app/modules/auth/cookieOptions';
 import { errorHandler } from './app/middlewares/errorHandler';
 import { validateParams } from './app/validators/validateRequest';
 import { providerCreateSchema, providerUpdateSchema } from './app/validators/provider.schema';
@@ -126,6 +128,7 @@ app.use(cors({
   methods: ['GET', 'POST', 'PUT', 'DELETE']
 }));
 app.use(express.json());
+app.use(cookieParser());
 
 // Rate-limit SOLO en /api/auth/login para mitigar fuerza bruta de password.
 // 10 intentos / 15 min por IP. Otros endpoints de /api/auth (/me, /me/firma)
@@ -1137,17 +1140,25 @@ const authRouter = express.Router();
 authRouter.post('/login', async (req: Request, res: Response) => {
   const { email, password } = req.body;
   if (!email || !password) throw new Error('Email y password son requeridos.');
-  res.json(await AuthService.login(email, password));
+  const { token, usuario } = await AuthService.login(email, password);
+  res.cookie(AUTH_COOKIE_NAME, token, authCookieOptions());
+  res.json({ usuario }); // el token NUNCA viaja en el body → nunca llega a JS
 });
 
-// /me lee BD fresca (no el JWT) y emite un nuevo token cuando detecta
-// cambios — caso típico: el GERENTE cambia el rol de un usuario y su
-// JWT/localStorage quedaron stale. El cliente debe reemplazar
-// erp_token + erp_user al recibir { cambio: true, token }.
+// /me lee BD fresca (no el JWT) y re-emite la cookie cuando detecta cambios
+// de rol/módulos — caso típico: el GERENTE cambia el rol de un usuario y su
+// cookie quedó stale. El cliente no recibe el token en el body; la cookie
+// nueva la sobreescribe automáticamente el browser.
 authRouter.get('/me', requireAuth, async (req: any, res: Response) => {
   try {
     const result = await AuthService.getProfileFromDB(req.user.id_usuario, req.user);
-    res.json(result);
+    // Si getProfileFromDB re-emitió token por cambio de rol/módulos, lo
+    // refrescamos en la cookie (no en el body).
+    if (result.cambio && result.token) {
+      res.cookie(AUTH_COOKIE_NAME, result.token, authCookieOptions());
+    }
+    const { token, ...rest } = result; // no exponer el token en el JSON
+    res.json(rest);
   } catch (e: any) {
     res.status(401).json({ error: e?.message || 'Sesión inválida' });
   }
@@ -1162,6 +1173,16 @@ const firmaUpload = multer({
     if (!ok) return cb(new Error('Solo PNG/JPG/WebP'));
     cb(null, true);
   }
+});
+
+authRouter.post('/logout', (_req: Request, res: Response) => {
+  // El JS no puede borrar una cookie httpOnly → tiene que hacerlo el server.
+  res.clearCookie(AUTH_COOKIE_NAME, {
+    path: '/',
+    sameSite: 'strict',
+    secure: process.env.NODE_ENV === 'production',
+  });
+  res.json({ ok: true });
 });
 
 authRouter.get('/me/firma', requireAuth, async (req: any, res: Response) => {
