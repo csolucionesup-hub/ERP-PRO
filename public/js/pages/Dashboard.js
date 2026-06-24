@@ -1,4 +1,5 @@
 import { api } from '../services/api.js';
+import { escapeHtml } from '../services/ui.js';
 import { TabBar } from '../components/TabBar.js';
 import { kpiCard, kpiGrid } from '../components/KpiCard.js';
 import { lineChart, barChart, donutChart, chartColors, destroyChart } from '../components/charts.js';
@@ -54,7 +55,7 @@ export const Dashboard = async () => {
         criticos.push({
            icon: '[-]',
            title: 'PÉRDIDA',
-           text: `Servicio ${s.codigo} pierde <strong>${formatCurrency(perdida)}</strong>`
+           text: `Servicio ${escapeHtml(s.codigo)} pierde <strong>${formatCurrency(perdida)}</strong>`
         });
       });
     }
@@ -66,7 +67,7 @@ export const Dashboard = async () => {
         criticos.push({
            icon: '[X]',
            title: 'VENCIDO',
-           text: `${m.cliente} debe <strong>${formatCurrency(deuda)}</strong> (TKT: ${m.codigo})`
+           text: `${escapeHtml(m.cliente)} debe <strong>${formatCurrency(deuda)}</strong> (TKT: ${escapeHtml(m.codigo)})`
         });
       });
     }
@@ -78,7 +79,7 @@ export const Dashboard = async () => {
         advertencias.push({
            icon: '[!]',
            title: 'MARGEN BAJO',
-           text: `Srv ${s.codigo} con utilidad de <strong>${margen}%</strong> (${formatCurrency(utilidad)})`
+           text: `Srv ${escapeHtml(s.codigo)} con utilidad de <strong>${margen}%</strong> (${formatCurrency(utilidad)})`
         });
       });
     }
@@ -89,7 +90,7 @@ export const Dashboard = async () => {
         advertencias.push({
            icon: '[/]',
            title: 'POR VENCER',
-           text: `${m.cliente} debe <strong>${formatCurrency(deuda)}</strong> (en ${m.dias_restantes} días)`
+           text: `${escapeHtml(m.cliente)} debe <strong>${formatCurrency(deuda)}</strong> (en ${m.dias_restantes} días)`
         });
       });
     }
@@ -99,7 +100,7 @@ export const Dashboard = async () => {
         advertencias.push({
            icon: '[I]',
            title: 'STOCK',
-           text: `${i.nombre} al límite: <strong>${i.stock_actual} unid</strong>`
+           text: `${escapeHtml(i.nombre)} al límite: <strong>${i.stock_actual} unid</strong>`
         });
       });
     }
@@ -113,13 +114,13 @@ export const Dashboard = async () => {
             criticos.push({
               icon: '[$]',
               title: 'PRÉSTAMO VENCIDO',
-              text: 'Debo a <strong>' + p.acreedor + '</strong>: ' + formatCurrency(Number(p.saldo)) + ' (' + dias + ' días)'
+              text: 'Debo a <strong>' + escapeHtml(p.acreedor) + '</strong>: ' + formatCurrency(Number(p.saldo)) + ' (' + dias + ' días)'
             });
           } else if (dias > 60) {
             advertencias.push({
               icon: '[$]',
               title: 'DEUDA ANTIGUA',
-              text: 'Debo a <strong>' + p.acreedor + '</strong>: ' + formatCurrency(Number(p.saldo)) + ' (' + dias + ' días)'
+              text: 'Debo a <strong>' + escapeHtml(p.acreedor) + '</strong>: ' + formatCurrency(Number(p.saldo)) + ' (' + dias + ' días)'
             });
           }
         }
@@ -135,7 +136,7 @@ export const Dashboard = async () => {
             advertencias.push({
               icon: '[!]',
               title: 'DEUDOR MOROSO',
-              text: '<strong>' + p.deudor + '</strong> me debe ' + formatCurrency(Number(p.saldo)) + ' (' + dias + ' días)'
+              text: '<strong>' + escapeHtml(p.deudor) + '</strong> me debe ' + formatCurrency(Number(p.saldo)) + ' (' + dias + ' días)'
             });
           }
         }
@@ -496,9 +497,9 @@ export const Dashboard = async () => {
                           const colorDias = dias && dias > 15 ? 'color:#b91c1c;font-weight:700' : 'color:#78350f';
                           return `
                           <tr style="border-bottom:1px solid #fde68a">
-                            <td style="padding:8px;font-weight:600"><a href="#" onclick="event.preventDefault();window.OC&&window.OC.verOC(${o.id_oc})" style="color:#b45309;text-decoration:none">${o.nro_oc}</a></td>
-                            <td style="padding:8px">${o.proveedor_nombre || '—'}</td>
-                            <td style="padding:8px;font-size:11px;color:var(--text-secondary)">${o.centro_costo || '—'}</td>
+                            <td style="padding:8px;font-weight:600"><a href="#" onclick="event.preventDefault();window.OC&&window.OC.verOC(${o.id_oc})" style="color:#b45309;text-decoration:none">${escapeHtml(o.nro_oc)}</a></td>
+                            <td style="padding:8px">${escapeHtml(o.proveedor_nombre || '—')}</td>
+                            <td style="padding:8px;font-size:11px;color:var(--text-secondary)">${escapeHtml(o.centro_costo || '—')}</td>
                             <td style="padding:8px"><span style="font-size:10px;padding:2px 6px;border-radius:8px;background:${o.empresa === 'PT' ? '#dcfce7' : '#dbeafe'};color:${o.empresa === 'PT' ? '#166534' : '#1e40af'};font-weight:700">${o.empresa}</span></td>
                             <td style="padding:8px;text-align:right;font-weight:700;font-variant-numeric:tabular-nums">${formatCurrency(toPEN(o))}</td>
                             <td style="padding:8px;text-align:right;${colorDias};font-variant-numeric:tabular-nums">${dias !== null ? dias + 'd' : '—'}</td>
@@ -800,8 +801,8 @@ export const Dashboard = async () => {
                   ? '<tr><td colspan="5" style="text-align:center; color:var(--text-secondary)">Sin pendientes</td></tr>'
                   : dataBN.detracciones_pendientes.map(d => `
                     <tr>
-                      <td>${d.codigo}</td>
-                      <td>${d.cliente || '---'}</td>
+                      <td>${escapeHtml(d.codigo)}</td>
+                      <td>${escapeHtml(d.cliente || '---')}</td>
                       <td style="text-align:right; color:#e67e22"><strong>${formatCurrency(d.monto)}</strong></td>
                       <td style="font-size:11px">${d.fecha_servicio?.split('T')[0] || '---'}</td>
                       <td><button class="action-btn" onclick="window.marcarDeposito(${d.id_detraccion}, ${d.monto})">Depositar</button></td>
