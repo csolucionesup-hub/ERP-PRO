@@ -62,6 +62,7 @@ import { periodoGuard } from './app/middlewares/periodoGuard';
 import { requireAuth, requireModulo, requireAnyModulo } from './app/middlewares/auth';
 import { validateIdParam } from './app/middlewares/validateId';
 import AuthService from './app/modules/auth/AuthService';
+import { authCookieOptions, AUTH_COOKIE_NAME } from './app/modules/auth/cookieOptions';
 import { errorHandler } from './app/middlewares/errorHandler';
 import { validateParams } from './app/validators/validateRequest';
 import { providerCreateSchema, providerUpdateSchema } from './app/validators/provider.schema';
@@ -1121,7 +1122,9 @@ const authRouter = express.Router();
 authRouter.post('/login', async (req: Request, res: Response) => {
   const { email, password } = req.body;
   if (!email || !password) throw new Error('Email y password son requeridos.');
-  res.json(await AuthService.login(email, password));
+  const { token, usuario } = await AuthService.login(email, password);
+  res.cookie(AUTH_COOKIE_NAME, token, authCookieOptions());
+  res.json({ usuario }); // el token NUNCA viaja en el body → nunca llega a JS
 });
 
 // /me lee BD fresca (no el JWT) y emite un nuevo token cuando detecta
