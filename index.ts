@@ -6,6 +6,7 @@ import path from 'path';
 import morgan from 'morgan';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
+import cookieParser from 'cookie-parser';
 
 // Node / TS Lógica de Negocio
 import { db, DEFAULT_ACCOUNT_ID } from './database/connection';
@@ -108,6 +109,7 @@ app.use(cors({
   methods: ['GET', 'POST', 'PUT', 'DELETE']
 }));
 app.use(express.json());
+app.use(cookieParser());
 
 // Rate-limit SOLO en /api/auth/login para mitigar fuerza bruta de password.
 // 10 intentos / 15 min por IP. Otros endpoints de /api/auth (/me, /me/firma)
