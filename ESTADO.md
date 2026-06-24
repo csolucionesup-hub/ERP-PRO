@@ -2,37 +2,27 @@
 
 > **LEER PRIMERO.** Este documento es la fuente de verdad sobre qué está hecho, qué falta y dónde estamos parados. Se actualiza al cierre de cada sesión de trabajo.
 
-**Última actualización:** 2026-06-23 sesión 3 (XSS Fase 1 — escapeHtml global aplicado a todos los renders de datos de BD)
-**Rama activa:** `claude/xss-escape-html` (commit `6b0dfd3`, pusheada, SIN merge a main) — 12 commits desde `main`
-**Otras ramas vivas sin merge:** `claude/auth-locks-dormant` (`c32c546`, candados de autorización dormidos + auditoría documentada)
+**Última actualización:** 2026-06-23 sesión 4 — **integración de seguridad** (XSS Fase 1 + autorización dormida + hardening backend + mig 076), consolidada en `claude/security-integration` lista para mergear a main.
+**Rama activa:** `claude/security-integration` (mergea `backend-hardening` + `xss-escape-html` + `auth-locks-dormant`; build verificado; lista para revisar + mergear a main — gate de Julio).
+**Ramas origen ya integradas:** `claude/backend-hardening`, `claude/xss-escape-html`, `claude/auth-locks-dormant`.
 **Último commit pusheado a main:** `b0398d5 fix(logística): centro_costo overflow al crear OC + kanban se cortaba con sidebar (#15)`
 **Servidor dev:** `npx ts-node index.ts` en `D:\proyectos\ERP-PRO` → `http://localhost:3000`
 **Producción:** `erp-pro-production-e4c0.up.railway.app` — Railway (deploy automático desde main, ACTIVE confirmado)
-**Cache buster actual:** main = JS `v=20260623r1`. Rama `claude/xss-escape-html` = `v=20260623r3` (19 imports app.js + index.html); CSS sin cambios. *(rama `auth-locks-dormant` usa r2.)*
+**Cache buster actual:** main = JS `v=20260623r1`. En `claude/security-integration` unificado a **`v=20260623r4`** (19 imports app.js + index.html + main.css). Bumpear al mergear si hace falta.
 **Migraciones BD:** 001 → **074** aplicadas (Supabase Postgres project `fhlrxlsscerfiuuyiejw`). Última: **074_oc_centro_costo_width** (OrdenesCompra/OCFirmasReglas `centro_costo` VARCHAR→100, ADD-only, verificada).
 **Permisos Claude:** Claude hace commit+push a feature branches `claude/*` automáticamente. Merge/push a `main` lo autoriza Julio (gate de release) — en esta sesión autorizó el merge del PR #15 explícitamente.
 
 ---
 
-## 🛡️ Sesión 2026-06-23 #3 — XSS Fase 1 RESUELTA (rama `claude/xss-escape-html`, sin merge)
+## 🛡️ Seguridad — auditoría 2026-06-23 RESUELTA, consolidada en `claude/security-integration` (sin merge a main)
 
-Cerrado el hallazgo CRÍTICO de la auditoría: **Stored XSS**. 12 commits. Detalle: `D:\workspace\knowledge-vault\sessions\2026-06-23-erp-pro-xss-fase1.md`.
+Los **4 grupos de hallazgos** de la primera auditoría formal (detalle: vault `sessions/2026-06-23-erp-pro-auditoria-seguridad-funcionamiento.md`) están resueltos y mergeados en `claude/security-integration`. **Pendiente humano:** Julio revisa + mergea a main + aplica migs 075/076 + smoke test.
 
-- **`ui.js`:** `escapeHtml` (texto/atributo) + `escapeAttr` (literal JS dentro de `onclick`) como **fuente única**. Eliminadas las 4 copias locales + ~6 helpers `v()`/`safeVal` que solo escapaban `"`.
-- **`showToast` endurecido:** mensaje por `textContent`, no `innerHTML` → neutraliza XSS en **todos** los `showSuccess/showError` (decenas de call-sites con datos de BD).
-- **18 archivos** con renders de BD escapados al 100% (barrido leyendo c/u): Proveedores, Usuarios, Sidebar, ConfiguracionComercial, Importador (CSV subido), Préstamos, Alertas, Contabilidad, Compras, **Finanzas (~49 sitios, incl. `descripcion_banco` del EECC)**, **Comercial**, **Logística**, Inventario, Dashboard, Administración, ÓrdenesCompra, Configuración. *(Producción ya estaba OK; Servicios omitido = dead-code fuera del router.)*
-- **Bugs de paso:** `onclick='fn(${JSON.stringify(obj)})'` no escapaba comilla simple (Usuarios, Préstamos) → ahora sí; ÓrdenesCompra referenciaba `escapeHtml` sin importarlo (rompía en runtime) → corregido.
-- **Verificación:** helpers con **8/8 unit tests** contra payloads (`<img onerror>`, `"><script>`, `');alert()//`); **20 archivos** pasan `node --check`; `check_mojibake` limpio; barrido repo-wide final limpio. Cache buster r1→r3.
-- **NO entra (mediano plazo):** Fase 2 CSP estricta (depende de quitar onclick inline) · Fase 3 token httpOnly + event delegation.
-- **Pendiente humano:** probar la rama y mergear a main (gate de Julio).
-
-## 🔴 Auditoría de seguridad (2026-06-23 #2) — estado de hallazgos
-
-Auditoría formal completa documentada en `D:\workspace\knowledge-vault\sessions\2026-06-23-erp-pro-auditoria-seguridad-funcionamiento.md`. Estado:
-- 🔴 **Stored XSS (CRÍTICO)** → **RESUELTO** en `claude/xss-escape-html` (ver arriba), sin merge.
-- 🟠 **Autorización por módulo** → RESUELTO (dormido) en `claude/auth-locks-dormant` + migración 075 (PRESTAMOS, NO aplicada a prod). "Echar llave" = aplicar mig 075 + asignar módulos + bajar rol en Usuarios.
-- 🟡 **Hardening backend pendiente:** errorHandler filtra `err.message`; `periodoGuard` fail-open; `validateParams` descarta el parseado de Zod; `ConfiguracionService` inyección por identificador (gated GERENTE).
-- ⚪ Token en localStorage (arquitectural, habilita XSS → cookie httpOnly en Fase 3); DB lints Supabase; pase móvil en vivo (G20).
+- 🔴 **Stored XSS (CRÍTICO) → RESUELTO Fase 1** (`xss-escape-html`): `escapeHtml`/`escapeAttr` global en `ui.js` + `showToast` por `textContent` (mata XSS en todos los toasts); 18 archivos con renders de BD escapados; helpers con 8/8 unit tests. Cache buster JS → `v=20260623r4`. Detalle: `sessions/2026-06-23-erp-pro-xss-fase1.md`. **Falta Fase 2 (CSP estricta) + Fase 3 (token httpOnly + event delegation).**
+- 🟠 **Autorización por módulo → RESUELTA (dormida)** (`auth-locks-dormant`): candados (ocRouter→LOGISTICA, facturas/facturacion/ple→FINANZAS, adjuntos→requireAnyModulo, `/prestamos`→llave PRESTAMOS), fix shadowing `/admin`, helper `requireAnyModulo`, frontend Sidebar/Usuarios + PRESTAMOS/PRODUCCION, **migración 075** (PRESTAMOS al CHECK, NO aplicada). GERENTE pasa todo → invisible en UAT. "Echar llave" = aplicar mig 075 + asignar módulos + bajar rol en Usuarios.
+- 🟡 **Hardening backend (4 medios) → RESUELTO** (`backend-hardening`): errorHandler no expone el error pg crudo (mantiene mensajes de app); `TxConnection.query` envuelve error pg preservando `code` (retry-on-dup); `periodoGuard` fail-closed (override GERENTE); `validateParams` aplica el parseado de Zod; `ConfiguracionService` whitelist de columnas (mata inyección por identificador). Detalle: `sessions/2026-06-23-erp-pro-hardening-backend-y-db-advisors.md`.
+- ⚪ **DB lints → migración 076** (`backend-hardening`, NO aplicada): `search_path` de `trigger_set_updated_at` + 20 índices de cobertura para FKs. Los ~40 "unused_index" NO se tocan (BD joven).
+- ⚪ **Arquitectural pendiente:** token JWT en localStorage → cookie httpOnly (Fase 3 XSS); pase móvil en vivo (G20). Backup de la auditoría: `backups/erp-pro-2026-06-23T22-33-52.json`.
 
 ## ✅ Sesión 2026-06-23 — Fix OC centro_costo + Kanban responsive
 

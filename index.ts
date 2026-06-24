@@ -58,7 +58,7 @@ import { auditLog } from './app/middlewares/auditLog';
 import { periodoGuard } from './app/middlewares/periodoGuard';
 
 // Middlewares de Producción (Securización & Validación)
-import { requireAuth, requireModulo } from './app/middlewares/auth';
+import { requireAuth, requireModulo, requireAnyModulo } from './app/middlewares/auth';
 import { validateIdParam } from './app/middlewares/validateId';
 import AuthService from './app/modules/auth/AuthService';
 import { errorHandler } from './app/middlewares/errorHandler';
@@ -371,7 +371,10 @@ apiRouter.post('/inventario/movimientos/:idMov/corregir', validateIdParam, audit
 });
 
 // ===== PRÉSTAMOS =====
-apiRouter.use('/prestamos', requireModulo('FINANZAS'));
+// Llave propia PRESTAMOS (separada de FINANZAS) para que Logística/Admin la
+// vean sin ver cobranzas/caja. FINANZAS también pasa (quien maneja la plata
+// fina ve préstamos igual). GERENTE pasa siempre.
+apiRouter.use('/prestamos', requireAnyModulo(['FINANZAS', 'PRESTAMOS']));
 apiRouter.get('/prestamos/totales', async (req: Request, res: Response) => {
   res.json(await PrestamosService.getTotales());
 });
@@ -972,18 +975,21 @@ apiRouter.post(
 );
 
 // ===== ADMIN: RESET BASE DE DATOS =====
-apiRouter.use('/admin', requireModulo('GERENCIA'));
-apiRouter.post('/admin/reset-db', async (req: Request, res: Response) => {
+// NOTA: NO usar `apiRouter.use('/admin', requireModulo('GERENCIA'))` acá: ese
+// prefijo ancho captura también /admin/gasto-personal, /admin/dashboard, etc.
+// (módulo ADMINISTRACION) y los dejaba inaccesibles para usuarios de Admin.
+// El guard GERENCIA va inline SOLO en las rutas realmente gerenciales.
+apiRouter.post('/admin/reset-db', requireModulo('GERENCIA'), async (req: Request, res: Response) => {
   res.json(await AdminService.resetDb());
 });
 
 // ===== ADMIN: SALDOS DE CUENTAS =====
-apiRouter.get('/admin/cuentas-saldo', async (req: Request, res: Response) => {
+apiRouter.get('/admin/cuentas-saldo', requireModulo('GERENCIA'), async (req: Request, res: Response) => {
   res.json(await AdminService.getCuentasSaldo());
 });
 
 // ===== ADMIN: SALDO INICIAL =====
-apiRouter.post('/admin/saldo-inicial', validateParams(adminSaldoSchema), async (req: Request, res: Response) => {
+apiRouter.post('/admin/saldo-inicial', requireModulo('GERENCIA'), validateParams(adminSaldoSchema), async (req: Request, res: Response) => {
   res.json(await AdminService.setSaldoInicial(req.body));
 });
 
@@ -1312,6 +1318,10 @@ const uploadAdjunto = multer({
 
 const adjuntosRouter = express.Router();
 adjuntosRouter.use(requireAuth);
+// Adjuntos cuelgan de OCs / rendiciones / cotizaciones (cruzan áreas). Versión
+// simple: exigir alguna llave operativa (no solo estar logueado). Afinar luego
+// para que cada adjunto herede el candado de su documento dueño.
+adjuntosRouter.use(requireAnyModulo(['COMERCIAL', 'FINANZAS', 'LOGISTICA', 'ALMACEN', 'ADMINISTRACION', 'PRODUCCION', 'PRESTAMOS', 'GERENCIA']));
 
 adjuntosRouter.post('/:ref_tipo/:ref_id', uploadAdjunto.single('file'), async (req: Request, res: Response) => {
   if (!req.file) return res.status(400).json({ error: 'Archivo requerido (campo "file")' });
@@ -1339,6 +1349,7 @@ app.use('/api/adjuntos', adjuntosRouter);
 // ===== FACTURACIÓN ELECTRÓNICA — diagnóstico (real emisión llega en Fase B) =====
 const facturacionRouter = express.Router();
 facturacionRouter.use(requireAuth);
+facturacionRouter.use(requireModulo('FINANZAS'));
 
 facturacionRouter.get('/diagnostico', async (_req, res) => {
   res.json(await NubefactService.diagnostico());
@@ -1349,6 +1360,7 @@ app.use('/api/facturacion', facturacionRouter);
 // ===== FACTURAS (CPE — Comprobantes de Pago Electrónicos) =====
 const facturasRouter = express.Router();
 facturasRouter.use(requireAuth);
+facturasRouter.use(requireModulo('FINANZAS'));
 
 // Emitir factura/boleta desde una cotización aprobada
 facturasRouter.post(
@@ -1573,6 +1585,7 @@ app.use('/api/rendiciones', rendicionesRouter);
 // ===== LIBROS ELECTRÓNICOS (PLE) SUNAT =====
 const pleRouter = express.Router();
 pleRouter.use(requireAuth);
+pleRouter.use(requireModulo('FINANZAS'));
 
 /**
  * Genera el TXT del Registro de Ventas (14.1) para el periodo dado.
@@ -1795,6 +1808,7 @@ const ocFacturaUpload = multer({
 // ===== ÓRDENES DE COMPRA — flujo formal proveedor =====
 const ocRouter = express.Router();
 ocRouter.use(requireAuth);
+ocRouter.use(requireModulo('LOGISTICA'));
 
 ocRouter.get('/', async (req: Request, res: Response) => {
   res.json(await OrdenCompraService.listar({

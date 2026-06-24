@@ -28,7 +28,7 @@ const MODULE_NAV = [
   { modulo: 'GERENCIA',       label: 'Dashboard',        page: 'dashboard',     section: 'general' },
   { modulo: 'COMERCIAL',      label: 'Comercial',        page: 'comercial',     section: 'general' },
   { modulo: 'FINANZAS',       label: 'Finanzas y Flujo', page: 'finanzas',      section: 'operaciones' },
-  { modulo: 'FINANZAS',       label: 'Préstamos',        page: 'prestamos',     section: 'operaciones' },
+  { modulo: 'PRESTAMOS',      label: 'Préstamos',        page: 'prestamos',     section: 'operaciones' },
   { modulo: 'LOGISTICA',      label: 'Logística',        page: 'logistica',     section: 'operaciones' },
   { modulo: 'ALMACEN',        label: 'Inventario',       page: 'inventario',    section: 'operaciones' },
   { modulo: 'PRODUCCION',     label: 'Producción',       page: 'produccion',    section: 'operaciones' },
