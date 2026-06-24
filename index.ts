@@ -95,11 +95,29 @@ const PORT = process.env.PORT || 3000;
 // CAPAS MIDDLEWARE (Nivel Sistema Global)
 // ==========================================
 
-// Helmet: headers de seguridad estándar (X-Frame-Options, HSTS, X-Content-Type-Options, etc.)
-// CSP queda controlada por el meta tag de index.html (que permite blob: para preview de PDF
-// y res.cloudinary.com para fotos), por lo que la deshabilitamos aquí para no duplicar.
+// Helmet: headers de seguridad. CSP servida como cabecera HTTP (fuente unica de verdad;
+// el <meta> de index.html fue removido). Mantiene 'unsafe-inline' porque hay 181 handlers
+// onclick + cientos de style= inline + 2 scripts inline (window.onerror / login) => migrar
+// eso es Fase 3b (post-UAT). 'unsafe-eval' REMOVIDO: nada lo usa (verificado en codigo
+// propio + chart.min.js). helmet corre antes de express.static, asi que la CSP cubre
+// index.html, login.html y la API.
 app.use(helmet({
-  contentSecurityPolicy: false,
+  contentSecurityPolicy: {
+    useDefaults: false,
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "'unsafe-inline'"],
+      styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+      fontSrc: ["'self'", "https://fonts.gstatic.com"],
+      imgSrc: ["'self'", "data:", "blob:", "https://res.cloudinary.com", "https://*.cloudinary.com"],
+      connectSrc: ["'self'", "https://api.cloudinary.com"],
+      frameSrc: ["'self'", "blob:", "https://res.cloudinary.com", "https://*.cloudinary.com"],
+      objectSrc: ["'none'"],
+      frameAncestors: ["'self'"],
+      baseUri: ["'self'"],
+      formAction: ["'self'"],
+    },
+  },
   crossOriginEmbedderPolicy: false,
   crossOriginResourcePolicy: { policy: 'cross-origin' }, // permite Cloudinary servir imágenes
 }));

@@ -2,8 +2,8 @@
 
 > **LEER PRIMERO.** Este documento es la fuente de verdad sobre qué está hecho, qué falta y dónde estamos parados. Se actualiza al cierre de cada sesión de trabajo.
 
-**Última actualización:** 2026-06-24 sesión 6 — **XSS Fase 3a: smoke test E2E PASADO** (vía HTTP, sin browser). PR #17 verificado end-to-end; **solo falta el merge de Julio** (gate de release).
-**Rama activa:** `claude/jwt-httponly-cookie` (12 commits, PR #17 abierto). `main` quedó al día tras sesión 4.
+**Última actualización:** 2026-06-24 sesión 6 — **PR #18 (docs AGENTS.md) y PR #17 (cookie httpOnly, Fase 3a) MERGEADOS a `main`**. **PR #19 (CSP hardening, Fase 2) en merge** desde rama `claude/csp-hardening-fase2` (se integró `main` con #17 dentro; conflicto resuelto solo en este `ESTADO.md`). Con eso quedan XSS Fase 2 + 3a en producción.
+**Rama activa:** `claude/csp-hardening-fase2` (PR #19, integrando `main`).
 **Ramas integradas (PR #16, merged):** `claude/backend-hardening`, `claude/xss-escape-html`, `claude/auth-locks-dormant`.
 **✅ Post-merge hecho:** migs 075 (PRESTAMOS al CHECK) + 076 (search_path + 20 índices FK) **aplicadas vía MCP a Supabase y verificadas**; `get_advisors` security = `[]`. **Candados de autorización DORMIDOS** (GERENTE pasa todo — no restringe a nadie hasta "echar llave"). Único pendiente opcional: smoke test manual del XSS (inyectar `<img src=x onerror>` en un campo → debe verse inerte).
 **⚠ OJO apply_migrations.ts:** usa mysql2 contra `.env.railway` = **Railway MySQL LEGACY**, NO el Supabase productivo. Las migraciones a prod se aplican **vía MCP `apply_migration`** (o adaptando a Postgres), NO con ese runner.
@@ -12,6 +12,22 @@
 **Cache buster actual:** JS `v=20260623r5` (19 imports app.js + index.html) — bumpeado en rama `claude/jwt-httponly-cookie`. En `main` sigue `r4` hasta mergear PR #17.
 **Migraciones BD:** 001 → **074** aplicadas en Supabase. **075 + 076 en el repo pero AÚN NO aplicadas** (project `fhlrxlsscerfiuuyiejw`). 075=PRESTAMOS al CHECK de usuariomodulos · 076=search_path trigger + 20 índices FK.
 **Permisos Claude:** Claude hace commit+push a feature branches `claude/*` automáticamente. Merge/push a `main` lo autoriza Julio (gate de release) — en esta sesión autorizó el merge del PR #15 explícitamente.
+
+---
+
+## ✅ Sesión 2026-06-24 (6) — XSS Fase 2: CSP hardening (sin tocar handlers)
+
+Sub-proyecto B de la deuda "XSS Fase 2/3". La CSP pasó de un `<meta>` permisivo a una **cabecera HTTP servida por helmet** (`index.ts`), eliminando el `<meta>` de `index.html` (una sola fuente de verdad). **Sin migraciones de BD. Sin tocar ningún `.js`** → no se bumpea cache buster.
+
+**Cambios:** `script-src` pierde `'unsafe-eval'` (verificado: nadie lo usa, ni código propio ni `chart.min.js`); `object-src 'self'`→`'none'`; + 3 directivas que solo una cabecera puede aplicar: `frame-ancestors 'self'` (anti-clickjacking), `base-uri 'self'`, `form-action 'self'`. **Se mantiene `'unsafe-inline'`** (181 handlers `onclick` + cientos de `style=` + 2 scripts inline) → eso es Fase 3b.
+
+**Verificado (server local + preview navegador):** `tsc` limpio · `check_mojibake` OK · cabecera CSP correcta en `/`, `/login.html` y API (curl) · sin `<meta>` duplicado · login 200 · **navegador: login + Dashboard con datos reales + 4 gráficos Chart.js renderizados + iframe blob (preview PDF) — CERO violaciones de CSP en consola.**
+
+**Spec/Plan:** `docs/superpowers/specs/2026-06-24-csp-hardening-fase2-design.md` · `docs/superpowers/plans/2026-06-24-csp-hardening-fase2.md`.
+
+**Pendiente:** abrir PR + merge de Julio. Tras el merge, Railway deploya solo (CSP aplica igual en prod, con HTTPS la cabecera HSTS de helmet ya estaba).
+
+**Sigue pendiente XSS (Fase 3b, post-UAT):** event delegation para los 181 handlers `onclick=` + externalizar/hashear los 2 scripts inline → recién ahí se quita `'unsafe-inline'` de `script-src`. Quitar `'unsafe-inline'` de `style-src` (cientos de `style=`) = proyecto aparte.
 
 ---
 
