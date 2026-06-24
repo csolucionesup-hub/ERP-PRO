@@ -1,5 +1,5 @@
 import { api } from '../services/api.js';
-import { showSuccess, showError } from '../services/ui.js';
+import { showSuccess, showError, escapeHtml, escapeAttr } from '../services/ui.js';
 import { pill } from '../components/Pill.js';
 import { kpiCard as kpiCardEnt } from '../components/KpiCard.js';
 import { lineChart, barChart, donutChart, stackedBarChart, destroyChart, chartColors } from '../components/charts.js';
@@ -93,15 +93,15 @@ function rowCotizacion(c, marca) {
   return `
     <tr data-id="${c.id_cotizacion}">
       <td style="font-weight:600">
-        <div>${c.nro_cotizacion || '—'}</div>
+        <div>${escapeHtml(c.nro_cotizacion || '—')}</div>
         ${fAprobC ? `<div style="font-size:10px;color:#16a34a;font-weight:500;display:flex;align-items:center;gap:4px" title="Fecha de aprobación comercial">
           <span>✓ ${fAprobC}</span>
-          <button onclick="window.editarFechaAprobacionCot(${c.id_cotizacion},'${(c.nro_cotizacion || '').replace(/'/g, "\\'")}','${fAprobIso}')" title="Editar fecha de aprobación (corregir data histórica)" style="background:none;border:none;color:#16a34a;cursor:pointer;font-size:11px;padding:0">📅</button>
+          <button onclick="window.editarFechaAprobacionCot(${c.id_cotizacion},'${escapeAttr(c.nro_cotizacion)}','${escapeAttr(fAprobIso)}')" title="Editar fecha de aprobación (corregir data histórica)" style="background:none;border:none;color:#16a34a;cursor:pointer;font-size:11px;padding:0">📅</button>
         </div>` : ''}
       </td>
       <td>
-        <div style="font-weight:600">${c.cliente || '—'}</div>
-        <div style="font-size:11px;color:var(--text-secondary)">${c.proyecto || ''}</div>
+        <div style="font-weight:600">${escapeHtml(c.cliente || '—')}</div>
+        <div style="font-size:11px;color:var(--text-secondary)">${escapeHtml(c.proyecto || '')}</div>
       </td>
       <td style="text-align:right">
         <div>${fMoney(c.total, 'PEN')}</div>
@@ -149,13 +149,13 @@ function rowCotizacion(c, marca) {
           ✎
         </button>` : ''}
         ${c.estado_comercial === 'TRABAJO_EN_RIESGO' ? `
-        <button class="btn-promover" data-id="${c.id_cotizacion}" data-nro="${c.nro_cotizacion}"
+        <button class="btn-promover" data-id="${c.id_cotizacion}" data-nro="${escapeHtml(c.nro_cotizacion)}"
           title="Promover a Aprobada (el cliente confirmó el trabajo). Recalcula estado financiero según cobranzas registradas."
           style="padding:6px 10px;background:#16a34a;color:#fff;border:none;border-radius:5px;cursor:pointer;font-size:11px;margin-left:4px;font-weight:600">
           ↑ Promover
         </button>` : ''}
         ${['APROBADA','TRABAJO_EN_RIESGO'].includes(c.estado_comercial) ? `
-        <button class="btn-terminar" data-id="${c.id_cotizacion}" data-nro="${c.nro_cotizacion}"
+        <button class="btn-terminar" data-id="${c.id_cotizacion}" data-nro="${escapeHtml(c.nro_cotizacion)}"
           title="Marcar proyecto como Terminado. Cierra el ciclo: no se podrán crear nuevas OCs vinculadas. Las históricas quedan intactas."
           style="padding:6px 10px;background:#1e40af;color:#fff;border:none;border-radius:5px;cursor:pointer;font-size:11px;margin-left:4px;font-weight:600">
           ✓ Terminar
@@ -184,7 +184,7 @@ function renderBandeja(titulo, lista, marca, opciones = {}) {
   return `
     <div class="card" style="padding:0;overflow:hidden">
       <div style="padding:14px 18px;border-bottom:1px solid #e5e7eb;display:flex;align-items:center;justify-content:space-between">
-        <h3 style="margin:0;font-size:14px;font-weight:600">${titulo}</h3>
+        <h3 style="margin:0;font-size:14px;font-weight:600">${escapeHtml(titulo)}</h3>
         <span style="background:${cfg.color};color:#fff;padding:2px 10px;border-radius:12px;font-size:11px;font-weight:600">${lista.length}</span>
       </div>
       <div style="overflow-x:auto">
@@ -315,7 +315,7 @@ async function modalRegistrarCobranza(cot, cuentas, existing = null) {
   };
   const tipoInicial = isEdit ? existing.tipo : 'DEPOSITO_BANCO';
   const cuentasIniciales = cuentasPorTipo(tipoInicial);
-  const v = (x) => x == null ? '' : String(x).replace(/"/g, '&quot;');
+  const v = (x) => escapeHtml(x);
 
   return new Promise((resolve) => {
     const ov = document.createElement('div');
@@ -325,7 +325,7 @@ async function modalRegistrarCobranza(cot, cuentas, existing = null) {
         <div style="padding:18px 22px;border-top:4px solid ${cfg.color};border-bottom:1px solid #e5e7eb">
           <h3 style="margin:0 0 4px 0;font-size:15px">${isEdit ? '✎ Editar cobranza' : 'Registrar cobranza'}</h3>
           <div style="font-size:12px;color:var(--text-secondary)">
-            ${cot.nro_cotizacion} · ${cot.cliente} · Total ${fMoney(cot.total, 'PEN')}${cot.moneda === 'USD' ? ` <span style="color:#16a34a">(${fMoney(Number(cot.total)/(Number(cot.tipo_cambio)||1), 'USD')} USD orig.)</span>` : ''}
+            ${escapeHtml(cot.nro_cotizacion)} · ${escapeHtml(cot.cliente)} · Total ${fMoney(cot.total, 'PEN')}${cot.moneda === 'USD' ? ` <span style="color:#16a34a">(${fMoney(Number(cot.total)/(Number(cot.tipo_cambio)||1), 'USD')} USD orig.)</span>` : ''}
           </div>
           ${isEdit ? `<div style="margin-top:6px;font-size:11px;color:#92400e;background:#fef3c7;padding:4px 8px;border-radius:4px;display:inline-block">El tipo no se puede modificar — solo los datos del movimiento.</div>` : ''}
         </div>
@@ -371,7 +371,7 @@ async function modalRegistrarCobranza(cot, cuentas, existing = null) {
                 <label style="font-size:11px;color:var(--text-secondary)">Cuenta destino</label>
                 <select name="id_cuenta" style="width:100%;padding:8px;border:1px solid #d1d5db;border-radius:5px">
                   <option value="">— Sin asignar —</option>
-                  ${cuentasIniciales.map(c => `<option value="${c.id_cuenta}" ${isEdit && Number(existing.id_cuenta) === Number(c.id_cuenta) ? 'selected' : ''}>${c.nombre} (${c.moneda})</option>`).join('')}
+                  ${cuentasIniciales.map(c => `<option value="${c.id_cuenta}" ${isEdit && Number(existing.id_cuenta) === Number(c.id_cuenta) ? 'selected' : ''}>${escapeHtml(c.nombre)} (${c.moneda})</option>`).join('')}
                 </select>
               </div>
               <div>
@@ -434,7 +434,7 @@ async function modalRegistrarCobranza(cot, cuentas, existing = null) {
       // Cuentas disponibles
       const opts = cuentasPorTipo(tipo);
       form.id_cuenta.innerHTML = `<option value="">— Sin asignar —</option>` +
-        opts.map(c => `<option value="${c.id_cuenta}">${c.nombre} (${c.moneda})</option>`).join('');
+        opts.map(c => `<option value="${c.id_cuenta}">${escapeHtml(c.nombre)} (${c.moneda})</option>`).join('');
       form.id_cuenta.disabled = opts.length === 0;
       if (opts.length === 0) {
         form.id_cuenta.innerHTML = `<option value="">— No aplica —</option>`;
@@ -638,7 +638,7 @@ async function modalGastosBancarios() {
           </select>
           <select name="id_cuenta" required style="padding:6px;font-size:12px;border:1px solid #d1d5db;border-radius:4px">
             <option value="">— cuenta —</option>
-            ${cuentasBanco.map(c => `<option value="${c.id_cuenta}" data-moneda="${c.moneda}">${c.nombre} (${c.moneda})</option>`).join('')}
+            ${cuentasBanco.map(c => `<option value="${c.id_cuenta}" data-moneda="${c.moneda}">${escapeHtml(c.nombre)} (${c.moneda})</option>`).join('')}
           </select>
           <input type="number" step="0.0001" name="monto" placeholder="Monto" required style="padding:6px;font-size:12px;border:1px solid #d1d5db;border-radius:4px">
         </div>
@@ -667,8 +667,8 @@ async function modalGastosBancarios() {
               <tr style="border-top:1px solid #f1f5f9">
                 <td style="padding:6px">${String(g.fecha).slice(0,10)}</td>
                 <td style="padding:6px"><span style="background:${cat.color}20;color:${cat.color};padding:2px 6px;border-radius:10px;font-size:10px;font-weight:600">${cat.label}</span></td>
-                <td style="padding:6px;font-size:11px">${g.cuenta_nombre || '—'}</td>
-                <td style="padding:6px">${g.concepto}</td>
+                <td style="padding:6px;font-size:11px">${escapeHtml(g.cuenta_nombre || '—')}</td>
+                <td style="padding:6px">${escapeHtml(g.concepto)}</td>
                 <td style="padding:6px;text-align:right;color:#dc2626;font-weight:600">-${fMoney(g.monto, g.moneda)}</td>
                 <td style="padding:6px;text-align:center">
                   <button class="btn-del-gb" data-id="${g.id_gasto_bancario}" title="Eliminar este gasto bancario (ITF, comisión). Repone el saldo de la cuenta y borra el movimiento del libro bancos." aria-label="Eliminar gasto bancario" style="color:#dc2626;background:none;border:none;cursor:pointer;font-size:14px">🗑</button>
@@ -792,7 +792,7 @@ async function modalLibroBancos() {
     );
 
     const opts = cuentasBanco.map(c =>
-      `<option value="${c.id_cuenta}" ${c.id_cuenta == idCuentaSel ? 'selected' : ''}>${c.nombre} (${c.moneda})</option>`
+      `<option value="${c.id_cuenta}" ${c.id_cuenta == idCuentaSel ? 'selected' : ''}>${escapeHtml(c.nombre)} (${c.moneda})</option>`
     ).join('');
 
     const rows = data.movimientos.map(m => {
@@ -803,10 +803,10 @@ async function modalLibroBancos() {
       // Descripción del banco
       let desc = '';
       if (m.ref_label) {
-        desc = `<div style="font-weight:600">${m.tipo_movimiento_banco || m.descripcion_banco}</div>
-                <div style="font-size:10px;color:#2563eb">↪ ${m.ref_label}</div>`;
+        desc = `<div style="font-weight:600">${escapeHtml(m.tipo_movimiento_banco || m.descripcion_banco)}</div>
+                <div style="font-size:10px;color:#2563eb">↪ ${escapeHtml(m.ref_label)}</div>`;
       } else {
-        desc = `<div>${m.tipo_movimiento_banco ? `<span style="font-weight:600">${m.tipo_movimiento_banco}</span> ` : ''}${m.descripcion_banco}</div>`;
+        desc = `<div>${m.tipo_movimiento_banco ? `<span style="font-weight:600">${escapeHtml(m.tipo_movimiento_banco)}</span> ` : ''}${escapeHtml(m.descripcion_banco)}</div>`;
       }
 
       // Sugerencia de match (para pendientes)
@@ -818,9 +818,9 @@ async function modalLibroBancos() {
             <div style="color:#166534;font-weight:600">💡 Posible match:</div>
             <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
               <div>
-                <span style="color:#166534;font-weight:600">${sug.label}</span>
-                <span style="color:#6b7280"> · ${sug.fecha_str} · ${fMoney(sug.monto, mon)}</span>
-                ${sug.mi_descripcion ? `<div style="color:#374151;font-style:italic">📝 "${sug.mi_descripcion}"</div>` : ''}
+                <span style="color:#166534;font-weight:600">${escapeHtml(sug.label)}</span>
+                <span style="color:#6b7280"> · ${escapeHtml(sug.fecha_str)} · ${fMoney(sug.monto, mon)}</span>
+                ${sug.mi_descripcion ? `<div style="color:#374151;font-style:italic">📝 "${escapeHtml(sug.mi_descripcion)}"</div>` : ''}
               </div>
               <button class="btn-conc-sug" data-id="${m.id_movimiento}" data-ref-tipo="${sug.ref_tipo}" data-ref-id="${sug.id}"
                 style="background:#16a34a;color:#fff;border:none;padding:3px 10px;border-radius:4px;cursor:pointer;font-size:10px;font-weight:600;white-space:nowrap">
@@ -835,9 +835,9 @@ async function modalLibroBancos() {
       return `
         <tr style="border-top:1px solid #f1f5f9${m.estado_conciliacion === 'POR_CONCILIAR' ? ';background:#fffbeb' : ''}">
           <td style="padding:6px;white-space:nowrap">${fmtDate(m.fecha)}</td>
-          <td style="padding:6px;font-size:11px">${m.nro_operacion || '—'}</td>
+          <td style="padding:6px;font-size:11px">${escapeHtml(m.nro_operacion || '—')}</td>
           <td style="padding:6px;font-size:11px">${desc}${sugHtml}</td>
-          <td style="padding:6px;font-size:10px;color:#6b7280">${m.canal || '—'}</td>
+          <td style="padding:6px;font-size:10px;color:#6b7280">${escapeHtml(m.canal || '—')}</td>
           <td style="padding:6px;text-align:right">${cargo}</td>
           <td style="padding:6px;text-align:right">${abono}</td>
           <td style="padding:6px;text-align:right;font-size:11px;color:#374151">${fMoney(m.saldo_calculado, mon)}</td>
@@ -847,13 +847,13 @@ async function modalLibroBancos() {
               ? `<button class="btn-conc-m" data-id="${m.id_movimiento}" title="Marcar este movimiento como conciliado contra el extracto bancario" aria-label="Conciliar" style="color:#16a34a;background:none;border:none;cursor:pointer">✓</button>
                  <button class="btn-ign-m" data-id="${m.id_movimiento}" title="Ignorar este movimiento (no aparecerá en pendientes pero sigue en el libro)" aria-label="Ignorar" style="color:#6b7280;background:none;border:none;cursor:pointer">⊘</button>
                  ${m.tipo === 'CARGO' ? `
-                 <button class="btn-split-m" data-id="${m.id_movimiento}" data-monto="${m.monto}" data-desc="${(m.descripcion_banco || '').replace(/"/g,'&quot;')}"
+                 <button class="btn-split-m" data-id="${m.id_movimiento}" data-monto="${m.monto}" data-desc="${escapeHtml(m.descripcion_banco || '')}"
                    title="💱 Split N/D bundle: separar este movimiento en Pago + Comisión bancaria. Útil para líneas 'I-BANC + COM.O/CI-BANC' donde el banco junta el pago y la comisión interbancaria en una sola línea."
                    aria-label="Split pago + comisión" style="color:#7c3aed;background:none;border:none;cursor:pointer;font-size:14px">💱</button>
                  <button class="btn-match-oc-m" data-id="${m.id_movimiento}" data-monto="${m.monto}"
                    title="🔗 Buscar pagos de OC ya registrados que coincidan con este movimiento por monto y fecha"
                    aria-label="Match a OC" style="color:#0891b2;background:none;border:none;cursor:pointer;font-size:14px">🔗</button>
-                 <button class="btn-servicio-m" data-id="${m.id_movimiento}" data-monto="${m.monto}" data-desc="${(m.descripcion_banco || '').replace(/"/g,'&quot;')}"
+                 <button class="btn-servicio-m" data-id="${m.id_movimiento}" data-monto="${m.monto}" data-desc="${escapeHtml(m.descripcion_banco || '')}"
                    title="💡 Registrar como Pago de Servicio (luz / agua / internet / portes) — se crea un GastoBancario con concepto custom"
                    aria-label="Pago servicio" style="color:#ca8a04;background:none;border:none;cursor:pointer;font-size:14px">💡</button>
                  ` : ''}
@@ -1299,7 +1299,7 @@ async function modalConciliacion() {
           </select>
           <select name="id_cuenta" required style="padding:6px;font-size:12px;border:1px solid #d1d5db;border-radius:4px">
             <option value="">— cuenta —</option>
-            ${cuentasBanco.map(c => `<option value="${c.id_cuenta}">${c.nombre} (${c.moneda})</option>`).join('')}
+            ${cuentasBanco.map(c => `<option value="${c.id_cuenta}">${escapeHtml(c.nombre)} (${c.moneda})</option>`).join('')}
           </select>
           <input type="number" step="0.0001" name="monto" placeholder="Monto" required style="padding:6px;font-size:12px;border:1px solid #d1d5db;border-radius:4px">
         </div>
@@ -1317,7 +1317,7 @@ async function modalConciliacion() {
         </select>
         <select id="filtro-cuenta" style="padding:4px;font-size:11px;border:1px solid #d1d5db;border-radius:4px">
           <option value="">Todas las cuentas</option>
-          ${cuentasBanco.map(c => `<option value="${c.id_cuenta}" ${String(filtroCuenta)===String(c.id_cuenta)?'selected':''}>${c.nombre}</option>`).join('')}
+          ${cuentasBanco.map(c => `<option value="${c.id_cuenta}" ${String(filtroCuenta)===String(c.id_cuenta)?'selected':''}>${escapeHtml(c.nombre)}</option>`).join('')}
         </select>
       </div>
 
@@ -1338,8 +1338,8 @@ async function modalConciliacion() {
             ${movs.map(m => `
               <tr style="border-top:1px solid #f1f5f9">
                 <td style="padding:6px">${String(m.fecha).slice(0,10)}</td>
-                <td style="padding:6px;font-size:11px">${m.cuenta_nombre || '—'}</td>
-                <td style="padding:6px">${m.descripcion_banco}</td>
+                <td style="padding:6px;font-size:11px">${escapeHtml(m.cuenta_nombre || '—')}</td>
+                <td style="padding:6px">${escapeHtml(m.descripcion_banco)}</td>
                 <td style="padding:6px;text-align:right;color:${m.tipo==='ABONO'?'#16a34a':'#dc2626'};font-weight:600">
                   ${m.tipo==='ABONO'?'+':'-'}${fMoney(m.monto, m.cuenta_moneda)}
                 </td>
@@ -1435,8 +1435,8 @@ async function modalSugerenciasMatch(idMov, onDone) {
           <button class="sug" data-ref-tipo="${s.ref_tipo}" data-ref-id="${s.id}"
             style="text-align:left;border:1px solid #d1d5db;background:#fff;padding:10px;border-radius:5px;cursor:pointer">
             <div style="font-size:11px;color:#6b7280">${s.ref_tipo}${s.subtipo?' · '+s.subtipo:''}</div>
-            <div style="font-weight:600">${s.nro_cotizacion || s.descripcion || '—'}${s.cliente ? ' · ' + s.cliente : ''}</div>
-            <div style="font-size:11px;color:#6b7280">${String(s.fecha).slice(0,10)} · ${fMoney(s.monto,'PEN')}${s.nro_operacion?' · op '+s.nro_operacion:''}</div>
+            <div style="font-weight:600">${escapeHtml(s.nro_cotizacion || s.descripcion || '—')}${s.cliente ? ' · ' + escapeHtml(s.cliente) : ''}</div>
+            <div style="font-size:11px;color:#6b7280">${String(s.fecha).slice(0,10)} · ${fMoney(s.monto,'PEN')}${s.nro_operacion?' · op '+escapeHtml(s.nro_operacion):''}</div>
           </button>
         `).join('')}
       </div>
@@ -1512,7 +1512,7 @@ async function modalPagoIGV(dashboard) {
             <label style="font-size:10px;color:#6b7280;font-weight:600">Cuenta origen</label>
             <select name="id_cuenta" required style="width:100%;padding:6px;font-size:12px;border:1px solid #d1d5db;border-radius:4px">
               <option value="">— cuenta banco —</option>
-              ${cuentasBanco.filter(c=>c.moneda==='PEN').map(c => `<option value="${c.id_cuenta}">${c.nombre}</option>`).join('')}
+              ${cuentasBanco.filter(c=>c.moneda==='PEN').map(c => `<option value="${c.id_cuenta}">${escapeHtml(c.nombre)}</option>`).join('')}
             </select>
           </div>
           <div>
@@ -1544,7 +1544,7 @@ async function modalPagoIGV(dashboard) {
                 <td style="padding:6px">${String(p.fecha).slice(0,10)}</td>
                 <td style="padding:6px"><span style="background:#dbeafe;color:#1e40af;padding:2px 6px;border-radius:10px;font-size:10px;font-weight:600">${p.periodo}</span></td>
                 <td style="padding:6px">${p.tipo_impuesto}</td>
-                <td style="padding:6px;font-size:11px">${p.cuenta_nombre || '—'}</td>
+                <td style="padding:6px;font-size:11px">${escapeHtml(p.cuenta_nombre || '—')}</td>
                 <td style="padding:6px;text-align:right;color:#dc2626;font-weight:600">-${fMoney(p.monto, p.moneda)}</td>
                 <td style="padding:6px;text-align:center">
                   <button class="btn-del-igv" data-id="${p.id_pago}" title="Eliminar este pago de impuesto. Repone el saldo a la cuenta y borra el movimiento bancario asociado." aria-label="Eliminar pago de impuesto" style="color:#dc2626;background:none;border:none;cursor:pointer;font-size:14px">🗑</button>
@@ -1617,7 +1617,7 @@ async function modalEditarTributario(cot) {
       <div style="background:#fff;border-radius:8px;max-width:460px;width:100%;box-shadow:0 20px 50px rgba(0,0,0,.3);overflow:hidden">
         <div style="padding:16px 20px;border-top:4px solid ${cfg.color};border-bottom:1px solid #e5e7eb">
           <h3 style="margin:0 0 3px 0;font-size:15px">Editar detracción / retención</h3>
-          <div style="font-size:12px;color:var(--text-secondary)">${cot.nro_cotizacion} · Total ${fMoney(total, 'PEN')}${cot.moneda === 'USD' ? ` <span style="color:#16a34a">(${fMoney(total/(Number(cot.tipo_cambio)||1), 'USD')} USD orig.)</span>` : ''}</div>
+          <div style="font-size:12px;color:var(--text-secondary)">${escapeHtml(cot.nro_cotizacion)} · Total ${fMoney(total, 'PEN')}${cot.moneda === 'USD' ? ` <span style="color:#16a34a">(${fMoney(total/(Number(cot.tipo_cambio)||1), 'USD')} USD orig.)</span>` : ''}</div>
         </div>
         <div style="padding:16px 20px">
           <div style="background:#fef3c7;border:1px solid #fde68a;padding:10px;border-radius:6px;font-size:11px;color:#92400e;margin-bottom:14px">
@@ -1720,7 +1720,7 @@ function modalFacturar(cot) {
     box.style.cssText = 'background:#fff;border-radius:8px;padding:22px;max-width:480px;width:100%';
     box.innerHTML = `
       <div style="font-size:16px;font-weight:700;margin-bottom:4px">📄 Registrar factura</div>
-      <div style="font-size:12px;color:#6b7280;margin-bottom:14px">${cot.nro_cotizacion} · ${cot.cliente} · ${fMoney(cot.total, 'PEN')}${cot.moneda === 'USD' ? ` <span style="color:#16a34a">(${fMoney(Number(cot.total)/(Number(cot.tipo_cambio)||1), 'USD')} USD orig.)</span>` : ''}</div>
+      <div style="font-size:12px;color:#6b7280;margin-bottom:14px">${escapeHtml(cot.nro_cotizacion)} · ${escapeHtml(cot.cliente)} · ${fMoney(cot.total, 'PEN')}${cot.moneda === 'USD' ? ` <span style="color:#16a34a">(${fMoney(Number(cot.total)/(Number(cot.tipo_cambio)||1), 'USD')} USD orig.)</span>` : ''}</div>
       <form id="form-fac">
         <div style="margin-bottom:10px">
           <label style="font-size:11px;color:#6b7280;font-weight:600">Número de factura</label>
@@ -1770,8 +1770,8 @@ async function modalDetalle(id) {
     <div style="background:#fff;border-radius:8px;max-width:760px;width:100%;box-shadow:0 20px 50px rgba(0,0,0,.3);overflow:hidden">
       <div style="padding:18px 22px;border-top:4px solid ${cfg.color};border-bottom:1px solid #e5e7eb;display:flex;align-items:center;justify-content:space-between">
         <div>
-          <h3 style="margin:0 0 3px 0;font-size:15px">Detalle de cobranza · ${c.nro_cotizacion}</h3>
-          <div style="font-size:12px;color:var(--text-secondary)">${c.cliente} · ${c.proyecto || ''}</div>
+          <h3 style="margin:0 0 3px 0;font-size:15px">Detalle de cobranza · ${escapeHtml(c.nro_cotizacion)}</h3>
+          <div style="font-size:12px;color:var(--text-secondary)">${escapeHtml(c.cliente)} · ${escapeHtml(c.proyecto || '')}</div>
         </div>
         <button id="det-x" title="Cerrar detalle de cobranza" aria-label="Cerrar" style="background:none;border:none;font-size:22px;cursor:pointer;color:#9ca3af">×</button>
       </div>
@@ -1845,7 +1845,7 @@ async function modalDetalle(id) {
                     ${estaCobrada?'✅ COBRADA':estaFacturada?'📄 FACTURADA':'💼 LISTA PARA FACTURAR'}
                   </div>
                   ${(estaFacturada||estaCobrada) ? `
-                    <div style="font-size:12px;margin-top:4px"><b>Factura:</b> ${c.nro_factura || '—'} · <b>Fecha:</b> ${c.fecha_factura ? String(c.fecha_factura).slice(0,10) : '—'}</div>
+                    <div style="font-size:12px;margin-top:4px"><b>Factura:</b> ${escapeHtml(c.nro_factura || '—')} · <b>Fecha:</b> ${c.fecha_factura ? String(c.fecha_factura).slice(0,10) : '—'}</div>
                     ${estaCobrada && c.fecha_cobro_total ? `<div style="font-size:11px;color:#6b7280">Cobrada el ${String(c.fecha_cobro_total).slice(0,10)}</div>`:''}
                   ` : `
                     <div style="font-size:12px;color:#92400e;margin-top:4px">Emite la factura y regístrala aquí para continuar al cobro final</div>
@@ -1884,8 +1884,8 @@ async function modalDetalle(id) {
                     <td style="padding:8px 10px">
                       <span style="background:${m.tipo === 'DETRACCION_BN' ? '#fef3c7' : '#dbeafe'};color:${m.tipo === 'DETRACCION_BN' ? '#92400e' : '#1e40af'};padding:2px 6px;border-radius:3px;font-size:10px;font-weight:600">${m.tipo.replace('_',' ')}</span>
                     </td>
-                    <td style="padding:8px 10px">${m.cuenta_nombre || m.banco || '—'}</td>
-                    <td style="padding:8px 10px">${m.nro_operacion || '—'}</td>
+                    <td style="padding:8px 10px">${escapeHtml(m.cuenta_nombre || m.banco || '—')}</td>
+                    <td style="padding:8px 10px">${escapeHtml(m.nro_operacion || '—')}</td>
                     <td style="padding:8px 10px;text-align:right;font-weight:600">${fMoney(m.monto, m.moneda)}</td>
                     <td style="padding:8px 10px;text-align:right;white-space:nowrap">
                       <button class="cob-edit" data-id="${m.id_cobranza}" style="background:none;border:1px solid #d1d5db;color:#374151;cursor:pointer;font-size:11px;padding:3px 8px;border-radius:4px;margin-right:4px">✎ Editar</button>
@@ -2290,16 +2290,16 @@ async function modalGastosPeriodo() {
       const saldo = Number(g.total_base || 0) - Number(g.pagado || 0);
       const docCli = g.servicio_codigo
         ? `<span style="color:#92400e">${g.servicio_codigo}</span><br><span style="font-size:10px;color:#6b7280">${g.servicio_cliente || ''}</span>`
-        : (g.nro_oc ? `<span style="color:#1e40af;font-size:11px">OC ${g.nro_oc}</span>` : '—');
+        : (g.nro_oc ? `<span style="color:#1e40af;font-size:11px">OC ${escapeHtml(g.nro_oc)}</span>` : '—');
       return `
         <tr style="border-bottom:1px solid #f3f4f6">
           <td style="padding:7px 8px;font-size:11px;white-space:nowrap">${fmtDate(g.fecha)}</td>
           <td style="padding:7px 8px;font-size:11px">
             ${g.nro_comprobante ? `<div style="font-weight:600">${g.nro_comprobante}</div>` : ''}
-            <div style="font-size:10px;color:#6b7280">${g.proveedor_nombre || '—'}</div>
+            <div style="font-size:10px;color:#6b7280">${escapeHtml(g.proveedor_nombre || '—')}</div>
           </td>
           <td style="padding:7px 8px;font-size:11px;max-width:280px">
-            <div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${(g.concepto || '').replace(/"/g, '&quot;')}">${g.concepto || '—'}</div>
+            <div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escapeHtml(g.concepto || '')}">${escapeHtml(g.concepto || '—')}</div>
           </td>
           <td style="padding:7px 8px;font-size:10px;color:#374151">${g.centro_costo || '—'}</td>
           <td style="padding:7px 8px;text-align:center">${tipoBadge(tipo)}</td>
@@ -2326,7 +2326,7 @@ async function modalGastosPeriodo() {
   catch { _centros = []; }
 
   const optsCC = ['<option value="">Todos los centros</option>',
-    ..._centros.map(c => `<option value="${c.nombre}">${c.nombre}</option>`)
+    ..._centros.map(c => `<option value="${escapeHtml(c.nombre)}">${escapeHtml(c.nombre)}</option>`)
   ].join('');
 
   box.innerHTML = `
@@ -2590,7 +2590,7 @@ async function modalNotasCreditoRecibidas() {
   const renderForm = () => {
     const sel = box.querySelector('#nc-doc-sel');
     const opts = ['<option value="">— Seleccionar Compra o Gasto a ajustar —</option>',
-      ..._docs.map((d, i) => `<option value="${i}">${d.label}</option>`)
+      ..._docs.map((d, i) => `<option value="${i}">${escapeHtml(d.label)}</option>`)
     ].join('');
     if (sel) sel.innerHTML = opts;
   };
@@ -2846,8 +2846,8 @@ function renderDashboard(d) {
   `;
   const topList = (d.top_vencidas || []).map(t => `
     <tr>
-      <td style="padding:4px 8px;font-size:11px">${t.nro_cotizacion}</td>
-      <td style="padding:4px 8px;font-size:11px">${t.cliente}</td>
+      <td style="padding:4px 8px;font-size:11px">${escapeHtml(t.nro_cotizacion)}</td>
+      <td style="padding:4px 8px;font-size:11px">${escapeHtml(t.cliente)}</td>
       <td style="padding:4px 8px;font-size:11px;text-align:right">${fMoney(t.saldo_det, t.moneda)}</td>
       <td style="padding:4px 8px;font-size:11px;text-align:center">
         <span style="color:${t.dias > 30 ? '#dc2626' : t.dias > 15 ? '#d97706' : '#16a34a'};font-weight:600">${t.dias}d</span>
@@ -4002,14 +4002,14 @@ function modalSugerenciasPagoOC(res) {
            </tr></thead>
            <tbody>${sugs.map(s => `
              <tr style="border-bottom:1px solid #f3f4f6">
-               <td style="padding:6px"><strong>${s.nro_oc}</strong></td>
-               <td style="padding:6px">${(s.proveedor || '').slice(0, 32)}</td>
+               <td style="padding:6px"><strong>${escapeHtml(s.nro_oc)}</strong></td>
+               <td style="padding:6px">${escapeHtml((s.proveedor || '').slice(0, 32))}</td>
                <td style="padding:6px">${String(s.fecha_pago).split('T')[0]}</td>
                <td style="padding:6px;text-align:right">${fmtPENlocal(s.monto_pago_pen)}</td>
                <td style="padding:6px;text-align:right;color:${s.dif_monto < 1 ? '#16a34a' : '#92400e'}">${s.dif_monto.toFixed(2)}</td>
                <td style="padding:6px;text-align:right">${s.dif_dias}d</td>
                <td style="padding:6px;text-align:right">
-                 <button data-pick="${s.id_pago}" data-nro="${s.nro_oc}" style="padding:4px 10px;background:#16a34a;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:11px;font-weight:600">Conciliar</button>
+                 <button data-pick="${s.id_pago}" data-nro="${escapeHtml(s.nro_oc)}" style="padding:4px 10px;background:#16a34a;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:11px;font-weight:600">Conciliar</button>
                </td>
              </tr>
            `).join('')}</tbody>
@@ -4018,7 +4018,7 @@ function modalSugerenciasPagoOC(res) {
       <div style="background:#fff;border-radius:10px;width:min(820px,96vw);max-height:80vh;overflow:auto;padding:22px">
         <h3 style="margin:0 0 6px;font-size:16px">🔗 Buscar pagos similares para conciliar</h3>
         <p style="margin:0 0 12px;font-size:12px;color:#6b7280">
-          Movimiento: <strong>${fmtPENlocal(res.movimiento.monto)}</strong> · ${res.movimiento.fecha} · ${res.movimiento.descripcion || ''}
+          Movimiento: <strong>${fmtPENlocal(res.movimiento.monto)}</strong> · ${res.movimiento.fecha} · ${escapeHtml(res.movimiento.descripcion || '')}
         </p>
         ${filas}
         <div style="display:flex;justify-content:flex-end;margin-top:14px">

@@ -1,5 +1,5 @@
 import { api } from '../services/api.js';
-import { showSuccess, showError } from '../services/ui.js';
+import { showSuccess, showError, escapeHtml, escapeAttr } from '../services/ui.js';
 import { emptyState } from '../components/EmptyState.js';
 
 export const Compras = async () => {
@@ -20,7 +20,7 @@ export const Compras = async () => {
 
   const formatCurrency = (val) => new Intl.NumberFormat('es-PE', { style: 'currency', currency: 'PEN' }).format(val);
   const formatUSD = (val) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(Number(val) || 0);
-  const getStatusBadge = (estado) => `<span class="status-badge status-${estado?.toLowerCase()}">${estado}</span>`;
+  const getStatusBadge = (estado) => `<span class="status-badge status-${estado?.toLowerCase()}">${escapeHtml(estado)}</span>`;
 
   setTimeout(() => {
      const btnNewItemLine = document.getElementById('btn-new-item-line');
@@ -34,7 +34,7 @@ export const Compras = async () => {
          const p = proveedores.find(x => x.id_proveedor === id);
          const info = document.getElementById('prov-info');
          if (info) info.innerHTML = p
-           ? `<span style="font-size:11px;color:var(--text-secondary)">RUC: <strong>${p.ruc}</strong>${p.telefono ? ' · Tel: ' + p.telefono : ''}${p.email ? ' · ' + p.email : ''}</span>`
+           ? `<span style="font-size:11px;color:var(--text-secondary)">RUC: <strong>${escapeHtml(p.ruc)}</strong>${p.telefono ? ' · Tel: ' + escapeHtml(p.telefono) : ''}${p.email ? ' · ' + escapeHtml(p.email) : ''}</span>`
            : '';
        };
      }
@@ -51,7 +51,7 @@ export const Compras = async () => {
          const rowSubtotal = l.cantidad * l.precio;
          sub += rowSubtotal;
          html += `<tr>
-             <td style="font-size:11px">${l.nombre}</td>
+             <td style="font-size:11px">${escapeHtml(l.nombre)}</td>
              <td>${l.cantidad}</td>
              <td style="text-align:right">${formatCurrency(l.precio || 0)}</td>
              <td style="text-align:right">${formatCurrency(rowSubtotal || 0)}</td>
@@ -185,15 +185,15 @@ export const Compras = async () => {
        }
 
        const iStyle = 'padding:9px; border-radius:4px; border:1px solid var(--border-light); width:100%; box-sizing:border-box';
-       const provOpts = proveedores.map(p => `<option value="${p.id_proveedor}" ${p.id_proveedor === detalle.id_proveedor ? 'selected' : ''}>${p.razon_social} (${p.ruc})</option>`).join('');
-       const itemOpts = inventario.map(i => `<option value="${i.id_item}">${i.nombre} [${i.sku}]</option>`).join('');
+       const provOpts = proveedores.map(p => `<option value="${p.id_proveedor}" ${p.id_proveedor === detalle.id_proveedor ? 'selected' : ''}>${escapeHtml(p.razon_social)} (${escapeHtml(p.ruc)})</option>`).join('');
+       const itemOpts = inventario.map(i => `<option value="${i.id_item}">${escapeHtml(i.nombre)} [${escapeHtml(i.sku)}]</option>`).join('');
 
        const overlay = document.createElement('div');
        overlay.id = 'modal-editar-compra';
        overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:1000;display:flex;align-items:flex-start;justify-content:center;overflow-y:auto;padding:30px 0';
        overlay.innerHTML = `
          <div style="background:white;border-radius:10px;padding:28px;width:660px;box-shadow:0 12px 40px rgba(0,0,0,0.25)">
-           <h3 style="margin:0 0 18px;font-size:16px;font-weight:700">Editar Compra — ${detalle.nro_comprobante}</h3>
+           <h3 style="margin:0 0 18px;font-size:16px;font-weight:700">Editar Compra — ${escapeHtml(detalle.nro_comprobante)}</h3>
            <form id="form-editar-compra" style="display:flex;flex-direction:column;gap:12px">
              <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
                <div>
@@ -207,7 +207,7 @@ export const Compras = async () => {
              </div>
              <div>
                <label style="font-size:11px;color:var(--text-secondary)">N° Comprobante</label>
-               <input name="nro_comprobante" value="${detalle.nro_comprobante || ''}" required style="${iStyle}">
+               <input name="nro_comprobante" value="${escapeHtml(detalle.nro_comprobante)}" required style="${iStyle}">
              </div>
              <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
                <div>
@@ -280,7 +280,7 @@ export const Compras = async () => {
            const rowSub = l.cantidad * l.precio;
            sub += rowSub;
            html += `<tr>
-             <td style="padding:3px">${l.nombre}</td>
+             <td style="padding:3px">${escapeHtml(l.nombre)}</td>
              <td style="text-align:center">${l.cantidad}</td>
              <td style="text-align:right">${formatCurrency(l.precio)}</td>
              <td style="text-align:right">${formatCurrency(rowSub)}</td>
@@ -391,14 +391,14 @@ export const Compras = async () => {
        try { compra = await api.purchases.getCompraDetalle(id); }
        catch (e) { return showError('Error cargando compra: ' + (e.message || '')); }
 
-       const v = (x) => x == null ? '' : String(x).replace(/"/g, '&quot;');
+       const v = (x) => escapeHtml(x);
        const fechaActual = compra.fecha ? String(compra.fecha).split('T')[0] : '';
        const data = await new Promise((resolve) => {
          const ov = document.createElement('div');
          ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
          ov.innerHTML = `
            <div style="background:#fff;border-radius:8px;padding:22px;width:520px;max-width:96vw;box-shadow:0 20px 50px rgba(0,0,0,.3)">
-             <h3 style="margin:0 0 6px;font-size:16px">✎ Editar datos · Compra ${doc}</h3>
+             <h3 style="margin:0 0 6px;font-size:16px">✎ Editar datos · Compra ${escapeHtml(doc)}</h3>
              <p style="margin:0 0 14px;font-size:12px;color:#6b7280">
                Edición segura: campos informativos / referencias.
                No toca proveedor, items, montos ni inventario.
@@ -467,12 +467,12 @@ export const Compras = async () => {
     const totalPEN = esUSD ? total * tc : total;
     return `
     <tr class="${c.estado_pago === 'ANULADO' ? 'row-anulada' : ''}">
-      <td style="font-size:11px; color:var(--text-secondary)">${c.nro_oc || '---'}
+      <td style="font-size:11px; color:var(--text-secondary)">${escapeHtml(c.nro_oc || '---')}
         <br><span style="background:${esUSD?'#16a34a':'#6b7280'};color:white;padding:1px 6px;border-radius:3px;font-size:10px">${esUSD?'💵 PerfoTools':'⚙️ Metal Engineers'}</span>
       </td>
       <td>${c.fecha ? c.fecha.split('T')[0] : '---'}</td>
-      <td><strong>${c.proveedor_nombre || 'N/A'}</strong></td>
-      <td>${c.nro_comprobante}</td>
+      <td><strong>${escapeHtml(c.proveedor_nombre || 'N/A')}</strong></td>
+      <td>${escapeHtml(c.nro_comprobante)}</td>
       <td style="text-align:right">
         ${esUSD
           ? `<strong style="color:#16a34a">${formatUSD(total)}</strong><br><span style="font-size:10px;color:var(--text-secondary)">≈ ${formatCurrency(totalPEN)}</span>`
@@ -481,16 +481,16 @@ export const Compras = async () => {
       <td>${getStatusBadge(c.estado_pago)}</td>
       <td style="display:flex;gap:4px;flex-wrap:wrap">
         ${c.estado_pago !== 'ANULADO' ? `<button class="action-btn" style="background:var(--info);color:white" title="Edición completa: cambiar proveedor, items, cantidades, precios y totales. Recalcula stock e IGV." onclick="window.editarCompra(${c.id_compra})">Editar líneas</button>` : ''}
-        ${c.estado_pago !== 'ANULADO' ? `<button class="action-btn" style="background:#fff;color:#3b82f6;border:1px solid #93c5fd" title="Edición segura: corregir N° de comprobante (factura/boleta), N° OC referencia, fecha y centro de costo. NO toca proveedor, items, montos ni inventario." onclick="window.editarMetadataCompra(${c.id_compra}, '${c.nro_comprobante}')">Editar datos</button>` : ''}
-        ${c.estado_pago !== 'ANULADO' ? `<button class="action-btn action-btn-anular" onclick="window.anularCompra(${c.id_compra}, '${c.nro_comprobante}')">Anular</button>` : ''}
-        <button class="action-btn" style="background:#ef4444;color:white" title="Eliminar permanente con cascada (solo GERENTE). Si la compra estaba CONFIRMADA, revierte el stock. Borra DetalleCompra, Tx caja COMPRA, MovInv y desvincula la OC origen. Pide tipear el N° de comprobante exacto." onclick="window.eliminarCompra(${c.id_compra}, '${c.nro_comprobante}')">Eliminar</button>
+        ${c.estado_pago !== 'ANULADO' ? `<button class="action-btn" style="background:#fff;color:#3b82f6;border:1px solid #93c5fd" title="Edición segura: corregir N° de comprobante (factura/boleta), N° OC referencia, fecha y centro de costo. NO toca proveedor, items, montos ni inventario." onclick="window.editarMetadataCompra(${c.id_compra}, '${escapeAttr(c.nro_comprobante)}')">Editar datos</button>` : ''}
+        ${c.estado_pago !== 'ANULADO' ? `<button class="action-btn action-btn-anular" onclick="window.anularCompra(${c.id_compra}, '${escapeAttr(c.nro_comprobante)}')">Anular</button>` : ''}
+        <button class="action-btn" style="background:#ef4444;color:white" title="Eliminar permanente con cascada (solo GERENTE). Si la compra estaba CONFIRMADA, revierte el stock. Borra DetalleCompra, Tx caja COMPRA, MovInv y desvincula la OC origen. Pide tipear el N° de comprobante exacto." onclick="window.eliminarCompra(${c.id_compra}, '${escapeAttr(c.nro_comprobante)}')">Eliminar</button>
       </td>
     </tr>
   `;
   }).join('');
 
-  const provOptions = proveedores.map(p => `<option value="${p.id_proveedor}">${p.razon_social} (RUC: ${p.ruc})</option>`).join('');
-  const itemOptions = inventario.map(i => `<option value="${i.id_item}">${i.nombre} [${i.sku}]</option>`).join('');
+  const provOptions = proveedores.map(p => `<option value="${p.id_proveedor}">${escapeHtml(p.razon_social)} (RUC: ${escapeHtml(p.ruc)})</option>`).join('');
+  const itemOptions = inventario.map(i => `<option value="${i.id_item}">${escapeHtml(i.nombre)} [${escapeHtml(i.sku)}]</option>`).join('');
 
   const inputStyle = 'padding:10px; border-radius:var(--radius-sm); border:1px solid var(--border-light)';
 

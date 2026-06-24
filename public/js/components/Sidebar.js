@@ -4,7 +4,7 @@
  * Mantiene compatibilidad con app.js: id="sidebar", data-page por item, mobile-open class.
  */
 
-import { icon } from '../services/ui.js';
+import { icon, escapeHtml, escapeAttr } from '../services/ui.js';
 
 /* ─── Mapping pagina → icono Lucide del sprite /lib/icons.svg ─────── */
 const ICON_MAP = {
@@ -132,10 +132,10 @@ export function renderSidebar(activePage) {
 
     <div class="app-sidebar-footer">
       <div class="app-sidebar-user">
-        <div class="app-sidebar-avatar" aria-hidden="true">${initials}</div>
+        <div class="app-sidebar-avatar" aria-hidden="true">${escapeHtml(initials)}</div>
         <div class="app-sidebar-user__info">
-          <span class="app-sidebar-user__name">${user.nombre || 'Usuario'}</span>
-          <span class="app-sidebar-user__role">${rolLabel}</span>
+          <span class="app-sidebar-user__name">${escapeHtml(user.nombre || 'Usuario')}</span>
+          <span class="app-sidebar-user__role">${escapeHtml(rolLabel)}</span>
         </div>
       </div>
       <button class="app-sidebar-logout" onclick="logout()" type="button">
@@ -176,10 +176,10 @@ window.toggleAlertas = () => {
   const items = _alertasCache.length === 0
     ? '<div style="padding:30px;text-align:center;color:var(--app-text-muted);font-size:13px">✅ No hay alertas activas</div>'
     : _alertasCache.map(a => `
-        <div onclick="window.location.hash='${a.link || ''}';document.getElementById('alertas-panel')?.remove()"
+        <div onclick="window.location.hash='${escapeAttr(a.link || '')}';document.getElementById('alertas-panel')?.remove()"
              style="padding:10px 12px;border-bottom:1px solid #e5e7eb;cursor:pointer;background:${sevBg[a.severidad] || '#f9fafb'};border-left:3px solid ${sevColor[a.severidad] || '#6b7280'}">
-          <div style="font-size:13px;font-weight:600;color:#111">${a.titulo}</div>
-          <div style="font-size:11px;color:#666;margin-top:2px">${a.detalle}</div>
+          <div style="font-size:13px;font-weight:600;color:#111">${escapeHtml(a.titulo)}</div>
+          <div style="font-size:11px;color:#666;margin-top:2px">${escapeHtml(a.detalle)}</div>
         </div>
       `).join('');
 

@@ -10,7 +10,7 @@
  */
 
 import { api } from '../services/api.js';
-import { showError } from '../services/ui.js';
+import { showError, escapeHtml, escapeAttr } from '../services/ui.js';
 import { TabBar } from '../components/TabBar.js';
 import { kpiGrid } from '../components/KpiCard.js';
 
@@ -113,7 +113,7 @@ async function renderActivas() {
         ${Object.keys(porMod).map(modulo => `
           <div class="card" style="padding:16px">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;border-bottom:1px solid #e5e7eb;padding-bottom:8px">
-              <strong style="font-size:14px">${MODULO_LABEL[modulo] || modulo}</strong>
+              <strong style="font-size:14px">${escapeHtml(MODULO_LABEL[modulo] || modulo)}</strong>
               <span style="background:#f3f4f6;color:#374151;padding:2px 10px;border-radius:10px;font-size:11px;font-weight:600">${porMod[modulo].length} activa(s)</span>
             </div>
             <div style="display:flex;flex-direction:column;gap:8px">
@@ -130,12 +130,12 @@ async function renderActivas() {
 
 function renderAlertaRow(a) {
   const c = SEV_COLOR[a.severidad] || SEV_COLOR.info;
-  const link = a.link ? `onclick="window.location.hash='${a.link.replace('#','')}'" style="cursor:pointer"` : '';
+  const link = a.link ? `onclick="window.location.hash='${escapeAttr(a.link.replace('#',''))}'" style="cursor:pointer"` : '';
   return `
     <div ${link} style="background:${c.bg};border-left:4px solid ${c.border};padding:10px 12px;border-radius:6px;display:flex;justify-content:space-between;align-items:center;gap:8px">
       <div style="flex:1;min-width:0">
-        <div style="font-size:13px;font-weight:600;color:${c.text}">${a.titulo}</div>
-        <div style="font-size:11px;color:#374151;margin-top:2px">${a.detalle || ''}</div>
+        <div style="font-size:13px;font-weight:600;color:${c.text}">${escapeHtml(a.titulo)}</div>
+        <div style="font-size:11px;color:#374151;margin-top:2px">${escapeHtml(a.detalle || '')}</div>
       </div>
       <span style="background:${c.border};color:#fff;padding:3px 8px;border-radius:10px;font-size:10px;font-weight:600;white-space:nowrap">${c.label}</span>
     </div>
@@ -218,10 +218,10 @@ function renderHistRow(r) {
   return `
     <tr style="border-bottom:1px solid #f3f4f6">
       <td style="padding:8px 10px">${estadoBadge}</td>
-      <td style="padding:8px 10px;font-size:11px;color:var(--text-secondary)">${MODULO_LABEL[r.modulo] || r.modulo}</td>
+      <td style="padding:8px 10px;font-size:11px;color:var(--text-secondary)">${escapeHtml(MODULO_LABEL[r.modulo] || r.modulo)}</td>
       <td style="padding:8px 10px">
-        <div style="font-weight:600;font-size:12px;color:${c.text}">${r.titulo}</div>
-        <div style="font-size:10px;color:#6b7280">${r.detalle || ''}</div>
+        <div style="font-weight:600;font-size:12px;color:${c.text}">${escapeHtml(r.titulo)}</div>
+        <div style="font-size:10px;color:#6b7280">${escapeHtml(r.detalle || '')}</div>
       </td>
       <td style="padding:8px 10px;font-size:11px;color:#374151">${fmtDate(r.fecha_aparicion)}</td>
       <td style="padding:8px 10px;font-size:11px;color:#374151">${r.fecha_resuelta ? fmtDate(r.fecha_resuelta) : '—'}</td>
@@ -285,7 +285,7 @@ async function renderDashboard() {
             ? '<p style="color:var(--text-secondary);font-size:12px;margin:0">Sin datos aún.</p>'
             : por_tipo.slice(0, 8).map(t => `
                 <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #f3f4f6;font-size:12px">
-                  <span style="color:#374151">${t.tipo}</span>
+                  <span style="color:#374151">${escapeHtml(t.tipo)}</span>
                   <span><strong>${t.total}</strong> <span style="color:#dc2626">(${t.activas} act.)</span></span>
                 </div>`).join('')
           }
@@ -318,7 +318,7 @@ function renderTendencia(serie) {
   return `
     <div style="display:flex;align-items:flex-end;gap:2px;height:120px;margin-top:8px">
       ${serie.map(p => `
-        <div title="${p.dia}: ${p.n}" style="flex:1;background:#3b82f6;height:${(p.n / max * 100).toFixed(0)}%;min-height:2px;border-radius:2px 2px 0 0"></div>
+        <div title="${escapeHtml(p.dia)}: ${p.n}" style="flex:1;background:#3b82f6;height:${(p.n / max * 100).toFixed(0)}%;min-height:2px;border-radius:2px 2px 0 0"></div>
       `).join('')}
     </div>
     <div style="display:flex;justify-content:space-between;margin-top:4px;font-size:10px;color:#9ca3af">

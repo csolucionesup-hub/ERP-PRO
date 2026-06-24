@@ -11,7 +11,7 @@
  */
 
 import { api } from '../services/api.js';
-import { showSuccess, showError, tip } from '../services/ui.js';
+import { showSuccess, showError, tip, escapeHtml, escapeAttr } from '../services/ui.js';
 import { TabBar } from '../components/TabBar.js';
 import { kpiGrid } from '../components/KpiCard.js';
 import { pill } from '../components/Pill.js';
@@ -513,8 +513,8 @@ async function vincularMadreServicio(id_oc, nro) {
   const filas = candidatas.map(m => `
     <tr style="border-bottom:1px solid #e5e7eb;cursor:pointer" data-id-madre="${m.id_oc}" data-row>
       <td style="padding:8px"><input type="radio" name="madre-pick" value="${m.id_oc}"></td>
-      <td style="padding:8px;font-size:12px;font-weight:600">${m.nro_oc}</td>
-      <td style="padding:8px;font-size:12px">${m.proveedor_nombre || '—'}</td>
+      <td style="padding:8px;font-size:12px;font-weight:600">${escapeHtml(m.nro_oc)}</td>
+      <td style="padding:8px;font-size:12px">${escapeHtml(m.proveedor_nombre || '—')}</td>
       <td style="padding:8px;font-size:12px;color:#6b7280">${m.estado}</td>
       <td style="padding:8px;font-size:12px;text-align:right">${m.moneda} ${Number(m.total || 0).toFixed(2)}</td>
     </tr>`).join('');
@@ -580,14 +580,14 @@ async function verGastosVinculados(id_oc, nro) {
   const filasSat = resumen.satelites.length
     ? resumen.satelites.map(s => `
         <tr style="border-bottom:1px solid #e5e7eb">
-          <td style="padding:8px;font-size:12px;font-weight:600">${s.nro_oc}</td>
-          <td style="padding:8px;font-size:12px">${s.proveedor || '—'}</td>
+          <td style="padding:8px;font-size:12px;font-weight:600">${escapeHtml(s.nro_oc)}</td>
+          <td style="padding:8px;font-size:12px">${escapeHtml(s.proveedor || '—')}</td>
           <td style="padding:8px;font-size:11px;color:#6b7280">${s.estado}</td>
           <td style="padding:8px;font-size:11px">${fmtFecha(s.fecha_emision)}</td>
           <td style="padding:8px;font-size:12px;text-align:right">${s.moneda} ${Number(s.total).toFixed(2)}</td>
           <td style="padding:8px;font-size:12px;text-align:right;font-weight:600">S/ ${Number(s.total_pen).toFixed(2)}</td>
           <td style="padding:8px;text-align:center">
-            <button onclick="OC._desvincularDesdeModal(${s.id_oc}, ${id_oc}, '${(s.nro_oc || '').replace(/'/g, "\\'")}')" title="Quitar este gasto del agrupado" style="padding:4px 10px;background:#fff;color:#dc2626;border:1px solid #fecaca;border-radius:4px;cursor:pointer;font-size:11px">✕ Quitar</button>
+            <button onclick="OC._desvincularDesdeModal(${s.id_oc}, ${id_oc}, '${escapeAttr(s.nro_oc)}')" title="Quitar este gasto del agrupado" style="padding:4px 10px;background:#fff;color:#dc2626;border:1px solid #fecaca;border-radius:4px;cursor:pointer;font-size:11px">✕ Quitar</button>
           </td>
         </tr>`).join('')
     : `<tr><td colspan="7" style="padding:18px;text-align:center;color:#9ca3af;font-size:12px;font-style:italic">No hay gastos operativos vinculados aún. Si abajo hay candidatas, podés agregarlas.</td></tr>`;
@@ -595,14 +595,14 @@ async function verGastosVinculados(id_oc, nro) {
   const filasCand = resumen.candidatas.length
     ? resumen.candidatas.map(c => `
         <tr style="border-bottom:1px solid #e5e7eb">
-          <td style="padding:8px;font-size:12px;font-weight:600">${c.nro_oc}</td>
-          <td style="padding:8px;font-size:12px">${c.proveedor || '—'}</td>
+          <td style="padding:8px;font-size:12px;font-weight:600">${escapeHtml(c.nro_oc)}</td>
+          <td style="padding:8px;font-size:12px">${escapeHtml(c.proveedor || '—')}</td>
           <td style="padding:8px;font-size:11px;color:#6b7280">${c.estado}</td>
           <td style="padding:8px;font-size:11px">${fmtFecha(c.fecha_emision)}</td>
           <td style="padding:8px;font-size:12px;text-align:right">${c.moneda} ${Number(c.total).toFixed(2)}</td>
           <td style="padding:8px;font-size:12px;text-align:right;font-weight:600">S/ ${Number(c.total_pen).toFixed(2)}</td>
           <td style="padding:8px;text-align:center">
-            <button onclick="OC._vincularDesdeModal(${c.id_oc}, ${id_oc}, '${(c.nro_oc || '').replace(/'/g, "\\'")}')" title="Vincular este gasto al servicio madre" style="padding:4px 10px;background:#15803d;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:11px;font-weight:600">+ Vincular</button>
+            <button onclick="OC._vincularDesdeModal(${c.id_oc}, ${id_oc}, '${escapeAttr(c.nro_oc)}')" title="Vincular este gasto al servicio madre" style="padding:4px 10px;background:#15803d;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:11px;font-weight:600">+ Vincular</button>
           </td>
         </tr>`).join('')
     : `<tr><td colspan="7" style="padding:18px;text-align:center;color:#9ca3af;font-size:12px;font-style:italic">No hay OCs gasto operativo del mismo CC sin vincular. Cuando crees una nueva OC SERVICIO con "Gasto operativo del proyecto" tildado y este mismo centro de costo, aparecerá acá.</td></tr>`;
@@ -710,8 +710,8 @@ async function cerrarImportacion(id_oc, nro) {
   const filasSat = resumen.satelites.length
     ? resumen.satelites.map(s => `
         <tr style="border-bottom:1px solid #e5e7eb">
-          <td style="padding:6px 8px;font-size:11px">${s.nro_oc}</td>
-          <td style="padding:6px 8px;font-size:11px">${s.proveedor || '—'}</td>
+          <td style="padding:6px 8px;font-size:11px">${escapeHtml(s.nro_oc)}</td>
+          <td style="padding:6px 8px;font-size:11px">${escapeHtml(s.proveedor || '—')}</td>
           <td style="padding:6px 8px;font-size:11px;text-align:right">${s.moneda} ${Number(s.total).toFixed(2)}</td>
           <td style="padding:6px 8px;font-size:11px;text-align:right;font-weight:600">S/ ${Number(s.total_pen).toFixed(2)}</td>
         </tr>`).join('')
@@ -719,8 +719,8 @@ async function cerrarImportacion(id_oc, nro) {
 
   const filasItems = resumen.items.map(it => `
     <tr style="border-bottom:1px solid #e5e7eb" data-id-detalle="${it.id_detalle}">
-      <td style="padding:8px;font-size:12px">${it.descripcion}</td>
-      <td style="padding:8px;font-size:11px;text-align:center">${it.cantidad} ${it.unidad || ''}</td>
+      <td style="padding:8px;font-size:12px">${escapeHtml(it.descripcion)}</td>
+      <td style="padding:8px;font-size:11px;text-align:center">${it.cantidad} ${escapeHtml(it.unidad || '')}</td>
       <td style="padding:8px;font-size:11px;text-align:right;color:#6b7280">S/ ${Number(it.precio_unitario_orig_pen).toFixed(4)}</td>
       <td style="padding:6px 8px;text-align:right">
         <input type="number" step="0.0001" min="0" value="${Number(it.precio_landed_unit_pen_sugerido).toFixed(4)}"
@@ -1218,10 +1218,6 @@ function requiereRecepcion(oc) {
   return oc.centro_costo === 'ALMACEN METAL';
 }
 
-function escapeHtml(s) {
-  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]);
-}
-
 function kanbanCard(oc, color) {
   const monto = oc.moneda === 'USD' ? fUSD(oc.total) : fPEN(oc.total);
   const dotClass = calcularDotClass(oc);
@@ -1232,7 +1228,7 @@ function kanbanCard(oc, color) {
     <div class="oc-card" onclick="OC.verOC(${oc.id_oc})" style="border-left:3px solid ${color.fg}">
       <div class="oc-card-head">
         <span class="oc-dot ${dotClass}" title="${dotTitle}"></span>
-        <strong class="oc-nro">${oc.nro_oc}</strong>
+        <strong class="oc-nro">${escapeHtml(oc.nro_oc)}</strong>
         <span class="oc-marca" style="background:${oc.empresa === 'PT' ? '#16a34a' : '#676767'}">${oc.empresa}</span>
       </div>
       <div class="oc-prov">${escapeHtml((oc.proveedor_nombre || '—').slice(0, 32))}</div>
@@ -1502,7 +1498,7 @@ function seccionCentro(nombreCentro, grupo) {
               const nroSafe = String(oc.nro_oc || '').replace(/'/g, "\\'");
               return `
                 <tr style="border-bottom:1px solid #e5e7eb">
-                  <td style="padding:8px 10px;font-weight:700"><a href="#" onclick="event.preventDefault();OC.verOC(${oc.id_oc})" style="color:var(--primary-color);text-decoration:none">${oc.nro_oc}</a></td>
+                  <td style="padding:8px 10px;font-weight:700"><a href="#" onclick="event.preventDefault();OC.verOC(${oc.id_oc})" style="color:var(--primary-color);text-decoration:none">${escapeHtml(oc.nro_oc)}</a></td>
                   <td style="padding:8px 10px;white-space:nowrap;font-variant-numeric:tabular-nums">
                     ${fmtDate(oc.fecha_emision)}
                     ${puedeEditarFecha ? `<button onclick="OC.editarFecha(${oc.id_oc},'${nroSafe}','${fechaIso}')" title="Editar fecha (corregir data histórica)" style="background:none;border:none;color:#2563eb;cursor:pointer;font-size:12px;padding:0 2px;margin-left:4px">📅</button>` : ''}
@@ -1585,9 +1581,9 @@ async function verOC(id_oc) {
         <div style="background:white;border-radius:12px;width:860px;max-width:95vw;max-height:90vh;overflow:auto;padding:24px">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
             <div>
-              <h2 style="margin:0;font-size:22px">${oc.nro_oc}</h2>
+              <h2 style="margin:0;font-size:22px">${escapeHtml(oc.nro_oc)}</h2>
               <div style="font-size:12px;color:var(--text-secondary);margin-top:4px">
-                Emitida ${fmtDate(oc.fecha_emision)} · ${oc.proveedor_nombre} (RUC ${oc.proveedor_ruc || '—'})
+                Emitida ${fmtDate(oc.fecha_emision)} · ${escapeHtml(oc.proveedor_nombre)} (RUC ${escapeHtml(oc.proveedor_ruc || '—')})
               </div>
             </div>
             <div style="display:flex;gap:8px;align-items:center">
@@ -1603,7 +1599,7 @@ async function verOC(id_oc) {
             <div style="padding:10px;background:#f9fafb;border-radius:6px"><strong>Forma pago:</strong> ${oc.forma_pago}${oc.dias_credito ? ` (${oc.dias_credito}d)` : ''}</div>
           </div>
           <div style="padding:10px 12px;background:#fef3c7;border:1px solid #fcd34d;border-radius:6px;margin-bottom:20px;font-size:13px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
-            <span><strong>📂 Centro de Costo:</strong> ${oc.centro_costo || '<span style="color:#9a3412">— sin asignar</span>'}</span>
+            <span><strong>📂 Centro de Costo:</strong> ${oc.centro_costo ? escapeHtml(oc.centro_costo) : '<span style="color:#9a3412">— sin asignar</span>'}</span>
             ${oc.id_servicio ? `<span style="font-size:11px;color:#78350f">· id_servicio: ${oc.id_servicio}</span>` : ''}
           </div>
 
@@ -1641,8 +1637,8 @@ async function verOC(id_oc) {
             <tbody>
               ${(oc.detalle || []).map(l => `
                 <tr style="border-bottom:1px solid #e5e7eb">
-                  <td style="padding:8px">${l.descripcion}</td>
-                  <td style="padding:8px;text-align:center">${l.unidad}</td>
+                  <td style="padding:8px">${escapeHtml(l.descripcion)}</td>
+                  <td style="padding:8px;text-align:center">${escapeHtml(l.unidad)}</td>
                   <td style="padding:8px;text-align:right">${l.cantidad}</td>
                   <td style="padding:8px;text-align:right;${Number(l.cantidad_recibida) >= Number(l.cantidad) ? 'color:#16a34a;font-weight:700' : ''}">${l.cantidad_recibida}</td>
                   <td style="padding:8px;text-align:right">${Number(l.precio_unitario).toFixed(2)}</td>
@@ -1658,7 +1654,7 @@ async function verOC(id_oc) {
             </tfoot>
           </table>
 
-          ${oc.observaciones ? `<div style="padding:10px;background:#fffbeb;border-radius:6px;margin-bottom:16px;font-size:12px"><strong>Observaciones:</strong> ${oc.observaciones}</div>` : ''}
+          ${oc.observaciones ? `<div style="padding:10px;background:#fffbeb;border-radius:6px;margin-bottom:16px;font-size:12px"><strong>Observaciones:</strong> ${escapeHtml(oc.observaciones)}</div>` : ''}
 
           ${(() => {
             // Bloque "Pago" — solo se muestra si la OC ya pasó por aprobación
@@ -1904,7 +1900,7 @@ async function verOC(id_oc) {
               <summary style="cursor:pointer;font-size:12px;color:var(--primary-color);font-weight:600;margin-bottom:10px">Historial de aprobaciones (${oc.aprobaciones.length})</summary>
               <table style="width:100%;border-collapse:collapse;font-size:11px;margin-top:8px">
                 <thead><tr style="background:#f9fafb"><th style="padding:6px;text-align:left">Fecha</th><th style="padding:6px;text-align:left">Acción</th><th style="padding:6px;text-align:left">Comentario</th></tr></thead>
-                <tbody>${oc.aprobaciones.map(a => `<tr><td style="padding:6px">${new Date(a.fecha).toLocaleString('es-PE')}</td><td style="padding:6px">${pill(a.accion, 'success')}</td><td style="padding:6px;color:var(--text-secondary)">${a.comentario || '—'}</td></tr>`).join('')}</tbody>
+                <tbody>${oc.aprobaciones.map(a => `<tr><td style="padding:6px">${new Date(a.fecha).toLocaleString('es-PE')}</td><td style="padding:6px">${pill(a.accion, 'success')}</td><td style="padding:6px;color:var(--text-secondary)">${escapeHtml(a.comentario || '—')}</td></tr>`).join('')}</tbody>
               </table>
             </details>
           ` : ''}
@@ -2532,11 +2528,11 @@ async function subirFactura(id) {
           return `
             <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:7px 10px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:5px;margin-bottom:6px">
               <div style="font-size:12px;color:#374151">
-                <strong>${f.nro_comprobante}</strong>
+                <strong>${escapeHtml(f.nro_comprobante)}</strong>
                 <span style="color:#6b7280;margin-left:6px">${fecha} · S/ ${Number(f.monto).toFixed(2)}</span>
               </div>
               <div style="display:flex;gap:6px">
-                ${tienePDF ? `<button data-preview="${f.id_factura_oc}" data-nro="${f.nro_comprobante}" title="Ver el PDF/imagen adjunta" style="background:#16a34a;color:white;border:none;border-radius:4px;padding:4px 9px;cursor:pointer;font-size:11px">👁️</button>` : '<span style="color:#9ca3af;font-size:11px;padding:4px 6px">sin pdf</span>'}
+                ${tienePDF ? `<button data-preview="${f.id_factura_oc}" data-nro="${escapeHtml(f.nro_comprobante)}" title="Ver el PDF/imagen adjunta" style="background:#16a34a;color:white;border:none;border-radius:4px;padding:4px 9px;cursor:pointer;font-size:11px">👁️</button>` : '<span style="color:#9ca3af;font-size:11px;padding:4px 6px">sin pdf</span>'}
                 <button data-eliminar="${f.id_factura_oc}" title="Eliminar esta factura. Solo GERENTE." style="background:transparent;color:#dc2626;border:1px solid #fecaca;border-radius:4px;padding:4px 9px;cursor:pointer;font-size:11px">✕</button>
               </div>
             </div>
@@ -2662,8 +2658,8 @@ async function abrirModalRecepcion(oc) {
     return `
       <tr style="border-bottom:1px solid #e5e7eb" data-idx="${idx}" data-id="${l.id_detalle}" data-falta="${falta}">
         <td style="padding:10px;font-size:13px">
-          <strong>${l.descripcion}</strong>
-          ${l.unidad ? `<span style="color:#6b7280;font-size:11px"> · ${l.unidad}</span>` : ''}
+          <strong>${escapeHtml(l.descripcion)}</strong>
+          ${l.unidad ? `<span style="color:#6b7280;font-size:11px"> · ${escapeHtml(l.unidad)}</span>` : ''}
         </td>
         <td style="padding:10px;text-align:right;font-size:13px">${f(pedido)}</td>
         <td style="padding:10px;text-align:right;font-size:13px;color:#6b7280">${f(yaRec)}</td>
@@ -2681,7 +2677,7 @@ async function abrirModalRecepcion(oc) {
     const html = `
       <div id="ov-recepcion" style="position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:2000;display:flex;align-items:center;justify-content:center;padding:20px">
         <div style="background:white;border-radius:12px;padding:24px;width:820px;max-width:95vw;max-height:90vh;overflow:auto">
-          <h3 style="margin:0 0 4px;font-size:18px">📦 Registrar recepción · OC ${oc.nro_oc}</h3>
+          <h3 style="margin:0 0 4px;font-size:18px">📦 Registrar recepción · OC ${escapeHtml(oc.nro_oc)}</h3>
           <p style="margin:0 0 14px;font-size:13px;color:#6b7280">
             Editá la cantidad recibida por línea (pre-cargada con lo que falta). Las que recibís 0 se ignoran.
           </p>
@@ -2848,7 +2844,7 @@ async function abrirModalResolucionItems(id_oc, lineasPendientes) {
     const renderOptions = () => catalogo
       .slice()
       .sort((a, b) => String(a.nombre).localeCompare(String(b.nombre)))
-      .map(i => `<option value="${i.id_item}">${i.nombre} (${i.unidad || 'UND'}) — stock: ${Number(i.stock_actual || 0)}</option>`)
+      .map(i => `<option value="${i.id_item}">${escapeHtml(i.nombre)} (${escapeHtml(i.unidad || 'UND')}) — stock: ${Number(i.stock_actual || 0)}</option>`)
       .join('');
 
     // Helper: escapa HTML para mostrar texto seguro en innerHTML.
@@ -3101,7 +3097,7 @@ async function registrarPago(id, nro) {
     const ov = document.createElement('div');
     ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
     const cuentasOpts = cuentasActivas.map(c =>
-      `<option value="${c.id_cuenta}">${c.nombre} (${c.moneda || 'PEN'})</option>`
+      `<option value="${c.id_cuenta}">${escapeHtml(c.nombre)} (${c.moneda || 'PEN'})</option>`
     ).join('');
     ov.innerHTML = `
       <div style="background:#fff;border-radius:8px;padding:22px;width:480px;max-width:95vw;box-shadow:0 20px 50px rgba(0,0,0,.3)">
@@ -3448,7 +3444,7 @@ async function editarMetadataOC(id, nro) {
   const data = await new Promise((resolve) => {
     const ov = document.createElement('div');
     ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
-    const v = (x) => x == null ? '' : String(x).replace(/"/g, '&quot;');
+    const v = (x) => escapeHtml(x);
     ov.innerHTML = `
       <div style="background:#fff;border-radius:8px;padding:22px;width:520px;max-width:95vw;max-height:90vh;overflow:auto;box-shadow:0 20px 50px rgba(0,0,0,.3)">
         <h3 style="margin:0 0 8px;font-size:16px">✎ Editar concepto / centro de costo · OC ${nro}</h3>
@@ -3558,10 +3554,10 @@ async function nuevaOC(editData) {
   const v = (x) => x == null ? '' : String(x).replace(/"/g, '&quot;');
 
   const provOpts = _proveedores.map(p =>
-    `<option value="${p.id_proveedor}" ${sel(editData?.id_proveedor, p.id_proveedor)}>${p.razon_social} (RUC ${p.ruc || '—'})</option>`
+    `<option value="${p.id_proveedor}" ${sel(editData?.id_proveedor, p.id_proveedor)}>${escapeHtml(p.razon_social)} (RUC ${escapeHtml(p.ruc || '—')})</option>`
   ).join('');
   const servOpts = _servicios.map(s =>
-    `<option value="${s.id_servicio}" ${sel(editData?.id_servicio, s.id_servicio)}>${s.codigo || ('SRV-' + s.id_servicio)} · ${s.nombre || s.cliente || ''}</option>`
+    `<option value="${s.id_servicio}" ${sel(editData?.id_servicio, s.id_servicio)}>${escapeHtml(s.codigo || ('SRV-' + s.id_servicio))} · ${escapeHtml(s.nombre || s.cliente || '')}</option>`
   ).join('');
 
   const fechaEmision   = esEdit ? String(editData.fecha_emision || '').slice(0, 10) : hoy;
@@ -3716,8 +3712,8 @@ async function nuevaOC(editData) {
     const cont = document.getElementById('oc-lineas');
     cont.innerHTML = lineas.map((l, i) => `
       <div style="display:grid;grid-template-columns:3fr 1fr 1fr 1fr 40px;gap:6px">
-        <input placeholder="Descripción" value="${l.descripcion}" oninput="OC._setL(${i},'descripcion',this.value)">
-        <input placeholder="UND" value="${l.unidad}" oninput="OC._setL(${i},'unidad',this.value)">
+        <input placeholder="Descripción" value="${escapeHtml(l.descripcion)}" oninput="OC._setL(${i},'descripcion',this.value)">
+        <input placeholder="UND" value="${escapeHtml(l.unidad)}" oninput="OC._setL(${i},'unidad',this.value)">
         <input type="number" step="0.0001" placeholder="Cant" value="${l.cantidad}" oninput="OC._setL(${i},'cantidad',Number(this.value))">
         <input type="number" step="0.0001" placeholder="P.Unit" value="${l.precio_unitario}" oninput="OC._setL(${i},'precio_unitario',Number(this.value))">
         <button type="button" onclick="OC._delL(${i})" title="Quitar esta línea de la OC" aria-label="Quitar línea" style="background:transparent;border:none;color:#dc2626;cursor:pointer;font-size:18px">×</button>
@@ -3784,7 +3780,7 @@ async function nuevaOC(editData) {
       `<option value="">— Sin proyecto vinculado —</option>` +
       filtrados.map(p => `
         <option value="${p.id_cotizacion}" ${idPreSelected === p.id_cotizacion ? 'selected' : ''}>
-          ${p.nro_cotizacion} · ${p.cliente}${p.proyecto ? ' — ' + p.proyecto : ''} · ${fmtMoney(p.total, p.moneda)} (${p.estado})
+          ${escapeHtml(p.nro_cotizacion)} · ${escapeHtml(p.cliente)}${p.proyecto ? ' — ' + escapeHtml(p.proyecto) : ''} · ${fmtMoney(p.total, p.moneda)} (${escapeHtml(p.estado)})
         </option>
       `).join('');
     proyInfo.textContent = filtrados.length === 0

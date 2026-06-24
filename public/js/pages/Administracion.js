@@ -1,5 +1,5 @@
 import { api } from '../services/api.js';
-import { showError } from '../services/ui.js';
+import { showError, escapeHtml } from '../services/ui.js';
 import { TabBar } from '../components/TabBar.js';
 import { kpiGrid } from '../components/KpiCard.js';
 import { pill } from '../components/Pill.js';
@@ -124,7 +124,7 @@ async function renderDetalle(panel) {
       <tr>
         <td style="padding:8px;font-size:12px">${MESES[r.mes] || '—'}</td>
         <td style="padding:8px"><span style="background:${r.tipo_gasto_logistica === 'GENERAL' ? '#dbeafe' : '#fef3c7'};color:${r.tipo_gasto_logistica === 'GENERAL' ? '#1e40af' : '#92400e'};padding:2px 8px;border-radius:8px;font-size:11px;font-weight:600">${r.tipo_gasto_logistica}</span></td>
-        <td style="padding:8px;font-weight:600">${r.centro_costo}</td>
+        <td style="padding:8px;font-weight:600">${escapeHtml(r.centro_costo)}</td>
         <td style="padding:8px;text-align:right;font-size:12px">${r.cantidad}</td>
         <td style="padding:8px;text-align:right;font-weight:700">${fPEN(r.total_gasto)}</td>
       </tr>`).join('');
@@ -132,10 +132,10 @@ async function renderDetalle(panel) {
     const detalleRows = detalle.map(d => `
       <tr>
         <td style="padding:8px;font-size:12px">${String(d.fecha).split('T')[0]}</td>
-        <td style="padding:8px"><strong>${d.proveedor_nombre || '—'}</strong></td>
-        <td style="padding:8px;font-size:12px">${d.concepto}</td>
+        <td style="padding:8px"><strong>${escapeHtml(d.proveedor_nombre || '—')}</strong></td>
+        <td style="padding:8px;font-size:12px">${escapeHtml(d.concepto)}</td>
         <td style="padding:8px"><span style="background:#f3f4f6;padding:2px 6px;border-radius:6px;font-size:11px">${d.tipo_gasto_logistica}</span></td>
-        <td style="padding:8px;font-size:12px">${d.centro_costo}</td>
+        <td style="padding:8px;font-size:12px">${escapeHtml(d.centro_costo)}</td>
         <td style="padding:8px;text-align:right;font-weight:700">${fPEN(d.total_base)}</td>
         <td style="padding:8px">${pill(d.estado_pago || 'PENDIENTE', d.estado_pago || 'PENDIENTE')}</td>
       </tr>`).join('');
@@ -427,10 +427,10 @@ async function renderRendiciones(panel) {
   // ── Filas: pendientes de rendir (OCs PAGADA / CERRADA_SIN_FACTURA sin rendición) ──
   const filasPendientes = (pendientes || []).map(o => `
     <tr style="border-bottom:1px solid #fde68a;background:#fffbeb">
-      <td style="padding:8px;font-size:11px;font-weight:600">${o.nro_oc}</td>
+      <td style="padding:8px;font-size:11px;font-weight:600">${escapeHtml(o.nro_oc)}</td>
       <td style="padding:8px;font-size:11px">${fmtDate(o.fecha_emision)}</td>
-      <td style="padding:8px;font-size:11px">${o.proveedor_nombre || '—'}</td>
-      <td style="padding:8px;font-size:11px">${o.centro_costo || '—'}</td>
+      <td style="padding:8px;font-size:11px">${escapeHtml(o.proveedor_nombre || '—')}</td>
+      <td style="padding:8px;font-size:11px">${escapeHtml(o.centro_costo || '—')}</td>
       <td style="padding:8px;font-size:11px;text-align:right;font-variant-numeric:tabular-nums;font-weight:600">${fmtMoney(o.total, o.moneda)}</td>
       <td style="padding:8px;text-align:center">${ocEstadoBadge(o.estado)}</td>
       <td style="padding:8px;text-align:right;white-space:nowrap">
@@ -446,8 +446,8 @@ async function renderRendiciones(panel) {
     <tr style="border-bottom:1px solid #f3f4f6">
       <td style="padding:8px;font-size:11px;font-weight:600">${r.nro_oc_referencia}</td>
       <td style="padding:8px;font-size:11px">${fmtDate(r.fecha_rendicion)}</td>
-      <td style="padding:8px;font-size:11px">${r.proveedor_nombre || '—'}</td>
-      <td style="padding:8px;font-size:11px">${r.centro_costo || '—'}</td>
+      <td style="padding:8px;font-size:11px">${escapeHtml(r.proveedor_nombre || '—')}</td>
+      <td style="padding:8px;font-size:11px">${escapeHtml(r.centro_costo || '—')}</td>
       <td style="padding:8px;font-size:11px">${r.cuenta_a_cargo_de_nombre || '—'}<br><span style="font-size:10px;color:#6b7280">${r.cargo || ''}</span></td>
       <td style="padding:8px;font-size:11px;text-align:right;font-variant-numeric:tabular-nums">${fmtMoney(r.fondo_asignado, r.moneda)}</td>
       <td style="padding:8px;font-size:11px;text-align:right;font-variant-numeric:tabular-nums">${fmtMoney(r.total_gastos, r.moneda)}</td>
@@ -620,7 +620,7 @@ async function abrirModalNueva() {
           <label style="font-size:11px;font-weight:600;color:#374151">Orden de Compra *</label>
           <select id="nr-oc" required style="width:100%;padding:8px;border:1px solid #d1d5db;border-radius:4px;font-size:12px">
             <option value="">— Seleccionar —</option>
-            ${elegibles.map(o => `<option value="${o.id_oc}">OC ${o.nro_oc} · ${o.proveedor_nombre || '—'} · ${fmtMoney(o.total, o.moneda)} · ${o.estado}</option>`).join('')}
+            ${elegibles.map(o => `<option value="${o.id_oc}">OC ${escapeHtml(o.nro_oc)} · ${escapeHtml(o.proveedor_nombre || '—')} · ${fmtMoney(o.total, o.moneda)} · ${escapeHtml(o.estado)}</option>`).join('')}
           </select>
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
@@ -707,11 +707,11 @@ async function abrirModalEditar(id_rendicion) {
         <td style="padding:6px 4px;font-size:11px">${fmtDate(it.fecha)}</td>
         <td style="padding:6px 4px;font-size:11px">${it.nro_documento || '—'}</td>
         <td style="padding:6px 4px;font-size:11px">${it.beneficiario || '—'}</td>
-        <td style="padding:6px 4px;font-size:11px">${it.concepto}</td>
+        <td style="padding:6px 4px;font-size:11px">${escapeHtml(it.concepto)}</td>
         <td style="padding:6px 4px;text-align:right;font-size:11px;font-variant-numeric:tabular-nums">${fmtMoney(it.subtotal, r.moneda)}</td>
         <td style="padding:6px 4px;text-align:right;font-size:11px;font-variant-numeric:tabular-nums">${fmtMoney(it.igv, r.moneda)}</td>
         <td style="padding:6px 4px;text-align:right;font-size:11px;font-variant-numeric:tabular-nums;font-weight:600">${fmtMoney(it.importe_total, r.moneda)}</td>
-        <td style="padding:6px 4px;font-size:10px;color:#6b7280">${it.observaciones || ''}</td>
+        <td style="padding:6px 4px;font-size:10px;color:#6b7280">${escapeHtml(it.observaciones || '')}</td>
         <td style="padding:6px 4px;text-align:right">
           <button data-del-item="${it.id_item}" title="Eliminar línea" style="background:transparent;border:none;color:#dc2626;cursor:pointer;font-size:14px">×</button>
         </td>
@@ -741,7 +741,7 @@ async function abrirModalEditar(id_rendicion) {
                ${puedeQuitar ? `<button data-desfirmar="${tipo}" style="padding:5px 10px;background:#fff;border:1px solid #dc2626;color:#dc2626;border-radius:4px;cursor:pointer;font-size:11px">Quitar firma</button>` : ''}`
             : `<label style="display:flex;gap:6px;align-items:center;cursor:pointer;font-size:12px">
                  <input type="checkbox" data-firmar="${tipo}">
-                 Marcar para firmar como <strong>${u.nombre || 'yo'}</strong>
+                 Marcar para firmar como <strong>${escapeHtml(u.nombre || 'yo')}</strong>
                </label>`}
         </div>`;
     };
@@ -750,7 +750,7 @@ async function abrirModalEditar(id_rendicion) {
       <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px">
         <div>
           <h3 style="margin:0;font-size:18px">🧾 Rendición OC ${r.nro_oc_referencia}</h3>
-          <div style="font-size:11px;color:#6b7280;margin-top:2px">${r.proveedor_nombre || ''} · ${r.centro_costo} · ${fmtMoney(r.importe_recibido, r.moneda)}</div>
+          <div style="font-size:11px;color:#6b7280;margin-top:2px">${escapeHtml(r.proveedor_nombre || '')} · ${escapeHtml(r.centro_costo)} · ${fmtMoney(r.importe_recibido, r.moneda)}</div>
         </div>
         <div style="display:flex;gap:8px">
           <button id="btn-pdf-r" style="padding:7px 14px;background:#fff;border:1px solid #d1d5db;border-radius:5px;cursor:pointer;font-size:12px">📄 Ver PDF</button>
@@ -1149,7 +1149,7 @@ function pintarPersonal(body, data) {
   const ocFila = (o) => `
     <tr style="border-bottom:1px solid #f3f4f6">
       <td style="padding:6px 8px;font-size:11px;font-weight:600">
-        <a href="#" onclick="event.preventDefault();window.OC&&window.OC.verOC(${o.id_oc})" style="color:#1e40af;text-decoration:none">${o.nro_oc}</a>
+        <a href="#" onclick="event.preventDefault();window.OC&&window.OC.verOC(${o.id_oc})" style="color:#1e40af;text-decoration:none">${escapeHtml(o.nro_oc)}</a>
       </td>
       <td style="padding:6px 8px;font-size:11px">${(String(o.fecha_emision || '').slice(0,10)).split('-').reverse().join('/')}</td>
       <td style="padding:6px 8px;font-size:11px;font-weight:600">${escapeHtml(o.persona || '—')}</td>
@@ -1288,10 +1288,6 @@ function pintarPersonal(body, data) {
     ${otrosGenerales}
     ${topPersonas}
   `;
-}
-
-function escapeHtml(s) {
-  return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
 // ─── Modal: Nueva OC de Honorario ─────────────────────────────────────

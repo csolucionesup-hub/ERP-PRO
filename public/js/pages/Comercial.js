@@ -1,5 +1,5 @@
 import { api } from '../services/api.js';
-import { tip } from '../services/ui.js';
+import { tip, escapeHtml, escapeAttr } from '../services/ui.js';
 import { pillCotizacionEstado } from '../components/Pill.js';
 import { kpiCard as kpiCardEnt } from '../components/KpiCard.js';
 
@@ -50,7 +50,7 @@ const ESTADOS_EDITABLES = ['EN_PROCESO', 'A_ESPERA_RESPUESTA'];
 // Cada campo permite agregar/quitar líneas. Al submit se concatenan
 // con \n y se guardan en el input hidden con name="<field>".
 function _multilineLineHTML(value = '', placeholder = '') {
-  const safeVal = String(value || '').replace(/"/g, '&quot;');
+  const safeVal = escapeHtml(value);
   return `
     <div class="multiline-line" style="display:flex;gap:6px;align-items:center;margin-bottom:4px">
       <input class="multiline-input" value="${safeVal}" placeholder="${placeholder}"
@@ -147,7 +147,7 @@ function confirmarAccion({ titulo, mensaje, confirmLabel = 'Confirmar', cancelLa
         <div style="padding:18px 22px;border-top:4px solid ${colores.color}">
           <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
             <div style="font-size:28px">${colores.icono}</div>
-            <h3 style="margin:0;font-size:16px;color:#111">${titulo}</h3>
+            <h3 style="margin:0;font-size:16px;color:#111">${escapeHtml(titulo)}</h3>
           </div>
           <div style="font-size:13px;color:#444;line-height:1.5;white-space:pre-wrap">${mensaje}</div>
         </div>
@@ -178,7 +178,7 @@ function confirmarTexto({ titulo, mensaje, textoRequerido, confirmLabel = 'Borra
         <div style="padding:20px 22px;border-top:4px solid ${colores.color}">
           <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
             <div style="font-size:30px">${colores.icono}</div>
-            <h3 style="margin:0;font-size:16px;color:#111">${titulo}</h3>
+            <h3 style="margin:0;font-size:16px;color:#111">${escapeHtml(titulo)}</h3>
           </div>
           <div style="font-size:13px;color:#444;line-height:1.5;white-space:pre-wrap;margin-bottom:14px">${mensaje}</div>
           <div style="background:#fef2f2;border:1px solid #fecaca;padding:10px;border-radius:6px;margin-bottom:10px">
@@ -225,7 +225,7 @@ function confirmarTexto({ titulo, mensaje, textoRequerido, confirmLabel = 'Borra
 // observación, items y totales antes de emitir. El backend asigna el correlativo
 // y persiste (FacturaService.crearYEmitir).
 async function modalEmitirFactura(preview, opts = {}) {
-  const v = (x) => x == null ? '' : String(x).replace(/"/g, '&quot;');
+  const v = (x) => escapeHtml(x);
   const fNum = (n) => Number(n || 0).toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
   // Estado local: copia editable del preview
@@ -263,7 +263,7 @@ async function modalEmitirFactura(preview, opts = {}) {
         <tr data-idx="${i}" style="border-bottom:1px solid #eee">
           <td style="padding:4px"><input data-f="cantidad" type="number" step="0.001" min="0.001" value="${d.cantidad}" style="width:60px;padding:5px;border:1px solid #d1d5db;border-radius:4px;text-align:right;font-size:12px"></td>
           <td style="padding:4px"><input data-f="unidad_sunat" value="${v(d.unidad_sunat)}" placeholder="NIU" style="width:55px;padding:5px;border:1px solid #d1d5db;border-radius:4px;font-size:12px"></td>
-          <td style="padding:4px"><textarea data-f="descripcion" rows="2" style="width:100%;padding:5px;border:1px solid #d1d5db;border-radius:4px;font-size:12px;resize:vertical">${d.descripcion}</textarea></td>
+          <td style="padding:4px"><textarea data-f="descripcion" rows="2" style="width:100%;padding:5px;border:1px solid #d1d5db;border-radius:4px;font-size:12px;resize:vertical">${escapeHtml(d.descripcion)}</textarea></td>
           <td style="padding:4px"><input data-f="precio_unitario" type="number" step="0.0001" min="0" value="${d.precio_unitario}" style="width:90px;padding:5px;border:1px solid #d1d5db;border-radius:4px;text-align:right;font-size:12px"></td>
           <td style="padding:4px;text-align:center">
             <button type="button" data-act="del" title="Quitar esta línea de la factura" aria-label="Quitar línea" style="background:none;border:none;color:#dc2626;cursor:pointer;font-size:16px">×</button>
@@ -455,7 +455,7 @@ function formNueva(marca, tcHoy, opts = {}) {
   return `
     <div class="card" style="border-top:4px solid ${cfg.color}">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
-        <h3 style="margin:0;font-weight:600;font-size:15px">${titulo}</h3>
+        <h3 style="margin:0;font-weight:600;font-size:15px">${escapeHtml(titulo)}</h3>
         ${cfg.logoHTML}
       </div>
 
@@ -705,7 +705,7 @@ function bindForm(marca, opts = {}) {
               ? `<img src="${l.foto_url}" style="width:42px;height:42px;object-fit:cover;border-radius:4px;border:1px solid #e5e7eb" onerror="this.style.display='none'">`
               : `<div style="width:42px;height:42px;background:#f3f4f6;border-radius:4px;display:flex;align-items:center;justify-content:center;color:#9ca3af;font-size:10px">sin foto</div>`}
             <div style="min-width:0">
-              <div style="font-size:12px;font-weight:600">${l.descripcion}${editing ? ' <span style="color:#d97706;font-weight:600">· editando…</span>' : ''}</div>
+              <div style="font-size:12px;font-weight:600">${escapeHtml(l.descripcion)}${editing ? ' <span style="color:#d97706;font-weight:600">· editando…</span>' : ''}</div>
               ${l.subdescripcion ? `<div style="font-size:11px;color:#4b5563;white-space:pre-wrap">${l.subdescripcion}</div>` : ''}
               ${l.notas ? `<div style="font-size:10px;color:#b45309;font-style:italic;white-space:pre-wrap">${l.notas}</div>` : ''}
               <div style="font-size:10px;color:var(--text-secondary)">${l.cantidad} ${l.unidad || ''} × ${fCur(l.precio_unitario)}</div>
@@ -998,7 +998,7 @@ function archivoTable(cotizaciones, _filtroMarcaLegacy) {
     const f = _archivoFiltros;
     const filtrosActivos = [
       f.marca && `marca: ${MARCAS[f.marca]?.label}`,
-      f.cliente !== 'Todos' && `cliente: ${f.cliente}`,
+      f.cliente !== 'Todos' && `cliente: ${escapeHtml(f.cliente)}`,
       f.anio !== 'Todos' && `año: ${f.anio}`,
       f.mes !== 'Todos' && `mes: ${f.mes}`,
       f.moneda !== 'Todas' && `moneda: ${f.moneda}`,
@@ -1022,18 +1022,18 @@ function archivoTable(cotizaciones, _filtroMarcaLegacy) {
       <tr class="${anulada ? 'row-anulada' : ''}">
         <td>
           ${marcaBadge}
-          <div style="font-size:12px;font-weight:700;margin-top:3px">${c.nro_cotizacion}</div>
+          <div style="font-size:12px;font-weight:700;margin-top:3px">${escapeHtml(c.nro_cotizacion)}</div>
           <div style="font-size:10px;color:var(--text-secondary);display:flex;align-items:center;gap:4px">
             <span>${fechaIso || '—'}</span>
-            ${!anulada ? `<button onclick="window.editarFechaCotizacion(${c.id_cotizacion},'${c.nro_cotizacion.replace(/'/g, "\\'")}','${fechaIso}')" title="Editar fecha (corregir data histórica)" style="background:none;border:none;color:#2563eb;cursor:pointer;font-size:11px;padding:0">📅</button>` : ''}
+            ${!anulada ? `<button onclick="window.editarFechaCotizacion(${c.id_cotizacion},'${escapeAttr(c.nro_cotizacion)}','${fechaIso}')" title="Editar fecha (corregir data histórica)" style="background:none;border:none;color:#2563eb;cursor:pointer;font-size:11px;padding:0">📅</button>` : ''}
           </div>
           ${esUSD ? `<span style="font-size:10px;background:#16a34a;color:#fff;padding:1px 5px;border-radius:3px">USD</span>` : ''}
         </td>
         <td>
-          <strong>${c.cliente}</strong>
-          ${c.proyecto ? `<br><span style="font-size:11px;color:var(--text-secondary)">${c.proyecto}</span>` : ''}
-          ${c.atencion ? `<br><span style="font-size:10px;color:var(--text-secondary)">${c.atencion}</span>` : ''}
-          ${c.comentarios ? `<div style="margin-top:6px;padding:6px 8px;background:#fffbeb;border:1px solid #fde68a;border-radius:4px;font-size:11px;color:#78350f;white-space:pre-wrap;line-height:1.4" title="Comentario interno (no aparece en el PDF)">📝 ${c.comentarios}</div>` : ''}
+          <strong>${escapeHtml(c.cliente)}</strong>
+          ${c.proyecto ? `<br><span style="font-size:11px;color:var(--text-secondary)">${escapeHtml(c.proyecto)}</span>` : ''}
+          ${c.atencion ? `<br><span style="font-size:10px;color:var(--text-secondary)">${escapeHtml(c.atencion)}</span>` : ''}
+          ${c.comentarios ? `<div style="margin-top:6px;padding:6px 8px;background:#fffbeb;border:1px solid #fde68a;border-radius:4px;font-size:11px;color:#78350f;white-space:pre-wrap;line-height:1.4" title="Comentario interno (no aparece en el PDF)">📝 ${escapeHtml(c.comentarios)}</div>` : ''}
         </td>
         <td style="text-align:right;font-size:12px;line-height:1.6">
           ${esUSD ? `<div style="color:#16a34a">${fUSD(subOrig)}</div>` : ''}
@@ -1063,10 +1063,10 @@ function archivoTable(cotizaciones, _filtroMarcaLegacy) {
           <div style="display:flex;flex-direction:column;gap:4px">
             <button class="action-btn"
               title="Previsualizar el PDF de la cotización en una ventana modal."
-              onclick="window.previewPDFCotizacion(${c.id_cotizacion},'${c.nro_cotizacion.replace(/'/g, "\\'")}')">👁️ Ver</button>
+              onclick="window.previewPDFCotizacion(${c.id_cotizacion},'${escapeAttr(c.nro_cotizacion)}')">👁️ Ver</button>
             <button class="action-btn" style="background:#dc2626;color:#fff"
               title="Descargar el PDF de la cotización con el formato oficial Metal Engineers / Perfotools."
-              onclick="window.descargarPDFCotizacion(${c.id_cotizacion},'${c.nro_cotizacion.replace(/'/g, "\\'")}')">📄 PDF</button>
+              onclick="window.descargarPDFCotizacion(${c.id_cotizacion},'${escapeAttr(c.nro_cotizacion)}')">📄 PDF</button>
             ${!anulada && (c.estado === 'APROBADA' || c.estado === 'TERMINADA') && !c.nro_factura ? `
             <span style="background:#fef3c7;color:#92400e;padding:3px 6px;border-radius:4px;font-size:11px;font-weight:600;border:1px solid #fde68a"
               title="Factura pendiente de emitir. La emisión es responsabilidad contable — andá a Contabilidad → 📤 Facturación pendiente para emitirla en SUNAT.">
@@ -1076,23 +1076,23 @@ function archivoTable(cotizaciones, _filtroMarcaLegacy) {
             ${c.nro_factura ? `
             <span style="background:#dcfce7;color:#166534;padding:3px 6px;border-radius:4px;font-size:11px;font-weight:600;border:1px solid #86efac"
               title="Factura ya emitida y asociada a esta cotización.">
-              ✅ ${c.nro_factura}
+              ✅ ${escapeHtml(c.nro_factura)}
             </span>` : ''}
             ${!anulada && ESTADOS_EDITABLES.includes(c.estado) ? `
             <button class="action-btn" style="background:#3b82f6;color:#fff"
               title="Edición completa: cambiar items, descripciones, cantidades, precios, fotos. Solo disponible en EN_PROCESO o A_ESPERA_RESPUESTA (antes de enviar al cliente)."
-              onclick="window.editarCotizacion(${c.id_cotizacion},'${c.nro_cotizacion.replace(/'/g, "\\'")}')">✎ Editar líneas</button>
+              onclick="window.editarCotizacion(${c.id_cotizacion},'${escapeAttr(c.nro_cotizacion)}')">✎ Editar líneas</button>
             ` : ''}
             ${!anulada ? `
             <button class="action-btn"
               style="background:#fff;color:#3b82f6;border:1px solid #93c5fd;font-size:11px"
               title="Edición segura disponible en cualquier estado: cliente, atención, teléfono, correo, proyecto, condiciones (forma de pago, validez, plazos, lugar entrega), referencias y comentarios. NO toca números, items ni cobranzas."
-              onclick="window.editarMetadataCotizacion(${c.id_cotizacion},'${c.nro_cotizacion.replace(/'/g, "\\'")}')">✎ Editar datos</button>
+              onclick="window.editarMetadataCotizacion(${c.id_cotizacion},'${escapeAttr(c.nro_cotizacion)}')">✎ Editar datos</button>
             ` : ''}
             ${!anulada ? `
             <button class="action-btn action-btn-anular"
               title="Anular la cotización (cambia estado a ANULADA, no borra). El número correlativo queda quemado y la cotización pasa al archivo de anuladas."
-              onclick="window.anularCotizacion(${c.id_cotizacion},'${c.nro_cotizacion.replace(/'/g, "\\'")}')">Anular</button>
+              onclick="window.anularCotizacion(${c.id_cotizacion},'${escapeAttr(c.nro_cotizacion)}')">Anular</button>
             ` : `<span style="font-size:11px;color:var(--text-secondary)">Anulada</span>`}
             ${(() => {
               try {
@@ -1102,7 +1102,7 @@ function archivoTable(cotizaciones, _filtroMarcaLegacy) {
                   return `<button class="action-btn"
                     style="background:#fff;color:#7f1d1d;border:1px solid #7f1d1d;font-size:11px"
                     title="Eliminar permanente con cascada total (solo GERENTE). Borra cotización + items + cobranzas registradas + movimientos bancarios automáticos + Tx caja + costos de servicio. Las OCs vinculadas se desvinculan (no se borran). Pide tipear el N° de cotización."
-                    onclick="window.eliminarCotizacion(${c.id_cotizacion},'${c.nro_cotizacion.replace(/'/g, "\\'")}')">🗑 Eliminar</button>`;
+                    onclick="window.eliminarCotizacion(${c.id_cotizacion},'${escapeAttr(c.nro_cotizacion)}')">🗑 Eliminar</button>`;
                 }
               } catch {}
               return '';
@@ -1151,13 +1151,13 @@ function renderAnuladasTab(anuladas) {
       <tr class="row-anulada">
         <td>
           ${badge}
-          <div style="font-size:12px;font-weight:700;margin-top:3px">${c.nro_cotizacion}</div>
+          <div style="font-size:12px;font-weight:700;margin-top:3px">${escapeHtml(c.nro_cotizacion)}</div>
           <div style="font-size:10px;color:var(--text-secondary)">${c.fecha ? String(c.fecha).split('T')[0] : '—'}</div>
         </td>
         <td>
-          <strong>${c.cliente}</strong>
-          ${c.proyecto ? `<br><span style="font-size:11px;color:var(--text-secondary)">${c.proyecto}</span>` : ''}
-          ${c.comentarios ? `<div style="margin-top:6px;padding:6px 8px;background:#fffbeb;border:1px solid #fde68a;border-radius:4px;font-size:11px;color:#78350f;white-space:pre-wrap;line-height:1.4" title="Comentario interno (no aparece en el PDF)">📝 ${c.comentarios}</div>` : ''}
+          <strong>${escapeHtml(c.cliente)}</strong>
+          ${c.proyecto ? `<br><span style="font-size:11px;color:var(--text-secondary)">${escapeHtml(c.proyecto)}</span>` : ''}
+          ${c.comentarios ? `<div style="margin-top:6px;padding:6px 8px;background:#fffbeb;border:1px solid #fde68a;border-radius:4px;font-size:11px;color:#78350f;white-space:pre-wrap;line-height:1.4" title="Comentario interno (no aparece en el PDF)">📝 ${escapeHtml(c.comentarios)}</div>` : ''}
         </td>
         <td style="text-align:right;font-size:12px">
           ${esUSD ? `<div style="color:#16a34a">${fUSD(Number(c.total) / (Number(c.tipo_cambio) || 1))}</div>` : ''}
@@ -1167,9 +1167,9 @@ function renderAnuladasTab(anuladas) {
         <td style="text-align:center">
           <div style="display:flex;flex-direction:column;gap:4px">
             <button class="action-btn"
-              onclick="window.previewPDFCotizacion(${c.id_cotizacion},'${c.nro_cotizacion.replace(/'/g, "\\'")}')">👁️ Ver</button>
+              onclick="window.previewPDFCotizacion(${c.id_cotizacion},'${escapeAttr(c.nro_cotizacion)}')">👁️ Ver</button>
             <button class="action-btn" style="background:#dc2626;color:#fff"
-              onclick="window.descargarPDFCotizacion(${c.id_cotizacion},'${c.nro_cotizacion.replace(/'/g, "\\'")}')">📄 PDF</button>
+              onclick="window.descargarPDFCotizacion(${c.id_cotizacion},'${escapeAttr(c.nro_cotizacion)}')">📄 PDF</button>
             ${(() => {
               try {
                 const u = JSON.parse(localStorage.getItem('erp_user') || '{}');
@@ -1177,7 +1177,7 @@ function renderAnuladasTab(anuladas) {
                   return `<button class="action-btn"
                     style="background:#fff;color:#7f1d1d;border:1px solid #7f1d1d;font-size:11px"
                     title="Eliminar definitivamente con cascada"
-                    onclick="window.eliminarCotizacion(${c.id_cotizacion},'${c.nro_cotizacion.replace(/'/g, "\\'")}')">🗑 Eliminar</button>`;
+                    onclick="window.eliminarCotizacion(${c.id_cotizacion},'${escapeAttr(c.nro_cotizacion)}')">🗑 Eliminar</button>`;
                 }
               } catch {}
               return '';
@@ -1322,7 +1322,7 @@ function renderDashboardTab(d) {
     const barW    = Math.round(tasaCli);
     return `
       <tr style="border-bottom:1px solid #f3f4f6">
-        <td style="padding:8px 0;font-weight:600;color:#333">${i + 1}. ${r.cliente}</td>
+        <td style="padding:8px 0;font-weight:600;color:#333">${i + 1}. ${escapeHtml(r.cliente)}</td>
         <td style="text-align:center;padding:8px 4px;font-size:13px">${r.cantidad}</td>
         <td style="text-align:right;padding:8px 4px;font-size:12px">${fPEN(r.monto_pen)}</td>
         <td style="text-align:right;padding:8px 4px;font-size:12px">${fUSD(r.monto_usd)}</td>
@@ -1840,7 +1840,7 @@ export const Comercial = async () => {
       try { cot = await api.cotizaciones.getCotizacion(id); }
       catch (err) { return window.showError?.('Error cargando cotización: ' + err.message); }
 
-      const v = (x) => x == null ? '' : String(x).replace(/"/g, '&quot;');
+      const v = (x) => escapeHtml(x);
       const data = await new Promise((resolve) => {
         const ov = document.createElement('div');
         ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
@@ -2112,7 +2112,7 @@ export const Comercial = async () => {
             Cliente
             <select id="arch-f-cliente" style="padding:6px 10px;border:1px solid #d1d5db;border-radius:5px;font-size:12px;min-width:200px">
               <option value="Todos">Todos</option>
-              ${[...new Set(cotizaciones.map(c => c.cliente).filter(Boolean))].sort().map(cl => `<option value="${String(cl).replace(/"/g, '&quot;')}" ${_archivoFiltros.cliente === cl ? 'selected' : ''}>${cl}</option>`).join('')}
+              ${[...new Set(cotizaciones.map(c => c.cliente).filter(Boolean))].sort().map(cl => `<option value="${escapeHtml(cl)}" ${_archivoFiltros.cliente === cl ? 'selected' : ''}>${escapeHtml(cl)}</option>`).join('')}
             </select>
           </label>
           <label style="display:flex;flex-direction:column;gap:3px;font-size:11px;color:var(--text-secondary)">

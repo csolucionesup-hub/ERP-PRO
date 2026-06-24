@@ -1,5 +1,5 @@
 import { api } from '../services/api.js';
-import { showSuccess, showError, tip } from '../services/ui.js';
+import { showSuccess, showError, tip, escapeHtml, escapeAttr } from '../services/ui.js';
 import { kpiGrid } from '../components/KpiCard.js';
 import { TabBar } from '../components/TabBar.js';
 import { lineChart, barChart, donutChart, chartColors, destroyChart } from '../components/charts.js';
@@ -110,16 +110,16 @@ function renderCatalogo(panel) {
       const marcaStyle  = MARCA_BADGE[marca] || MARCA_BADGE.COMPARTIDO;
       const marcaLabel  = marca === 'METAL' ? 'METAL' : marca === 'PERFOTOOLS' ? 'PERFO' : 'COMP';
       html += `
-        <tr data-cat="${i.categoria || ''}" data-marca="${marca}" data-fam="${fam}">
-          <td style="font-size:11px; color:var(--text-secondary)">${i.sku}</td>
+        <tr data-cat="${escapeHtml(i.categoria || '')}" data-marca="${escapeHtml(marca)}" data-fam="${escapeHtml(fam)}">
+          <td style="font-size:11px; color:var(--text-secondary)">${escapeHtml(i.sku)}</td>
           <td>
-            <strong>${i.nombre}</strong>
+            <strong>${escapeHtml(i.nombre)}</strong>
             <div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:3px">
-              <span style="font-size:10px;padding:2px 6px;border-radius:10px;${badgeStyle}">${i.categoria || 'Material'}</span>
+              <span style="font-size:10px;padding:2px 6px;border-radius:10px;${badgeStyle}">${escapeHtml(i.categoria || 'Material')}</span>
               <span title="Marca/empresa contable. COMPARTIDO = se imputa según la cotización al consumir." style="font-size:10px;padding:2px 6px;border-radius:10px;${marcaStyle}">${marcaLabel}</span>
             </div>
           </td>
-          <td><span class="status-badge status-pendiente">${i.unidad}</span></td>
+          <td><span class="status-badge status-pendiente">${escapeHtml(i.unidad)}</span></td>
           <td style="text-align:right" class="${i.stock_actual <= i.stock_minimo ? 'color-error' : ''}">
             <strong>${fNum(i.stock_actual)}</strong>
             <br><span style="font-size:10px; color:var(--text-secondary)">Mín: ${fNum(i.stock_minimo)}</span>
@@ -145,7 +145,7 @@ function renderCatalogo(panel) {
     ${cotsAprobadas.length ? `<optgroup label="✅ APROBADAS (cliente fondeará)">${cotsAprobadas.map(cotOpt).join('')}</optgroup>` : ''}
     ${cotsRiesgo.length ? `<optgroup label="⚠️ TRABAJO EN RIESGO (capital propio)">${cotsRiesgo.map(cotOpt).join('')}</optgroup>` : ''}
   `;
-  const itemOptions = _inventario.filter(i => i.stock_actual > 0).map(i => `<option value="${i.id_item}">${i.nombre} (${i.stock_actual} disp)</option>`).join('');
+  const itemOptions = _inventario.filter(i => i.stock_actual > 0).map(i => `<option value="${i.id_item}">${escapeHtml(i.nombre)} (${i.stock_actual} disp)</option>`).join('');
 
   const btnStyle = 'padding:6px 12px; border:1px solid var(--border-light); border-radius:4px; cursor:pointer; font-size:12px; background:var(--bg-app)';
 
@@ -492,7 +492,7 @@ function renderTopList(items, valueKey, prefix, showCantOnly) {
     return `
       <div style="margin-bottom:8px;font-size:12px">
         <div style="display:flex;justify-content:space-between;margin-bottom:2px">
-          <span><strong>${i + 1}.</strong> ${it.nombre} <span style="color:var(--text-secondary);font-size:11px">(${it.unidad})</span></span>
+          <span><strong>${i + 1}.</strong> ${escapeHtml(it.nombre)} <span style="color:var(--text-secondary);font-size:11px">(${escapeHtml(it.unidad)})</span></span>
           <strong>${prefix}${fNum(valor)}</strong>
         </div>
         <div style="background:#f3f4f6;border-radius:3px;height:6px;overflow:hidden">
@@ -521,9 +521,9 @@ function renderInventarioMuerto(items) {
       <tbody>
         ${items.map(it => `
           <tr style="border-bottom:1px solid #f3f4f6">
-            <td style="padding:8px;color:var(--text-secondary)">${it.sku}</td>
-            <td style="padding:8px;font-weight:600">${it.nombre}</td>
-            <td style="padding:8px"><span style="font-size:10px;padding:2px 6px;border-radius:8px;${CATEGORIA_BADGE[it.categoria] || ''}">${it.categoria}</span></td>
+            <td style="padding:8px;color:var(--text-secondary)">${escapeHtml(it.sku)}</td>
+            <td style="padding:8px;font-weight:600">${escapeHtml(it.nombre)}</td>
+            <td style="padding:8px"><span style="font-size:10px;padding:2px 6px;border-radius:8px;${CATEGORIA_BADGE[it.categoria] || ''}">${escapeHtml(it.categoria)}</span></td>
             <td style="padding:8px;text-align:right">${fNum(it.stock_actual)}</td>
             <td style="padding:8px;text-align:right;color:#dc2626;font-weight:600">${fPEN(it.valorizado || 0)}</td>
             <td style="padding:8px;font-size:11px">${fDate(it.ultimo_movimiento)}</td>
@@ -543,7 +543,7 @@ async function verKardex(id, name) {
     const esGerente = userRol === 'GERENTE';
     const rows = logs.length ? logs.map(l => {
       const esEntrada = l.tipo_movimiento === 'ENTRADA';
-      const tipoBadge = `<span style="background:${esEntrada ? '#dcfce7' : '#fee2e2'};color:${esEntrada ? '#166534' : '#991b1b'};padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600">${l.tipo_movimiento}</span>`;
+      const tipoBadge = `<span style="background:${esEntrada ? '#dcfce7' : '#fee2e2'};color:${esEntrada ? '#166534' : '#991b1b'};padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600">${escapeHtml(l.tipo_movimiento)}</span>`;
       // Solo se puede corregir si es ENTRADA + ORDEN_COMPRA + GERENTE.
       const puedeCorregir = esGerente && esEntrada && l.referencia_tipo === 'ORDEN_COMPRA';
       const accion = puedeCorregir
@@ -554,7 +554,7 @@ async function verKardex(id, name) {
       return `<tr style="border-bottom:1px solid #e5e7eb">
         <td style="padding:8px;font-size:12px">${fDate(l.fecha_movimiento)}</td>
         <td style="padding:8px;text-align:center">${tipoBadge}</td>
-        <td style="padding:8px;font-size:11px;color:var(--text-secondary)">${l.referencia_tipo || '—'}#${l.referencia_id || '—'}</td>
+        <td style="padding:8px;font-size:11px;color:var(--text-secondary)">${escapeHtml(l.referencia_tipo || '—')}#${l.referencia_id || '—'}</td>
         <td style="padding:8px;text-align:right;font-weight:${esEntrada ? '600' : '500'};color:${esEntrada ? '#166534' : '#991b1b'}">${esEntrada ? '+' : '−'} ${fNum(l.cantidad)}</td>
         <td style="padding:8px;text-align:right;font-weight:700">${fNum(l.saldo_posterior)}</td>
         <td style="padding:8px;text-align:center">${accion}</td>
@@ -605,7 +605,7 @@ async function corregirAsignacionItem(idMov, idItemActual, nombreItemActual) {
     : [];
   const otros = (inv || []).filter(x => x.id_item !== idItemActual && !sameFam.some(s => s.id_item === x.id_item));
 
-  const v = (s) => String(s ?? '').replace(/"/g, '&quot;');
+  const v = (s) => escapeHtml(s);
   const optItem = (x) => `<option value="${x.id_item}">${v(x.sku)} · ${v(x.nombre)} (stock ${fNum(x.stock_actual)})</option>`;
 
   const data = await new Promise((resolve) => {
@@ -715,7 +715,7 @@ async function editarMetadataItem(id, nombre) {
   const item = (inv || []).find(x => x.id_item === id);
   if (!item) return showError('Ítem no encontrado');
 
-  const v = (x) => x == null ? '' : String(x).replace(/"/g, '&quot;');
+  const v = (x) => escapeHtml(x);
   const data = await new Promise((resolve) => {
     const ov = document.createElement('div');
     ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
