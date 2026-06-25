@@ -62,6 +62,61 @@ const semaforoDias = (dias) => {
   return `<span style="font-weight:600;color:${color}">${d} d</span>`;
 };
 
+// ── Visor de constancia/adjunto embebido (mismo comportamiento que Logística) ──
+function _abrirOverlayPreviewAdj(titulo) {
+  const overlay = document.createElement('div');
+  overlay.style.cssText =
+    'position:fixed;inset:0;background:rgba(0,0,0,0.65);z-index:10000;' +
+    'display:flex;align-items:center;justify-content:center;padding:20px';
+  overlay.innerHTML = `
+    <div style="background:#fff;border-radius:8px;width:min(960px,95vw);height:min(92vh,1200px);display:flex;flex-direction:column;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.4)">
+      <div style="padding:12px 16px;border-bottom:1px solid #e5e7eb;display:flex;justify-content:space-between;align-items:center;background:#f9fafb;gap:8px">
+        <strong style="font-size:14px;color:#111">👁️ ${escapeHtml(titulo)}</strong>
+        <button data-close type="button" style="padding:7px 14px;background:#fff;color:#374151;border:1px solid #d1d5db;border-radius:4px;cursor:pointer;font-size:12px">Cerrar</button>
+      </div>
+      <div data-content style="flex:1;display:flex;align-items:center;justify-content:center;background:#525659;overflow:auto">
+        <div style="color:#d1d5db;font-size:13px">⏳ Cargando…</div>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  return overlay;
+}
+
+// Descarga el archivo del backend (proxy a Cloudinary), detecta si es imagen o
+// PDF y lo muestra inline. `url` = api.adjuntos.archivoUrl(idAdjunto).
+async function previewAdjunto(url, titulo = 'Constancia') {
+  const overlay = _abrirOverlayPreviewAdj(titulo);
+  let blobUrl = null;
+  const cleanup = () => {
+    if (overlay.parentNode) overlay.remove();
+    if (blobUrl) URL.revokeObjectURL(blobUrl);
+  };
+  overlay.querySelector('[data-close]').onclick = cleanup;
+  const content = overlay.querySelector('[data-content]');
+  try {
+    const r = await fetch(url, { credentials: 'same-origin' });
+    if (!r.ok) {
+      const errBody = await r.json().catch(() => ({}));
+      throw new Error(errBody.error || `HTTP ${r.status}`);
+    }
+    const blob = await r.blob();
+    blobUrl = URL.createObjectURL(blob);
+    const ct = (r.headers.get('content-type') || '').toLowerCase();
+    if (ct.startsWith('image/')) {
+      content.innerHTML = `<img src="${blobUrl}" alt="${escapeAttr(titulo)}" style="max-width:100%;max-height:100%;object-fit:contain">`;
+    } else {
+      content.innerHTML = `<iframe src="${blobUrl}" style="flex:1;border:none;width:100%;height:100%;background:#525659" title="${escapeAttr(titulo)}"></iframe>`;
+    }
+  } catch (err) {
+    content.innerHTML = `
+      <div style="text-align:center;color:#fef3c7;padding:24px;max-width:400px">
+        <div style="font-size:36px;margin-bottom:10px">⚠️</div>
+        <div style="font-size:14px;margin-bottom:8px;font-weight:600">No se pudo cargar el archivo</div>
+        <div style="font-size:12px;color:#d1d5db">${escapeHtml(err.message || String(err))}</div>
+      </div>`;
+  }
+}
+
 // ── Render fila de cotización ───────────────────────────────────
 function rowCotizacion(c, marca) {
   const cfg = MARCAS[marca];
