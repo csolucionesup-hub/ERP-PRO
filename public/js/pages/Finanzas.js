@@ -3170,9 +3170,29 @@ function bindHandlers(cuentas, dashboard) {
       catch (e) { return showError(e.message); }
       const data = await modalRegistrarCobranza(det.cotizacion, cuentas);
       if (!data) return;
+      // Separar las constancias del payload JSON antes de registrar.
+      const constancias = Array.isArray(data._constancias) ? data._constancias : [];
+      delete data._constancias;
       try {
-        await api.cobranzas.registrar(data);
-        showSuccess('Cobranza registrada');
+        const res = await api.cobranzas.registrar(data);
+        // Subir cada constancia al movimiento recién creado. Un fallo por archivo
+        // no revierte la cobranza (ya quedó registrada) — se avisa por toast.
+        let okCount = 0;
+        if (constancias.length && res?.id_cobranza) {
+          for (const file of constancias) {
+            try {
+              await api.adjuntos.subir('Cobranza', res.id_cobranza, file);
+              okCount++;
+            } catch (e) {
+              showError(`No se pudo subir "${file.name}": ${e.message}`);
+            }
+          }
+        }
+        showSuccess(
+          constancias.length
+            ? `Cobranza registrada · ${okCount}/${constancias.length} constancia(s) subida(s)`
+            : 'Cobranza registrada'
+        );
         window.refreshModule?.();
       } catch (e) {
         showError('Error: ' + e.message);
