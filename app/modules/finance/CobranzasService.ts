@@ -246,7 +246,10 @@ class CobranzasService {
       await this.recomputeEstado(conn, data.id_cotizacion);
 
       await conn.commit();
-      return { ok: true };
+      // Devolvemos el id del movimiento recién creado para que el frontend
+      // pueda enganchar las constancias (Adjuntos ref_tipo='Cobranza') subidas
+      // en el mismo momento del registro.
+      return { ok: true, id_cobranza: cobIns.insertId };
     } catch (e) {
       await conn.rollback();
       throw e;
