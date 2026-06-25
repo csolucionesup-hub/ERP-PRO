@@ -1944,6 +1944,7 @@ async function modalDetalle(id) {
                   <th style="padding:8px 10px">Cuenta / Banco</th>
                   <th style="padding:8px 10px">Nº Op</th>
                   <th style="padding:8px 10px;text-align:right">Monto</th>
+                  <th style="padding:8px 10px">Constancias</th>
                   <th style="padding:8px 10px"></th>
                 </tr>
               </thead>
@@ -1957,6 +1958,9 @@ async function modalDetalle(id) {
                     <td style="padding:8px 10px">${escapeHtml(m.cuenta_nombre || m.banco || '—')}</td>
                     <td style="padding:8px 10px">${escapeHtml(m.nro_operacion || '—')}</td>
                     <td style="padding:8px 10px;text-align:right;font-weight:600">${fMoney(m.monto, m.moneda)}</td>
+                    <td style="padding:8px 10px;white-space:nowrap" data-adj-cell="${m.id_cobranza}">
+                      <span style="color:#9ca3af;font-size:11px">cargando…</span>
+                    </td>
                     <td style="padding:8px 10px;text-align:right;white-space:nowrap">
                       <button class="cob-edit" data-id="${m.id_cobranza}" style="background:none;border:1px solid #d1d5db;color:#374151;cursor:pointer;font-size:11px;padding:3px 8px;border-radius:4px;margin-right:4px">✎ Editar</button>
                       <button class="cob-del" data-id="${m.id_cobranza}" style="background:none;border:none;color:#dc2626;cursor:pointer;font-size:11px">Eliminar</button>
@@ -1972,6 +1976,76 @@ async function modalDetalle(id) {
   document.body.appendChild(ov);
   const close = () => ov.remove();
   ov.querySelector('#det-x').onclick = close;
+  // ── Constancias por movimiento (tabla Adjuntos, ref_tipo='Cobranza') ──
+  const _esGerente = (() => {
+    try { return (JSON.parse(localStorage.getItem('erp_user') || '{}').rol === 'GERENTE'); }
+    catch { return false; }
+  })();
+
+  // Pinta la celda de constancias de un movimiento: contador + lista con
+  // 👁️ Ver (preview proxied) + ✕ (solo GERENTE) + 📎 Subir.
+  async function pintarAdjCobranza(idCobranza) {
+    const cell = ov.querySelector(`[data-adj-cell="${idCobranza}"]`);
+    if (!cell) return;
+    let adjs = [];
+    try { adjs = await api.adjuntos.listar('Cobranza', idCobranza); }
+    catch { adjs = []; }
+    const items = (adjs || []).map(a => {
+      const nombre = escapeHtml(a.nombre_original || `Adjunto ${a.id}`);
+      const verBtn = `<button type="button" data-adj-ver="${a.id}" data-adj-nom="${escapeAttr(a.nombre_original || 'Constancia')}"
+        title="Ver la constancia ${nombre}" aria-label="Ver constancia"
+        style="background:#15803d;color:#fff;border:none;border-radius:4px;padding:3px 8px;cursor:pointer;font-size:11px">👁️</button>`;
+      const delBtn = _esGerente
+        ? `<button type="button" data-adj-del="${a.id}"
+            title="Quitar esta constancia. El archivo queda huérfano en Cloudinary. Solo GERENTE." aria-label="Quitar constancia"
+            style="background:transparent;color:#dc2626;border:1px solid #fecaca;border-radius:4px;padding:3px 6px;cursor:pointer;font-size:11px;margin-left:3px">✕</button>`
+        : '';
+      return `<span style="display:inline-flex;align-items:center;gap:2px;margin:1px 4px 1px 0">${verBtn}${delBtn}</span>`;
+    }).join('');
+    const subirBtn = `<button type="button" data-adj-subir="${idCobranza}"
+      title="Adjuntar otra constancia de pago a este movimiento (PDF o imagen)." aria-label="Subir constancia"
+      style="background:#fff;color:#15803d;border:1px solid #86efac;border-radius:4px;padding:3px 8px;cursor:pointer;font-size:11px">📎 Subir</button>`;
+    cell.innerHTML = `<div style="display:flex;align-items:center;flex-wrap:wrap;gap:4px">
+      ${adjs.length ? `<span style="font-size:11px;color:#374151">📎 ${adjs.length}</span> ${items}` : '<span style="font-size:11px;color:#9ca3af">—</span>'}
+      ${subirBtn}
+    </div>`;
+
+    cell.querySelectorAll('[data-adj-ver]').forEach(b => {
+      b.onclick = () => previewAdjunto(
+        api.adjuntos.archivoUrl(Number(b.dataset.adjVer)),
+        b.dataset.adjNom || 'Constancia'
+      );
+    });
+    cell.querySelectorAll('[data-adj-del]').forEach(b => {
+      b.onclick = async () => {
+        if (!confirm('¿Quitar esta constancia? El pago no se borra, solo se desadjunta el archivo.')) return;
+        try {
+          await api.adjuntos.eliminar(Number(b.dataset.adjDel));
+          showSuccess('Constancia eliminada');
+          pintarAdjCobranza(idCobranza);
+        } catch (e) { showError(e.message); }
+      };
+    });
+    cell.querySelectorAll('[data-adj-subir]').forEach(b => {
+      b.onclick = () => {
+        const inp = document.createElement('input');
+        inp.type = 'file';
+        inp.accept = '.pdf,image/*';
+        inp.onchange = async () => {
+          const file = inp.files && inp.files[0];
+          if (!file) return;
+          try {
+            await api.adjuntos.subir('Cobranza', idCobranza, file);
+            showSuccess('Constancia subida');
+            pintarAdjCobranza(idCobranza);
+          } catch (e) { showError(`No se pudo subir "${file.name}": ${e.message}`); }
+        };
+        inp.click();
+      };
+    });
+  }
+
+  movs.forEach(m => pintarAdjCobranza(m.id_cobranza));
   ov.onclick = (e) => { if (e.target === ov) close(); };
 
   // Editar detracción / retención
