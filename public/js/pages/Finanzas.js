@@ -444,6 +444,14 @@ async function modalRegistrarCobranza(cot, cuentas, existing = null) {
               <label style="font-size:11px;color:var(--text-secondary)">Comentario</label>
               <textarea name="comentario" rows="2" style="width:100%;padding:8px;border:1px solid #d1d5db;border-radius:5px;resize:vertical">${isEdit ? (existing.comentario || '') : ''}</textarea>
             </div>
+            ${isEdit ? '' : `
+            <div>
+              <label style="font-size:11px;color:var(--text-secondary)">📎 Constancias (opcional)</label>
+              <input name="constancias" type="file" accept=".pdf,image/*" multiple
+                title="Adjuntá una o varias constancias de pago (PDF o imagen). También podés agregarlas después desde el detalle de la cobranza."
+                style="width:100%;padding:8px;border:1px solid #d1d5db;border-radius:5px;font-size:12px;background:#fff">
+              <div style="font-size:10px;color:var(--text-secondary);margin-top:3px">Podés subir una o varias (PDF o imagen). Si todavía no la tenés, dejalo vacío y subila luego desde el detalle.</div>
+            </div>`}
           </form>
         </div>
 
@@ -512,6 +520,13 @@ async function modalRegistrarCobranza(cot, cuentas, existing = null) {
       // En modo edit el select de tipo está disabled — FormData no incluye
       // disabled fields, así que conservamos el tipo original explícito.
       if (isEdit) data.tipo = existing.tipo;
+      // Constancias seleccionadas (solo modo crear). Las sacamos del payload
+      // JSON (no son serializables) y las devolvemos aparte para subirlas tras
+      // crear la cobranza. `Object.fromEntries` deja en data.constancias el
+      // último File del input multiple — lo borramos.
+      delete data.constancias;
+      const fileInput = form.querySelector('input[name="constancias"]');
+      data._constancias = fileInput && fileInput.files ? Array.from(fileInput.files) : [];
       close(data);
     };
   });
