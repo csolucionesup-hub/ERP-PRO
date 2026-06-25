@@ -520,13 +520,15 @@ async function modalRegistrarCobranza(cot, cuentas, existing = null) {
       // En modo edit el select de tipo está disabled — FormData no incluye
       // disabled fields, así que conservamos el tipo original explícito.
       if (isEdit) data.tipo = existing.tipo;
-      // Constancias seleccionadas (solo modo crear). Las sacamos del payload
-      // JSON (no son serializables) y las devolvemos aparte para subirlas tras
-      // crear la cobranza. `Object.fromEntries` deja en data.constancias el
-      // último File del input multiple — lo borramos.
-      delete data.constancias;
-      const fileInput = form.querySelector('input[name="constancias"]');
-      data._constancias = fileInput && fileInput.files ? Array.from(fileInput.files) : [];
+      // Constancias seleccionadas: SOLO en modo crear (en edit no se renderiza el
+      // input). Las sacamos del payload JSON (un File no es serializable) y las
+      // devolvemos aparte para subirlas tras crear la cobranza. `Object.fromEntries`
+      // deja en data.constancias el último File del input multiple — lo borramos.
+      if (!isEdit) {
+        delete data.constancias;
+        const fileInput = form.querySelector('input[name="constancias"]');
+        data._constancias = fileInput && fileInput.files ? Array.from(fileInput.files) : [];
+      }
       close(data);
     };
   });
