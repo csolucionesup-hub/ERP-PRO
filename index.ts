@@ -1375,6 +1375,18 @@ adjuntosRouter.post('/:ref_tipo/:ref_id', uploadAdjunto.single('file'), async (r
   res.json(r);
 });
 
+// Preview/descarga proxied de un adjunto (mirror de /pago/:id_pago/voucher de OC).
+// Mantiene la URL de Cloudinary del lado del servidor y permite preview embebido.
+// IMPORTANTE: registrar ANTES de GET '/:ref_tipo/:ref_id' (orden de rutas).
+adjuntosRouter.get('/:id/archivo', async (req: Request, res: Response) => {
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id) || id <= 0) {
+    return res.status(400).json({ error: 'id de adjunto inválido' });
+  }
+  const adj = await AdjuntosService.obtener(id);
+  await proxyCloudinary(res, adj?.url || null);
+});
+
 adjuntosRouter.get('/:ref_tipo/:ref_id', async (req: Request, res: Response) => {
   res.json(await AdjuntosService.listar(req.params.ref_tipo as string, Number(req.params.ref_id)));
 });

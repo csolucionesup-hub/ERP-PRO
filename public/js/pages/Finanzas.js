@@ -62,6 +62,61 @@ const semaforoDias = (dias) => {
   return `<span style="font-weight:600;color:${color}">${d} d</span>`;
 };
 
+// ── Visor de constancia/adjunto embebido (mismo comportamiento que Logística) ──
+function _abrirOverlayPreviewAdj(titulo) {
+  const overlay = document.createElement('div');
+  overlay.style.cssText =
+    'position:fixed;inset:0;background:rgba(0,0,0,0.65);z-index:10000;' +
+    'display:flex;align-items:center;justify-content:center;padding:20px';
+  overlay.innerHTML = `
+    <div style="background:#fff;border-radius:8px;width:min(960px,95vw);height:min(92vh,1200px);display:flex;flex-direction:column;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.4)">
+      <div style="padding:12px 16px;border-bottom:1px solid #e5e7eb;display:flex;justify-content:space-between;align-items:center;background:#f9fafb;gap:8px">
+        <strong style="font-size:14px;color:#111">👁️ ${escapeHtml(titulo)}</strong>
+        <button data-close type="button" style="padding:7px 14px;background:#fff;color:#374151;border:1px solid #d1d5db;border-radius:4px;cursor:pointer;font-size:12px">Cerrar</button>
+      </div>
+      <div data-content style="flex:1;display:flex;align-items:center;justify-content:center;background:#525659;overflow:auto">
+        <div style="color:#d1d5db;font-size:13px">⏳ Cargando…</div>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  return overlay;
+}
+
+// Descarga el archivo del backend (proxy a Cloudinary), detecta si es imagen o
+// PDF y lo muestra inline. `url` = api.adjuntos.archivoUrl(idAdjunto).
+async function previewAdjunto(url, titulo = 'Constancia') {
+  const overlay = _abrirOverlayPreviewAdj(titulo);
+  let blobUrl = null;
+  const cleanup = () => {
+    if (overlay.parentNode) overlay.remove();
+    if (blobUrl) URL.revokeObjectURL(blobUrl);
+  };
+  overlay.querySelector('[data-close]').onclick = cleanup;
+  const content = overlay.querySelector('[data-content]');
+  try {
+    const r = await fetch(url, { credentials: 'same-origin' });
+    if (!r.ok) {
+      const errBody = await r.json().catch(() => ({}));
+      throw new Error(errBody.error || `HTTP ${r.status}`);
+    }
+    const blob = await r.blob();
+    blobUrl = URL.createObjectURL(blob);
+    const ct = (r.headers.get('content-type') || '').toLowerCase();
+    if (ct.startsWith('image/')) {
+      content.innerHTML = `<img src="${blobUrl}" alt="${escapeAttr(titulo)}" style="max-width:100%;max-height:100%;object-fit:contain">`;
+    } else {
+      content.innerHTML = `<iframe src="${blobUrl}" style="flex:1;border:none;width:100%;height:100%;background:#525659" title="${escapeAttr(titulo)}"></iframe>`;
+    }
+  } catch (err) {
+    content.innerHTML = `
+      <div style="text-align:center;color:#fef3c7;padding:24px;max-width:400px">
+        <div style="font-size:36px;margin-bottom:10px">⚠️</div>
+        <div style="font-size:14px;margin-bottom:8px;font-weight:600">No se pudo cargar el archivo</div>
+        <div style="font-size:12px;color:#d1d5db">${escapeHtml(err.message || String(err))}</div>
+      </div>`;
+  }
+}
+
 // ── Render fila de cotización ───────────────────────────────────
 function rowCotizacion(c, marca) {
   const cfg = MARCAS[marca];
@@ -389,6 +444,14 @@ async function modalRegistrarCobranza(cot, cuentas, existing = null) {
               <label style="font-size:11px;color:var(--text-secondary)">Comentario</label>
               <textarea name="comentario" rows="2" style="width:100%;padding:8px;border:1px solid #d1d5db;border-radius:5px;resize:vertical">${isEdit ? (existing.comentario || '') : ''}</textarea>
             </div>
+            ${isEdit ? '' : `
+            <div>
+              <label style="font-size:11px;color:var(--text-secondary)">📎 Constancias (opcional)</label>
+              <input name="constancias" type="file" accept=".pdf,image/*" multiple
+                title="Adjuntá una o varias constancias de pago (PDF o imagen). También podés agregarlas después desde el detalle de la cobranza."
+                style="width:100%;padding:8px;border:1px solid #d1d5db;border-radius:5px;font-size:12px;background:#fff">
+              <div style="font-size:10px;color:var(--text-secondary);margin-top:3px">Podés subir una o varias (PDF o imagen). Si todavía no la tenés, dejalo vacío y subila luego desde el detalle.</div>
+            </div>`}
           </form>
         </div>
 
@@ -457,6 +520,15 @@ async function modalRegistrarCobranza(cot, cuentas, existing = null) {
       // En modo edit el select de tipo está disabled — FormData no incluye
       // disabled fields, así que conservamos el tipo original explícito.
       if (isEdit) data.tipo = existing.tipo;
+      // Constancias seleccionadas: SOLO en modo crear (en edit no se renderiza el
+      // input). Las sacamos del payload JSON (un File no es serializable) y las
+      // devolvemos aparte para subirlas tras crear la cobranza. `Object.fromEntries`
+      // deja en data.constancias el último File del input multiple — lo borramos.
+      if (!isEdit) {
+        delete data.constancias;
+        const fileInput = form.querySelector('input[name="constancias"]');
+        data._constancias = fileInput && fileInput.files ? Array.from(fileInput.files) : [];
+      }
       close(data);
     };
   });
@@ -1874,6 +1946,7 @@ async function modalDetalle(id) {
                   <th style="padding:8px 10px">Cuenta / Banco</th>
                   <th style="padding:8px 10px">Nº Op</th>
                   <th style="padding:8px 10px;text-align:right">Monto</th>
+                  <th style="padding:8px 10px">Constancias</th>
                   <th style="padding:8px 10px"></th>
                 </tr>
               </thead>
@@ -1887,6 +1960,9 @@ async function modalDetalle(id) {
                     <td style="padding:8px 10px">${escapeHtml(m.cuenta_nombre || m.banco || '—')}</td>
                     <td style="padding:8px 10px">${escapeHtml(m.nro_operacion || '—')}</td>
                     <td style="padding:8px 10px;text-align:right;font-weight:600">${fMoney(m.monto, m.moneda)}</td>
+                    <td style="padding:8px 10px;white-space:nowrap" data-adj-cell="${m.id_cobranza}">
+                      <span style="color:#9ca3af;font-size:11px">cargando…</span>
+                    </td>
                     <td style="padding:8px 10px;text-align:right;white-space:nowrap">
                       <button class="cob-edit" data-id="${m.id_cobranza}" style="background:none;border:1px solid #d1d5db;color:#374151;cursor:pointer;font-size:11px;padding:3px 8px;border-radius:4px;margin-right:4px">✎ Editar</button>
                       <button class="cob-del" data-id="${m.id_cobranza}" style="background:none;border:none;color:#dc2626;cursor:pointer;font-size:11px">Eliminar</button>
@@ -1902,6 +1978,76 @@ async function modalDetalle(id) {
   document.body.appendChild(ov);
   const close = () => ov.remove();
   ov.querySelector('#det-x').onclick = close;
+  // ── Constancias por movimiento (tabla Adjuntos, ref_tipo='Cobranza') ──
+  const _esGerente = (() => {
+    try { return (JSON.parse(localStorage.getItem('erp_user') || '{}').rol === 'GERENTE'); }
+    catch { return false; }
+  })();
+
+  // Pinta la celda de constancias de un movimiento: contador + lista con
+  // 👁️ Ver (preview proxied) + ✕ (solo GERENTE) + 📎 Subir.
+  async function pintarAdjCobranza(idCobranza) {
+    const cell = ov.querySelector(`[data-adj-cell="${idCobranza}"]`);
+    if (!cell) return;
+    let adjs = [];
+    try { adjs = await api.adjuntos.listar('Cobranza', idCobranza); }
+    catch { adjs = []; }
+    const items = (adjs || []).map(a => {
+      const nombre = escapeHtml(a.nombre_original || `Adjunto ${a.id}`);
+      const verBtn = `<button type="button" data-adj-ver="${a.id}" data-adj-nom="${escapeAttr(a.nombre_original || 'Constancia')}"
+        title="Ver la constancia ${nombre}" aria-label="Ver constancia"
+        style="background:#15803d;color:#fff;border:none;border-radius:4px;padding:3px 8px;cursor:pointer;font-size:11px">👁️</button>`;
+      const delBtn = _esGerente
+        ? `<button type="button" data-adj-del="${a.id}"
+            title="Quitar esta constancia. El archivo queda huérfano en Cloudinary. Solo GERENTE." aria-label="Quitar constancia"
+            style="background:transparent;color:#dc2626;border:1px solid #fecaca;border-radius:4px;padding:3px 6px;cursor:pointer;font-size:11px;margin-left:3px">✕</button>`
+        : '';
+      return `<span style="display:inline-flex;align-items:center;gap:2px;margin:1px 4px 1px 0">${verBtn}${delBtn}</span>`;
+    }).join('');
+    const subirBtn = `<button type="button" data-adj-subir="${idCobranza}"
+      title="Adjuntar otra constancia de pago a este movimiento (PDF o imagen)." aria-label="Subir constancia"
+      style="background:#fff;color:#15803d;border:1px solid #86efac;border-radius:4px;padding:3px 8px;cursor:pointer;font-size:11px">📎 Subir</button>`;
+    cell.innerHTML = `<div style="display:flex;align-items:center;flex-wrap:wrap;gap:4px">
+      ${adjs.length ? `<span style="font-size:11px;color:#374151">📎 ${adjs.length}</span> ${items}` : '<span style="font-size:11px;color:#9ca3af">—</span>'}
+      ${subirBtn}
+    </div>`;
+
+    cell.querySelectorAll('[data-adj-ver]').forEach(b => {
+      b.onclick = () => previewAdjunto(
+        api.adjuntos.archivoUrl(Number(b.dataset.adjVer)),
+        b.dataset.adjNom || 'Constancia'
+      );
+    });
+    cell.querySelectorAll('[data-adj-del]').forEach(b => {
+      b.onclick = async () => {
+        if (!confirm('¿Quitar esta constancia? El pago no se borra, solo se desadjunta el archivo.')) return;
+        try {
+          await api.adjuntos.eliminar(Number(b.dataset.adjDel));
+          showSuccess('Constancia eliminada');
+          pintarAdjCobranza(idCobranza);
+        } catch (e) { showError(e.message); }
+      };
+    });
+    cell.querySelectorAll('[data-adj-subir]').forEach(b => {
+      b.onclick = () => {
+        const inp = document.createElement('input');
+        inp.type = 'file';
+        inp.accept = '.pdf,image/*';
+        inp.onchange = async () => {
+          const file = inp.files && inp.files[0];
+          if (!file) return;
+          try {
+            await api.adjuntos.subir('Cobranza', idCobranza, file);
+            showSuccess('Constancia subida');
+            pintarAdjCobranza(idCobranza);
+          } catch (e) { showError(`No se pudo subir "${file.name}": ${e.message}`); }
+        };
+        inp.click();
+      };
+    });
+  }
+
+  movs.forEach(m => pintarAdjCobranza(m.id_cobranza));
   ov.onclick = (e) => { if (e.target === ov) close(); };
 
   // Editar detracción / retención
@@ -3100,9 +3246,29 @@ function bindHandlers(cuentas, dashboard) {
       catch (e) { return showError(e.message); }
       const data = await modalRegistrarCobranza(det.cotizacion, cuentas);
       if (!data) return;
+      // Separar las constancias del payload JSON antes de registrar.
+      const constancias = Array.isArray(data._constancias) ? data._constancias : [];
+      delete data._constancias;
       try {
-        await api.cobranzas.registrar(data);
-        showSuccess('Cobranza registrada');
+        const res = await api.cobranzas.registrar(data);
+        // Subir cada constancia al movimiento recién creado. Un fallo por archivo
+        // no revierte la cobranza (ya quedó registrada) — se avisa por toast.
+        let okCount = 0;
+        if (constancias.length && res?.id_cobranza) {
+          for (const file of constancias) {
+            try {
+              await api.adjuntos.subir('Cobranza', res.id_cobranza, file);
+              okCount++;
+            } catch (e) {
+              showError(`No se pudo subir "${file.name}": ${e.message}`);
+            }
+          }
+        }
+        showSuccess(
+          constancias.length
+            ? `Cobranza registrada · ${okCount}/${constancias.length} constancia(s) subida(s)`
+            : 'Cobranza registrada'
+        );
         window.refreshModule?.();
       } catch (e) {
         showError('Error: ' + e.message);

@@ -1,4 +1,5 @@
 import { db } from '../../../database/connection';
+import AdjuntosService from '../configuracion/AdjuntosService';
 
 /**
  * Servicio de Cobranzas — Finanzas v2
@@ -246,7 +247,10 @@ class CobranzasService {
       await this.recomputeEstado(conn, data.id_cotizacion);
 
       await conn.commit();
-      return { ok: true };
+      // Devolvemos el id del movimiento recién creado para que el frontend
+      // pueda enganchar las constancias (Adjuntos ref_tipo='Cobranza') subidas
+      // en el mismo momento del registro.
+      return { ok: true, id_cobranza: cobIns.insertId };
     } catch (e) {
       await conn.rollback();
       throw e;
@@ -417,6 +421,14 @@ class CobranzasService {
       const r = (rows as any[])[0];
       if (!r) throw new Error('Movimiento no encontrado');
 
+      // Recolectar las constancias (Adjuntos) de este movimiento para limpiarlas
+      // tras el commit (fila + archivo en Cloudinary). Se hace fuera de la
+      // transacción para que un fallo de Cloudinary no revierta el borrado.
+      const [adjRows] = await conn.query(
+        `SELECT id FROM Adjuntos WHERE ref_tipo='Cobranza' AND ref_id=?`,
+        [id_cobranza]
+      );
+
       // Eliminar movimiento bancario auto + transacción INGRESO asociados
       await conn.query(
         `DELETE FROM MovimientoBancario WHERE ref_tipo='COBRANZA' AND ref_id=? AND fuente='AUTO'`,
@@ -430,6 +442,14 @@ class CobranzasService {
       await this.recomputeEstado(conn, r.id_cotizacion);
 
       await conn.commit();
+
+      // Limpieza best-effort de constancias (fila Adjuntos + archivo Cloudinary).
+      // Un fallo acá ya no afecta la integridad del borrado de la cobranza.
+      for (const a of (adjRows as any[])) {
+        try { await AdjuntosService.eliminar(a.id); }
+        catch (e) { console.error('[eliminarCobranza] no se pudo limpiar adjunto', a.id, (e as Error).message); }
+      }
+
       return { ok: true };
     } catch (e) {
       await conn.rollback();
