@@ -247,6 +247,29 @@ export const api = {
     },
     importarEECC: (idCuenta, texto) => post('/cobranzas/libro-bancos/importar-eecc', { id_cuenta: idCuenta, texto }),
   },
+  // Adjuntos genéricos (tabla Adjuntos, ref_tipo/ref_id). Reusable por cualquier
+  // módulo. Hoy lo usa Cobranzas para las constancias de pago (ref_tipo='Cobranza',
+  // ref_id = id del movimiento de cobranza).
+  adjuntos: {
+    listar: (refTipo, refId) => get(`/adjuntos/${refTipo}/${refId}`),
+    subir: async (refTipo, refId, file) => {
+      const fd = new FormData();
+      fd.append('file', file);
+      const r = await fetch(`${API_BASE_URL}/adjuntos/${refTipo}/${refId}`, {
+        method: 'POST',
+        credentials: 'same-origin',
+        body: fd,
+      });
+      if (!r.ok) {
+        const err = await r.json().catch(() => ({}));
+        throw new Error(err.error || `Error subiendo adjunto: HTTP ${r.status}`);
+      }
+      return r.json();
+    },
+    eliminar: (id) => del(`/adjuntos/${id}`),
+    // URL del preview proxied (la consume el visor embebido, no fetchAPI).
+    archivoUrl: (id) => `${API_BASE_URL}/adjuntos/${id}/archivo`,
+  },
   transferenciasInternas: {
     // Mig 072 — Transferencias Metal ↔ Perfotools con conciliación de TC banco.
     listar: (filtros = {}) => {
