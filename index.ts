@@ -725,6 +725,12 @@ apiRouter.post('/cobranzas/libro-bancos/importar-eecc', async (req: Request, res
   res.json(await CobranzasService.importarEECCInterbank(parseInt(id_cuenta), texto, userId));
 });
 
+apiRouter.post('/cobranzas/libro-bancos/saldo-inicial', async (req: Request, res: Response) => {
+  const { id_cuenta, periodo, saldo } = req.body;
+  const userId = (req as any).user?.id_usuario;
+  res.json(await CobranzasService.setSaldoInicial(parseInt(id_cuenta), String(periodo), Number(saldo), userId));
+});
+
 // ===== COMERCIAL: COTIZACIONES =====
 apiRouter.use('/cotizaciones', requireModulo('COMERCIAL'));
 

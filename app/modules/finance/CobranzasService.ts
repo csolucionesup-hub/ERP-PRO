@@ -1244,6 +1244,83 @@ class CobranzasService {
     return { ok: true };
   }
 
+  /**
+   * Resuelve el saldo inicial de una cuenta+período:
+   *  1. DECLARADO: hay fila manual en SaldoInicialBanco para ese período.
+   *  2. HEREDADO: encadena desde el ancla declarada más reciente anterior
+   *     (saldo_ancla + Σ(ABONO−CARGO) de movimientos entre ancla y período).
+   *  3. SIN_DEFINIR: no hay ancla → Σ(ABONO−CARGO) de movimientos previos (puede
+   *     ser 0). La UI lo marca en ámbar para que se cargue.
+   * `periodo` formato 'YYYY-MM'.
+   */
+  async getSaldoInicial(idCuenta: number, periodo: string): Promise<{ saldo: number; origen: 'DECLARADO' | 'HEREDADO' | 'SIN_DEFINIR' }> {
+    const desde = `${periodo}-01`;
+
+    // 1. Declarado para este período exacto
+    const [[decl]]: any = await db.query(
+      `SELECT saldo FROM SaldoInicialBanco WHERE id_cuenta = ? AND periodo = ?`,
+      [idCuenta, periodo]
+    );
+    if (decl && decl.saldo != null) {
+      return { saldo: Number(decl.saldo), origen: 'DECLARADO' };
+    }
+
+    // 2. Heredado: ancla declarada más reciente con periodo < pedido
+    const [[ancla]]: any = await db.query(
+      `SELECT periodo, saldo FROM SaldoInicialBanco
+        WHERE id_cuenta = ? AND periodo < ?
+        ORDER BY periodo DESC LIMIT 1`,
+      [idCuenta, periodo]
+    );
+    if (ancla && ancla.saldo != null) {
+      const anclaDesde = `${ancla.periodo}-01`;
+      const [[mov]]: any = await db.query(
+        `SELECT COALESCE(SUM(CASE WHEN tipo='ABONO' THEN monto ELSE -monto END),0) AS neto
+           FROM MovimientoBancario
+          WHERE id_cuenta = ? AND fecha >= ? AND fecha < ?`,
+        [idCuenta, anclaDesde, desde]
+      );
+      return { saldo: +(Number(ancla.saldo) + Number(mov.neto || 0)).toFixed(2), origen: 'HEREDADO' };
+    }
+
+    // 3. Sin definir: suma de movimientos previos (puede ser 0)
+    const [[prev]]: any = await db.query(
+      `SELECT COALESCE(SUM(CASE WHEN tipo='ABONO' THEN monto ELSE -monto END),0) AS neto
+         FROM MovimientoBancario WHERE id_cuenta = ? AND fecha < ?`,
+      [idCuenta, desde]
+    );
+    return { saldo: +Number(prev.neto || 0).toFixed(2), origen: 'SIN_DEFINIR' };
+  }
+
+  /**
+   * Declara/actualiza (upsert) el saldo inicial manual de una cuenta+período.
+   * Upsert por SELECT-then-INSERT/UPDATE para no depender del dialecto
+   * (ON DUPLICATE KEY / ON CONFLICT difieren entre MySQL y Postgres).
+   */
+  async setSaldoInicial(idCuenta: number, periodo: string, saldo: number, userId?: number) {
+    if (!idCuenta || !/^\d{4}-\d{2}$/.test(periodo) || !Number.isFinite(saldo) || Math.abs(saldo) >= 1e12) {
+      throw new Error('id_cuenta, periodo (YYYY-MM) y saldo válidos (< 1e12) son requeridos');
+    }
+    const [[existing]]: any = await db.query(
+      `SELECT id FROM SaldoInicialBanco WHERE id_cuenta = ? AND periodo = ?`,
+      [idCuenta, periodo]
+    );
+    if (existing && existing.id) {
+      await db.query(
+        `UPDATE SaldoInicialBanco SET saldo = ?, registrado_por = ?, updated_at = NOW()
+          WHERE id_cuenta = ? AND periodo = ?`,
+        [saldo, userId || null, idCuenta, periodo]
+      );
+    } else {
+      await db.query(
+        `INSERT INTO SaldoInicialBanco (id_cuenta, periodo, saldo, registrado_por)
+         VALUES (?, ?, ?, ?)`,
+        [idCuenta, periodo, saldo, userId || null]
+      );
+    }
+    return { ok: true, saldo: Number(saldo) };
+  }
+
   // ── Libro Bancos ──────────────────────────────────────────
   /**
    * Devuelve movimientos del período para una cuenta, con KPIs.
@@ -1266,32 +1343,11 @@ class CobranzasService {
     );
     if (!cuenta) throw new Error('Cuenta no encontrada');
 
-    // Saldo inicial: preferir saldo_contable del EECC importado (más preciso)
-    // Buscar el movimiento más antiguo del período que tenga saldo_contable
-    // y calcular hacia atrás: saldo_antes = saldo_contable ∓ monto
-    const [[eeccIniRow]]: any = await db.query(`
-      SELECT saldo_contable, monto, tipo
-        FROM MovimientoBancario
-       WHERE id_cuenta = ? AND fecha BETWEEN ? AND ?
-         AND saldo_contable IS NOT NULL AND fuente = 'IMPORT_EECC'
-       ORDER BY fecha ASC, id_movimiento ASC
-       LIMIT 1
-    `, [idCuenta, desde, hasta]);
-
-    let saldo_inicial: number;
-    if (eeccIniRow && eeccIniRow.saldo_contable != null) {
-      // Primer mov del EECC: saldo_antes = saldo_contable - (abono) o + (cargo)
-      const sc = Number(eeccIniRow.saldo_contable);
-      const m  = Number(eeccIniRow.monto);
-      saldo_inicial = eeccIniRow.tipo === 'ABONO' ? +(sc - m).toFixed(2) : +(sc + m).toFixed(2);
-    } else {
-      // Fallback: suma de movimientos previos
-      const [[iniRow]]: any = await db.query(`
-        SELECT COALESCE(SUM(CASE WHEN tipo='ABONO' THEN monto ELSE -monto END),0) AS saldo_ini
-          FROM MovimientoBancario WHERE id_cuenta = ? AND fecha < ?
-      `, [idCuenta, desde]);
-      saldo_inicial = Number(iniRow.saldo_ini) || 0;
-    }
+    // Saldo inicial: declarado (SaldoInicialBanco) o encadenado desde el ancla
+    // previa. Reemplaza el back-calc desde el EECC (frágil: Interbank ordena por
+    // fecha de operación pero el saldo_contable corre por orden de proceso).
+    const { saldo: saldo_inicial, origen: saldo_inicial_origen } =
+      await this.getSaldoInicial(idCuenta, per);
 
     // Movimientos del período
     const [movs] = await db.query(`
@@ -1413,6 +1469,7 @@ class CobranzasService {
       cuenta,
       periodo: per,
       saldo_inicial: +saldo_inicial.toFixed(2),
+      saldo_inicial_origen,
       saldo_final: +saldo_final.toFixed(2),
       saldo_banco,
       diferencia,

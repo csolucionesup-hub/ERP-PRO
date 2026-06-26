@@ -246,6 +246,7 @@ export const api = {
       return get(`/cobranzas/libro-bancos?${p}`);
     },
     importarEECC: (idCuenta, texto) => post('/cobranzas/libro-bancos/importar-eecc', { id_cuenta: idCuenta, texto }),
+    setSaldoInicial: (id_cuenta, periodo, saldo) => post('/cobranzas/libro-bancos/saldo-inicial', { id_cuenta, periodo, saldo }),
   },
   // Adjuntos genéricos (tabla Adjuntos, ref_tipo/ref_id). Reusable por cualquier
   // módulo. Hoy lo usa Cobranzas para las constancias de pago (ref_tipo='Cobranza',
