@@ -408,24 +408,6 @@ export const api = {
     cerrar:  (anio, mes, observaciones) => post('/periodos/cerrar',  { anio, mes, observaciones }),
     reabrir: (anio, mes)               => post('/periodos/reabrir', { anio, mes }),
   },
-  adjuntos: {
-    list:    (refTipo, refId) => get(`/adjuntos/${refTipo}/${refId}`),
-    delete:  (id)             => del(`/adjuntos/${id}`),
-    upload: async (refTipo, refId, file) => {
-      const fd = new FormData();
-      fd.append('file', file);
-      const r = await fetch(`${API_BASE_URL}/adjuntos/${refTipo}/${refId}`, {
-        method: 'POST',
-        credentials: 'same-origin',
-        body: fd,
-      });
-      if (!r.ok) {
-        const err = await r.json().catch(() => ({}));
-        throw new Error(err.error || `Error HTTP ${r.status}`);
-      }
-      return r.json();
-    },
-  },
   facturacion: {
     diagnostico: () => get('/facturacion/diagnostico'),
   },
