@@ -1207,6 +1207,21 @@ authRouter.delete('/me/firma', requireAuth, async (req: any, res: Response) => {
 
 app.use('/api/auth', authRouter);
 
+// ===== VERSIÓN DEL BUILD (público) =====
+// Identificador del build actual. Cambia con cada deploy: usamos el commit de
+// Railway si está disponible (no cambia en reinicios sin deploy), y un id de
+// arranque como fallback. El frontend lo pollea y, si cambió respecto al de
+// cuando cargó la página, muestra un banner discreto "Hay una versión nueva —
+// Recargar" (no recarga solo, para no interrumpir formularios). Público y sin
+// auth: es solo un string de versión, no expone nada sensible.
+const BUILD_VERSION = process.env.RAILWAY_GIT_COMMIT_SHA
+  || process.env.RAILWAY_DEPLOYMENT_ID
+  || `boot-${Date.now()}`;
+app.get('/api/version', (_req: Request, res: Response) => {
+  res.set('Cache-Control', 'no-store');
+  res.json({ version: BUILD_VERSION });
+});
+
 // ===== USUARIOS: Solo GERENTE =====
 const usuariosRouter = express.Router();
 usuariosRouter.use(requireAuth);

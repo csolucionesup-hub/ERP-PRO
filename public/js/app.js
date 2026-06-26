@@ -6,29 +6,29 @@
 // puede servir un api.js viejo cacheado aunque la página sea nueva (caso real:
 // "api.adjuntos.subir is not a function"). El Find/Replace GLOBAL del token de
 // versión (en TODO public/js, no solo este archivo) los mantiene sincronizados.
-import { renderSidebar } from './components/Sidebar.js?v=20260625r2';
-import { Dashboard }   from './pages/Dashboard.js?v=20260625r2';
-import { Finanzas }    from './pages/Finanzas.js?v=20260625r2';
-import { Inventario }  from './pages/Inventario.js?v=20260625r2';
-import { Usuarios }    from './pages/Usuarios.js?v=20260625r2';
-import { Compras }       from './pages/Compras.js?v=20260625r2';
+import { renderSidebar } from './components/Sidebar.js?v=20260625r3';
+import { Dashboard }   from './pages/Dashboard.js?v=20260625r3';
+import { Finanzas }    from './pages/Finanzas.js?v=20260625r3';
+import { Inventario }  from './pages/Inventario.js?v=20260625r3';
+import { Usuarios }    from './pages/Usuarios.js?v=20260625r3';
+import { Compras }       from './pages/Compras.js?v=20260625r3';
 // Servicios — módulo deprecado al cierre 03/05/2026 (Camino A vació la tabla
 // en producción; flujo migrado a Cotizaciones APROBADAS + OCs). El backend
 // sigue vivo porque Logística/OC consumen api.services.getServiciosActivos()
 // para popular dropdowns, pero la página ya no se navega.
-import { Proveedores }   from './pages/Proveedores.js?v=20260625r2';
-import { Prestamos }     from './pages/Prestamos.js?v=20260625r2';
-import { Comercial }     from './pages/Comercial.js?v=20260625r2';
-import { ConfiguracionComercial } from './pages/ConfiguracionComercial.js?v=20260625r2';
-import { Logistica }     from './pages/Logistica.js?v=20260625r2';
-import { Administracion } from './pages/Administracion.js?v=20260625r2';
-import { Configuracion }  from './pages/Configuracion.js?v=20260625r2';
-import { Contabilidad }   from './pages/Contabilidad.js?v=20260625r2';
-import { Importador }     from './pages/Importador.js?v=20260625r2';
-import { OrdenesCompra }  from './pages/OrdenesCompra.js?v=20260625r2';
-import { Produccion }     from './pages/Produccion.js?v=20260625r2';
-import { Alertas }        from './pages/Alertas.js?v=20260625r2';
-import { showSuccess, showError, showToast } from './services/ui.js?v=20260625r2';
+import { Proveedores }   from './pages/Proveedores.js?v=20260625r3';
+import { Prestamos }     from './pages/Prestamos.js?v=20260625r3';
+import { Comercial }     from './pages/Comercial.js?v=20260625r3';
+import { ConfiguracionComercial } from './pages/ConfiguracionComercial.js?v=20260625r3';
+import { Logistica }     from './pages/Logistica.js?v=20260625r3';
+import { Administracion } from './pages/Administracion.js?v=20260625r3';
+import { Configuracion }  from './pages/Configuracion.js?v=20260625r3';
+import { Contabilidad }   from './pages/Contabilidad.js?v=20260625r3';
+import { Importador }     from './pages/Importador.js?v=20260625r3';
+import { OrdenesCompra }  from './pages/OrdenesCompra.js?v=20260625r3';
+import { Produccion }     from './pages/Produccion.js?v=20260625r3';
+import { Alertas }        from './pages/Alertas.js?v=20260625r3';
+import { showSuccess, showError, showToast } from './services/ui.js?v=20260625r3';
 
 // Exponer helpers de toast globalmente (los modules ES no tienen acceso
 // directo desde otros modules sin import; varios usan window.showSuccess?.()
@@ -295,6 +295,55 @@ async function refreshSessionFromServer({ reloadOnChange = false } = {}) {
   }
 }
 
+// ── Aviso de nueva versión desplegada ──────────────────────────────────────
+// Pollea /api/version. Si el id de build cambió respecto al de cuando cargó la
+// página, hubo un deploy nuevo → mostramos un banner discreto para que el
+// usuario recargue cuando quiera. NO recargamos solos (no interrumpir forms).
+let _bootBuildVersion = null;
+let _nuevaVersionBannerMostrado = false;
+
+async function _fetchBuildVersion() {
+  try {
+    const r = await fetch('/api/version', { credentials: 'same-origin', cache: 'no-store' });
+    if (!r.ok) return null;
+    const d = await r.json();
+    return d && d.version ? d.version : null;
+  } catch { return null; }
+}
+
+function _mostrarBannerNuevaVersion() {
+  if (_nuevaVersionBannerMostrado || document.getElementById('nueva-version-banner')) return;
+  _nuevaVersionBannerMostrado = true;
+  const bar = document.createElement('div');
+  bar.id = 'nueva-version-banner';
+  bar.style.cssText = 'position:fixed;left:50%;transform:translateX(-50%);bottom:18px;z-index:99999;'
+    + 'background:#111827;color:#fff;border:1px solid #374151;border-radius:10px;'
+    + 'padding:10px 14px;display:flex;align-items:center;gap:12px;'
+    + 'box-shadow:0 10px 30px rgba(0,0,0,.35);font-size:13px;max-width:92vw';
+  bar.innerHTML = `
+    <span>✨ Hay una versión nueva del sistema.</span>
+    <button id="nv-reload" style="background:#16a34a;color:#fff;border:none;border-radius:6px;padding:6px 12px;cursor:pointer;font-weight:600;font-size:13px">Recargar</button>
+    <button id="nv-dismiss" title="Posponer" aria-label="Posponer" style="background:transparent;color:#9ca3af;border:none;cursor:pointer;font-size:18px;line-height:1">×</button>`;
+  document.body.appendChild(bar);
+  bar.querySelector('#nv-reload').onclick = () => location.reload();
+  bar.querySelector('#nv-dismiss').onclick = () => bar.remove(); // pospuesto esta sesión
+}
+
+async function _chequearNuevaVersion() {
+  const v = await _fetchBuildVersion();
+  if (!v) return;
+  if (_bootBuildVersion === null) { _bootBuildVersion = v; return; } // 1ra lectura = versión de arranque
+  if (v !== _bootBuildVersion) _mostrarBannerNuevaVersion();
+}
+
+function setupVersionCheck() {
+  _chequearNuevaVersion();                              // captura la versión de arranque
+  setInterval(_chequearNuevaVersion, 3 * 60 * 1000);    // re-chequea cada 3 min
+  document.addEventListener('visibilitychange', () => { // y al volver a la pestaña
+    if (document.visibilityState === 'visible') _chequearNuevaVersion();
+  });
+}
+
 async function init() {
   // Limpieza one-time: el token ahora vive en cookie httpOnly. Si quedó un
   // erp_token viejo de localStorage (sesión pre-migración), lo borramos.
@@ -304,6 +353,11 @@ async function init() {
     window.location.replace('/login.html');
     return;
   }
+
+  // Chequeo de versión: arranca el polling para avisar cuando haya un deploy
+  // nuevo (banner discreto). Se hace acá, ya con sesión, antes de cualquier
+  // early-return posterior de init().
+  setupVersionCheck();
 
   // Refresca antes de pintar la SPA, así Sidebar y todos los chequeos de
   // rol leen valores frescos de BD. Si el rol cambió y el usuario quedó
