@@ -1380,11 +1380,16 @@ class CobranzasService {
     let saldo = saldo_inicial;
     let ingresos = 0, egresos = 0, pendientes = 0, comisiones = 0;
     // Heurística: movimientos importados de EECC con tipo_movimiento_banco de
-    // comisión (ITF / N/D / COM. / PORTE) cuentan como comisión aunque ref_tipo sea NULL.
+    // comisión (ITF / COM. / PORTE) cuentan como comisión aunque ref_tipo sea NULL.
+    // NO se cuentan los 'N/D' ("N/D I-BANC + COM.O/CI-BANC"): no son comisión pura,
+    // son un PAGO + una comisión chica que el banco junta en una línea. Contarlos
+    // enteros inflaba el KPI (ej. enero 2026: S/ 17,809 de N/D). Quedan en egresos;
+    // al splitear un N/D con 💱 su comisión real entra vía GastoBancario (ref_tipo
+    // GASTO_BANCARIO, contado abajo).
     const esComisionImportada = (m: any) => {
       if (!m || m.fuente !== 'IMPORT_EECC') return false;
       const t = String(m.tipo_movimiento_banco || '').toUpperCase();
-      return t.includes('ITF') || t.includes('N/D') || t.includes('COM.') || t.includes('PORTE');
+      return t.includes('ITF') || t.includes('COM.') || t.includes('PORTE');
     };
     for (const m of lista) {
       if (m.tipo === 'ABONO') { saldo += m.monto; ingresos += m.monto; }
