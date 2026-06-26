@@ -961,8 +961,17 @@ async function modalLibroBancos() {
 
       <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:8px;margin-bottom:14px">
         <div style="background:#f9fafb;padding:8px;border-radius:6px;border-left:3px solid #6b7280">
-          <div style="font-size:10px;color:#6b7280;font-weight:600">SALDO INICIAL</div>
+          <div style="display:flex;align-items:center;justify-content:space-between">
+            <div style="font-size:10px;color:#6b7280;font-weight:600">SALDO INICIAL</div>
+            <button id="btn-edit-saldo-ini" title="Definir o corregir el saldo inicial de esta cuenta y período. Los meses siguientes se encadenan solos." aria-label="Editar saldo inicial"
+              style="background:none;border:none;cursor:pointer;color:#6b7280;font-size:12px;padding:0;line-height:1">✎</button>
+          </div>
           <div style="font-size:14px;font-weight:700">${fMoney(data.saldo_inicial, mon)}</div>
+          ${data.saldo_inicial_origen === 'DECLARADO'
+            ? '<div style="font-size:9px;color:#166534">✓ declarado</div>'
+            : data.saldo_inicial_origen === 'HEREDADO'
+              ? '<div style="font-size:9px;color:#6b7280">↪ heredado del mes previo</div>'
+              : '<div style="font-size:9px;color:#92400e;background:#fef3c7;border-radius:3px;padding:0 4px;display:inline-block">⚠ sin definir</div>'}
         </div>
         <div style="background:#ecfdf5;padding:8px;border-radius:6px;border-left:3px solid #16a34a">
           <div style="font-size:10px;color:#166534;font-weight:600">INGRESOS</div>
@@ -1022,6 +1031,23 @@ async function modalLibroBancos() {
 
     box.querySelector('#btn-import-eecc').onclick = () => importarEECCDialog(idCuentaSel, render);
     box.querySelector('#btn-new-mov').onclick    = () => nuevoMovManual(idCuentaSel, monedaCta(idCuentaSel), render);
+    box.querySelector('#btn-edit-saldo-ini').onclick = async () => {
+      const actual = Number(data.saldo_inicial) || 0;
+      const val = prompt(
+        `Saldo inicial de ${data.cuenta.nombre} — ${periodoSel}\n` +
+        `(El saldo con el que arranca el mes, tomado del cierre del extracto anterior.\n` +
+        `Los meses siguientes se calculan solos.)`,
+        actual.toFixed(2)
+      );
+      if (val === null) return;
+      const saldo = Number(String(val).replace(',', '.'));
+      if (!Number.isFinite(saldo)) { showError('Monto inválido'); return; }
+      try {
+        await api.cobranzas.setSaldoInicial(idCuentaSel, periodoSel, saldo);
+        showSuccess('Saldo inicial actualizado');
+        render();
+      } catch (e) { showError('Error: ' + e.message); }
+    };
 
     // Conciliar desde sugerencia inline (1-click)
     box.querySelectorAll('.btn-conc-sug').forEach(btn => {
