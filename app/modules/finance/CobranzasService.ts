@@ -1298,8 +1298,8 @@ class CobranzasService {
    * (ON DUPLICATE KEY / ON CONFLICT difieren entre MySQL y Postgres).
    */
   async setSaldoInicial(idCuenta: number, periodo: string, saldo: number, userId?: number) {
-    if (!idCuenta || !/^\d{4}-\d{2}$/.test(periodo) || !Number.isFinite(saldo)) {
-      throw new Error('id_cuenta, periodo (YYYY-MM) y saldo válidos son requeridos');
+    if (!idCuenta || !/^\d{4}-\d{2}$/.test(periodo) || !Number.isFinite(saldo) || Math.abs(saldo) >= 1e12) {
+      throw new Error('id_cuenta, periodo (YYYY-MM) y saldo válidos (< 1e12) son requeridos');
     }
     const [[existing]]: any = await db.query(
       `SELECT id FROM SaldoInicialBanco WHERE id_cuenta = ? AND periodo = ?`,
