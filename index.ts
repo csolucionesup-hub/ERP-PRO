@@ -571,6 +571,13 @@ apiRouter.post('/transferencias-internas/:id/anular', validateIdParam, auditLog(
   res.json(await TransferenciasInternasService.anular(parseInt(req.params.id as string), req.body?.motivo));
 });
 
+apiRouter.delete('/transferencias-internas/:id', validateIdParam, auditLog('TransferenciaInterna', 'DELETE'), async (req: any, res: Response) => {
+  if (req.user?.rol !== 'GERENTE') {
+    return res.status(403).json({ error: 'Solo el GERENTE puede eliminar transferencias internas.' });
+  }
+  res.json(await TransferenciasInternasService.eliminar(parseInt(req.params.id as string)));
+});
+
 apiRouter.get('/cobranzas/:id/detalle', async (req: Request, res: Response) => {
   res.json(await CobranzasService.getDetalle(parseInt(req.params.id as string)));
 });

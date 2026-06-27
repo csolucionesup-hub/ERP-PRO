@@ -1,4 +1,4 @@
-import { api } from '../services/api.js?v=20260626r1';
+import { api } from '../services/api.js?v=20260626r2';
 import { showSuccess, showError, escapeHtml, escapeAttr } from '../services/ui.js';
 import { pill } from '../components/Pill.js';
 import { kpiCard as kpiCardEnt } from '../components/KpiCard.js';
@@ -3841,6 +3841,8 @@ function pintarTablaTI(el, transfs, refresh) {
     const s = map[t] || { bg: '#f3f4f6', fg: '#374151', label: t };
     return `<span style="background:${s.bg};color:${s.fg};padding:2px 7px;border-radius:8px;font-size:10px;font-weight:600">${s.label}</span>`;
   };
+  let esGerente = false;
+  try { esGerente = (JSON.parse(localStorage.getItem('erp_user') || '{}').rol === 'GERENTE'); } catch {}
   const filas = transfs.map(t => {
     const flecha = `${t.empresa_origen === 'METAL' ? '⚫ Metal' : '🔴 Perfo'} → ${t.empresa_destino === 'METAL' ? '⚫ Metal' : '🔴 Perfo'}`;
     const real = t.monto_destino_real != null ? fmtMon(t.monto_destino_real, t.moneda_destino) : `<span style="color:#9ca3af;font-style:italic">sin conciliar</span>`;
@@ -3862,7 +3864,8 @@ function pintarTablaTI(el, transfs, refresh) {
         <td style="padding:8px;white-space:nowrap;text-align:right">
           ${puedeConciliar ? `<button data-conciliar="${t.id_transferencia}" title="Cargar el monto real que entró al banco (para registrar diferencia de cambio)" style="padding:4px 8px;background:#0891b2;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:10px;font-weight:600">✓ Conciliar</button>` : ''}
           ${puedeDevolver ? `<button data-devolver="${t.id_transferencia}" title="Registrar devolución (transferencia inversa)" style="padding:4px 8px;background:#16a34a;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:10px;font-weight:600;margin-left:3px">↩ Devolver</button>` : ''}
-          ${puedeAnular ? `<button data-anular="${t.id_transferencia}" title="Anular esta transferencia" style="padding:4px 8px;background:#fff;color:#dc2626;border:1px solid #fca5a5;border-radius:4px;cursor:pointer;font-size:10px;margin-left:3px">×</button>` : ''}
+          ${puedeAnular ? `<button data-anular="${t.id_transferencia}" title="Anular esta transferencia (la deja como ANULADA, conserva el registro)" style="padding:4px 8px;background:#fff;color:#dc2626;border:1px solid #fca5a5;border-radius:4px;cursor:pointer;font-size:10px;margin-left:3px">×</button>` : ''}
+          ${esGerente ? `<button data-eliminar="${t.id_transferencia}" title="Eliminar DEFINITIVAMENTE esta transferencia (borra la fila; si estaba conciliada, libera el movimiento del banco a POR_CONCILIAR). Solo GERENTE." aria-label="Eliminar transferencia" style="padding:4px 8px;background:#fff;color:#b91c1c;border:1px solid #b91c1c;border-radius:4px;cursor:pointer;font-size:10px;margin-left:3px">🗑</button>` : ''}
         </td>
       </tr>`;
   }).join('');
@@ -3931,6 +3934,23 @@ function pintarTablaTI(el, transfs, refresh) {
       try {
         await api.transferenciasInternas.anular(id, motivo);
         showSuccess('Anulada');
+        refresh();
+      } catch (e) { showError(e.error || e.message); }
+    };
+  });
+
+  el.querySelectorAll('[data-eliminar]').forEach(b => {
+    b.onclick = async () => {
+      const id = Number(b.dataset.eliminar);
+      const t = transfs.find(x => x.id_transferencia === id);
+      const ligadaBanco = t && (t.id_mov_bancario_origen || t.id_mov_bancario_destino);
+      const aviso = ligadaBanco
+        ? '\n\n⚠️ Está conciliada con el banco: ese movimiento del extracto volverá a quedar PENDIENTE de conciliar.'
+        : '';
+      if (!confirm(`¿Eliminar DEFINITIVAMENTE la transferencia #${id}?\n\nSe borra de la lista (no queda como ANULADA).${aviso}\n\nEsta acción no se puede deshacer.`)) return;
+      try {
+        await api.transferenciasInternas.eliminar(id);
+        showSuccess('Transferencia eliminada');
         refresh();
       } catch (e) { showError(e.error || e.message); }
     };
