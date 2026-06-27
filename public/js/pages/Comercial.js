@@ -1919,6 +1919,10 @@ export const Comercial = async () => {
                 <label style="font-size:11px;color:#374151;font-weight:600">Comentarios</label>
                 <textarea id="ec-com" rows="3" style="width:100%;padding:7px 9px;border:1px solid #d1d5db;border-radius:5px;font-size:13px;resize:vertical">${v(cot.comentarios || '')}</textarea>
               </div>
+              <div style="grid-column:1/-1;margin-top:10px">
+                <label style="font-size:12px;color:#555;display:block;margin-bottom:3px">Condiciones del servicio (PDF)</label>
+                <textarea id="ec-cond" rows="8" style="width:100%;padding:7px 9px;border:1px solid #d1d5db;border-radius:5px;font-size:13px;resize:vertical;font-family:inherit">${v(cot.condiciones_servicio || '')}</textarea>
+              </div>
             </div>
             <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:18px">
               <button id="ec-cancel" style="padding:8px 16px;background:#fff;border:1px solid #d1d5db;border-radius:5px;cursor:pointer;font-size:13px">Cancelar</button>
@@ -1946,6 +1950,7 @@ export const Comercial = async () => {
             nro_oc_cliente: g('#ec-occli'),
             nro_factura:    g('#ec-fac'),
             comentarios:    g('#ec-com'),
+            condiciones_servicio: g('#ec-cond'),
           });
         };
       });
