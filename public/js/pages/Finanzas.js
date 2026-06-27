@@ -117,6 +117,19 @@ async function previewAdjunto(url, titulo = 'Constancia') {
   }
 }
 
+// Sube el PDF de la factura de venta de una cotización, garantizando UNA sola
+// factura: borra cualquier adjunto FacturaVenta previo antes de subir el nuevo.
+// ref_tipo='FacturaVenta', ref_id=id_cotizacion. Lanza si el upload falla.
+async function subirFacturaVentaUnica(idCotizacion, file) {
+  let previos = [];
+  try { previos = await api.adjuntos.listar('FacturaVenta', idCotizacion); }
+  catch { previos = []; }
+  for (const p of (previos || [])) {
+    try { await api.adjuntos.eliminar(p.id); } catch { /* best-effort */ }
+  }
+  return api.adjuntos.subir('FacturaVenta', idCotizacion, file);
+}
+
 // ── Render fila de cotización ───────────────────────────────────
 function rowCotizacion(c, marca) {
   const cfg = MARCAS[marca];
