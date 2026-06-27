@@ -120,10 +120,10 @@ async function previewAdjunto(url, titulo = 'Constancia') {
 // Sube el PDF de la factura de venta de una cotización, garantizando UNA sola
 // factura: borra cualquier adjunto FacturaVenta previo antes de subir el nuevo.
 // ref_tipo='FacturaVenta', ref_id=id_cotizacion. Lanza si el upload falla.
+// Dejamos que listar() propague: si no podemos verificar los previos, abortamos
+// en vez de subir un duplicado y romper la garantía de "una sola factura".
 async function subirFacturaVentaUnica(idCotizacion, file) {
-  let previos = [];
-  try { previos = await api.adjuntos.listar('FacturaVenta', idCotizacion); }
-  catch { previos = []; }
+  const previos = await api.adjuntos.listar('FacturaVenta', idCotizacion);
   for (const p of (previos || [])) {
     try { await api.adjuntos.eliminar(p.id); } catch { /* best-effort */ }
   }
@@ -2135,7 +2135,7 @@ async function modalDetalle(id) {
       html += `<button type="button" data-fac-ver="${a.id}" data-fac-nom="${escapeAttr(a.nombre_original || 'Factura')}"
         title="Ver la factura ${nombre}" aria-label="Ver factura"
         style="background:#15803d;color:#fff;border:none;border-radius:4px;padding:3px 8px;cursor:pointer;font-size:11px">👁️</button>`;
-      html += `<a href="${api.adjuntos.archivoUrl(a.id)}" download
+      html += `<a href="${api.adjuntos.archivoUrl(a.id)}" download="${escapeAttr(a.nombre_original || 'factura.pdf')}"
         title="Descargar la factura ${nombre}" aria-label="Descargar factura"
         style="background:#fff;color:#15803d;border:1px solid #86efac;border-radius:4px;padding:3px 8px;cursor:pointer;font-size:11px;text-decoration:none">⬇</a>`;
       if (_esGerente) {
