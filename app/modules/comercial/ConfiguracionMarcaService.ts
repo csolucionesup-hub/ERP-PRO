@@ -22,6 +22,7 @@ export interface ConfiguracionMarca {
   firma_direccion: string | null;
   logo_url: string | null;
   logo_public_id: string | null;
+  condiciones_servicio_default: string | null;
 }
 
 const MARCAS_VALIDAS: Marca[] = ['METAL', 'PERFOTOOLS'];
@@ -31,6 +32,7 @@ const CAMPOS_EDITABLES = [
   'cta_pen_banco', 'cta_pen_numero', 'cta_pen_cci',
   'cta_usd_banco', 'cta_usd_numero', 'cta_usd_cci',
   'firma_nombre', 'firma_cargo', 'firma_telefono', 'firma_email', 'firma_direccion',
+  'condiciones_servicio_default',
 ] as const;
 
 class ConfiguracionMarcaService {
