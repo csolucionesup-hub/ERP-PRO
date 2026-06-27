@@ -1501,11 +1501,21 @@ class CobranzasService {
     const eecc_movimientos = eeccRows.length;
     let eecc_fecha_import: string | null = null;
     if (eeccRows.length) {
-      const fechas = eeccRows
-        .map((m: any) => String(m.created_at || ''))
-        .filter(Boolean)
-        .sort();
-      if (fechas.length) eecc_fecha_import = fechas[fechas.length - 1].slice(0, 10);
+      // created_at puede venir como Date (driver Postgres) o string; normalizar a
+      // timestamp para tomar el más reciente y formatear a YYYY-MM-DD. Antes se hacía
+      // String(...).slice(0,10), que con un Date daba "Thu May 14" y rompía el banner.
+      const ts = eeccRows
+        .map((m: any) => {
+          const v = m.created_at;
+          if (!v) return NaN;
+          return v instanceof Date ? v.getTime() : Date.parse(String(v));
+        })
+        .filter((t: number) => !Number.isNaN(t));
+      if (ts.length) {
+        const d = new Date(Math.max(...ts));
+        eecc_fecha_import =
+          `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      }
     }
 
     return {
