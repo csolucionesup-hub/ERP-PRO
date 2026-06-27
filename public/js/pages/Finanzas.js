@@ -1,4 +1,4 @@
-import { api } from '../services/api.js?v=20260625r5';
+import { api } from '../services/api.js?v=20260626r1';
 import { showSuccess, showError, escapeHtml, escapeAttr } from '../services/ui.js';
 import { pill } from '../components/Pill.js';
 import { kpiCard as kpiCardEnt } from '../components/KpiCard.js';
@@ -867,6 +867,25 @@ async function modalLibroBancos() {
       `<option value="${c.id_cuenta}" ${c.id_cuenta == idCuentaSel ? 'selected' : ''}>${escapeHtml(c.nombre)} (${c.moneda})</option>`
     ).join('');
 
+    // Banner de estado del EECC del período navegado (cuenta + mes seleccionados)
+    const MESES_LB = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+    const [pyAnio, pyMes] = String(periodoSel).split('-');
+    const periodoLabelLB = pyMes ? `${MESES_LB[Number(pyMes) - 1]} ${pyAnio}` : periodoSel;
+    let eeccFechaLB = '';
+    if (data.eecc_fecha_import) {
+      const [fa, fm, fd] = String(data.eecc_fecha_import).split('-');
+      eeccFechaLB = `${fd}/${fm}/${fa}`;
+    }
+    const eeccBanner = data.eecc_importado
+      ? `<div style="display:flex;align-items:center;gap:8px;background:#ecfdf5;border:1px solid #a7f3d0;color:#166534;padding:9px 12px;border-radius:6px;margin-bottom:12px;font-size:12px">
+           <span style="font-size:15px">✅</span>
+           <span><b>EECC de ${escapeHtml(periodoLabelLB)} cargado</b> — ${data.eecc_movimientos} movimiento(s) importado(s)${eeccFechaLB ? ` · subido el ${eeccFechaLB}` : ''}</span>
+         </div>`
+      : `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;background:#fffbeb;border:1px solid #fcd34d;color:#92400e;padding:9px 12px;border-radius:6px;margin-bottom:12px;font-size:12px">
+           <span style="display:flex;align-items:center;gap:8px"><span style="font-size:15px">⚠️</span><span><b>Falta subir el EECC de ${escapeHtml(periodoLabelLB)}</b> para ${escapeHtml(data.cuenta.nombre)}</span></span>
+           <button id="btn-eecc-banner" title="Importar el estado de cuenta (EECC) de este período" style="flex-shrink:0;padding:6px 12px;border:1px solid #3b82f6;background:#3b82f6;color:#fff;border-radius:4px;cursor:pointer;font-size:11px;font-weight:600">📥 Importar EECC</button>
+         </div>`;
+
     const rows = data.movimientos.map(m => {
       const isAbono = m.tipo === 'ABONO';
       const abono = isAbono ? `<span style="color:#16a34a;font-weight:600">${fMoney(m.monto, mon)}</span>` : '';
@@ -959,6 +978,8 @@ async function modalLibroBancos() {
         <input id="inp-periodo" type="month" value="${periodoSel}" style="padding:8px;border:1px solid #d1d5db;border-radius:4px;font-size:12px">
       </div>
 
+      ${eeccBanner}
+
       <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:8px;margin-bottom:14px">
         <div style="background:#f9fafb;padding:8px;border-radius:6px;border-left:3px solid #6b7280">
           <div style="display:flex;align-items:center;justify-content:space-between">
@@ -1030,6 +1051,8 @@ async function modalLibroBancos() {
     box.querySelector('#inp-periodo').onchange = (e) => { periodoSel = e.target.value; render(); };
 
     box.querySelector('#btn-import-eecc').onclick = () => importarEECCDialog(idCuentaSel, render);
+    const btnEeccBanner = box.querySelector('#btn-eecc-banner');
+    if (btnEeccBanner) btnEeccBanner.onclick = () => importarEECCDialog(idCuentaSel, render);
     box.querySelector('#btn-new-mov').onclick    = () => nuevoMovManual(idCuentaSel, monedaCta(idCuentaSel), render);
     box.querySelector('#btn-edit-saldo-ini').onclick = async () => {
       const actual = Number(data.saldo_inicial) || 0;
