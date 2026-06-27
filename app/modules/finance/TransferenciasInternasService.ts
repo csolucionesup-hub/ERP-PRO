@@ -410,6 +410,95 @@ class TransferenciasInternasService {
   }
 
   /**
+   * Elimina DEFINITIVAMENTE una transferencia (hard delete). A diferencia de
+   * anular (que solo cambia estado a ANULADA), borra la fila. Pensado para
+   * corregir errores de carga sin dejar registros ANULADA colgando.
+   *
+   * En una transacción:
+   *  1. Bloquea si tiene devoluciones vivas (no anuladas) — hay que sacarlas primero.
+   *  2. Si es DEVOLUCION aún viva, restaura el saldo del préstamo original.
+   *  3. Desvincula los movimientos bancarios conciliados con ella → vuelven a
+   *     POR_CONCILIAR (el FK ON DELETE SET NULL limpia el id, pero NO revierte
+   *     ref_tipo/estado — eso hay que hacerlo a mano).
+   *  4. Borra la fila.
+   */
+  async eliminar(id: number) {
+    const conn = await db.getConnection();
+    await conn.beginTransaction();
+    try {
+      const [rows]: any = await conn.query(
+        `SELECT * FROM TransferenciasInternas WHERE id_transferencia = ? FOR UPDATE`,
+        [id]
+      );
+      const t = (rows as any[])[0];
+      if (!t) throw new Error('Transferencia no encontrada');
+
+      // 1. No borrar préstamo con devoluciones vivas
+      if (t.tipo_movimiento === 'PRESTAMO_INTERNO') {
+        const [devs]: any = await conn.query(
+          `SELECT COUNT(*)::int AS n FROM TransferenciasInternas
+            WHERE es_devolucion_de = ? AND estado <> 'ANULADA'`,
+          [id]
+        );
+        if ((devs as any[])[0]?.n > 0) {
+          throw new Error('Esta transferencia tiene devoluciones registradas. Eliminá primero las devoluciones.');
+        }
+      }
+
+      // 2. Si es una DEVOLUCION viva, restaurar saldo del préstamo original
+      if (t.tipo_movimiento === 'DEVOLUCION' && t.es_devolucion_de && t.estado !== 'ANULADA') {
+        const [origRows]: any = await conn.query(
+          `SELECT * FROM TransferenciasInternas WHERE id_transferencia = ? FOR UPDATE`,
+          [t.es_devolucion_de]
+        );
+        const orig = (origRows as any[])[0];
+        if (orig && orig.estado !== 'ANULADA') {
+          const montoDevPEN = this.montoEnPEN(
+            Number(t.monto_origen),
+            t.moneda_origen,
+            Number(orig.tipo_cambio_referencia),
+          );
+          const nuevoSaldo = Number(orig.saldo_pendiente_pen) + montoDevPEN;
+          const nuevoEstado = nuevoSaldo > 0.5 ? (orig.estado === 'DEVUELTA' ? 'PARCIAL' : orig.estado) : orig.estado;
+          await conn.query(
+            `UPDATE TransferenciasInternas
+                SET saldo_pendiente_pen = ?, estado = ?, updated_at = NOW()
+              WHERE id_transferencia = ?`,
+            [nuevoSaldo, nuevoEstado, orig.id_transferencia]
+          );
+        }
+      }
+
+      // 3. Desvincular movimientos bancarios conciliados con esta transferencia
+      await conn.query(
+        `UPDATE MovimientoBancario
+            SET id_transferencia_interna = NULL,
+                ref_tipo = NULL,
+                ref_id = NULL,
+                estado_conciliacion = 'POR_CONCILIAR',
+                conciliado_at = NULL,
+                comentario = COALESCE(comentario,'') || ?
+          WHERE id_transferencia_interna = ?`,
+        [`\n[Desvinculado: transferencia interna #${id} eliminada]`, id]
+      );
+
+      // 4. Borrar la fila
+      await conn.query(
+        `DELETE FROM TransferenciasInternas WHERE id_transferencia = ?`,
+        [id]
+      );
+
+      await conn.commit();
+      return { success: true };
+    } catch (e) {
+      await conn.rollback();
+      throw e;
+    } finally {
+      conn.release();
+    }
+  }
+
+  /**
    * Balance neto entre Metal y Perfotools. Devuelve cuánto le debe cada
    * empresa a la otra (valorado en PEN equivalente) + serie temporal para
    * el gráfico del dashboard.

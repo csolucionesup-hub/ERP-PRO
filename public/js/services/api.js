@@ -288,6 +288,7 @@ export const api = {
     crear:      (data)    => post('/transferencias-internas', data),
     actualizar: (id, d)   => put(`/transferencias-internas/${id}`, d),
     anular:     (id, m)   => post(`/transferencias-internas/${id}/anular`, { motivo: m || null }),
+    eliminar:   (id)      => del(`/transferencias-internas/${id}`),
   },
   configuracionMarca: {
     getAll:        ()              => get('/configuracion-marca'),
