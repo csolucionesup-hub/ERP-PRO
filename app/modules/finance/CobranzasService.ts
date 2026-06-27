@@ -1493,6 +1493,21 @@ class CobranzasService {
     }
     const diferencia = saldo_banco != null ? +(saldo_banco - saldo_final).toFixed(2) : null;
 
+    // ¿Se importó el EECC (extracto bancario) de este mes+cuenta?
+    // Señal honesta = hay filas con fuente='IMPORT_EECC' (no depende de saldo_banco,
+    // que puede ser null aun habiendo EECC si falta el saldo terminal de la cadena).
+    const eeccRows = lista.filter((m: any) => m.fuente === 'IMPORT_EECC');
+    const eecc_importado = eeccRows.length > 0;
+    const eecc_movimientos = eeccRows.length;
+    let eecc_fecha_import: string | null = null;
+    if (eeccRows.length) {
+      const fechas = eeccRows
+        .map((m: any) => String(m.created_at || ''))
+        .filter(Boolean)
+        .sort();
+      if (fechas.length) eecc_fecha_import = fechas[fechas.length - 1].slice(0, 10);
+    }
+
     return {
       cuenta,
       periodo: per,
@@ -1501,6 +1516,9 @@ class CobranzasService {
       saldo_final: +saldo_final.toFixed(2),
       saldo_banco,
       diferencia,
+      eecc_importado,
+      eecc_movimientos,
+      eecc_fecha_import,
       ingresos: +ingresos.toFixed(2),
       egresos:  +egresos.toFixed(2),
       comisiones: +comisiones.toFixed(2),
