@@ -1860,9 +1860,14 @@ function modalFacturar(cot) {
           <label style="font-size:11px;color:#6b7280;font-weight:600">Número de factura</label>
           <input type="text" name="nro_factura" value="${serie}" required style="width:100%;padding:8px;font-size:13px;border:1px solid #d1d5db;border-radius:4px" placeholder="F001-000123">
         </div>
-        <div style="margin-bottom:14px">
+        <div style="margin-bottom:12px">
           <label style="font-size:11px;color:#6b7280;font-weight:600">Fecha de emisión</label>
           <input type="date" name="fecha_factura" value="${hoy}" required style="width:100%;padding:8px;font-size:13px;border:1px solid #d1d5db;border-radius:4px">
+        </div>
+        <div style="margin-bottom:14px">
+          <label style="font-size:11px;color:#6b7280;font-weight:600">Factura PDF (opcional)</label>
+          <input type="file" name="factura_file" accept=".pdf,image/*" style="width:100%;padding:6px;font-size:12px;border:1px solid #d1d5db;border-radius:4px">
+          <div style="font-size:10px;color:#9ca3af;margin-top:3px">Sube el PDF descargado de SUNAT. También puedes subirlo o reemplazarlo después.</div>
         </div>
         <div style="display:flex;justify-content:flex-end;gap:8px">
           <button type="button" id="fac-cancel" style="padding:8px 14px;border:1px solid #d1d5db;background:#fff;border-radius:4px;cursor:pointer">Cancelar</button>
@@ -1878,9 +1883,12 @@ function modalFacturar(cot) {
     box.querySelector('#form-fac').onsubmit = (e) => {
       e.preventDefault();
       const fd = new FormData(e.target);
+      const fileInput = e.target.querySelector('input[name="factura_file"]');
+      const file = fileInput && fileInput.files && fileInput.files[0] ? fileInput.files[0] : null;
       close({
         nro_factura:   String(fd.get('nro_factura')).trim(),
         fecha_factura: fd.get('fecha_factura'),
+        file,
       });
     };
   });
@@ -2129,9 +2137,19 @@ async function modalDetalle(id) {
   if (btnFac) btnFac.onclick = async () => {
     const data = await modalFacturar(c);
     if (!data) return;
+    const file = data.file || null;
     try {
-      await api.cobranzas.facturar(c.id_cotizacion, data);
-      showSuccess('Cotización facturada');
+      await api.cobranzas.facturar(c.id_cotizacion, { nro_factura: data.nro_factura, fecha_factura: data.fecha_factura });
+      if (file) {
+        try {
+          await subirFacturaVentaUnica(c.id_cotizacion, file);
+          showSuccess('Cotización facturada y PDF adjuntado');
+        } catch (upErr) {
+          showError(`Factura registrada, pero no se pudo subir el PDF: ${upErr.message}. Puedes subirlo desde el detalle.`);
+        }
+      } else {
+        showSuccess('Cotización facturada');
+      }
       close();
       window.refreshModule?.();
     } catch (e) { showError(e.message); }
