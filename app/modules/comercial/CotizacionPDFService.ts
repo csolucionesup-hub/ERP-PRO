@@ -393,6 +393,8 @@ class CotizacionPDFService {
       for (const raw of rawLines) {
         const line = raw.trim();
         if (!line) { y += 4; continue; }
+        // Precedencia: ":" (título) gana sobre "-" (viñeta). Una línea como
+        // "- Garantía:" se trata como título, no como viñeta — es intencional.
         if (line.endsWith(':')) {
           // Título en negrita
           doc.font('Helvetica-Bold').fontSize(10).fillColor('#000');
@@ -401,8 +403,10 @@ class CotizacionPDFService {
           doc.text(line, L, y, { width: pageW });
           y += h + 4;
         } else if (line.startsWith('-') || line.startsWith('•')) {
-          // Viñeta indentada
-          const txt = '• ' + line.replace(/^[-•]\s*/, '');
+          // Viñeta indentada — saltar si queda vacía (la línea era solo "-")
+          const body = line.replace(/^[-•]\s*/, '');
+          if (!body) continue;
+          const txt = '• ' + body;
           doc.font('Helvetica').fontSize(9.5).fillColor('#000');
           const h = doc.heightOfString(txt, { width: pageW - 14 });
           ensureSpace(h + 3);
