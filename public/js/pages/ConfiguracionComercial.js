@@ -120,6 +120,17 @@ function renderHTML() {
           </div>
         </section>
 
+        <section style="background:#f8f9fa;padding:14px 16px;border-radius:6px;margin-bottom:14px">
+          <div style="font-size:12px;font-weight:700;color:#555;margin-bottom:10px;text-transform:uppercase">Condiciones del servicio — texto por defecto</div>
+          <p style="margin:0 0 8px;color:#666;font-size:12px">
+            Se auto-rellena en cada cotización nueva de esta marca (lo podés editar por cotización).
+            Formato: línea que termina en <b>:</b> = título en negrita · línea que empieza con <b>-</b> = viñeta · el resto = párrafo.
+          </p>
+          <textarea name="condiciones_servicio_default" rows="10"
+            placeholder="Servicio de soldadura:&#10;La soldadura será ejecutada por soldadores calificados según AWS D1.1.&#10;- Se habilitará un proceso de soldadura FCAW...&#10;Garantía:&#10;- La estructura instalada tendrá una garantía de 6 meses..."
+            style="width:100%;padding:8px 10px;border:1px solid #d0d0d0;border-radius:4px;font-size:13px;font-family:inherit;resize:vertical">${escapeHtml(c.condiciones_servicio_default || '')}</textarea>
+        </section>
+
         <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:10px">
           <button type="button" onclick="window.navigate('comercial')"
             style="padding:10px 20px;border:1px solid #ccc;background:#fff;border-radius:4px;cursor:pointer">Cancelar</button>
@@ -142,7 +153,7 @@ window.cfgComercial = {
   async guardar(ev) {
     ev.preventDefault();
     const data = {};
-    for (const el of ev.target.querySelectorAll('input[name]')) {
+    for (const el of ev.target.querySelectorAll('input[name], textarea[name]')) {
       data[el.name] = el.value.trim();
     }
     try {

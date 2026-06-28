@@ -217,6 +217,11 @@ class CotizacionPDFService {
       .text('Estimados señores:', L, y); y += 14;
     doc.text('En atención a su solicitud, nos es grato cotizarle:', L, y); y += 24;
 
+    // Título de la sección técnica (formato solicitado por clientes)
+    doc.font('Helvetica-Bold').fontSize(11).fillColor('#000')
+      .text('PROPUESTA TÉCNICA', L, y, { width: pageW, align: 'center' });
+    y += 18;
+
     // ── Tabla de ítems ──────────────────────────────────────────
     // Columnas (A4 = 595pt, L=50, R=545, pageW=495)
     // Ítem | Descripción | Unidad | Cantidad | P.Unit | SubTotal+Foto
@@ -381,6 +386,44 @@ class CotizacionPDFService {
             L, y, { width: pageW, align: 'center' });
     y += 26;
 
+    // ── Condiciones del servicio (texto libre, formato ":"=título, "-"=viñeta) ──
+    if (cot.condiciones_servicio && String(cot.condiciones_servicio).trim()) {
+      ensureSpace(40);
+      const rawLines = String(cot.condiciones_servicio).split('\n');
+      for (const raw of rawLines) {
+        const line = raw.trim();
+        if (!line) { y += 4; continue; }
+        // Precedencia: ":" (título) gana sobre "-" (viñeta). Una línea como
+        // "- Garantía:" se trata como título, no como viñeta — es intencional.
+        if (line.endsWith(':')) {
+          // Título en negrita
+          doc.font('Helvetica-Bold').fontSize(10).fillColor('#000');
+          const h = doc.heightOfString(line, { width: pageW });
+          ensureSpace(h + 4);
+          doc.text(line, L, y, { width: pageW });
+          y += h + 4;
+        } else if (line.startsWith('-') || line.startsWith('•')) {
+          // Viñeta indentada — saltar si queda vacía (la línea era solo "-")
+          const body = line.replace(/^[-•]\s*/, '');
+          if (!body) continue;
+          const txt = '• ' + body;
+          doc.font('Helvetica').fontSize(9.5).fillColor('#000');
+          const h = doc.heightOfString(txt, { width: pageW - 14 });
+          ensureSpace(h + 3);
+          doc.text(txt, L + 14, y, { width: pageW - 14 });
+          y += h + 3;
+        } else {
+          // Párrafo normal
+          doc.font('Helvetica').fontSize(9.5).fillColor('#000');
+          const h = doc.heightOfString(line, { width: pageW });
+          ensureSpace(h + 3);
+          doc.text(line, L, y, { width: pageW });
+          y += h + 3;
+        }
+      }
+      y += 10;
+    }
+
     // ── Condiciones generales ───────────────────────────────────
     ensureSpace(140);
     doc.font('Helvetica-Bold').fontSize(10).fillColor('#000').text('CONDICIONES GENERALES', L, y); y += 14;
@@ -422,7 +465,13 @@ class CotizacionPDFService {
     condLine(`Los precios han sido expresados en ${curWord}`);
     if (cot.precios_incluyen) condPar('Los precios incluyen:', formatMultiline(cot.precios_incluyen));
     condLine('No incluye aquello que no sea explícitamente mencionado en la presente cotización.');
-    condPar('Forma de Pago:',        formatMultiline(cot.forma_pago));
+    if (cot.forma_pago) {
+      y += 6;
+      doc.font('Helvetica-Bold').fontSize(10).fillColor('#000');
+      ensureSpace(16);
+      doc.text('CONDICIONES DE PAGO:', L, y); y += 14;
+      condLine(formatMultiline(cot.forma_pago));
+    }
     condPar('Validez de la Oferta:', cot.validez_oferta);
     condPar('Plazo de entrega:',     cot.plazo_entrega);
     condPar('Lugar de Entrega de herramientas:', cot.lugar_entrega);

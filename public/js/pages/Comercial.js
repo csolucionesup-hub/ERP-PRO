@@ -589,6 +589,13 @@ function formNueva(marca, tcHoy, opts = {}) {
                 style="width:100%;padding:8px;border-radius:var(--radius-sm);border:1px solid var(--border-light);font-size:12px">
             </div>
           </div>
+          <div style="margin-top:10px">
+            <label style="font-size:11px;color:var(--text-secondary);display:block;margin-bottom:3px">Condiciones del servicio (propuesta técnica) — aparece en el PDF</label>
+            <textarea name="condiciones_servicio" rows="8"
+              placeholder="Servicio de soldadura:&#10;La soldadura será ejecutada por soldadores calificados según AWS D1.1.&#10;- Se habilitará un proceso de soldadura FCAW...&#10;Garantía:&#10;- Garantía de 6 meses..."
+              style="width:100%;padding:8px;border-radius:var(--radius-sm);border:1px solid var(--border-light);font-size:12px;font-family:inherit;resize:vertical"></textarea>
+            <div style="font-size:10px;color:var(--text-secondary);margin-top:3px">Formato: línea que termina en ":" = título · línea que empieza con "-" = viñeta · el resto = párrafo. Opcional.</div>
+          </div>
         </div>
 
         <!-- Recordatorio: cuenta bancaria y firma se editan en Configuración -->
@@ -910,9 +917,21 @@ function bindForm(marca, opts = {}) {
     setVal('lugar_trabajo',    editData.lugar_trabajo);
     prefillML('precios_incluyen', editData.precios_incluyen);
     setVal('comentarios',      editData.comentarios);
+    setVal('condiciones_servicio', editData.condiciones_servicio);
     if (esUSD) setVal('tipo_cambio', editData.tipo_cambio);
     const chkIgv = el(`igv-${idp}`);
     if (chkIgv) chkIgv.checked = Number(editData.igv) > 0 || !!editData.aplica_igv;
+  }
+
+  // Cotización NUEVA: auto-rellenar condiciones_servicio con el default de la marca.
+  // formNueva es síncrono (no puede await); lo cargamos acá tras el render.
+  if (!editData && form) {
+    const ta = form.querySelector('[name="condiciones_servicio"]');
+    if (ta && !ta.value) {
+      api.configuracionMarca.getByMarca(marca)
+        .then(cfg => { if (ta && !ta.value && cfg?.condiciones_servicio_default) ta.value = cfg.condiciones_servicio_default; })
+        .catch(() => { /* sin default: queda vacío, no bloquea */ });
+    }
   }
 
   // Submit
@@ -940,6 +959,7 @@ function bindForm(marca, opts = {}) {
           lugar_trabajo:    f.lugar_trabajo.value    || undefined,
           precios_incluyen: f.precios_incluyen.value || undefined,
           comentarios:      f.comentarios.value      || undefined,
+          condiciones_servicio: f.condiciones_servicio.value || undefined,
           fecha:            f.fecha?.value           || undefined,
           nro_cotizacion:   f.nro_cotizacion?.value?.trim() || undefined,
           detalles:         lineas,
@@ -1899,6 +1919,10 @@ export const Comercial = async () => {
                 <label style="font-size:11px;color:#374151;font-weight:600">Comentarios</label>
                 <textarea id="ec-com" rows="3" style="width:100%;padding:7px 9px;border:1px solid #d1d5db;border-radius:5px;font-size:13px;resize:vertical">${v(cot.comentarios || '')}</textarea>
               </div>
+              <div style="grid-column:1/-1;margin-top:10px">
+                <label style="font-size:12px;color:#555;display:block;margin-bottom:3px">Condiciones del servicio (PDF)</label>
+                <textarea id="ec-cond" rows="8" style="width:100%;padding:7px 9px;border:1px solid #d1d5db;border-radius:5px;font-size:13px;resize:vertical;font-family:inherit">${v(cot.condiciones_servicio || '')}</textarea>
+              </div>
             </div>
             <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:18px">
               <button id="ec-cancel" style="padding:8px 16px;background:#fff;border:1px solid #d1d5db;border-radius:5px;cursor:pointer;font-size:13px">Cancelar</button>
@@ -1926,6 +1950,7 @@ export const Comercial = async () => {
             nro_oc_cliente: g('#ec-occli'),
             nro_factura:    g('#ec-fac'),
             comentarios:    g('#ec-com'),
+            condiciones_servicio: g('#ec-cond'),
           });
         };
       });

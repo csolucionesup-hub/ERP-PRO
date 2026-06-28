@@ -52,6 +52,7 @@ interface CotizacionInput {
   lugar_trabajo?: string;
   precios_incluyen?: string;
   comentarios?: string;
+  condiciones_servicio?: string;
   /**
    * Fecha de la cotización en formato YYYY-MM-DD. Si no viene, se usa hoy.
    * Útil cuando se carga data histórica (Julio cargando enero/2025 hoy).
@@ -786,7 +787,7 @@ class CotizacionService {
       cliente, atencion, telefono, correo, proyecto, ref,
       moneda = 'PEN', tipo_cambio = 1, aplica_igv = false,
       forma_pago, validez_oferta, plazo_entrega, lugar_entrega, lugar_trabajo,
-      precios_incluyen, comentarios,
+      precios_incluyen, comentarios, condiciones_servicio,
       detalles,
     } = data;
 
@@ -823,8 +824,8 @@ class CotizacionService {
            (nro_cotizacion, marca, fecha, cliente, atencion, telefono, correo, proyecto, ref,
             moneda, tipo_cambio, subtotal, igv, total,
             forma_pago, validez_oferta, plazo_entrega, lugar_entrega, lugar_trabajo,
-            comentarios, precios_incluyen)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            comentarios, precios_incluyen, condiciones_servicio)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           nro_cotizacion, marca, fecha, cliente,
           atencion ?? null, telefono ?? null, correo ?? null,
@@ -832,7 +833,7 @@ class CotizacionService {
           moneda, tipo_cambio, subtotal, igv, total,
           forma_pago ?? null, validez_oferta ?? null,
           plazo_entrega ?? null, lugar_entrega ?? null, lugar_trabajo ?? null,
-          comentarios ?? null, precios_incluyen ?? null,
+          comentarios ?? null, precios_incluyen ?? null, condiciones_servicio ?? null,
         ]
       );
 
@@ -938,7 +939,7 @@ class CotizacionService {
       cliente, atencion, telefono, correo, proyecto, ref,
       moneda = 'PEN', tipo_cambio = 1, aplica_igv = false,
       forma_pago, validez_oferta, plazo_entrega, lugar_entrega, lugar_trabajo,
-      precios_incluyen, comentarios,
+      precios_incluyen, comentarios, condiciones_servicio,
       detalles,
     } = data;
 
@@ -972,6 +973,7 @@ class CotizacionService {
            moneda = ?, tipo_cambio = ?, subtotal = ?, igv = ?, total = ?,
            forma_pago = ?, validez_oferta = ?, plazo_entrega = ?,
            lugar_entrega = ?, lugar_trabajo = ?, comentarios = ?, precios_incluyen = ?,
+           condiciones_servicio = ?,
            fecha = COALESCE(?, fecha)
          WHERE id_cotizacion = ?`,
         [
@@ -980,7 +982,7 @@ class CotizacionService {
           moneda, tipo_cambio, subtotal, igv, total,
           forma_pago ?? null, validez_oferta ?? null,
           plazo_entrega ?? null, lugar_entrega ?? null, lugar_trabajo ?? null,
-          comentarios ?? null, precios_incluyen ?? null,
+          comentarios ?? null, precios_incluyen ?? null, condiciones_servicio ?? null,
           fechaValida,
           id,
         ]
@@ -1152,6 +1154,7 @@ class CotizacionService {
     nro_oc_cliente?: string;
     nro_factura?: string;
     comentarios?: string;
+    condiciones_servicio?: string;
   }) {
     const conn = await db.getConnection();
     await conn.beginTransaction();
@@ -1169,7 +1172,7 @@ class CotizacionService {
       const FIELDS: (keyof typeof data)[] = [
         'cliente', 'atencion', 'telefono', 'correo', 'proyecto',
         'forma_pago', 'validez_oferta', 'plazo_entrega', 'lugar_entrega',
-        'nro_oc_cliente', 'nro_factura', 'comentarios',
+        'nro_oc_cliente', 'nro_factura', 'comentarios', 'condiciones_servicio',
       ];
       const sets: string[] = [];
       const vals: any[] = [];

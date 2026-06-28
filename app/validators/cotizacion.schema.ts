@@ -28,6 +28,7 @@ const baseCotizacion = z.object({
   lugar_trabajo:    z.string().optional(),
   precios_incluyen: z.string().optional(),
   comentarios:      z.string().optional(),
+  condiciones_servicio: z.string().optional(),
   // Fecha editable (YYYY-MM-DD) — si no viene, el Service usa hoy.
   // Útil para cargar data histórica de meses anteriores.
   fecha:            z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Formato YYYY-MM-DD').optional(),
