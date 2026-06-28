@@ -610,9 +610,9 @@ function formNueva(marca, tcHoy, opts = {}) {
           <div style="margin-top:10px">
             <label style="font-size:11px;color:var(--text-secondary);display:block;margin-bottom:3px">Condiciones del servicio (propuesta técnica) — aparece en el PDF</label>
             <textarea name="condiciones_servicio" rows="8"
-              placeholder="Servicio de soldadura:&#10;La soldadura será ejecutada por soldadores calificados según AWS D1.1.&#10;- Se habilitará un proceso de soldadura FCAW...&#10;Garantía:&#10;- Garantía de 6 meses..."
+              placeholder="**Servicio de soldadura**&#10;La soldadura será ejecutada por soldadores calificados según AWS D1.1.&#10;- Se habilitará un proceso de soldadura FCAW...&#10;**Garantía.**&#10;- Garantía de 6 meses..."
               style="width:100%;padding:8px;border-radius:var(--radius-sm);border:1px solid var(--border-light);font-size:12px;font-family:inherit;resize:vertical"></textarea>
-            <div style="font-size:10px;color:var(--text-secondary);margin-top:3px">Formato: línea que termina en ":" = título · línea que empieza con "-" = viñeta · el resto = párrafo. Opcional.</div>
+            <div style="font-size:10px;color:var(--text-secondary);margin-top:3px">Formato: <b>**texto**</b> = negrita · línea terminada en ":" = título · línea que empieza con "-" = viñeta · el resto = párrafo. Opcional.</div>
           </div>
         </div>
 
@@ -1945,6 +1945,7 @@ export const Comercial = async () => {
               <div style="grid-column:1/-1;margin-top:10px">
                 <label style="font-size:12px;color:#555;display:block;margin-bottom:3px">Condiciones del servicio (PDF)</label>
                 <textarea id="ec-cond" rows="8" style="width:100%;padding:7px 9px;border:1px solid #d1d5db;border-radius:5px;font-size:13px;resize:vertical;font-family:inherit">${v(cot.condiciones_servicio || '')}</textarea>
+                <div style="font-size:10px;color:#888;margin-top:3px">Formato: <b>**texto**</b> = negrita · línea terminada en ":" = título · línea que empieza con "-" = viñeta · el resto = párrafo.</div>
               </div>
             </div>
             <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:18px">

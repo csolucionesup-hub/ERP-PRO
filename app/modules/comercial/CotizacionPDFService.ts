@@ -395,39 +395,60 @@ class CotizacionPDFService {
     y += 26;
     }
 
-    // ── Condiciones del servicio (texto libre, formato ":"=título, "-"=viñeta) ──
+    // ── Condiciones del servicio (texto libre) ──
+    // Formato: ":"=título · "-"=viñeta · "**texto**"=negrita · el resto=párrafo.
+    // Una línea entera envuelta en **...** se trata como título (negrita 10pt).
+    // El **...** dentro de un párrafo o viñeta pone solo ese tramo en negrita.
     if (cot.condiciones_servicio && String(cot.condiciones_servicio).trim()) {
       ensureSpace(40);
+
+      // Dibuja una línea con negrita inline (**...**). Mide alto con la fuente
+      // bold cuando hay tramos en negrita (cota superior segura: la negrita es
+      // más ancha → nunca se solapa con lo que sigue). Avanza y.
+      const drawRich = (text: string, x: number, width: number, fontSize: number, padAfter: number) => {
+        const plain = text.replace(/\*\*([^*]+)\*\*/g, '$1');
+        const hasBold = /\*\*[^*]+\*\*/.test(text);
+        doc.font(hasBold ? 'Helvetica-Bold' : 'Helvetica').fontSize(fontSize).fillColor('#000');
+        const h = doc.heightOfString(plain, { width });
+        ensureSpace(h + padAfter);
+        const parts = text.split(/(\*\*[^*]+\*\*)/g).filter(s => s !== '');
+        let first = true;
+        for (let i = 0; i < parts.length; i++) {
+          const seg = parts[i];
+          const m = seg.match(/^\*\*([^*]+)\*\*$/);
+          const segText = m ? m[1] : seg;
+          const isLast = i === parts.length - 1;
+          doc.font(m ? 'Helvetica-Bold' : 'Helvetica').fontSize(fontSize).fillColor('#000');
+          if (first) { doc.text(segText, x, y, { width, continued: !isLast }); first = false; }
+          else { doc.text(segText, { width, continued: !isLast } as any); }
+        }
+        y += h + padAfter;
+      };
+
       const rawLines = String(cot.condiciones_servicio).split('\n');
       for (const raw of rawLines) {
         const line = raw.trim();
         if (!line) { y += 4; continue; }
-        // Precedencia: ":" (título) gana sobre "-" (viñeta). Una línea como
+        // Línea entera en negrita: "**Control de calidad.**" → título sin ":".
+        const fullBold = line.match(/^\*\*([^*]+)\*\*$/);
+        // Precedencia: título (":" o **línea entera**) gana sobre "-" (viñeta).
         // "- Garantía:" se trata como título, no como viñeta — es intencional.
-        if (line.endsWith(':')) {
-          // Título en negrita
+        if (line.endsWith(':') || fullBold) {
+          // Título en negrita (10pt)
+          const titleText = fullBold ? fullBold[1].trim() : line;
           doc.font('Helvetica-Bold').fontSize(10).fillColor('#000');
-          const h = doc.heightOfString(line, { width: pageW });
+          const h = doc.heightOfString(titleText, { width: pageW });
           ensureSpace(h + 4);
-          doc.text(line, L, y, { width: pageW });
+          doc.text(titleText, L, y, { width: pageW });
           y += h + 4;
         } else if (line.startsWith('-') || line.startsWith('•')) {
           // Viñeta indentada — saltar si queda vacía (la línea era solo "-")
           const body = line.replace(/^[-•]\s*/, '');
           if (!body) continue;
-          const txt = '• ' + body;
-          doc.font('Helvetica').fontSize(9.5).fillColor('#000');
-          const h = doc.heightOfString(txt, { width: pageW - 14 });
-          ensureSpace(h + 3);
-          doc.text(txt, L + 14, y, { width: pageW - 14 });
-          y += h + 3;
+          drawRich('• ' + body, L + 14, pageW - 14, 9.5, 3);
         } else {
-          // Párrafo normal
-          doc.font('Helvetica').fontSize(9.5).fillColor('#000');
-          const h = doc.heightOfString(line, { width: pageW });
-          ensureSpace(h + 3);
-          doc.text(line, L, y, { width: pageW });
-          y += h + 3;
+          // Párrafo normal (con negrita inline si trae **...**)
+          drawRich(line, L, pageW, 9.5, 3);
         }
       }
       y += 10;
