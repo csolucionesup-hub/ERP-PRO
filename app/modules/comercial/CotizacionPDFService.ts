@@ -445,7 +445,11 @@ class CotizacionPDFService {
         const idx = linea.lastIndexOf(':');
         const concepto = idx >= 0 ? linea.slice(0, idx).trim() : linea;
         const montoRaw = idx >= 0 ? linea.slice(idx + 1).trim() : '';
-        const montoNum = parseFloat(montoRaw.replace(/[^0-9.]/g, ''));
+        // Limpiar a un número. Si el formato es ambiguo (más de un punto tras
+        // quitar las comas de miles, ej. "1.234.567" o "3.970,50"), NO arriesgamos
+        // un número mal parseado en un doc financiero: imprimimos el texto crudo.
+        const limpio = montoRaw.replace(/,/g, '').replace(/[^0-9.]/g, '');
+        const montoNum = (limpio.match(/\./g) || []).length <= 1 ? parseFloat(limpio) : NaN;
         doc.font('Helvetica').fontSize(9.5).fillColor('#000');
         const h = doc.heightOfString(concepto, { width: LBL_W });
         ensureSpace(h + 3);
