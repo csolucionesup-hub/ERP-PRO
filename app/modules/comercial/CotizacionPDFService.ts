@@ -228,12 +228,15 @@ class CotizacionPDFService {
     //   28 |         205 |     38 |       45 |     70 |        109 = 495 ✓
     // wPU 55→70 para que "Precio Unit. S/" no quede apiñado contra el borde.
     // La foto va DEBAJO del precio en la columna SubTotal (estilo PDF Excel referencia).
-    const cIT = L,        wIT = 28;
-    const cDE = L + 28,   wDE = 205;
-    const cUN = L + 233,  wUN = 38;
-    const cCA = L + 271,  wCA = 45;
-    const cPU = L + 316,  wPU = 70;
-    const cST = L + 386,  wST = R - (L + 386); // = 109pt
+    const ocultarPrecios = !!cot.ocultar_precios_items;
+    // Geometría de columnas. En modo "ocultar precios" se ensancha Descripción
+    // (absorbe el espacio de P.Unit/Subtotal); la foto queda en la columna derecha.
+    const cIT = L,                              wIT = 28;
+    const cDE = L + 28,                         wDE = ocultarPrecios ? 275 : 205;
+    const cUN = ocultarPrecios ? L + 303 : L + 233, wUN = 38;
+    const cCA = ocultarPrecios ? L + 341 : L + 271, wCA = 45;
+    const cPU = L + 316,                        wPU = 70;            // solo si NO se ocultan precios
+    const cST = L + 386,                        wST = R - (L + 386); // 109pt — columna de foto (y subtotal)
 
     const drawTableHeader = () => {
       // Header con fondo de color de marca (rojo Perfotools / negro Metal).
@@ -248,11 +251,13 @@ class CotizacionPDFService {
       doc.text('Unidad',      cUN, hY, { width: wUN, align: 'center' });
       doc.text('Cantidad',    cCA, hY, { width: wCA, align: 'center' });
       // Columnas con moneda: dos líneas (label + moneda)
-      const hY1 = y + 5, hY2 = y + 18;
-      doc.text('Precio Unit.', cPU, hY1, { width: wPU - 4, align: 'right' });
-      doc.text(curSym,         cPU, hY2, { width: wPU - 4, align: 'right' });
-      doc.text('Sub Total',    cST, hY1, { width: wST - 4, align: 'right' });
-      doc.text(curSym,         cST, hY2, { width: wST - 4, align: 'right' });
+      if (!ocultarPrecios) {
+        const hY1 = y + 5, hY2 = y + 18;
+        doc.text('Precio Unit.', cPU, hY1, { width: wPU - 4, align: 'right' });
+        doc.text(curSym,         cPU, hY2, { width: wPU - 4, align: 'right' });
+        doc.text('Sub Total',    cST, hY1, { width: wST - 4, align: 'right' });
+        doc.text(curSym,         cST, hY2, { width: wST - 4, align: 'right' });
+      }
       y += 32 + 4; // banda + 4pt de aire antes de la primera fila
       doc.fillColor('#000');
     };
@@ -338,10 +343,12 @@ class CotizacionPDFService {
       doc.font('Helvetica').fontSize(10).fillColor('#000');
       doc.text('UND.',                      cUN, y, { width: wUN, align: 'center' });
       doc.text(cant.toFixed(2),              cCA, y, { width: wCA, align: 'center' });
-      doc.text(pu.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-                                             cPU, y, { width: wPU, align: 'right' });
-      doc.text(sub.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-                                             cST, y, { width: wST, align: 'right' });
+      if (!ocultarPrecios) {
+        doc.text(pu.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+                                               cPU, y, { width: wPU, align: 'right' });
+        doc.text(sub.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+                                               cST, y, { width: wST, align: 'right' });
+      }
 
       // Foto: debajo del subtotal, centrada en la columna (estilo PDF Excel referencia)
       if (fotoBuf) {
@@ -357,6 +364,7 @@ class CotizacionPDFService {
       y += 4;
     });
 
+    if (!ocultarPrecios) {
     // ── Totales (derecha) ───────────────────────────────────────
     y += 6;
     ensureSpace(80);
@@ -385,6 +393,7 @@ class CotizacionPDFService {
       .text(`SON: ${letras} ${curWord}${aplicaIGV ? ' INCLUIDO IGV' : ''}`,
             L, y, { width: pageW, align: 'center' });
     y += 26;
+    }
 
     // ── Condiciones del servicio (texto libre, formato ":"=título, "-"=viñeta) ──
     if (cot.condiciones_servicio && String(cot.condiciones_servicio).trim()) {
@@ -422,6 +431,40 @@ class CotizacionPDFService {
         }
       }
       y += 10;
+    }
+
+    // ── Condiciones comerciales (modo costo consolidado) ──
+    if (ocultarPrecios) {
+      ensureSpace(60);
+      doc.font('Helvetica-Bold').fontSize(10).fillColor('#000');
+      doc.text('CONDICIONES COMERCIALES:', L, y); y += 16;
+      const LBL_W = pageW - 110; // etiqueta a la izquierda, monto a la derecha (110pt)
+      const fmtNum = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      const desg = String(cot.desglose_comercial || '').split('\n').map(s => s.trim()).filter(Boolean);
+      for (const linea of desg) {
+        const idx = linea.lastIndexOf(':');
+        const concepto = idx >= 0 ? linea.slice(0, idx).trim() : linea;
+        const montoRaw = idx >= 0 ? linea.slice(idx + 1).trim() : '';
+        const montoNum = parseFloat(montoRaw.replace(/[^0-9.]/g, ''));
+        doc.font('Helvetica').fontSize(9.5).fillColor('#000');
+        const h = doc.heightOfString(concepto, { width: LBL_W });
+        ensureSpace(h + 3);
+        doc.text(concepto, L, y, { width: LBL_W });
+        if (!isNaN(montoNum)) {
+          doc.text(fmtNum(montoNum), L + LBL_W, y, { width: 110, align: 'right' });
+        } else if (montoRaw) {
+          doc.text(montoRaw, L + LBL_W, y, { width: 110, align: 'right' });
+        }
+        y += h + 3;
+      }
+      // Línea + TOTAL SERVICIO = total real de la cotización (en moneda original)
+      const totalOrigCom = esUSD ? Number(cot.total) / tc : Number(cot.total);
+      doc.moveTo(L, y).lineTo(R, y).lineWidth(0.8).strokeColor('#000').stroke(); y += 5;
+      ensureSpace(18);
+      doc.font('Helvetica-Bold').fontSize(10).fillColor('#000');
+      doc.text(`TOTAL SERVICIO (${curSym})`, L, y, { width: LBL_W });
+      doc.text(fmtNum(totalOrigCom), L + LBL_W, y, { width: 110, align: 'right' });
+      y += 22;
     }
 
     // ── Condiciones generales ───────────────────────────────────
