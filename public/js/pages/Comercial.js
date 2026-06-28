@@ -544,6 +544,24 @@ function formNueva(marca, tcHoy, opts = {}) {
           </label>
         </div>
 
+        <!-- Presentación de costos (modo consolidado) -->
+        <div style="background:var(--bg-app);padding:9px;border-radius:4px">
+          <label style="font-size:12px;font-weight:bold;display:flex;gap:8px;align-items:center">
+            <input type="checkbox" name="ocultar_precios_items" id="ocultar-precios-${idp}"> Ocultar precios por ítem en el PDF
+            ${tip('Para cuando el cliente pide solo un costo total: oculta P.Unit y Subtotal de cada ítem y muestra el bloque "CONDICIONES COMERCIALES" con el desglose + Total servicio. El total real (suma de ítems) no cambia.')}
+          </label>
+          <div style="margin-top:8px">
+            <label style="font-size:11px;color:var(--text-secondary);display:block;margin-bottom:3px">Desglose comercial (una línea "Concepto: monto") — solo aplica si ocultas precios</label>
+            <div class="multiline-field" data-field="desglose_comercial" data-idp="${idp}">
+              <input type="hidden" name="desglose_comercial">
+              <div class="multiline-lines"></div>
+              <button type="button" class="multiline-add" data-placeholder="Materiales: 3970.50"
+                style="margin-top:4px;font-size:11px;padding:4px 10px;background:transparent;border:1px dashed var(--border-light);border-radius:6px;cursor:pointer;color:var(--text-secondary)">+ Agregar línea</button>
+            </div>
+            <div style="font-size:10px;color:var(--text-secondary);margin-top:3px">Ej.: "Materiales: 3970.50", "Fabricación y mano de obra: 2550.00", "Utilidad: 2608.20". El TOTAL SERVICIO se calcula solo (= total de la cotización).</div>
+          </div>
+        </div>
+
         <!-- Condiciones generales -->
         <div style="background:#f8f9fa;padding:12px;border-radius:6px">
           <div style="font-size:12px;font-weight:600;color:var(--text-secondary);margin-bottom:10px;text-transform:uppercase;letter-spacing:.5px">
@@ -918,6 +936,9 @@ function bindForm(marca, opts = {}) {
     prefillML('precios_incluyen', editData.precios_incluyen);
     setVal('comentarios',      editData.comentarios);
     setVal('condiciones_servicio', editData.condiciones_servicio);
+    prefillML('desglose_comercial', editData.desglose_comercial);
+    const chkOcultar = el(`ocultar-precios-${idp}`);
+    if (chkOcultar) chkOcultar.checked = !!editData.ocultar_precios_items;
     if (esUSD) setVal('tipo_cambio', editData.tipo_cambio);
     const chkIgv = el(`igv-${idp}`);
     if (chkIgv) chkIgv.checked = Number(editData.igv) > 0 || !!editData.aplica_igv;
@@ -960,6 +981,8 @@ function bindForm(marca, opts = {}) {
           precios_incluyen: f.precios_incluyen.value || undefined,
           comentarios:      f.comentarios.value      || undefined,
           condiciones_servicio: f.condiciones_servicio.value || undefined,
+          ocultar_precios_items: f.ocultar_precios_items.checked,
+          desglose_comercial: f.desglose_comercial.value || undefined,
           fecha:            f.fecha?.value           || undefined,
           nro_cotizacion:   f.nro_cotizacion?.value?.trim() || undefined,
           detalles:         lineas,

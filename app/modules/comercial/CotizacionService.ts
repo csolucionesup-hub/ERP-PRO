@@ -53,6 +53,8 @@ interface CotizacionInput {
   precios_incluyen?: string;
   comentarios?: string;
   condiciones_servicio?: string;
+  ocultar_precios_items?: boolean;
+  desglose_comercial?: string;
   /**
    * Fecha de la cotización en formato YYYY-MM-DD. Si no viene, se usa hoy.
    * Útil cuando se carga data histórica (Julio cargando enero/2025 hoy).
@@ -788,6 +790,7 @@ class CotizacionService {
       moneda = 'PEN', tipo_cambio = 1, aplica_igv = false,
       forma_pago, validez_oferta, plazo_entrega, lugar_entrega, lugar_trabajo,
       precios_incluyen, comentarios, condiciones_servicio,
+      ocultar_precios_items, desglose_comercial,
       detalles,
     } = data;
 
@@ -824,8 +827,9 @@ class CotizacionService {
            (nro_cotizacion, marca, fecha, cliente, atencion, telefono, correo, proyecto, ref,
             moneda, tipo_cambio, subtotal, igv, total,
             forma_pago, validez_oferta, plazo_entrega, lugar_entrega, lugar_trabajo,
-            comentarios, precios_incluyen, condiciones_servicio)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            comentarios, precios_incluyen, condiciones_servicio,
+            ocultar_precios_items, desglose_comercial)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           nro_cotizacion, marca, fecha, cliente,
           atencion ?? null, telefono ?? null, correo ?? null,
@@ -834,6 +838,7 @@ class CotizacionService {
           forma_pago ?? null, validez_oferta ?? null,
           plazo_entrega ?? null, lugar_entrega ?? null, lugar_trabajo ?? null,
           comentarios ?? null, precios_incluyen ?? null, condiciones_servicio ?? null,
+          ocultar_precios_items ?? false, desglose_comercial ?? null,
         ]
       );
 
@@ -940,6 +945,7 @@ class CotizacionService {
       moneda = 'PEN', tipo_cambio = 1, aplica_igv = false,
       forma_pago, validez_oferta, plazo_entrega, lugar_entrega, lugar_trabajo,
       precios_incluyen, comentarios, condiciones_servicio,
+      ocultar_precios_items, desglose_comercial,
       detalles,
     } = data;
 
@@ -974,6 +980,7 @@ class CotizacionService {
            forma_pago = ?, validez_oferta = ?, plazo_entrega = ?,
            lugar_entrega = ?, lugar_trabajo = ?, comentarios = ?, precios_incluyen = ?,
            condiciones_servicio = ?,
+           ocultar_precios_items = ?, desglose_comercial = ?,
            fecha = COALESCE(?, fecha)
          WHERE id_cotizacion = ?`,
         [
@@ -983,6 +990,7 @@ class CotizacionService {
           forma_pago ?? null, validez_oferta ?? null,
           plazo_entrega ?? null, lugar_entrega ?? null, lugar_trabajo ?? null,
           comentarios ?? null, precios_incluyen ?? null, condiciones_servicio ?? null,
+          ocultar_precios_items ?? false, desglose_comercial ?? null,
           fechaValida,
           id,
         ]
