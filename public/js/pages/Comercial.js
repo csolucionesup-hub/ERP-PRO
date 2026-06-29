@@ -160,7 +160,7 @@ function confirmarAccion({ titulo, mensaje, confirmLabel = 'Confirmar', cancelLa
     const close = (val) => { ov.remove(); resolve(val); };
     ov.querySelector('#cfm-ok').onclick = () => close(true);
     ov.querySelector('#cfm-cancel').onclick = () => close(false);
-    ov.onclick = (e) => { if (e.target === ov) close(false); };
+    // Modal NO cierra por backdrop (regla #28 ERP): solo con boton Cerrar explicito
   });
 }
 
@@ -216,7 +216,7 @@ function confirmarTexto({ titulo, mensaje, textoRequerido, confirmLabel = 'Borra
     };
     btnOk.onclick = () => { if (input.value === textoRequerido) close(true); };
     ov.querySelector('#cfm-txt-cancel').onclick = () => close(false);
-    ov.onclick = (e) => { if (e.target === ov) close(false); };
+    // Modal NO cierra por backdrop (regla #28 ERP): solo con boton Cerrar explicito
   });
 }
 
@@ -731,8 +731,8 @@ function bindForm(marca, opts = {}) {
               : `<div style="width:42px;height:42px;background:#f3f4f6;border-radius:4px;display:flex;align-items:center;justify-content:center;color:#9ca3af;font-size:10px">sin foto</div>`}
             <div style="min-width:0">
               <div style="font-size:12px;font-weight:600">${escapeHtml(l.descripcion)}${editing ? ' <span style="color:#d97706;font-weight:600">· editando…</span>' : ''}</div>
-              ${l.subdescripcion ? `<div style="font-size:11px;color:#4b5563;white-space:pre-wrap">${l.subdescripcion}</div>` : ''}
-              ${l.notas ? `<div style="font-size:10px;color:#b45309;font-style:italic;white-space:pre-wrap">${l.notas}</div>` : ''}
+              ${l.subdescripcion ? `<div style="font-size:11px;color:#4b5563;white-space:pre-wrap">${escapeHtml(l.subdescripcion)}</div>` : ''}
+              ${l.notas ? `<div style="font-size:10px;color:#b45309;font-style:italic;white-space:pre-wrap">${escapeHtml(l.notas)}</div>` : ''}
               <div style="font-size:10px;color:var(--text-secondary)">${l.cantidad} ${l.unidad || ''} × ${fCur(l.precio_unitario)}</div>
             </div>
             <div style="font-weight:700;font-size:12px">${fCur(s)}</div>
@@ -2052,7 +2052,7 @@ export const Comercial = async () => {
       document.body.appendChild(ov);
       const close = () => ov.remove();
       ov.querySelector('#edit-cot-close').onclick = close;
-      ov.onclick = (e) => { if (e.target === ov) close(); };
+      // Modal NO cierra por backdrop (regla #28 ERP): solo con boton Cerrar explicito
 
       bindForm(marca, {
         editData: data,

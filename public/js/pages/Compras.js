@@ -258,7 +258,7 @@ export const Compras = async () => {
          </div>`;
 
        document.body.appendChild(overlay);
-       overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+       // Modal NO cierra por backdrop (regla #28 ERP): solo con boton Cancelar explicito
 
        document.getElementById('edit-compra-moneda').onchange = (e) => {
          document.getElementById('edit-div-tc').style.display = e.target.value === 'USD' ? '' : 'none';

@@ -504,10 +504,17 @@ class FinanceService {
       // Revertir costo del servicio vinculado si existe
       // Filtramos por id_servicio + concepto + tipo_costo para evitar borrar costos de otros gastos
       if (gasto.id_servicio) {
+        // Borra UNA sola fila de costo por su PK. Postgres no soporta LIMIT en
+        // DELETE; el sub-select por id_costo preserva la semantica de "solo 1"
+        // (no toca costos de otros gastos con el mismo servicio+concepto).
         await conn.query(
           `DELETE FROM CostosServicio
-           WHERE id_servicio = ? AND concepto = ? AND tipo_costo = 'GASTO'
-           LIMIT 1`,
+           WHERE id_costo = (
+             SELECT id_costo FROM CostosServicio
+             WHERE id_servicio = ? AND concepto = ? AND tipo_costo = 'GASTO'
+             ORDER BY id_costo
+             LIMIT 1
+           )`,
           [gasto.id_servicio, gasto.concepto]
         );
       }

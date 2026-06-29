@@ -1669,14 +1669,14 @@ function bindFormOCMulti(panel, tipoOC) {
     const p = _proveedores.find(x => String(x.id_proveedor) === provSelect.value);
     if (!p) { provInfoDiv.style.display = 'none'; return; }
     const cuenta = p.banco_1_nombre
-      ? `${p.banco_1_nombre} ${p.banco_1_numero || ''}${p.banco_1_cci ? ' · CCI ' + p.banco_1_cci : ''}`
+      ? `${escapeHtml(p.banco_1_nombre)} ${escapeHtml(p.banco_1_numero || '')}${p.banco_1_cci ? ' · CCI ' + escapeHtml(p.banco_1_cci) : ''}`
       : '';
     const cuenta2 = p.banco_2_nombre
-      ? `<br>${p.banco_2_nombre} ${p.banco_2_numero || ''}${p.banco_2_cci ? ' · CCI ' + p.banco_2_cci : ''}`
+      ? `<br>${escapeHtml(p.banco_2_nombre)} ${escapeHtml(p.banco_2_numero || '')}${p.banco_2_cci ? ' · CCI ' + escapeHtml(p.banco_2_cci) : ''}`
       : '';
     provInfoDiv.innerHTML = `
-      <div>📞 <strong>${p.telefono || '—'}</strong>  📧 ${p.email || '—'}</div>
-      ${p.contacto ? `<div>👤 Contacto: ${p.contacto}</div>` : ''}
+      <div>📞 <strong>${escapeHtml(p.telefono || '—')}</strong>  📧 ${escapeHtml(p.email || '—')}</div>
+      ${p.contacto ? `<div>👤 Contacto: ${escapeHtml(p.contacto)}</div>` : ''}
       ${cuenta ? `<div>🏦 ${cuenta}${cuenta2}</div>` : '<div style="color:#e65100">⚠️ Sin cuenta bancaria registrada — agregar en Proveedores</div>'}
     `;
     provInfoDiv.style.display = 'block';

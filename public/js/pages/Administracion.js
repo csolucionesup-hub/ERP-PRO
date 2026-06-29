@@ -1,5 +1,5 @@
 import { api } from '../services/api.js';
-import { showError, escapeHtml } from '../services/ui.js';
+import { showError, escapeHtml, escapeAttr } from '../services/ui.js';
 import { TabBar } from '../components/TabBar.js';
 import { kpiGrid } from '../components/KpiCard.js';
 import { pill } from '../components/Pill.js';
@@ -704,8 +704,8 @@ async function abrirModalEditar(id_rendicion) {
       <tr style="border-bottom:1px solid #f3f4f6">
         <td style="padding:6px 4px;text-align:center;font-size:11px">${i + 1}</td>
         <td style="padding:6px 4px;font-size:11px">${fmtDate(it.fecha)}</td>
-        <td style="padding:6px 4px;font-size:11px">${it.nro_documento || '—'}</td>
-        <td style="padding:6px 4px;font-size:11px">${it.beneficiario || '—'}</td>
+        <td style="padding:6px 4px;font-size:11px">${escapeHtml(it.nro_documento || '—')}</td>
+        <td style="padding:6px 4px;font-size:11px">${escapeHtml(it.beneficiario || '—')}</td>
         <td style="padding:6px 4px;font-size:11px">${escapeHtml(it.concepto)}</td>
         <td style="padding:6px 4px;text-align:right;font-size:11px;font-variant-numeric:tabular-nums">${fmtMoney(it.subtotal, r.moneda)}</td>
         <td style="padding:6px 4px;text-align:right;font-size:11px;font-variant-numeric:tabular-nums">${fmtMoney(it.igv, r.moneda)}</td>
@@ -717,16 +717,20 @@ async function abrirModalEditar(id_rendicion) {
       </tr>
     `).join('');
 
-    const adjuntosHtml = (r.adjuntos || []).map(a => `
+    const adjuntosHtml = (r.adjuntos || []).map(a => {
+      // Solo permitir esquemas http(s) en el href (bloquea javascript:/data:)
+      const safeUrl = /^https?:\/\//i.test(a.url || '') ? a.url : '#';
+      return `
       <div style="display:flex;justify-content:space-between;align-items:center;padding:8px;border:1px solid #e5e7eb;border-radius:6px;margin-bottom:6px">
         <div style="display:flex;gap:10px;align-items:center">
-          <span style="background:#dbeafe;color:#1e40af;padding:2px 8px;border-radius:6px;font-size:10px;font-weight:600">${a.tipo}</span>
-          <a href="${a.url}" target="_blank" style="color:#1e40af;font-size:12px;text-decoration:none">${a.nombre_archivo}</a>
-          <span style="font-size:10px;color:#6b7280">${a.subido_por_nombre || ''} · ${fmtDate(a.subido_at)}</span>
+          <span style="background:#dbeafe;color:#1e40af;padding:2px 8px;border-radius:6px;font-size:10px;font-weight:600">${escapeHtml(a.tipo)}</span>
+          <a href="${escapeAttr(safeUrl)}" target="_blank" rel="noopener noreferrer" style="color:#1e40af;font-size:12px;text-decoration:none">${escapeHtml(a.nombre_archivo)}</a>
+          <span style="font-size:10px;color:#6b7280">${escapeHtml(a.subido_por_nombre || '')} · ${fmtDate(a.subido_at)}</span>
         </div>
         <button data-del-adj="${a.id_adjunto}" title="Eliminar adjunto" style="background:transparent;border:none;color:#dc2626;cursor:pointer;font-size:14px">×</button>
       </div>
-    `).join('');
+    `;
+    }).join('');
 
     const firmaCheck = (tipo, label, nombre, fecha, idFirmante) => {
       const firmado = !!nombre;

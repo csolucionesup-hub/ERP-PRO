@@ -151,14 +151,15 @@ class PurchaseService {
       ]);
       const idCompra = (compraRes as any).insertId;
 
-      // 2. Detalle Compras (Iteración sobre ítems)
-      const detallesValues = data.detalles.map((d: any) => [
-         idCompra, d.id_item, d.cantidad, d.precio_unitario, d.subtotal
-      ]);
-      await conn.query(`
-        INSERT INTO DetalleCompra (id_compra, id_item, cantidad, precio_unitario, subtotal)
-        VALUES ?
-      `, [detallesValues]);
+      // 2. Detalle Compras (una fila por item). El bulk `INSERT ... VALUES ?`
+      //    de mysql2 NO lo traduce el adapter Postgres (pg no expande arrays
+      //    anidados en VALUES) -> insertamos fila por fila, igual que updateCompra.
+      for (const d of data.detalles) {
+        await conn.query(`
+          INSERT INTO DetalleCompra (id_compra, id_item, cantidad, precio_unitario, subtotal)
+          VALUES (?, ?, ?, ?, ?)
+        `, [idCompra, d.id_item, d.cantidad, d.precio_unitario, d.subtotal]);
+      }
 
       // 3. Crear el Asiento Contable Genuino (EGRESO Financiero)
       // Asumiendo la cuenta ID = 1 por defecto logístico

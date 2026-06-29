@@ -279,7 +279,7 @@ class FacturaPDFService {
     y += 6;
     doc.font('Helvetica-Oblique').fontSize(8).fillColor('#555')
        .text(
-         f.estado_sunat === 'ACEPTADO'
+         f.estado_sunat === 'ACEPTADA'
            ? 'Esta es una representación impresa de la factura electrónica, generada en el Sistema de SUNAT. Puede verificarla utilizando su clave SOL.'
            : f.estado_sunat === 'PENDIENTE' || f.estado_sunat === 'SIMULADO'
            ? 'PREVIEW INTERNO — Este documento aún no fue enviado a SUNAT (modo simulado). Una vez configurado el OSE, las facturas siguientes serán oficiales.'
