@@ -1482,7 +1482,18 @@ class CobranzasService {
       );
       const terminales = eeccSaldo.filter((m: any) => !antesSet.has(cents(Number(m.saldo_contable))));
       if (terminales.length) {
-        const keyProc = (m: any) => String(m.fecha_proceso || m.fecha || '');
+        // fecha_proceso puede venir como Date (driver pg) o string. String(Date)
+        // da "Wed Jan 07 2026..." y ordenar por eso compara por NOMBRE DE DÍA
+        // (alfabético), no cronológicamente — agarra un terminal de mitad de mes
+        // (mismo bug que el banner #30 "Thu May 14"). Normalizamos a YYYY-MM-DD.
+        const isoDay = (v: any): string => {
+          if (!v) return '';
+          if (v instanceof Date) {
+            return `${v.getFullYear()}-${String(v.getMonth() + 1).padStart(2, '0')}-${String(v.getDate()).padStart(2, '0')}`;
+          }
+          return String(v).slice(0, 10);
+        };
+        const keyProc = (m: any) => isoDay(m.fecha_proceso || m.fecha);
         terminales.sort((a: any, b: any) => {
           const pa = keyProc(a), pb = keyProc(b);
           if (pa !== pb) return pa < pb ? -1 : 1;
