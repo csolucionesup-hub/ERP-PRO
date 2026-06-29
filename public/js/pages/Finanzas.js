@@ -870,11 +870,26 @@ async function modalLibroBancos() {
     }
 
     const mon = data.cuenta.moneda || 'PEN';
-    const difBadge = data.diferencia == null ? '' : (
-      Math.abs(data.diferencia) < 0.01
-        ? '<span style="color:#16a34a;font-weight:700">✅ Cuadrado</span>'
-        : `<span style="color:#dc2626;font-weight:700">⚠️ Dif ${fMoney(data.diferencia, mon)}</span>`
+    // Estado del indicador Saldo Banco (EECC). Fallback defensivo por si el backend
+    // viejo (durante el deploy) aún no manda saldo_banco_estado.
+    const estadoSB = data.saldo_banco_estado || (
+      data.diferencia == null ? 'SIN_EECC'
+        : (Math.abs(data.diferencia) < 0.01 ? 'CUADRADO' : 'DIF')
     );
+    const difBadge =
+        estadoSB === 'CUADRADO' ? '<span style="color:#16a34a;font-weight:700">✅ Cuadrado</span>'
+      : estadoSB === 'DIF'      ? `<span style="color:#dc2626;font-weight:700">⚠️ Dif ${fMoney(data.diferencia, mon)}</span>`
+      : estadoSB === 'PARCIAL'  ? '<span style="color:#b45309;font-weight:600">Importá el EECC completo del mes para cuadrar</span>'
+      : '';
+    const sbColors = {
+      CUADRADO: { bg: '#ecfdf5', border: '#16a34a' },
+      DIF:      { bg: '#fef2f2', border: '#dc2626' },
+      PARCIAL:  { bg: '#fffbeb', border: '#f59e0b' },
+      SIN_EECC: { bg: '#f9fafb', border: '#6b7280' },
+    };
+    const sbC = sbColors[estadoSB] || sbColors.SIN_EECC;
+    const sbValor = estadoSB === 'PARCIAL' ? 'Parcial'
+                  : (data.saldo_banco != null ? fMoney(data.saldo_banco, mon) : '—');
 
     const opts = cuentasBanco.map(c =>
       `<option value="${c.id_cuenta}" ${c.id_cuenta == idCuentaSel ? 'selected' : ''}>${escapeHtml(c.nombre)} (${c.moneda})</option>`
@@ -1023,9 +1038,9 @@ async function modalLibroBancos() {
           <div style="font-size:10px;color:#1e40af;font-weight:600">SALDO FINAL</div>
           <div style="font-size:14px;font-weight:700;color:#1e40af">${fMoney(data.saldo_final, mon)}</div>
         </div>
-        <div style="background:${data.saldo_banco != null ? (Math.abs(data.diferencia || 0) < 0.01 ? '#ecfdf5' : '#fef2f2') : '#f9fafb'};padding:8px;border-radius:6px;border-left:3px solid ${data.saldo_banco != null ? (Math.abs(data.diferencia || 0) < 0.01 ? '#16a34a' : '#dc2626') : '#6b7280'}">
+        <div style="background:${sbC.bg};padding:8px;border-radius:6px;border-left:3px solid ${sbC.border}">
           <div style="font-size:10px;color:#6b7280;font-weight:600">SALDO BANCO (EECC)</div>
-          <div style="font-size:14px;font-weight:700">${data.saldo_banco != null ? fMoney(data.saldo_banco, mon) : '—'}</div>
+          <div style="font-size:14px;font-weight:700">${sbValor}</div>
           <div style="font-size:10px">${difBadge}</div>
         </div>
       </div>

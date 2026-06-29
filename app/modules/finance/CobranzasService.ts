@@ -1,5 +1,6 @@
 import { db } from '../../../database/connection';
 import AdjuntosService from '../configuracion/AdjuntosService';
+import { clasificarSaldoBanco } from './saldoBancoClasificador';
 
 /**
  * Servicio de Cobranzas — Finanzas v2
@@ -1465,44 +1466,12 @@ class CobranzasService {
       } catch (_) { /* silencioso si falla sugerencia */ }
     }
 
-    // Saldo banco (EECC) = cierre real del período siguiendo la cadena de saldos.
-    // Interbank lista por fecha de operación, pero el saldo_contable corre por
-    // orden de proceso → NO se puede tomar "la última fila por fecha". El cierre
-    // es el fin de la cadena: fila EECC cuyo saldo_contable no es el "saldo antes"
-    // de ninguna otra. Con huecos (pagos manuales sin saldo) puede haber varios
-    // fines; se elige el de mayor fecha_proceso (desempate por id_movimiento).
-    const cents = (n: number) => Math.round(Number(n) * 100);
-    const eeccSaldo = lista.filter((m: any) => m.fuente === 'IMPORT_EECC' && m.saldo_contable != null);
-    let saldo_banco: number | null = null;
-    if (eeccSaldo.length) {
-      const antesSet = new Set(
-        eeccSaldo.map((m: any) =>
-          cents(Number(m.saldo_contable) - (m.tipo === 'ABONO' ? Number(m.monto) : -Number(m.monto)))
-        )
-      );
-      const terminales = eeccSaldo.filter((m: any) => !antesSet.has(cents(Number(m.saldo_contable))));
-      if (terminales.length) {
-        // fecha_proceso puede venir como Date (driver pg) o string. String(Date)
-        // da "Wed Jan 07 2026..." y ordenar por eso compara por NOMBRE DE DÍA
-        // (alfabético), no cronológicamente — agarra un terminal de mitad de mes
-        // (mismo bug que el banner #30 "Thu May 14"). Normalizamos a YYYY-MM-DD.
-        const isoDay = (v: any): string => {
-          if (!v) return '';
-          if (v instanceof Date) {
-            return `${v.getFullYear()}-${String(v.getMonth() + 1).padStart(2, '0')}-${String(v.getDate()).padStart(2, '0')}`;
-          }
-          return String(v).slice(0, 10);
-        };
-        const keyProc = (m: any) => isoDay(m.fecha_proceso || m.fecha);
-        terminales.sort((a: any, b: any) => {
-          const pa = keyProc(a), pb = keyProc(b);
-          if (pa !== pb) return pa < pb ? -1 : 1;
-          return Number(a.id_movimiento) - Number(b.id_movimiento);
-        });
-        saldo_banco = Number(terminales[terminales.length - 1].saldo_contable);
-      }
-    }
-    const diferencia = saldo_banco != null ? +(saldo_banco - saldo_final).toFixed(2) : null;
+    // Saldo banco (EECC) + estado del indicador (CUADRADO / DIF / PARCIAL / SIN_EECC).
+    // Regla pura en saldoBancoClasificador.ts (ver spec 2026-06-29). Devuelve un Dif
+    // real solo cuando la cadena EECC es completa; si está fragmentada por movimientos
+    // manuales, devuelve PARCIAL en vez de un Dif falso.
+    const { saldo_banco, diferencia, estado: saldo_banco_estado } =
+      clasificarSaldoBanco(lista as any, saldo_inicial, saldo_final);
 
     // ¿Se importó el EECC (extracto bancario) de este mes+cuenta?
     // Señal honesta = hay filas con fuente='IMPORT_EECC' (no depende de saldo_banco,
@@ -1537,6 +1506,7 @@ class CobranzasService {
       saldo_final: +saldo_final.toFixed(2),
       saldo_banco,
       diferencia,
+      saldo_banco_estado,
       eecc_importado,
       eecc_movimientos,
       eecc_fecha_import,
