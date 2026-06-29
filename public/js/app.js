@@ -23,7 +23,6 @@ import { ConfiguracionComercial } from './pages/ConfiguracionComercial.js?v=2026
 import { Logistica }     from './pages/Logistica.js?v=20260629r3';
 import { Administracion } from './pages/Administracion.js?v=20260629r3';
 import { Configuracion }  from './pages/Configuracion.js?v=20260629r3';
-import { Contabilidad }   from './pages/Contabilidad.js?v=20260629r3';
 import { Importador }     from './pages/Importador.js?v=20260629r3';
 import { OrdenesCompra }  from './pages/OrdenesCompra.js?v=20260629r3';
 import { Produccion }     from './pages/Produccion.js?v=20260629r3';
@@ -82,7 +81,6 @@ const PAGES = {
   proveedores:    Proveedores,
   prestamos:      Prestamos,
   configuracion:  Configuracion,
-  contabilidad:   Contabilidad,
   importador:     Importador,
   'ordenes-compra': OrdenesCompra,
   alertas:        Alertas,

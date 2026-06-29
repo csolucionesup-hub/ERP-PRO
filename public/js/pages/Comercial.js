@@ -220,226 +220,6 @@ function confirmarTexto({ titulo, mensaje, textoRequerido, confirmLabel = 'Borra
   });
 }
 
-// ── Modal: Emitir factura (multi-item editable) ─────────────────
-// Recibe el preview pre-llenado desde la cotización y permite editar cliente,
-// observación, items y totales antes de emitir. El backend asigna el correlativo
-// y persiste (FacturaService.crearYEmitir).
-async function modalEmitirFactura(preview, opts = {}) {
-  const v = (x) => escapeHtml(x);
-  const fNum = (n) => Number(n || 0).toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-
-  // Estado local: copia editable del preview
-  const state = JSON.parse(JSON.stringify(preview));
-  state.detalles = (state.detalles || []).map(d => ({
-    codigo_item: d.codigo_item || '',
-    descripcion: d.descripcion || '',
-    unidad_sunat: d.unidad_sunat || 'NIU',
-    cantidad: Number(d.cantidad) || 1,
-    precio_unitario: Number(d.precio_unitario) || 0,
-  }));
-
-  return new Promise((resolve) => {
-    const ov = document.createElement('div');
-    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9999;display:flex;align-items:flex-start;justify-content:center;padding:20px;overflow:auto';
-
-    const renderTotales = () => {
-      const sub = state.detalles.reduce((s, d) => s + (Number(d.cantidad) * Number(d.precio_unitario)), 0);
-      const igv = state.aplica_igv ? sub * 0.18 : 0;
-      const total = sub + igv;
-      const sym = state.moneda === 'USD' ? 'US$' : 'S/';
-      const tn = ov.querySelector('#fac-totales');
-      if (tn) tn.innerHTML = `
-        <div>Subtotal: <b>${sym} ${fNum(sub)}</b></div>
-        <div>IGV (18%): <b>${sym} ${fNum(igv)}</b></div>
-        <div style="font-size:14px;border-top:1px solid #ddd;padding-top:4px;margin-top:4px">
-          Total: <b>${sym} ${fNum(total)}</b>
-        </div>`;
-    };
-
-    const renderLineas = () => {
-      const cont = ov.querySelector('#fac-lineas');
-      if (!cont) return;
-      cont.innerHTML = state.detalles.map((d, i) => `
-        <tr data-idx="${i}" style="border-bottom:1px solid #eee">
-          <td style="padding:4px"><input data-f="cantidad" type="number" step="0.001" min="0.001" value="${d.cantidad}" style="width:60px;padding:5px;border:1px solid #d1d5db;border-radius:4px;text-align:right;font-size:12px"></td>
-          <td style="padding:4px"><input data-f="unidad_sunat" value="${v(d.unidad_sunat)}" placeholder="NIU" style="width:55px;padding:5px;border:1px solid #d1d5db;border-radius:4px;font-size:12px"></td>
-          <td style="padding:4px"><textarea data-f="descripcion" rows="2" style="width:100%;padding:5px;border:1px solid #d1d5db;border-radius:4px;font-size:12px;resize:vertical">${escapeHtml(d.descripcion)}</textarea></td>
-          <td style="padding:4px"><input data-f="precio_unitario" type="number" step="0.0001" min="0" value="${d.precio_unitario}" style="width:90px;padding:5px;border:1px solid #d1d5db;border-radius:4px;text-align:right;font-size:12px"></td>
-          <td style="padding:4px;text-align:center">
-            <button type="button" data-act="del" title="Quitar esta línea de la factura" aria-label="Quitar línea" style="background:none;border:none;color:#dc2626;cursor:pointer;font-size:16px">×</button>
-          </td>
-        </tr>
-      `).join('');
-      // Bind cambios
-      cont.querySelectorAll('tr').forEach(tr => {
-        const i = Number(tr.dataset.idx);
-        tr.querySelectorAll('[data-f]').forEach(inp => {
-          inp.oninput = () => {
-            const f = inp.dataset.f;
-            state.detalles[i][f] = (f === 'cantidad' || f === 'precio_unitario') ? Number(inp.value) : inp.value;
-            if (f === 'cantidad' || f === 'precio_unitario') renderTotales();
-          };
-        });
-        tr.querySelector('[data-act="del"]').onclick = () => {
-          if (state.detalles.length === 1) return window.showError?.('Debe quedar al menos una línea');
-          state.detalles.splice(i, 1);
-          renderLineas();
-          renderTotales();
-        };
-      });
-    };
-
-    const banner = opts.esReal
-      ? `<div style="background:#dcfce7;border:1px solid #86efac;color:#166534;padding:8px 12px;border-radius:5px;font-size:12px;margin-bottom:12px">🟢 <b>Modo REAL</b> · La factura se enviará a SUNAT vía ${opts.proveedor || 'OSE configurado'}.</div>`
-      : `<div style="background:#fef3c7;border:1px solid #fbbf24;color:#92400e;padding:8px 12px;border-radius:5px;font-size:12px;margin-bottom:12px">🟡 <b>Modo simulado</b> · Se asigna correlativo real pero no se envía a SUNAT (no hay certificado configurado todavía).</div>`;
-
-    ov.innerHTML = `
-      <div style="background:#fff;border-radius:8px;width:880px;max-width:96vw;box-shadow:0 20px 50px rgba(0,0,0,.3);overflow:hidden">
-        <div style="padding:16px 22px;border-bottom:1px solid #e5e7eb;background:#fafafa">
-          <h3 style="margin:0;font-size:15px">🧾 Emitir factura ${opts.nro ? `· desde ${opts.nro}` : ''}</h3>
-          <div style="font-size:11px;color:#6b7280;margin-top:2px">Marca: <b>${state.marca || 'METAL'}</b> · Tipo: <b>${state.tipo || (state.cliente_numero_doc?.length === 11 ? 'FACTURA' : 'BOLETA')}</b></div>
-        </div>
-        <div style="padding:16px 22px;max-height:75vh;overflow:auto">
-          ${banner}
-
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
-            <div>
-              <label style="font-size:11px;color:#6b7280">RUC / DNI Cliente *</label>
-              <input id="fac-doc" value="${v(state.cliente_numero_doc)}" style="width:100%;padding:7px;border:1px solid #d1d5db;border-radius:5px;font-size:12px">
-            </div>
-            <div>
-              <label style="font-size:11px;color:#6b7280">Razón Social *</label>
-              <input id="fac-razon" value="${v(state.cliente_razon_social)}" style="width:100%;padding:7px;border:1px solid #d1d5db;border-radius:5px;font-size:12px">
-            </div>
-            <div style="grid-column:span 2">
-              <label style="font-size:11px;color:#6b7280">Dirección del Cliente</label>
-              <input id="fac-dir" value="${v(state.cliente_direccion)}" style="width:100%;padding:7px;border:1px solid #d1d5db;border-radius:5px;font-size:12px">
-            </div>
-            <div>
-              <label style="font-size:11px;color:#6b7280">Email</label>
-              <input id="fac-email" value="${v(state.cliente_email)}" style="width:100%;padding:7px;border:1px solid #d1d5db;border-radius:5px;font-size:12px">
-            </div>
-            <div>
-              <label style="font-size:11px;color:#6b7280">Fecha emisión</label>
-              <input id="fac-fecha" type="date" value="${v(state.fecha_emision)}" style="width:100%;padding:7px;border:1px solid #d1d5db;border-radius:5px;font-size:12px">
-            </div>
-            <div>
-              <label style="font-size:11px;color:#6b7280">Moneda</label>
-              <select id="fac-moneda" style="width:100%;padding:7px;border:1px solid #d1d5db;border-radius:5px;font-size:12px">
-                <option value="PEN" ${state.moneda==='PEN'?'selected':''}>Soles (PEN)</option>
-                <option value="USD" ${state.moneda==='USD'?'selected':''}>Dólares (USD)</option>
-              </select>
-            </div>
-            <div>
-              <label style="font-size:11px;color:#6b7280">Tipo de cambio</label>
-              <input id="fac-tc" type="number" step="0.0001" value="${state.tipo_cambio || 1}" style="width:100%;padding:7px;border:1px solid #d1d5db;border-radius:5px;font-size:12px">
-            </div>
-            <div>
-              <label style="font-size:11px;color:#6b7280">Forma de pago</label>
-              <select id="fac-fp" style="width:100%;padding:7px;border:1px solid #d1d5db;border-radius:5px;font-size:12px">
-                <option value="CONTADO" ${state.forma_pago==='CONTADO'?'selected':''}>Contado</option>
-                <option value="CREDITO" ${state.forma_pago==='CREDITO'?'selected':''}>Crédito</option>
-              </select>
-            </div>
-            <div>
-              <label style="font-size:11px;color:#6b7280">Días crédito (si aplica)</label>
-              <input id="fac-dc" type="number" min="0" value="${state.dias_credito || 0}" style="width:100%;padding:7px;border:1px solid #d1d5db;border-radius:5px;font-size:12px">
-            </div>
-            <div style="grid-column:span 2">
-              <label style="font-size:11px;color:#6b7280">Observación (aparece en el PDF)</label>
-              <input id="fac-obs" value="${v(state.observaciones)}" placeholder="Ej: OC 2155 - 2025 ATENCION JUAN" style="width:100%;padding:7px;border:1px solid #d1d5db;border-radius:5px;font-size:12px">
-            </div>
-            <div style="grid-column:span 2;display:flex;gap:14px;align-items:center">
-              <label style="font-size:12px;display:flex;gap:6px;align-items:center">
-                <input id="fac-igv" type="checkbox" ${state.aplica_igv?'checked':''}> Aplica IGV 18%
-              </label>
-              <label style="font-size:12px;display:flex;gap:6px;align-items:center">
-                <input id="fac-detr" type="checkbox" ${state.aplica_detraccion?'checked':''}> Aplica detracción
-              </label>
-              <input id="fac-detr-pct" type="number" step="0.1" min="0" max="20" placeholder="%" value="${state.porcentaje_detraccion || ''}" style="width:60px;padding:5px;border:1px solid #d1d5db;border-radius:5px;font-size:12px">
-              <input id="fac-detr-cod" placeholder="Cód SPOT" value="${v(state.codigo_servicio_spot)}" style="width:90px;padding:5px;border:1px solid #d1d5db;border-radius:5px;font-size:12px">
-            </div>
-          </div>
-
-          <div style="margin-top:14px">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-              <strong style="font-size:13px">Ítems</strong>
-              <button type="button" id="fac-add" style="background:#2563eb;color:#fff;border:none;padding:5px 12px;border-radius:4px;cursor:pointer;font-size:11px">+ Agregar línea</button>
-            </div>
-            <table style="width:100%;border-collapse:collapse;font-size:11px;border:1px solid #e5e7eb">
-              <thead style="background:#f9fafb">
-                <tr><th style="padding:6px;text-align:right">Cant.</th><th style="padding:6px">Unid.</th><th style="padding:6px;text-align:left">Descripción</th><th style="padding:6px;text-align:right">P. Unit.</th><th style="padding:6px"></th></tr>
-              </thead>
-              <tbody id="fac-lineas"></tbody>
-            </table>
-          </div>
-
-          <div style="display:flex;justify-content:flex-end;margin-top:14px">
-            <div id="fac-totales" style="background:#f9fafb;border:1px solid #e5e7eb;padding:10px 14px;border-radius:6px;font-size:12px;line-height:1.7;text-align:right;min-width:240px"></div>
-          </div>
-        </div>
-        <div style="padding:12px 22px;background:#f9fafb;border-top:1px solid #e5e7eb;display:flex;justify-content:flex-end;gap:10px">
-          <button id="fac-cancel" style="padding:8px 16px;background:#fff;border:1px solid #d1d5db;border-radius:5px;cursor:pointer;font-size:13px">Cancelar</button>
-          <button id="fac-emit" style="padding:8px 22px;background:#16a34a;color:#fff;border:none;border-radius:5px;cursor:pointer;font-size:13px;font-weight:600">${opts.esReal ? 'Emitir y enviar a SUNAT' : 'Emitir simulada'}</button>
-        </div>
-      </div>`;
-
-    document.body.appendChild(ov);
-    const close = (val) => { ov.remove(); resolve(val); };
-
-    renderLineas();
-    renderTotales();
-
-    ov.querySelector('#fac-add').onclick = () => {
-      state.detalles.push({ codigo_item: '', descripcion: '', unidad_sunat: 'NIU', cantidad: 1, precio_unitario: 0 });
-      renderLineas();
-      renderTotales();
-    };
-    ov.querySelector('#fac-igv').onchange = (e) => { state.aplica_igv = e.target.checked; renderTotales(); };
-    ov.querySelector('#fac-moneda').onchange = (e) => { state.moneda = e.target.value; renderTotales(); };
-    ov.querySelector('#fac-cancel').onclick = () => close(null);
-
-    ov.querySelector('#fac-emit').onclick = () => {
-      // Validaciones mínimas
-      const doc = ov.querySelector('#fac-doc').value.trim();
-      const razon = ov.querySelector('#fac-razon').value.trim();
-      if (!doc || !razon) {
-        return window.showError?.('RUC/DNI y razón social son obligatorios');
-      }
-      if (state.detalles.some(d => !d.descripcion || !d.cantidad || d.cantidad <= 0)) {
-        return window.showError?.('Todos los ítems requieren descripción y cantidad > 0');
-      }
-      const data = {
-        tipo: state.tipo,
-        marca: state.marca,
-        fecha_emision: ov.querySelector('#fac-fecha').value,
-        cliente_numero_doc: doc,
-        cliente_razon_social: razon,
-        cliente_direccion: ov.querySelector('#fac-dir').value || null,
-        cliente_email: ov.querySelector('#fac-email').value || null,
-        moneda: ov.querySelector('#fac-moneda').value,
-        tipo_cambio: Number(ov.querySelector('#fac-tc').value) || 1,
-        aplica_igv: ov.querySelector('#fac-igv').checked,
-        forma_pago: ov.querySelector('#fac-fp').value,
-        dias_credito: Number(ov.querySelector('#fac-dc').value) || 0,
-        aplica_detraccion: ov.querySelector('#fac-detr').checked,
-        porcentaje_detraccion: Number(ov.querySelector('#fac-detr-pct').value) || null,
-        codigo_servicio_spot: ov.querySelector('#fac-detr-cod').value || null,
-        observaciones: ov.querySelector('#fac-obs').value || null,
-        id_cotizacion: state.id_cotizacion || null,
-        detalles: state.detalles.map(d => ({
-          codigo_item: d.codigo_item || null,
-          descripcion: d.descripcion,
-          unidad_sunat: d.unidad_sunat || 'NIU',
-          cantidad: Number(d.cantidad),
-          precio_unitario: Number(d.precio_unitario),
-        })),
-      };
-      close(data);
-    };
-  });
-}
-
 // ── Template del formulario (parametrizado por marca) ───────────
 function formNueva(marca, tcHoy, opts = {}) {
   const cfg    = MARCAS[marca];
@@ -1112,7 +892,7 @@ function archivoTable(cotizaciones, _filtroMarcaLegacy) {
               onclick="window.descargarPDFCotizacion(${c.id_cotizacion},'${escapeAttr(c.nro_cotizacion)}')">📄 PDF</button>
             ${!anulada && (c.estado === 'APROBADA' || c.estado === 'TERMINADA') && !c.nro_factura ? `
             <span style="background:#fef3c7;color:#92400e;padding:3px 6px;border-radius:4px;font-size:11px;font-weight:600;border:1px solid #fde68a"
-              title="Factura pendiente de emitir. La emisión es responsabilidad contable — andá a Contabilidad → 📤 Facturación pendiente para emitirla en SUNAT.">
+              title="Factura pendiente de emitir. La emisión es responsabilidad contable — andá a Finanzas → 🧾 Facturar para registrar la factura.">
               ⏳ Pend. facturar
             </span>
             ` : ''}
@@ -1992,32 +1772,6 @@ export const Comercial = async () => {
       }
     };
 
-    window.emitirFacturaDesdeCot = async (id, nro) => {
-      let preview;
-      try { preview = await api.facturas.previewCotizacion(id); }
-      catch (err) { return window.showError?.('Error cargando preview: ' + err.message); }
-
-      let diag = null;
-      try { diag = await api.facturacion.diagnostico(); } catch {}
-      const esReal = diag?.modo === 'REAL';
-
-      const data = await modalEmitirFactura(preview, { nro, esReal, proveedor: diag?.proveedor });
-      if (!data) return;
-
-      try {
-        const r = await api.facturas.crearYEmitir(data);
-        const label = r.simulado ? '🟡 Emisión simulada' : '🟢 Factura aceptada por SUNAT';
-        window.showSuccess?.(`${label}: ${r.numero_formateado}`);
-        // Abrir el PDF preview interno (o el oficial de Nubefact si modo REAL)
-        const pdfUrl = r.pdf_url || api.facturas.pdfUrl(r.id_factura);
-        setTimeout(() => window.open(pdfUrl, '_blank'), 600);
-        setTimeout(() => window.navigate('comercial'), 1500);
-      } catch (err) {
-        const msg = err?.debugging || err?.error || err?.message || JSON.stringify(err);
-        window.showError?.('Error al emitir: ' + msg);
-      }
-    };
-
     window.editarCotizacion = async (id, nro) => {
       const ok = await confirmarAccion({
         titulo: 'Editar cotización',
@@ -2227,9 +1981,9 @@ export const Comercial = async () => {
 // EXPOSICIÓN GLOBAL — top-level (corre apenas se importa Comercial.js)
 // ════════════════════════════════════════════════════════════════
 // Estas funciones se exponen globalmente para que estén disponibles desde
-// otros módulos (ej. Contabilidad → Facturación pendiente) sin que el
-// usuario haya entrado primero a Comercial. Antes solo se asignaban dentro
-// del setTimeout del render, lo cual obligaba a visitar Comercial primero.
+// otros módulos (ej. Finanzas) sin que el usuario haya entrado primero a
+// Comercial. Antes solo se asignaban dentro del setTimeout del render, lo
+// cual obligaba a visitar Comercial primero.
 
 const _fetchPDFCotizacionGlobal = async (id) => {
   const r = await fetch(`/api/cotizaciones/${id}/pdf`, {
@@ -2278,32 +2032,6 @@ if (typeof window !== 'undefined') {
       if (overlay && overlay.parentNode) overlay.remove();
       if (blobUrl) URL.revokeObjectURL(blobUrl);
       window.showError?.('Error abriendo preview: ' + (err.message || err));
-    }
-  });
-
-  // Emitir factura electrónica desde una cotización aprobada.
-  // Usa modalEmitirFactura definido más arriba en este mismo archivo.
-  window.emitirFacturaDesdeCot = window.emitirFacturaDesdeCot || (async (id, nro) => {
-    // `api` ya está importado al top del archivo (top-level scope).
-    let preview;
-    try { preview = await api.facturas.previewCotizacion(id); }
-    catch (err) { return window.showError?.('Error cargando preview: ' + err.message); }
-    let diag = null;
-    try { diag = await api.facturacion.diagnostico(); } catch {}
-    const esReal = diag?.modo === 'REAL';
-    const data = await modalEmitirFactura(preview, { nro, esReal, proveedor: diag?.proveedor });
-    if (!data) return;
-    try {
-      const r = await api.facturas.crearYEmitir(data);
-      const label = r.simulado ? '🟡 Emisión simulada' : '🟢 Factura aceptada por SUNAT';
-      window.showSuccess?.(`${label}: ${r.numero_formateado}`);
-      const pdfUrl = r.pdf_url || api.facturas.pdfUrl(r.id_factura);
-      setTimeout(() => window.open(pdfUrl, '_blank'), 600);
-      // Refresh contextual: si hay refreshModule (Contabilidad/Comercial), úsalo
-      setTimeout(() => window.refreshModule?.() || window.navigate?.('comercial'), 1500);
-    } catch (err) {
-      const msg = err?.debugging || err?.error || err?.message || JSON.stringify(err);
-      window.showError?.('Error al emitir: ' + msg);
     }
   });
 }

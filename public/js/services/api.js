@@ -410,20 +410,6 @@ export const api = {
   facturacion: {
     diagnostico: () => get('/facturacion/diagnostico'),
   },
-  facturas: {
-    emitirDesdeCotizacion: (idCot, data = {}) =>
-      post(`/facturas/emitir-desde-cotizacion/${idCot}`, data),
-    previewCotizacion: (idCot) => get(`/facturas/preview-cotizacion/${idCot}`),
-    crearYEmitir:      (data)  => post('/facturas', data),
-    list: (filtros = {}) => {
-      const p = new URLSearchParams();
-      Object.entries(filtros).forEach(([k, v]) => { if (v != null && v !== '') p.append(k, v); });
-      return get(`/facturas${p.toString() ? '?' + p : ''}`);
-    },
-    get:              (id)    => get(`/facturas/${id}`),
-    consultarEstado:  (id)    => post(`/facturas/${id}/consultar-estado`),
-    pdfUrl:           (id)    => `/api/facturas/${id}/pdf`,
-  },
   // Registro manual de facturas SUNAT atadas a una cotización (FacturaVenta).
   facturasVenta: {
     preview:  (idCot)     => get(`/facturas-venta/preview/${idCot}`),
@@ -659,37 +645,6 @@ export const api = {
       a.click();
       a.remove();
       setTimeout(() => URL.revokeObjectURL(url), 30_000);
-    },
-  },
-  ple: {
-    ventasPreview:  (anio, mes) => get(`/ple/ventas/preview?anio=${anio}&mes=${mes}`),
-    comprasPreview: (anio, mes) => get(`/ple/compras/preview?anio=${anio}&mes=${mes}`),
-    // Descarga via fetch + blob con cookie httpOnly (credentials: same-origin).
-    descargarVentas: async (anio, mes) => {
-      const r = await fetch(`${API_BASE_URL}/ple/ventas?anio=${anio}&mes=${mes}`, {
-        credentials: 'same-origin',
-      });
-      if (!r.ok) throw new Error(`Error ${r.status}`);
-      const blob = await r.blob();
-      const nombre = r.headers.get('content-disposition')?.match(/filename="(.+)"/)?.[1] || 'ventas.txt';
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url; a.download = nombre; a.click();
-      URL.revokeObjectURL(url);
-      return { nombre, lineas: Number(r.headers.get('x-ple-lineas')) || 0 };
-    },
-    descargarCompras: async (anio, mes) => {
-      const r = await fetch(`${API_BASE_URL}/ple/compras?anio=${anio}&mes=${mes}`, {
-        credentials: 'same-origin',
-      });
-      if (!r.ok) throw new Error(`Error ${r.status}`);
-      const blob = await r.blob();
-      const nombre = r.headers.get('content-disposition')?.match(/filename="(.+)"/)?.[1] || 'compras.txt';
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url; a.download = nombre; a.click();
-      URL.revokeObjectURL(url);
-      return { nombre, lineas: Number(r.headers.get('x-ple-lineas')) || 0 };
     },
   },
 };
