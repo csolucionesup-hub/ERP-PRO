@@ -70,7 +70,6 @@ import { purchaseCreateSchema, purchaseUpdateSchema } from './app/validators/pur
 import { inventoryCreateSchema, inventoryConsumeSchema } from './app/validators/inventory.schema';
 import { serviceCreateSchema, servicePaymentSchema, serviceUpdateSchema } from './app/validators/service.schema';
 import { gastoCreateSchema, gastoPaymentSchema, gastoUpdateSchema } from './app/validators/gastos.schema';
-import { adminSaldoSchema } from './app/validators/admin.schema';
 import { prestamoTomadoCreateSchema, prestamoTomadoUpdateSchema, pagoPrestamSchema,
          prestamoOtorgadoCreateSchema, prestamoOtorgadoUpdateSchema, cobroPrestamoSchema
 } from './app/validators/prestamos.schema';
@@ -1010,22 +1009,8 @@ apiRouter.post(
 
 // ===== ADMIN: RESET BASE DE DATOS =====
 // NOTA: NO usar `apiRouter.use('/admin', requireModulo('GERENCIA'))` acá: ese
-// prefijo ancho captura también /admin/gasto-personal, /admin/dashboard, etc.
-// (módulo ADMINISTRACION) y los dejaba inaccesibles para usuarios de Admin.
-// El guard GERENCIA va inline SOLO en las rutas realmente gerenciales.
-apiRouter.post('/admin/reset-db', requireModulo('GERENCIA'), async (req: Request, res: Response) => {
-  res.json(await AdminService.resetDb());
-});
-
-// ===== ADMIN: SALDOS DE CUENTAS =====
-apiRouter.get('/admin/cuentas-saldo', requireModulo('GERENCIA'), async (req: Request, res: Response) => {
-  res.json(await AdminService.getCuentasSaldo());
-});
-
-// ===== ADMIN: SALDO INICIAL =====
-apiRouter.post('/admin/saldo-inicial', requireModulo('GERENCIA'), validateParams(adminSaldoSchema), async (req: Request, res: Response) => {
-  res.json(await AdminService.setSaldoInicial(req.body));
-});
+// prefijo ancho capturaría también /admin/gasto-personal, /admin/dashboard, etc.
+// (módulo ADMINISTRACION) y los dejaría inaccesibles para usuarios de Admin.
 
 // ===== ADMIN: GASTO EN PERSONAL (Módulo Administración) =====
 apiRouter.use('/admin/gasto-personal', requireModulo('ADMINISTRACION'));

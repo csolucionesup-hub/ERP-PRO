@@ -341,9 +341,6 @@ export const api = {
       return get(`/produccion/ots${p.toString() ? '?' + p : ''}`);
     },
     obtenerOT: (id) => get(`/produccion/ots/${id}`),
-    resetDb:          ()       => post('/admin/reset-db'),
-    getCuentasSaldo:  ()       => get('/admin/cuentas-saldo'),
-    setSaldoInicial:  (data)   => post('/admin/saldo-inicial', data),
   },
   usuarios: {
     getUsuarios:          () => fetchAPI('/api/usuarios'),

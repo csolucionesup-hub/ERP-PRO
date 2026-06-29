@@ -1,4 +1,4 @@
-import { api } from '../services/api.js?v=20260628r1';
+import { api } from '../services/api.js?v=20260628r2';
 import { showSuccess, showError, escapeHtml, escapeAttr } from '../services/ui.js';
 import { pill } from '../components/Pill.js';
 import { kpiCard as kpiCardEnt } from '../components/KpiCard.js';
