@@ -623,7 +623,7 @@ async function modalGestionCuentas() {
                 const t = TIPO_CUENTA_LABEL[c.tipo] || { label: c.tipo, color: '#6b7280', bg: '#f3f4f6' };
                 return `
                 <tr data-id="${c.id_cuenta}" style="border-top:1px solid #f3f4f6">
-                  <td style="padding:9px 10px;font-weight:600">${c.nombre}</td>
+                  <td style="padding:9px 10px;font-weight:600">${escapeHtml(c.nombre)}</td>
                   <td style="padding:9px 10px">
                     <span style="background:${t.bg};color:${t.color};padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600">${t.label}</span>
                   </td>
@@ -1845,7 +1845,7 @@ async function modalEditarTributario(cot) {
     form.retencion_porcentaje.oninput = refreshRet;
 
     ov.querySelector('#trib-cancel').onclick = () => close(null);
-    ov.onclick = (e) => { if (e.target === ov) close(null); };
+    // Modal NO cierra por backdrop (regla #28 ERP): solo con boton Cerrar explicito
     ov.querySelector('#trib-ok').onclick = () => {
       close({
         detraccion_porcentaje: Number(form.detraccion_porcentaje.value) || 0,
@@ -1893,7 +1893,7 @@ function modalFacturar(cot) {
     ov.appendChild(box);
     document.body.appendChild(ov);
     const close = (val) => { ov.remove(); resolve(val); };
-    ov.onclick = (e) => { if (e.target === ov) close(null); };
+    // Modal NO cierra por backdrop (regla #28 ERP): solo con boton Cerrar explicito
     box.querySelector('#fac-cancel').onclick = () => close(null);
     box.querySelector('#form-fac').onsubmit = (e) => {
       e.preventDefault();
@@ -2201,7 +2201,7 @@ async function modalDetalle(id) {
 
   movs.forEach(m => pintarAdjCobranza(m.id_cobranza));
   pintarFacturaVenta(c.id_cotizacion);
-  ov.onclick = (e) => { if (e.target === ov) close(); };
+  // Modal NO cierra por backdrop (regla #28 ERP): solo con boton Cerrar explicito
 
   // Editar detracción / retención
   ov.querySelector('#btn-edit-tributario').onclick = async () => {
@@ -2342,8 +2342,8 @@ async function modalFacturasEmitidas() {
             </span>
           </td>
           <td style="padding:8px 10px;font-size:12px">
-            <div style="font-weight:600">${f.cliente_razon_social || '—'}</div>
-            <div style="font-size:10px;color:#6b7280">${f.cliente_numero_doc || ''}</div>
+            <div style="font-weight:600">${escapeHtml(f.cliente_razon_social || '—')}</div>
+            <div style="font-size:10px;color:#6b7280">${escapeHtml(f.cliente_numero_doc || '')}</div>
           </td>
           <td style="padding:8px 10px;font-size:12px;text-align:right;font-variant-numeric:tabular-nums">${fmtMoney(f.total, f.moneda)}</td>
           <td style="padding:8px 10px;text-align:center">${estadoBadge(f.estado_sunat)}</td>
@@ -2604,7 +2604,7 @@ async function modalGastosPeriodo() {
         <tr style="border-bottom:1px solid #f3f4f6">
           <td style="padding:7px 8px;font-size:11px;white-space:nowrap">${fmtDate(g.fecha)}</td>
           <td style="padding:7px 8px;font-size:11px">
-            ${g.nro_comprobante ? `<div style="font-weight:600">${g.nro_comprobante}</div>` : ''}
+            ${g.nro_comprobante ? `<div style="font-weight:600">${escapeHtml(g.nro_comprobante)}</div>` : ''}
             <div style="font-size:10px;color:#6b7280">${escapeHtml(g.proveedor_nombre || '—')}</div>
           </td>
           <td style="padding:7px 8px;font-size:11px;max-width:280px">
@@ -2804,8 +2804,8 @@ async function modalNotasCreditoRecibidas() {
           <td style="padding:7px 8px;font-size:11px;font-weight:600">${n.serie}-${String(n.numero).padStart(6,'0')}</td>
           <td style="padding:7px 8px;font-size:11px">${fmtDate(n.fecha_emision)}</td>
           <td style="padding:7px 8px;font-size:11px">
-            <div style="font-weight:600">${n.proveedor_razon_social || '—'}</div>
-            <div style="font-size:10px;color:#6b7280">${n.proveedor_ruc || ''}</div>
+            <div style="font-weight:600">${escapeHtml(n.proveedor_razon_social || '—')}</div>
+            <div style="font-size:10px;color:#6b7280">${escapeHtml(n.proveedor_ruc || '')}</div>
           </td>
           <td style="padding:7px 8px;font-size:11px">
             ${n.tipo_doc_referencia} ${n.serie_referencia}-${String(n.numero_referencia).padStart(6,'0')}
