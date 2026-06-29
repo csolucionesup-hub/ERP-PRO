@@ -37,6 +37,7 @@ import PeriodosService from './app/modules/configuracion/PeriodosService';
 import AdjuntosService from './app/modules/configuracion/AdjuntosService';
 import NubefactService from './app/modules/facturacion/NubefactService';
 import FacturaService from './app/modules/facturacion/FacturaService';
+import FacturaVentaService from './app/modules/facturacion/FacturaVentaService';
 import FacturaPDFService from './app/modules/facturacion/FacturaPDFService';
 import NotaCreditoService from './app/modules/notas-credito/NotaCreditoService';
 import RendicionService from './app/modules/admin/RendicionService';
@@ -75,6 +76,7 @@ import { prestamoTomadoCreateSchema, prestamoTomadoUpdateSchema, pagoPrestamSche
 } from './app/validators/prestamos.schema';
 import { depositoDetraccionSchema, pagoImpuestoSchema, tipoCambioManualSchema } from './app/validators/tributario.schema';
 import { cotizacionCreateSchema, cotizacionUpdateSchema, cotizacionEstadoSchema } from './app/validators/cotizacion.schema';
+import { facturaVentaCreateSchema, facturaVentaUpdateSchema } from './app/validators/facturaVenta.schema';
 
 dotenv.config();
 
@@ -1492,6 +1494,37 @@ facturasRouter.get('/:id/pdf', validateIdParam, async (req: Request, res: Respon
 });
 
 app.use('/api/facturas', facturasRouter);
+
+// ===== FACTURAS DE VENTA (registro manual de facturas SUNAT) =====
+const facturasVentaRouter = express.Router();
+facturasVentaRouter.use(requireAuth);
+facturasVentaRouter.use(requireModulo('FINANZAS'));
+
+facturasVentaRouter.get('/preview/:id_cotizacion', async (req: Request, res: Response) => {
+  const id = Number(req.params.id_cotizacion);
+  if (!Number.isFinite(id) || id <= 0) return res.status(400).json({ error: 'id_cotizacion invalido' });
+  res.json(await FacturaVentaService.previewDesdeCotizacion(id));
+});
+
+facturasVentaRouter.get('/', async (req: Request, res: Response) => {
+  const id = Number(req.query.id_cotizacion);
+  if (!Number.isFinite(id) || id <= 0) return res.status(400).json({ error: 'id_cotizacion requerido' });
+  res.json(await FacturaVentaService.listarPorCotizacion(id));
+});
+
+facturasVentaRouter.post('/', validateParams(facturaVentaCreateSchema), auditLog('FacturaVenta', 'CREATE'), async (req: any, res: Response) => {
+  res.json(await FacturaVentaService.crear(req.body, req.user!.id_usuario));
+});
+
+facturasVentaRouter.put('/:id', validateIdParam, validateParams(facturaVentaUpdateSchema), auditLog('FacturaVenta', 'UPDATE'), async (req: Request, res: Response) => {
+  res.json(await FacturaVentaService.editar(Number(req.params.id), req.body));
+});
+
+facturasVentaRouter.post('/:id/anular', validateIdParam, auditLog('FacturaVenta', 'UPDATE'), async (req: Request, res: Response) => {
+  res.json(await FacturaVentaService.anular(Number(req.params.id)));
+});
+
+app.use('/api/facturas-venta', facturasVentaRouter);
 
 // ===== NOTAS DE CRÉDITO =====
 // Hoy cubre NCs RECIBIDAS del proveedor (registro local que ajusta

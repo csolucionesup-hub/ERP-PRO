@@ -424,6 +424,14 @@ export const api = {
     consultarEstado:  (id)    => post(`/facturas/${id}/consultar-estado`),
     pdfUrl:           (id)    => `/api/facturas/${id}/pdf`,
   },
+  // Registro manual de facturas SUNAT atadas a una cotización (FacturaVenta).
+  facturasVenta: {
+    preview:  (idCot)     => get(`/facturas-venta/preview/${idCot}`),
+    listar:   (idCot)     => get(`/facturas-venta?id_cotizacion=${idCot}`),
+    crear:    (data)      => post('/facturas-venta', data),
+    editar:   (id, data)  => put(`/facturas-venta/${id}`, data),
+    anular:   (id)        => post(`/facturas-venta/${id}/anular`),
+  },
   notasCredito: {
     list: (filtros = {}) => {
       const p = new URLSearchParams();
