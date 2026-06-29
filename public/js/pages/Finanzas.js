@@ -117,19 +117,6 @@ async function previewAdjunto(url, titulo = 'Constancia') {
   }
 }
 
-// Sube el PDF de la factura de venta de una cotización, garantizando UNA sola
-// factura: borra cualquier adjunto FacturaVenta previo antes de subir el nuevo.
-// ref_tipo='FacturaVenta', ref_id=id_cotizacion. Lanza si el upload falla.
-// Dejamos que listar() propague: si no podemos verificar los previos, abortamos
-// en vez de subir un duplicado y romper la garantía de "una sola factura".
-async function subirFacturaVentaUnica(idCotizacion, file) {
-  const previos = await api.adjuntos.listar('FacturaVenta', idCotizacion);
-  for (const p of (previos || [])) {
-    try { await api.adjuntos.eliminar(p.id); } catch { /* best-effort */ }
-  }
-  return api.adjuntos.subir('FacturaVenta', idCotizacion, file);
-}
-
 // ── Render fila de cotización ───────────────────────────────────
 function rowCotizacion(c, marca) {
   const cfg = MARCAS[marca];
@@ -1856,54 +1843,171 @@ async function modalEditarTributario(cot) {
 }
 
 // ── Modal: Detalle / historial ──────────────────────────────────
-// ── Modal: Registrar factura ───────────────────────────────
-function modalFacturar(cot) {
-  return new Promise(resolve => {
-    const hoy = new Date().toISOString().slice(0,10);
-    const cfg = MARCAS[cot.marca] || MARCAS.METAL;
-    const serie = cot.marca === 'METAL' ? 'F001-' : 'F002-';
+// ── Modal: Registrar / editar factura de venta ─────────────────
+// Modelo estructurado (api.facturasVenta). Pre-llena desde la cotización con
+// preview() y deja editar el detalle tributario en un bloque plegable.
+// opts.editData = factura existente → modo edición (api.facturasVenta.editar).
+// Resuelve con { __accion:'crear'|'editar', __id, file, ...campos } o null.
+async function modalFacturar(cot, opts = {}) {
+  const editData = opts.editData || null;
+  const cfg = MARCAS[cot.marca] || MARCAS.METAL;
+  const hoy = new Date().toISOString().slice(0, 10);
 
+  // Datos base: en edición vienen del registro; si no, del preview del backend.
+  let base;
+  if (editData) {
+    base = editData;
+  } else {
+    try {
+      base = await api.facturasVenta.preview(cot.id_cotizacion);
+    } catch (e) {
+      showError('No se pudo preparar la factura: ' + e.message);
+      return null;
+    }
+  }
+
+  const tipoVal      = base.tipo || 'FACTURA';
+  const serieVal     = base.serie || (cot.marca === 'METAL' ? 'F001' : 'F002');
+  const numeroVal    = base.numero != null ? base.numero : '';
+  const fechaVal     = (base.fecha_emision ? String(base.fecha_emision).slice(0, 10) : hoy);
+  const monedaVal    = base.moneda || cot.moneda || 'PEN';
+  const tcVal        = base.tipo_cambio != null ? base.tipo_cambio : (cot.tipo_cambio || 1);
+  const baseImp      = base.base_imponible != null ? base.base_imponible : '';
+  const igvVal       = base.igv != null ? base.igv : '';
+  const totalVal     = base.total != null ? base.total : '';
+  const aplicaDet    = !!base.aplica_detraccion;
+  const pctDet       = base.porcentaje_detraccion != null ? base.porcentaje_detraccion : '';
+  const montoDet     = base.monto_detraccion != null ? base.monto_detraccion : '';
+  const aplicaRet    = !!base.aplica_retencion;
+  const montoRet     = base.monto_retencion != null ? base.monto_retencion : '';
+  const cliRazon     = base.cliente_razon_social || cot.cliente || '';
+  const cliDoc       = base.cliente_num_doc || '';
+
+  return new Promise(resolve => {
     const ov = document.createElement('div');
-    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:10000;display:flex;align-items:center;justify-content:center;padding:20px';
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:10000;display:flex;align-items:flex-start;justify-content:center;padding:20px;overflow:auto';
     const box = document.createElement('div');
-    box.style.cssText = 'background:#fff;border-radius:8px;padding:22px;max-width:480px;width:100%';
+    box.style.cssText = 'background:#fff;border-radius:8px;padding:22px;max-width:520px;width:100%;margin:auto';
+    const inp = 'width:100%;padding:8px;font-size:13px;border:1px solid #d1d5db;border-radius:4px;box-sizing:border-box';
+    const lbl = 'font-size:11px;color:#6b7280;font-weight:600';
     box.innerHTML = `
-      <div style="font-size:16px;font-weight:700;margin-bottom:4px">📄 Registrar factura</div>
+      <div style="font-size:16px;font-weight:700;margin-bottom:4px">📄 ${editData ? 'Editar factura' : 'Registrar factura'}</div>
       <div style="font-size:12px;color:#6b7280;margin-bottom:14px">${escapeHtml(cot.nro_cotizacion)} · ${escapeHtml(cot.cliente)} · ${fMoney(cot.total, 'PEN')}${cot.moneda === 'USD' ? ` <span style="color:#16a34a">(${fMoney(Number(cot.total)/(Number(cot.tipo_cambio)||1), 'USD')} USD orig.)</span>` : ''}</div>
       <form id="form-fac">
-        <div style="margin-bottom:10px">
-          <label style="font-size:11px;color:#6b7280;font-weight:600">Número de factura</label>
-          <input type="text" name="nro_factura" value="${serie}" required style="width:100%;padding:8px;font-size:13px;border:1px solid #d1d5db;border-radius:4px" placeholder="F001-000123">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">
+          <div>
+            <label style="${lbl}">Serie</label>
+            <input type="text" name="serie" value="${escapeAttr(String(serieVal))}" required style="${inp}" placeholder="F001">
+          </div>
+          <div>
+            <label style="${lbl}">Número</label>
+            <input type="number" name="numero" value="${escapeAttr(String(numeroVal))}" required min="1" style="${inp}" placeholder="123">
+          </div>
         </div>
         <div style="margin-bottom:12px">
-          <label style="font-size:11px;color:#6b7280;font-weight:600">Fecha de emisión</label>
-          <input type="date" name="fecha_factura" value="${hoy}" required style="width:100%;padding:8px;font-size:13px;border:1px solid #d1d5db;border-radius:4px">
+          <label style="${lbl}">Fecha de emisión</label>
+          <input type="date" name="fecha_emision" value="${escapeAttr(fechaVal)}" required style="${inp}">
         </div>
-        <div style="margin-bottom:14px">
-          <label style="font-size:11px;color:#6b7280;font-weight:600">Factura PDF (opcional)</label>
-          <input type="file" name="factura_file" accept=".pdf,image/*" style="width:100%;padding:6px;font-size:12px;border:1px solid #d1d5db;border-radius:4px">
+        <div style="margin-bottom:12px">
+          <label style="${lbl}">Factura PDF (opcional)</label>
+          <input type="file" name="factura_file" accept=".pdf,image/*" style="${inp};padding:6px;font-size:12px">
           <div style="font-size:10px;color:#9ca3af;margin-top:3px">Sube el PDF descargado de SUNAT. También puedes subirlo o reemplazarlo después.</div>
         </div>
+        <details style="margin-bottom:14px;border:1px solid #e5e7eb;border-radius:6px;padding:8px 10px">
+          <summary style="cursor:pointer;font-size:12px;font-weight:600;color:#374151">Detalle de la factura (editable)</summary>
+          <div style="margin-top:10px">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
+              <div>
+                <label style="${lbl}">Tipo</label>
+                <select name="tipo" style="${inp}">
+                  <option value="FACTURA" ${tipoVal === 'FACTURA' ? 'selected' : ''}>FACTURA</option>
+                  <option value="BOLETA" ${tipoVal === 'BOLETA' ? 'selected' : ''}>BOLETA</option>
+                </select>
+              </div>
+              <div>
+                <label style="${lbl}">Moneda</label>
+                <select name="moneda" style="${inp}">
+                  <option value="PEN" ${monedaVal === 'PEN' ? 'selected' : ''}>PEN</option>
+                  <option value="USD" ${monedaVal === 'USD' ? 'selected' : ''}>USD</option>
+                </select>
+              </div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:8px">
+              <div>
+                <label style="${lbl}">Base imponible</label>
+                <input type="number" step="0.01" name="base_imponible" value="${escapeAttr(String(baseImp))}" style="${inp}">
+              </div>
+              <div>
+                <label style="${lbl}">IGV</label>
+                <input type="number" step="0.01" name="igv" value="${escapeAttr(String(igvVal))}" style="${inp}">
+              </div>
+              <div>
+                <label style="${lbl}">Total</label>
+                <input type="number" step="0.01" name="total" value="${escapeAttr(String(totalVal))}" style="${inp}">
+              </div>
+            </div>
+            <div style="display:grid;grid-template-columns:auto 1fr 1fr;gap:8px;align-items:end;margin-bottom:8px">
+              <label style="${lbl};display:flex;align-items:center;gap:5px;padding-bottom:8px">
+                <input type="checkbox" name="aplica_detraccion" ${aplicaDet ? 'checked' : ''}> Detracción
+              </label>
+              <div>
+                <label style="${lbl}">% detracción</label>
+                <input type="number" step="0.01" name="porcentaje_detraccion" value="${escapeAttr(String(pctDet))}" style="${inp}">
+              </div>
+              <div>
+                <label style="${lbl}">Monto detracción</label>
+                <input type="number" step="0.01" name="monto_detraccion" value="${escapeAttr(String(montoDet))}" style="${inp}">
+              </div>
+            </div>
+            <div style="display:grid;grid-template-columns:auto 1fr;gap:8px;align-items:end">
+              <label style="${lbl};display:flex;align-items:center;gap:5px;padding-bottom:8px">
+                <input type="checkbox" name="aplica_retencion" ${aplicaRet ? 'checked' : ''}> Retención
+              </label>
+              <div>
+                <label style="${lbl}">Monto retención</label>
+                <input type="number" step="0.01" name="monto_retencion" value="${escapeAttr(String(montoRet))}" style="${inp}">
+              </div>
+            </div>
+          </div>
+        </details>
         <div style="display:flex;justify-content:flex-end;gap:8px">
           <button type="button" id="fac-cancel" style="padding:8px 14px;border:1px solid #d1d5db;background:#fff;border-radius:4px;cursor:pointer">Cancelar</button>
-          <button type="submit" style="padding:8px 16px;background:${cfg.color};color:#fff;border:none;border-radius:4px;font-weight:600;cursor:pointer">Registrar factura</button>
+          <button type="submit" style="padding:8px 16px;background:${cfg.color};color:#fff;border:none;border-radius:4px;font-weight:600;cursor:pointer">${editData ? 'Guardar cambios' : 'Registrar factura'}</button>
         </div>
       </form>
     `;
     ov.appendChild(box);
     document.body.appendChild(ov);
     const close = (val) => { ov.remove(); resolve(val); };
-    // Modal NO cierra por backdrop (regla #28 ERP): solo con boton Cerrar explicito
+    // Modal NO cierra por backdrop (regla #28 ERP): solo con boton explicito
     box.querySelector('#fac-cancel').onclick = () => close(null);
     box.querySelector('#form-fac').onsubmit = (e) => {
       e.preventDefault();
       const fd = new FormData(e.target);
       const fileInput = e.target.querySelector('input[name="factura_file"]');
       const file = fileInput && fileInput.files && fileInput.files[0] ? fileInput.files[0] : null;
+      const num = (v) => { const n = parseFloat(v); return Number.isFinite(n) ? n : 0; };
       close({
-        nro_factura:   String(fd.get('nro_factura')).trim(),
-        fecha_factura: fd.get('fecha_factura'),
+        __accion: editData ? 'editar' : 'crear',
+        __id: editData ? editData.id_factura_venta : null,
         file,
+        id_cotizacion:          cot.id_cotizacion,
+        tipo:                   String(fd.get('tipo') || 'FACTURA'),
+        serie:                  String(fd.get('serie') || '').trim(),
+        numero:                 num(fd.get('numero')),
+        fecha_emision:          fd.get('fecha_emision'),
+        moneda:                 String(fd.get('moneda') || 'PEN'),
+        tipo_cambio:            num(tcVal),
+        base_imponible:         num(fd.get('base_imponible')),
+        igv:                    num(fd.get('igv')),
+        total:                  num(fd.get('total')),
+        aplica_detraccion:      fd.get('aplica_detraccion') === 'on',
+        porcentaje_detraccion:  num(fd.get('porcentaje_detraccion')),
+        monto_detraccion:       num(fd.get('monto_detraccion')),
+        aplica_retencion:       fd.get('aplica_retencion') === 'on',
+        monto_retencion:        num(fd.get('monto_retencion')),
+        cliente_razon_social:   cliRazon,
+        cliente_num_doc:        cliDoc,
       });
     };
   });
@@ -2002,9 +2106,7 @@ async function modalDetalle(id) {
                     ${estaCobrada?'✅ COBRADA':estaFacturada?'📄 FACTURADA':'💼 LISTA PARA FACTURAR'}
                   </div>
                   ${(estaFacturada||estaCobrada) ? `
-                    <div style="font-size:12px;margin-top:4px"><b>Factura:</b> ${escapeHtml(c.nro_factura || '—')} · <b>Fecha:</b> ${c.fecha_factura ? String(c.fecha_factura).slice(0,10) : '—'}</div>
-                    <div style="margin-top:6px" data-fac-pdf-cell="${c.id_cotizacion}"><span style="font-size:11px;color:#9ca3af">cargando factura…</span></div>
-                    ${estaCobrada && c.fecha_cobro_total ? `<div style="font-size:11px;color:#6b7280">Cobrada el ${String(c.fecha_cobro_total).slice(0,10)}</div>`:''}
+                    ${estaCobrada && c.fecha_cobro_total ? `<div style="font-size:11px;color:#6b7280;margin-top:4px">Cobrada el ${String(c.fecha_cobro_total).slice(0,10)}</div>`:''}
                   ` : `
                     <div style="font-size:12px;color:#92400e;margin-top:4px">Emite la factura y regístrala aquí para continuar al cobro final</div>
                   `}
@@ -2017,6 +2119,7 @@ async function modalDetalle(id) {
                   ` : ''}
                 </div>
               </div>
+              <div style="margin-top:10px" data-fac-list-cell="${c.id_cotizacion}"><span style="font-size:11px;color:#9ca3af">cargando facturas…</span></div>
             </div>
           `;
         })()}
@@ -2133,70 +2236,182 @@ async function modalDetalle(id) {
     });
   }
 
-  // Pinta el cajón del PDF de la factura de venta de la cotización.
-  // ref_tipo='FacturaVenta', ref_id=id_cotizacion. 👁️ ver + ⬇ descargar + ✕ quitar (GERENTE) + 📎 subir/reemplazar.
-  async function pintarFacturaVenta(idCot) {
-    const cell = ov.querySelector(`[data-fac-pdf-cell="${idCot}"]`);
-    if (!cell) return;
-    let adjs = [];
-    try { adjs = await api.adjuntos.listar('FacturaVenta', idCot); }
-    catch { adjs = []; }
-    const a = (adjs || [])[0] || null;
-    const subirLabel = a ? '📎 Reemplazar' : '📎 Subir factura PDF';
-    let html = '<div style="display:flex;align-items:center;flex-wrap:wrap;gap:6px">';
-    if (a) {
-      const nombre = escapeHtml(a.nombre_original || `Factura ${a.id}`);
-      html += `<span style="font-size:11px;color:#374151">📄 ${nombre}</span>`;
-      html += `<button type="button" data-fac-ver="${a.id}" data-fac-nom="${escapeAttr(a.nombre_original || 'Factura')}"
-        title="Ver la factura ${nombre}" aria-label="Ver factura"
-        style="background:#15803d;color:#fff;border:none;border-radius:4px;padding:3px 8px;cursor:pointer;font-size:11px">👁️</button>`;
-      html += `<a href="${api.adjuntos.archivoUrl(a.id)}" download="${escapeAttr(a.nombre_original || 'factura.pdf')}"
-        title="Descargar la factura ${nombre}" aria-label="Descargar factura"
-        style="background:#fff;color:#15803d;border:1px solid #86efac;border-radius:4px;padding:3px 8px;cursor:pointer;font-size:11px;text-decoration:none">⬇</a>`;
-      if (_esGerente) {
-        html += `<button type="button" data-fac-del="${a.id}"
-          title="Quitar el PDF de la factura. No borra la factura registrada, solo el archivo. Solo GERENTE." aria-label="Quitar factura PDF"
-          style="background:transparent;color:#dc2626;border:1px solid #fecaca;border-radius:4px;padding:3px 6px;cursor:pointer;font-size:11px">✕</button>`;
-      }
-    } else {
-      html += `<span style="font-size:11px;color:#9ca3af">Sin PDF adjunto</span>`;
+  // Helper: sube el PDF de una factura de venta garantizando UNO solo por factura.
+  // ref_tipo='FacturaVenta', ref_id=id_factura_venta. Borra los previos antes.
+  async function subirPdfFactura(idFac, file) {
+    const previos = await api.adjuntos.listar('FacturaVenta', idFac);
+    for (const p of (previos || [])) {
+      try { await api.adjuntos.eliminar(p.id); } catch { /* best-effort */ }
     }
-    html += `<button type="button" data-fac-subir="${idCot}"
-      title="Adjuntar/reemplazar el PDF de la factura emitida en SUNAT (PDF o imagen)." aria-label="Subir factura PDF"
-      style="background:#fff;color:#2563eb;border:1px solid #bfdbfe;border-radius:4px;padding:3px 8px;cursor:pointer;font-size:11px">${subirLabel}</button>`;
-    html += '</div>';
+    return api.adjuntos.subir('FacturaVenta', idFac, file);
+  }
+
+  // Lista las facturas de venta estructuradas de la cotización (api.facturasVenta).
+  // Cada VIGENTE: serie-numero · fecha · total + 👁 Ver / ⬇ Descargar / ✎ Editar /
+  // ⊘ Anular / 📎 Subir-Reemplazar PDF. Más ➕ Agregar factura y aviso de cuadre.
+  async function pintarFacturaVenta(idCot) {
+    const cell = ov.querySelector(`[data-fac-list-cell="${idCot}"]`);
+    if (!cell) return;
+    let facturas = [], cuadre = null;
+    try {
+      const resp = await api.facturasVenta.listar(idCot);
+      facturas = resp.facturas || [];
+      cuadre = resp.cuadre || null;
+    } catch (e) {
+      cell.innerHTML = `<div style="font-size:11px;color:#dc2626">No se pudieron cargar las facturas: ${escapeHtml(e.message || String(e))}</div>`;
+      return;
+    }
+    const vigentes = facturas.filter(f => f.estado === 'VIGENTE');
+
+    // Mapa id_factura_venta → adjunto PDF (primero) para Ver/Descargar.
+    const pdfPorFactura = {};
+    await Promise.all(vigentes.map(async f => {
+      try {
+        const adjs = await api.adjuntos.listar('FacturaVenta', f.id_factura_venta);
+        pdfPorFactura[f.id_factura_venta] = (adjs || [])[0] || null;
+      } catch { pdfPorFactura[f.id_factura_venta] = null; }
+    }));
+
+    let html = '';
+    if (!vigentes.length) {
+      html += `<div style="font-size:12px;color:#9ca3af;margin-bottom:8px">Sin facturas registradas aún</div>`;
+    } else {
+      html += '<div style="display:flex;flex-direction:column;gap:6px;margin-bottom:8px">';
+      for (const f of vigentes) {
+        const idFac   = f.id_factura_venta;
+        const serieN  = escapeHtml(`${f.serie || ''}-${f.numero != null ? f.numero : ''}`);
+        const fecha   = f.fecha_emision ? String(f.fecha_emision).slice(0, 10) : '—';
+        const totalTxt = fMoney(f.total, f.moneda || 'PEN');
+        const a = pdfPorFactura[idFac];
+        let pdfHtml = '';
+        if (a) {
+          const nombre = escapeHtml(a.nombre_original || `Factura ${a.id}`);
+          pdfHtml += `<button type="button" data-fac-ver="${a.id}" data-fac-nom="${escapeAttr(a.nombre_original || 'Factura')}"
+            title="Ver la factura ${nombre}" aria-label="Ver factura"
+            style="background:#15803d;color:#fff;border:none;border-radius:4px;padding:3px 8px;cursor:pointer;font-size:11px">👁 Ver</button>`;
+          pdfHtml += `<a href="${api.adjuntos.archivoUrl(a.id)}" download="${escapeAttr(a.nombre_original || 'factura.pdf')}"
+            title="Descargar la factura ${nombre}" aria-label="Descargar factura"
+            style="background:#fff;color:#15803d;border:1px solid #86efac;border-radius:4px;padding:3px 8px;cursor:pointer;font-size:11px;text-decoration:none">⬇ Descargar</a>`;
+        } else {
+          pdfHtml += `<span style="font-size:11px;color:#9ca3af">Sin PDF</span>`;
+        }
+        html += `
+          <div style="display:flex;align-items:center;flex-wrap:wrap;gap:6px;padding:8px 10px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px">
+            <span style="font-weight:600;font-size:12px">${serieN}</span>
+            <span style="font-size:11px;color:#6b7280">${fecha}</span>
+            <span style="font-size:12px;font-weight:600;margin-left:auto">${totalTxt}</span>
+            <span style="display:flex;align-items:center;flex-wrap:wrap;gap:4px;width:100%">
+              ${pdfHtml}
+              <button type="button" data-fac-pdf-subir="${idFac}"
+                title="Adjuntar/reemplazar el PDF de esta factura (PDF o imagen)." aria-label="Subir PDF de factura"
+                style="background:#fff;color:#2563eb;border:1px solid #bfdbfe;border-radius:4px;padding:3px 8px;cursor:pointer;font-size:11px">📎 ${a ? 'Reemplazar' : 'Subir'} PDF</button>
+              <button type="button" data-fac-editar="${idFac}"
+                title="Editar los datos de esta factura (serie, número, montos)." aria-label="Editar factura"
+                style="background:none;border:1px solid #d1d5db;color:#374151;border-radius:4px;padding:3px 8px;cursor:pointer;font-size:11px">✎ Editar</button>
+              <button type="button" data-fac-anular="${idFac}" data-fac-rotulo="${escapeAttr(`${f.serie || ''}-${f.numero != null ? f.numero : ''}`)}"
+                title="Anular esta factura (anulación lógica, no se borra)." aria-label="Anular factura"
+                style="background:transparent;color:#dc2626;border:1px solid #fecaca;border-radius:4px;padding:3px 8px;cursor:pointer;font-size:11px">⊘ Anular</button>
+            </span>
+          </div>`;
+      }
+      html += '</div>';
+    }
+
+    if (cuadre && cuadre.cuadra === false) {
+      html += `<div style="font-size:11px;color:#92400e;background:#fffbeb;border:1px solid #fde68a;border-radius:4px;padding:6px 8px;margin-bottom:8px">
+        ⚠ Facturado ${fMoney(cuadre.sumaFacturado, 'PEN')} de ${fMoney(cuadre.totalCotizacion, 'PEN')} (faltan ${fMoney(cuadre.diferencia, 'PEN')})
+      </div>`;
+    }
+
+    html += `<button type="button" data-fac-agregar="${idCot}"
+      title="Registrar una factura adicional para esta cotización (anticipo/saldo)." aria-label="Agregar factura"
+      style="background:#fff;color:#2563eb;border:1px dashed #bfdbfe;border-radius:4px;padding:5px 10px;cursor:pointer;font-size:11px;font-weight:600">➕ Agregar factura</button>`;
+
     cell.innerHTML = html;
 
-    const verBtn = cell.querySelector('[data-fac-ver]');
-    if (verBtn) verBtn.onclick = () => previewAdjunto(
-      api.adjuntos.archivoUrl(Number(verBtn.dataset.facVer)),
-      verBtn.dataset.facNom || 'Factura'
-    );
-    const delBtn = cell.querySelector('[data-fac-del]');
-    if (delBtn) delBtn.onclick = async () => {
-      if (!confirm('¿Quitar el PDF de la factura? La factura registrada (N°/fecha) no se borra, solo el archivo.')) return;
-      try {
-        await api.adjuntos.eliminar(Number(delBtn.dataset.facDel));
-        showSuccess('PDF de factura eliminado');
-        pintarFacturaVenta(idCot);
-      } catch (e) { showError(e.message); }
-    };
-    const subirBtn = cell.querySelector('[data-fac-subir]');
-    if (subirBtn) subirBtn.onclick = () => {
-      const inp = document.createElement('input');
-      inp.type = 'file';
-      inp.accept = '.pdf,image/*';
-      inp.onchange = async () => {
-        const file = inp.files && inp.files[0];
-        if (!file) return;
-        try {
-          await subirFacturaVentaUnica(idCot, file);
-          showSuccess('Factura PDF subida');
-          pintarFacturaVenta(idCot);
-        } catch (e) { showError(`No se pudo subir "${file.name}": ${e.message}`); }
+    // Ver PDF
+    cell.querySelectorAll('[data-fac-ver]').forEach(b => {
+      b.onclick = () => previewAdjunto(
+        api.adjuntos.archivoUrl(Number(b.dataset.facVer)),
+        b.dataset.facNom || 'Factura'
+      );
+    });
+    // Subir / reemplazar PDF (atado a id_factura_venta)
+    cell.querySelectorAll('[data-fac-pdf-subir]').forEach(b => {
+      b.onclick = () => {
+        const idFac = Number(b.dataset.facPdfSubir);
+        const inp = document.createElement('input');
+        inp.type = 'file';
+        inp.accept = '.pdf,image/*';
+        inp.onchange = async () => {
+          const file = inp.files && inp.files[0];
+          if (!file) return;
+          try {
+            await subirPdfFactura(idFac, file);
+            showSuccess('Factura PDF subida');
+            pintarFacturaVenta(idCot);
+          } catch (e) { showError(`No se pudo subir "${file.name}": ${e.message}`); }
+        };
+        inp.click();
       };
-      inp.click();
-    };
+    });
+    // Editar factura (reabre modalFacturar con editData)
+    cell.querySelectorAll('[data-fac-editar]').forEach(b => {
+      b.onclick = async () => {
+        const idFac = Number(b.dataset.facEditar);
+        const existing = facturas.find(f => Number(f.id_factura_venta) === idFac);
+        if (!existing) return;
+        const data = await modalFacturar(c, { editData: existing });
+        if (!data) return;
+        const file = data.file || null;
+        const { __accion, __id, file: _f, ...campos } = data;
+        try {
+          await api.facturasVenta.editar(idFac, campos);
+          if (file) {
+            try { await subirPdfFactura(idFac, file); }
+            catch { showError('Factura actualizada, pero el PDF no se subió. Podés subirlo desde el detalle.'); }
+          }
+          showSuccess('Factura actualizada');
+          pintarFacturaVenta(idCot);
+        } catch (e) { showError(e.message); }
+      };
+    });
+    // Anular factura
+    cell.querySelectorAll('[data-fac-anular]').forEach(b => {
+      b.onclick = async () => {
+        const idFac = Number(b.dataset.facAnular);
+        if (!confirm(`¿Anular la factura ${b.dataset.facRotulo || ''}? Es una anulación lógica (no se borra).`)) return;
+        try {
+          await api.facturasVenta.anular(idFac);
+          showSuccess('Factura anulada');
+          pintarFacturaVenta(idCot);
+        } catch (e) { showError(e.message); }
+      };
+    });
+    // Agregar factura adicional (reusa el modal de registro)
+    const btnAgregar = cell.querySelector('[data-fac-agregar]');
+    if (btnAgregar) btnAgregar.onclick = () => registrarFacturaFlow();
+  }
+
+  // Flujo de registro de factura nueva (compartido por "Registrar factura" y
+  // "Agregar factura"): abre modalFacturar → crea → adjunta PDF → refresca lista.
+  async function registrarFacturaFlow() {
+    const data = await modalFacturar(c);
+    if (!data) return;
+    const file = data.file || null;
+    const { __accion, __id, file: _f, ...campos } = data;
+    try {
+      const r = await api.facturasVenta.crear(campos);
+      if (file && r && r.id) {
+        try {
+          await api.adjuntos.subir('FacturaVenta', r.id, file);
+        } catch {
+          showError('Factura registrada, pero el PDF no se subió. Podés subirlo desde el detalle.');
+        }
+      }
+      showSuccess('Factura registrada');
+      pintarFacturaVenta(c.id_cotizacion);
+    } catch (e) { showError(e.message); }
   }
 
   movs.forEach(m => pintarAdjCobranza(m.id_cobranza));
@@ -2215,24 +2430,27 @@ async function modalDetalle(id) {
     } catch (e) { showError(e.message); }
   };
 
-  // Facturación
+  // Facturación: registra la factura estructurada (api.facturasVenta) y avanza
+  // el estado financiero de la cotización a FACTURADA (api.cobranzas.facturar)
+  // para habilitar "Marcar cobrada". El PDF cuelga del id_factura_venta.
   const btnFac = ov.querySelector('#btn-facturar');
   if (btnFac) btnFac.onclick = async () => {
     const data = await modalFacturar(c);
     if (!data) return;
     const file = data.file || null;
+    const { __accion, __id, file: _f, ...campos } = data;
     try {
-      await api.cobranzas.facturar(c.id_cotizacion, { nro_factura: data.nro_factura, fecha_factura: data.fecha_factura });
-      if (file) {
-        try {
-          await subirFacturaVentaUnica(c.id_cotizacion, file);
-          showSuccess('Cotización facturada y PDF adjuntado');
-        } catch (upErr) {
-          showError(`Factura registrada, pero no se pudo subir el PDF: ${upErr.message}. Puedes subirlo desde el detalle.`);
-        }
-      } else {
-        showSuccess('Cotización facturada');
+      const r = await api.facturasVenta.crear(campos);
+      if (file && r && r.id) {
+        try { await api.adjuntos.subir('FacturaVenta', r.id, file); }
+        catch { showError('Factura registrada, pero el PDF no se subió. Podés subirlo desde el detalle.'); }
       }
+      // Avanza el estado financiero (legacy state machine) usando serie-numero.
+      const nroFactura = `${campos.serie || ''}-${campos.numero != null ? campos.numero : ''}`;
+      try {
+        await api.cobranzas.facturar(c.id_cotizacion, { nro_factura: nroFactura, fecha_factura: campos.fecha_emision });
+      } catch { /* la factura ya quedó registrada; el estado se puede ajustar luego */ }
+      showSuccess('Factura registrada');
       close();
       window.refreshModule?.();
     } catch (e) { showError(e.message); }
