@@ -42,6 +42,17 @@ function eecc(id: number, tipo: 'CARGO' | 'ABONO', monto: number, saldo: number,
   const r = clasificarSaldoBanco([eecc(1, 'CARGO', 30, 470)], 100, 460);
   check('(e) 1 terminal pero no arranca en inicial → PARCIAL', r.estado === 'PARCIAL' && r.diferencia === null, JSON.stringify(r));
 }
+// (f) Array vacío → SIN_EECC.
+{
+  const r = clasificarSaldoBanco([], 100, 100);
+  check('(f) array vacío → SIN_EECC', r.estado === 'SIN_EECC' && r.saldo_banco === null, JSON.stringify(r));
+}
+// (g) Filas EECC sin saldo_contable usable → PARCIAL.
+{
+  const sinSaldo: MovimientoSaldo = { id_movimiento: 5, fuente: 'IMPORT_EECC', tipo: 'CARGO', monto: 10, saldo_contable: null, fecha_proceso: '2026-03-10', fecha: '2026-03-10' };
+  const r = clasificarSaldoBanco([sinSaldo], 100, 90);
+  check('(g) EECC sin saldo_contable usable → PARCIAL', r.estado === 'PARCIAL' && r.saldo_banco === null, JSON.stringify(r));
+}
 
 console.log(`\n${pass}/${pass + fail} casos OK`);
 if (fail > 0) process.exit(1);

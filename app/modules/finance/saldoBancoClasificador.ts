@@ -12,8 +12,8 @@ export interface MovimientoSaldo {
   saldo_contable: number | string | null;
   monto: number;
   tipo: string;                            // 'ABONO' | 'CARGO'
-  fecha_proceso?: any;
-  fecha?: any;
+  fecha_proceso?: string | Date | null;
+  fecha?: string | Date | null;
   id_movimiento: number;
 }
 
@@ -30,10 +30,12 @@ const cents = (n: number): number => Math.round(Number(n) * 100);
 // Normaliza fecha (Date del driver pg, o string) a 'YYYY-MM-DD'. String(Date)
 // da "Wed Jan 07..." y ordenar por eso compara por nombre de día (bug histórico
 // del Saldo Banco) — por eso normalizamos antes de ordenar la cadena.
-const isoDay = (v: any): string => {
+const isoDay = (v: string | Date | null | undefined): string => {
   if (!v) return '';
   if (v instanceof Date) {
-    return `${v.getFullYear()}-${String(v.getMonth() + 1).padStart(2, '0')}-${String(v.getDate()).padStart(2, '0')}`;
+    // UTC: con métodos en hora local, un Date a medianoche corre 1 día en husos
+    // negativos (Lima UTC-5) → reintroduciría el bug de orden que esto previene.
+    return `${v.getUTCFullYear()}-${String(v.getUTCMonth() + 1).padStart(2, '0')}-${String(v.getUTCDate()).padStart(2, '0')}`;
   }
   return String(v).slice(0, 10);
 };
