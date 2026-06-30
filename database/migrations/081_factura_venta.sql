@@ -65,16 +65,9 @@ SET ref_id = fv.id_factura_venta
 FROM facturaventa fv
 WHERE a.ref_tipo = 'FacturaVenta' AND a.ref_id = fv.id_cotizacion;
 
--- 4) Drop GUARDED de las tablas STUB de Nubefact (abortar si tienen data real).
-DO $$
-DECLARE n INT;
-BEGIN
-  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'facturas') THEN
-    SELECT COUNT(*) INTO n FROM facturas;
-    IF n > 0 THEN
-      RAISE EXCEPTION 'Tabla facturas tiene % filas -- NO se dropea. Revisar antes de continuar.', n;
-    END IF;
-    DROP TABLE IF EXISTS detallefactura;
-    DROP TABLE IF EXISTS facturas;
-  END IF;
-END $$;
+-- 4) Las tablas STUB de Nubefact (facturas, detallefactura) NO se dropean:
+--    tienen FKs desde guiasremision/notascredito/notasdebito (fk_guia_factura,
+--    fk_nc_factura, fk_nd_factura). Estan VACIAS (0 filas) y ya no las referencia
+--    ningun codigo (FacturaService removido en este mismo trabajo). Se dejan
+--    inertes. Limpiarlas requeriria DROP ... CASCADE, que tocaria el schema de
+--    esas 3 tablas usadas -> queda fuera de alcance (cosmetico).
