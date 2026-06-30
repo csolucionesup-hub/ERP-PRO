@@ -16,7 +16,6 @@ const ICON_MAP = {
   inventario:     'archive',
   produccion:     'package',
   administracion: 'users',
-  contabilidad:   'book-open',
   importador:     'download',
   usuarios:       'user',
   configuracion:  'settings',
@@ -88,11 +87,9 @@ export function renderSidebar(activePage) {
     .join('');
 
   // Sección Gestión: depende de flags granulares + rol GERENTE
-  const verContabilidad = esGerente || !!user.puede_contabilidad;
   const verImportador   = esGerente || !!user.puede_importar;
 
   const gestionItems = [];
-  if (verContabilidad) gestionItems.push({ page: 'contabilidad',  label: 'Contabilidad' });
   if (verImportador)   gestionItems.push({ page: 'importador',    label: 'Importar Histórico' });
   if (esGerente) {
     gestionItems.push({ page: 'usuarios',      label: 'Usuarios' });

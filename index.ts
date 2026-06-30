@@ -35,14 +35,10 @@ import ConfiguracionService from './app/modules/configuracion/ConfiguracionServi
 import AuditoriaService from './app/modules/configuracion/AuditoriaService';
 import PeriodosService from './app/modules/configuracion/PeriodosService';
 import AdjuntosService from './app/modules/configuracion/AdjuntosService';
-import NubefactService from './app/modules/facturacion/NubefactService';
-import FacturaService from './app/modules/facturacion/FacturaService';
-import FacturaPDFService from './app/modules/facturacion/FacturaPDFService';
+import FacturaVentaService from './app/modules/facturacion/FacturaVentaService';
 import NotaCreditoService from './app/modules/notas-credito/NotaCreditoService';
 import RendicionService from './app/modules/admin/RendicionService';
 import RendicionPDFService from './app/modules/admin/RendicionPDFService';
-import PLEExporter from './app/modules/facturacion/PLEExporter';
-import { FacturacionCron } from './app/modules/facturacion/FacturacionCron';
 import ImportadorService, { EntidadImportable } from './app/modules/importador/ImportadorService';
 import OrdenCompraService from './app/modules/compras/OrdenCompraService';
 import HistorialOCService from './app/modules/compras/HistorialOCService';
@@ -75,6 +71,7 @@ import { prestamoTomadoCreateSchema, prestamoTomadoUpdateSchema, pagoPrestamSche
 } from './app/validators/prestamos.schema';
 import { depositoDetraccionSchema, pagoImpuestoSchema, tipoCambioManualSchema } from './app/validators/tributario.schema';
 import { cotizacionCreateSchema, cotizacionUpdateSchema, cotizacionEstadoSchema } from './app/validators/cotizacion.schema';
+import { facturaVentaCreateSchema, facturaVentaUpdateSchema } from './app/validators/facturaVenta.schema';
 
 dotenv.config();
 
@@ -1410,88 +1407,36 @@ adjuntosRouter.delete('/:id', validateIdParam, auditLog('Adjunto', 'DELETE'), as
 
 app.use('/api/adjuntos', adjuntosRouter);
 
-// ===== FACTURACIÓN ELECTRÓNICA — diagnóstico (real emisión llega en Fase B) =====
-const facturacionRouter = express.Router();
-facturacionRouter.use(requireAuth);
-facturacionRouter.use(requireModulo('FINANZAS'));
+// ===== FACTURAS DE VENTA (registro manual de facturas SUNAT) =====
+const facturasVentaRouter = express.Router();
+facturasVentaRouter.use(requireAuth);
+facturasVentaRouter.use(requireModulo('FINANZAS'));
 
-facturacionRouter.get('/diagnostico', async (_req, res) => {
-  res.json(await NubefactService.diagnostico());
+facturasVentaRouter.get('/preview/:id_cotizacion', async (req: Request, res: Response) => {
+  const id = Number(req.params.id_cotizacion);
+  if (!Number.isFinite(id) || id <= 0) return res.status(400).json({ error: 'id_cotizacion invalido' });
+  res.json(await FacturaVentaService.previewDesdeCotizacion(id));
 });
 
-app.use('/api/facturacion', facturacionRouter);
-
-// ===== FACTURAS (CPE — Comprobantes de Pago Electrónicos) =====
-const facturasRouter = express.Router();
-facturasRouter.use(requireAuth);
-facturasRouter.use(requireModulo('FINANZAS'));
-
-// Emitir factura/boleta desde una cotización aprobada
-facturasRouter.post(
-  '/emitir-desde-cotizacion/:id_cotizacion',
-  auditLog('Factura', 'EMIT'),
-  async (req: Request, res: Response) => {
-    const id_cot = parseInt(req.params.id_cotizacion as string);
-    if (isNaN(id_cot) || id_cot <= 0) {
-      return res.status(400).json({ error: 'id_cotizacion inválido' });
-    }
-    const result = await FacturaService.emitirDesdeCotizacion(id_cot, {
-      forma_pago: req.body?.forma_pago,
-      dias_credito: req.body?.dias_credito,
-      observaciones: req.body?.observaciones,
-      forzar_tipo: req.body?.forzar_tipo,
-      id_usuario_emisor: req.user!.id_usuario,
-    });
-    res.json(result);
-  }
-);
-
-// Listar con filtros
-facturasRouter.get('/', async (req: Request, res: Response) => {
-  res.json(await FacturaService.listar({
-    desde: req.query.desde as string | undefined,
-    hasta: req.query.hasta as string | undefined,
-    tipo: req.query.tipo as any,
-    estado: req.query.estado as string | undefined,
-    cliente_numero_doc: req.query.cliente_numero_doc as string | undefined,
-    limit: req.query.limit ? Number(req.query.limit) : undefined,
-  }));
+facturasVentaRouter.get('/', async (req: Request, res: Response) => {
+  const id = Number(req.query.id_cotizacion);
+  if (!Number.isFinite(id) || id <= 0) return res.status(400).json({ error: 'id_cotizacion requerido' });
+  res.json(await FacturaVentaService.listarPorCotizacion(id));
 });
 
-// Ficha completa con detalle
-facturasRouter.get('/:id', validateIdParam, async (req: Request, res: Response) => {
-  res.json(await FacturaService.obtener(parseInt(req.params.id as string)));
+facturasVentaRouter.post('/', validateParams(facturaVentaCreateSchema), auditLog('FacturaVenta', 'CREATE'), async (req: any, res: Response) => {
+  res.json(await FacturaVentaService.crear(req.body, req.user!.id_usuario));
 });
 
-// Refrescar estado desde SUNAT (útil cuando quedó PENDIENTE o ERROR)
-facturasRouter.post('/:id/consultar-estado', validateIdParam, auditLog('Factura', 'UPDATE'), async (req: Request, res: Response) => {
-  res.json(await FacturaService.consultarEstado(parseInt(req.params.id as string)));
+facturasVentaRouter.put('/:id', validateIdParam, validateParams(facturaVentaUpdateSchema), auditLog('FacturaVenta', 'UPDATE'), async (req: Request, res: Response) => {
+  res.json(await FacturaVentaService.editar(Number(req.params.id), req.body));
 });
 
-// Pre-llenar form de factura desde una cotización (no persiste)
-facturasRouter.get('/preview-cotizacion/:id_cotizacion', async (req: Request, res: Response) => {
-  const id = parseInt(req.params.id_cotizacion as string);
-  if (isNaN(id) || id <= 0) return res.status(400).json({ error: 'id_cotizacion inválido' });
-  res.json(await FacturaService.previewDesdeCotizacion(id));
+facturasVentaRouter.post('/:id/anular', validateIdParam, auditLog('FacturaVenta', 'UPDATE'), async (req: Request, res: Response) => {
+  res.json(await FacturaVentaService.anular(Number(req.params.id)));
 });
 
-// Crear y emitir factura/boleta con form completo (multi-items editables)
-facturasRouter.post('/', auditLog('Factura', 'EMIT'), async (req: any, res: Response) => {
-  const result = await FacturaService.crearYEmitir(req.body, { id_usuario_emisor: req.user?.id_usuario });
-  res.json(result);
-});
-
-// PDF de la factura (preview interno mientras esté en STUB; oficial cuando Nubefact REAL)
-facturasRouter.get('/:id/pdf', validateIdParam, async (req: Request, res: Response) => {
-  const id = parseInt(req.params.id as string);
-  const buf = await FacturaPDFService.generar(id);
-  const f = await FacturaService.obtener(id);
-  res.setHeader('Content-Type', 'application/pdf');
-  res.setHeader('Content-Disposition', `inline; filename="${f.serie}-${String(f.numero).padStart(6,'0')}.pdf"`);
-  res.send(buf);
-});
-
-app.use('/api/facturas', facturasRouter);
+app.use('/api/facturas-venta', facturasVentaRouter);
 
 // ===== NOTAS DE CRÉDITO =====
 // Hoy cubre NCs RECIBIDAS del proveedor (registro local que ajusta
@@ -1645,63 +1590,6 @@ rendicionesRouter.get('/:id/pdf', validateIdParam, async (req: Request, res: Res
 });
 
 app.use('/api/rendiciones', rendicionesRouter);
-
-// ===== LIBROS ELECTRÓNICOS (PLE) SUNAT =====
-const pleRouter = express.Router();
-pleRouter.use(requireAuth);
-pleRouter.use(requireModulo('FINANZAS'));
-
-/**
- * Genera el TXT del Registro de Ventas (14.1) para el periodo dado.
- * Se devuelve como descarga forzada.
- */
-pleRouter.get('/ventas', auditLog('PLEVentas', 'EXPORT'), async (req: Request, res: Response) => {
-  const anio = parseInt(req.query.anio as string) || new Date().getFullYear();
-  const mes = parseInt(req.query.mes as string) || (new Date().getMonth() + 1);
-  const file = await PLEExporter.registroVentas({ anio, mes });
-  res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-  res.setHeader('Content-Disposition', `attachment; filename="${file.nombreArchivo}"`);
-  res.setHeader('X-PLE-Lineas', String(file.cantidadLineas));
-  res.send(file.contenido);
-});
-
-pleRouter.get('/compras', auditLog('PLECompras', 'EXPORT'), async (req: Request, res: Response) => {
-  const anio = parseInt(req.query.anio as string) || new Date().getFullYear();
-  const mes = parseInt(req.query.mes as string) || (new Date().getMonth() + 1);
-  const file = await PLEExporter.registroCompras({ anio, mes });
-  res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-  res.setHeader('Content-Disposition', `attachment; filename="${file.nombreArchivo}"`);
-  res.setHeader('X-PLE-Lineas', String(file.cantidadLineas));
-  res.send(file.contenido);
-});
-
-/**
- * Preview del contenido sin descargar — útil para la UI que muestra
- * "hay X facturas que se exportarán" antes de dar click al botón.
- */
-pleRouter.get('/ventas/preview', async (req: Request, res: Response) => {
-  const anio = parseInt(req.query.anio as string) || new Date().getFullYear();
-  const mes = parseInt(req.query.mes as string) || (new Date().getMonth() + 1);
-  const file = await PLEExporter.registroVentas({ anio, mes });
-  res.json({
-    nombreArchivo: file.nombreArchivo,
-    lineas: file.cantidadLineas,
-    preview: file.contenido.split('\r\n').slice(0, 5),
-  });
-});
-
-pleRouter.get('/compras/preview', async (req: Request, res: Response) => {
-  const anio = parseInt(req.query.anio as string) || new Date().getFullYear();
-  const mes = parseInt(req.query.mes as string) || (new Date().getMonth() + 1);
-  const file = await PLEExporter.registroCompras({ anio, mes });
-  res.json({
-    nombreArchivo: file.nombreArchivo,
-    lineas: file.cantidadLineas,
-    preview: file.contenido.split('\r\n').slice(0, 5),
-  });
-});
-
-app.use('/api/ple', pleRouter);
 
 // ===== IMPORTADOR — bulk import CSV para data histórica =====
 const importadorRouter = express.Router();
@@ -2785,7 +2673,4 @@ app.listen(PORT, async () => {
 
   // Self-heal: detecta DB vacía/incompleta y la regenera (Railway free a veces resetea volumen)
   await autoHealDatabase();
-
-  // Cron de refresco estado SUNAT (solo activo en modo REAL)
-  FacturacionCron.start();
 });
