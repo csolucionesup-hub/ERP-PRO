@@ -407,9 +407,6 @@ export const api = {
     cerrar:  (anio, mes, observaciones) => post('/periodos/cerrar',  { anio, mes, observaciones }),
     reabrir: (anio, mes)               => post('/periodos/reabrir', { anio, mes }),
   },
-  facturacion: {
-    diagnostico: () => get('/facturacion/diagnostico'),
-  },
   // Registro manual de facturas SUNAT atadas a una cotización (FacturaVenta).
   facturasVenta: {
     preview:  (idCot)     => get(`/facturas-venta/preview/${idCot}`),

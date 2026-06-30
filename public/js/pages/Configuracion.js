@@ -1,7 +1,7 @@
 /**
  * Configuracion.js — Módulo ⚙️ Configuración (solo GERENTE)
  *
- * 6 tabs: Empresa · Régimen · Facturación · Módulos · Periodos · Auditoría
+ * Tabs: Empresa · Régimen · Módulos · Periodos · Firmas OC · Auditoría
  * + Wizard de setup inicial cuando no existe configuración.
  */
 
@@ -48,17 +48,13 @@ export const Configuracion = async () => {
 
   // Cargar la configuración actual
   let cfg = null;
-  let diag = null;
   try {
-    [cfg, diag] = await Promise.all([
-      api.config.get(),
-      api.facturacion.diagnostico().catch(() => null),
-    ]);
+    cfg = await api.config.get();
   } catch (e) {
     return `<div class="placeholder-page" style="color:var(--danger)"><h2>Error cargando configuración</h2><p>${e.message}</p></div>`;
   }
 
-  setTimeout(() => initTabs(cfg, diag), 60);
+  setTimeout(() => initTabs(cfg), 60);
   return shellHtml();
 };
 
@@ -76,7 +72,6 @@ function shellHtml() {
 
     <div id="tab-empresa" class="tab-content"></div>
     <div id="tab-regimen" class="tab-content" style="display:none"></div>
-    <div id="tab-facturacion" class="tab-content" style="display:none"></div>
     <div id="tab-modulos" class="tab-content" style="display:none"></div>
     <div id="tab-periodos" class="tab-content" style="display:none"></div>
     <div id="tab-firmas-oc" class="tab-content" style="display:none"></div>
@@ -84,13 +79,12 @@ function shellHtml() {
   `;
 }
 
-function initTabs(cfg, diag) {
+function initTabs(cfg) {
   TabBar({
     container: '#config-tabbar',
     tabs: [
       { id: 'empresa',     label: '🏢 Empresa' },
       { id: 'regimen',     label: '📋 Régimen' },
-      { id: 'facturacion', label: '🧾 Facturación' },
       { id: 'modulos',     label: '💼 Módulos' },
       { id: 'periodos',    label: '📅 Periodos' },
       { id: 'firmas-oc',   label: '🖊️ Firmas OC' },
@@ -104,7 +98,6 @@ function initTabs(cfg, diag) {
       // Lazy-render del contenido al cambiar de tab
       if (id === 'empresa'     && !panel.dataset.rendered) renderTabEmpresa(panel, cfg);
       if (id === 'regimen'     && !panel.dataset.rendered) renderTabRegimen(panel, cfg);
-      if (id === 'facturacion' && !panel.dataset.rendered) renderTabFacturacion(panel, cfg, diag);
       if (id === 'modulos'     && !panel.dataset.rendered) renderTabModulos(panel, cfg);
       if (id === 'periodos')   renderTabPeriodos(panel);
       if (id === 'firmas-oc')  renderTabFirmasOC(panel);
@@ -116,7 +109,6 @@ function initTabs(cfg, diag) {
   window.Configuracion = {
     guardarEmpresa,
     cambiarRegimen,
-    guardarFacturacion,
     toggleModulo,
     cerrarPeriodo,
     reabrirPeriodo,
@@ -335,94 +327,6 @@ async function cambiarRegimen(reg) {
   } catch (e) { showError(e.message || 'Error al cambiar régimen'); }
 }
 
-// ─── TAB 3: Facturación ───────────────────────────────────────
-function renderTabFacturacion(panel, cfg, diag) {
-  panel.dataset.rendered = '1';
-  const modoBadge = diag?.modo === 'REAL'
-    ? '<span style="background:#16a34a;color:#fff;padding:3px 10px;border-radius:10px;font-size:11px;font-weight:600">🟢 REAL</span>'
-    : '<span style="background:#f59e0b;color:#fff;padding:3px 10px;border-radius:10px;font-size:11px;font-weight:600">🟡 STUB</span>';
-
-  panel.innerHTML = `
-    <div class="card" style="margin-top:12px">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-        <h3 style="margin:0;font-size:15px">Facturación Electrónica SUNAT</h3>
-        ${modoBadge}
-      </div>
-
-      <div style="padding:14px;background:${diag?.modo === 'REAL' ? '#f0fdf4' : '#fffbeb'};border-radius:8px;margin-bottom:20px;font-size:13px">
-        ${diag?.mensaje || 'Sin diagnóstico disponible.'}
-      </div>
-
-      <form id="form-facturacion" style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
-        <div>
-          <label>OSE Proveedor</label>
-          <select name="ose_proveedor">
-            <option value="NONE"     ${cfg.ose_proveedor === 'NONE'     ? 'selected' : ''}>Ninguno (modo STUB)</option>
-            <option value="NUBEFACT" ${cfg.ose_proveedor === 'NUBEFACT' ? 'selected' : ''}>Nubefact</option>
-            <option value="EFACT"    ${cfg.ose_proveedor === 'EFACT'    ? 'selected' : ''}>EFACT</option>
-            <option value="SUNAT"    ${cfg.ose_proveedor === 'SUNAT'    ? 'selected' : ''}>SUNAT Facturador</option>
-          </select>
-        </div>
-        <div>
-          <label>Endpoint URL (API OSE)</label>
-          <input name="ose_endpoint_url" value="${escapeHtml(cfg.ose_endpoint_url || '')}" placeholder="https://api.nubefact.com/api/v1/20610071962">
-        </div>
-        <div>
-          <label>Usuario OSE</label>
-          <input name="ose_usuario" value="${escapeHtml(cfg.ose_usuario || '')}">
-        </div>
-        <div>
-          <label>Token / API Key</label>
-          <input type="password" name="ose_token_hash" placeholder="${cfg.ose_usuario ? '•••••••• (ya guardado)' : 'pegar token aquí'}">
-        </div>
-        <div>
-          <label>Certificado digital (ruta .pfx)</label>
-          <input name="cert_digital_ruta" value="${escapeHtml(cfg.cert_digital_ruta || '')}" placeholder="./certs/metalengineers.pfx">
-        </div>
-        <div>
-          <label>Password certificado</label>
-          <input type="password" name="cert_digital_password_hash" placeholder="${cfg.cert_digital_ruta ? '•••••••• (ya guardado)' : 'password del .pfx'}">
-        </div>
-
-        <div style="grid-column:span 2;border-top:1px solid var(--border-light);padding-top:14px;margin-top:6px">
-          <h4 style="margin-bottom:10px;font-size:13px">Series de numeración</h4>
-        </div>
-        <div><label>Serie Factura</label><input name="serie_factura" value="${escapeHtml(cfg.serie_factura)}" maxlength="4"></div>
-        <div><label>Serie Boleta</label><input name="serie_boleta" value="${escapeHtml(cfg.serie_boleta)}" maxlength="4"></div>
-        <div><label>Serie Nota Crédito</label><input name="serie_nota_credito" value="${escapeHtml(cfg.serie_nota_credito)}" maxlength="4"></div>
-        <div><label>Serie Nota Débito</label><input name="serie_nota_debito" value="${escapeHtml(cfg.serie_nota_debito)}" maxlength="4"></div>
-        <div><label>Serie Guía Remisión</label><input name="serie_guia_remision" value="${escapeHtml(cfg.serie_guia_remision)}" maxlength="4"></div>
-
-        <div style="grid-column:span 2;display:flex;justify-content:flex-end;margin-top:10px">
-          <button type="submit" style="padding:10px 24px;background:var(--primary-color);color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:600">
-            Guardar configuración OSE
-          </button>
-        </div>
-      </form>
-
-      <div style="margin-top:20px;padding:12px;background:#f0f9ff;border-radius:8px;font-size:12px;color:var(--text-secondary)">
-        📌 <strong>Nota Fase A:</strong> el sistema está en modo STUB — las emisiones son simuladas. La emisión real vs SUNAT se activa en Fase B cuando el OSE esté configurado y el certificado digital cargado.
-      </div>
-    </div>
-  `;
-
-  document.getElementById('form-facturacion').onsubmit = (e) => {
-    e.preventDefault();
-    const data = Object.fromEntries(new FormData(e.target));
-    // No enviamos los campos password si el usuario los dejó vacíos (mantener el valor actual)
-    if (!data.ose_token_hash) delete data.ose_token_hash;
-    if (!data.cert_digital_password_hash) delete data.cert_digital_password_hash;
-    window.Configuracion.guardarFacturacion(data);
-  };
-}
-
-async function guardarFacturacion(data) {
-  try {
-    await api.config.update(data);
-    showSuccess('Configuración de facturación guardada');
-    location.reload();
-  } catch (e) { showError(e.message || 'Error al guardar'); }
-}
 
 // ─── TAB 4: Módulos ───────────────────────────────────────────
 function renderTabModulos(panel, cfg) {
