@@ -956,9 +956,6 @@ async function modalLibroBancos() {
                  <button class="btn-split-m" data-id="${m.id_movimiento}" data-monto="${m.monto}" data-desc="${escapeHtml(m.descripcion_banco || '')}"
                    title="💱 Split N/D bundle: separar este movimiento en Pago + Comisión bancaria. Útil para líneas 'I-BANC + COM.O/CI-BANC' donde el banco junta el pago y la comisión interbancaria en una sola línea."
                    aria-label="Split pago + comisión" style="color:#7c3aed;background:none;border:none;cursor:pointer;font-size:14px">💱</button>
-                 <button class="btn-match-oc-m" data-id="${m.id_movimiento}" data-monto="${m.monto}"
-                   title="🔗 Buscar pagos de OC ya registrados que coincidan con este movimiento por monto y fecha"
-                   aria-label="Match a OC" style="color:#0891b2;background:none;border:none;cursor:pointer;font-size:14px">🔗</button>
                  <button class="btn-servicio-m" data-id="${m.id_movimiento}" data-monto="${m.monto}" data-desc="${escapeHtml(m.descripcion_banco || '')}"
                    title="💡 Registrar como Pago de Servicio (luz / agua / internet / portes) — se crea un GastoBancario con concepto custom"
                    aria-label="Pago servicio" style="color:#ca8a04;background:none;border:none;cursor:pointer;font-size:14px">💡</button>
@@ -1148,22 +1145,6 @@ async function modalLibroBancos() {
         try {
           const r = await api.cobranzas.splitMovimientoComision(id, data);
           showSuccess(`Split aplicado: Pago S/ ${data.monto_pago.toFixed(2)} + Comisión S/ ${data.monto_comision.toFixed(2)} (GastoBancario #${r.id_gasto_bancario})`);
-          render();
-        } catch (e) { showError(e.error || e.message); }
-      };
-    });
-
-    // 🔗 Match con OC: buscar pagos AUTO existentes.
-    box.querySelectorAll('.btn-match-oc-m').forEach(btn => {
-      btn.onclick = async () => {
-        const id = Number(btn.dataset.id);
-        try {
-          const r = await api.cobranzas.sugerirMatchPagoOC(id, 5);
-          const elegido = await modalSugerenciasPagoOC(r);
-          if (!elegido) return;
-          // Conciliar usando endpoint existente
-          await api.cobranzas.conciliarMovimiento(id, { ref_tipo: 'OC_PAGO', ref_id: elegido.id_pago });
-          showSuccess(`Conciliado con OC ${elegido.nro_oc}`);
           render();
         } catch (e) { showError(e.error || e.message); }
       };
